@@ -18,13 +18,6 @@ let isCapturing = false; // Flag to suppress all data-fetching during screenshot
 let adrRenderPending = false;
 let quillEditor; // Global Quill instance
 let currentAuthUser = null;
-// TradingEconomics 요청은 서버가 Chrome을 띄워 처리하므로, 한 번에 1개씩만 보낸다
-let teRequestChain = Promise.resolve();
-function queueTeRequest(task) {
-    const result = teRequestChain.then(task);
-    teRequestChain = result.catch(() => { });
-    return result;
-}
 
 /**
  * ===== GOOGLE AUTHENTICATION & CALENDAR API =====
@@ -3365,15 +3358,14 @@ async function loadTradingEconomicsChart(canvas, url, title, duration = '', forc
             loadingEl.textContent = '브라우저 시동 중...';
         }
 
-        const response = await queueTeRequest(async () => {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => {
-                controller.abort();
-                console.warn(`[TradingEconomics] Timeout (120s) for ${url}`);
-            }, 120000);
-            try { return await fetch(proxyUrl, { signal: controller.signal }); }
-            finally { clearTimeout(timeoutId); }
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+            controller.abort();
+            console.warn(`[TradingEconomics] Timeout (180s) for ${url}`);
+        }, 180000);
+
+        const response = await fetch(proxyUrl, { signal: controller.signal });
+        clearTimeout(timeoutId);
 
         // v30.9.10: Handle non-JSON (HTML) responses from Gateway/Proxy
         const contentType = response.headers.get('content-type');
@@ -4019,19 +4011,8 @@ async function loadMultiSeriesChart(canvas, urls, title, force = false) {
 
                             if (!fetchUrl) break;
 
-                            let resp;
-                            if (dataSource === 'te') {
-                                clearTimeout(timeoutId); // 대기열에서 차례를 기다리는 동안에는 타임아웃을 걸지 않음
-                                resp = await queueTeRequest(async () => {
-                                    const teController = new AbortController();
-                                    const teTimeoutId = setTimeout(() => teController.abort(), 120000);
-                                    try { return await fetch(fetchUrl, { signal: teController.signal }); }
-                                    finally { clearTimeout(teTimeoutId); }
-                                });
-                            } else {
-                                resp = await fetch(fetchUrl, { signal: controller.signal });
-                                clearTimeout(timeoutId);
-                            }
+                            const resp = await fetch(fetchUrl, { signal: controller.signal });
+                            clearTimeout(timeoutId);
 
                             if (!resp.ok) {
                                 const ct = resp.headers.get('content-type');

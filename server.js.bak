@@ -1831,7 +1831,7 @@ app.get('/api/finviz-image', async (req, res) => {
  * 환율, 금리 등 경제 지표 데이터 제공
  */
 let activeBrowsers = 0; // 동시에 실행 중인 브라우저 수
-const MAX_BROWSERS = 1; // 1GB Oracle Cloud에서는 Chrome 1개만 허용
+const MAX_BROWSERS = 2; // v30.9.15: Reduced from 3 to prevent RAM pressure on 1GB Oracle Cloud
 
 // v30.9.11: Memory Cache for TradingEconomics
 const teCache = {};
@@ -1861,20 +1861,14 @@ app.get('/api/trading-economics', async (req, res) => {
             console.log(`   -> Scraping Mode (v28): ${originalUrl}`);
 
             let browser = null;
-            let browserSlotTaken = false;
             try {
                 // Semaphore for active browsers
-                // 대기 한도(45초)를 넘으면 Chrome을 추가로 띄우지 않고 실패 처리 (nginx 60초 제한보다 짧게)
                 let waitCount = 0;
-                while (activeBrowsers >= MAX_BROWSERS && waitCount < 45) {
+                while (activeBrowsers >= MAX_BROWSERS && waitCount < 90) {
                     await new Promise(r => setTimeout(r, 1000));
                     waitCount++;
                 }
-                if (activeBrowsers >= MAX_BROWSERS) {
-                    throw new Error('브라우저 사용량이 많아 잠시 후 다시 시도해 주세요.');
-                }
                 activeBrowsers++;
-                browserSlotTaken = true;
 
                 browser = await puppeteer.launch({
                     headless: "new",
@@ -2127,14 +2121,8 @@ app.get('/api/trading-economics', async (req, res) => {
                 fs.appendFileSync(path.join(LOG_DIR, 'puppeteer_debug.log'), `   ❌ ${e.message}\n`);
                 throw e;
             } finally {
-                if (browser) {
-                    await Promise.race([
-                        browser.close().catch(() => { }),
-                        new Promise(r => setTimeout(r, 10000))
-                    ]);
-                    try { browser.process()?.kill('SIGKILL'); } catch (e) { /* 이미 종료됨 */ }
-                }
-                if (browserSlotTaken) activeBrowsers = Math.max(0, activeBrowsers - 1);
+                activeBrowsers = Math.max(0, activeBrowsers - 1);
+                if (browser) await browser.close().catch(() => { });
             }
         }
 
@@ -2245,30 +2233,13 @@ purgeUnusedFredCacheEntries();
 const fredCacheCleanupTimer = setInterval(() => purgeUnusedFredCacheEntries(), 24 * 60 * 60 * 1000);
 if (typeof fredCacheCleanupTimer.unref === 'function') fredCacheCleanupTimer.unref();
 
-const FRED_MAX_CONCURRENT = 2;
-let fredRunning = 0;
-async function acquireFredSlot() {
-    while (fredRunning >= FRED_MAX_CONCURRENT) {
-        await new Promise(r => setTimeout(r, 200));
-    }
-    fredRunning++;
-}
-function releaseFredSlot() { fredRunning = Math.max(0, fredRunning - 1); }
-
-let fredUsageDirty = false;
 function markFredCacheUsed(cacheKey, now = new Date()) {
     const entry = fredCache[cacheKey];
     if (!entry) return;
     entry.lastUsedAt = now.toISOString();
-    fredUsageDirty = true; // 디스크 저장은 아래 타이머가 5분마다 한 번만 수행
-}
-const fredUsageFlushTimer = setInterval(() => {
-    if (!fredUsageDirty) return;
-    fredUsageDirty = false;
     try { persistFredCache(); }
     catch (error) { fileLog('[FRED] Could not persist cache usage time: ' + error.message); }
-}, 5 * 60 * 1000);
-if (typeof fredUsageFlushTimer.unref === 'function') fredUsageFlushTimer.unref();
+}
 
 app.get('/api/fred', async (req, res) => {
     const seriesId = String(req.query.series_id || '');
@@ -2298,7 +2269,7 @@ app.get('/api/fred', async (req, res) => {
             ? fredPeriodStartDate(period, now)
             : dateDaysBefore(latestDate, FRED_OVERLAP_DAYS);
 
-        const runPython = command => new Promise((resolve, reject) => {
+        const executePython = command => new Promise((resolve, reject) => {
             const args = ['fred_api.py', seriesId, period, startDate];
             console.log('[FRED] ' + (fullRefresh ? 'Monthly full refresh' : 'Incremental refresh')
                 + ': ' + seriesId + ' (' + period + ') from ' + startDate + ' using ' + command);
@@ -2315,11 +2286,6 @@ app.get('/api/fred', async (req, res) => {
                 }
             });
         });
-        const executePython = async command => {
-            await acquireFredSlot();
-            try { return await runPython(command); }
-            finally { releaseFredSlot(); }
-        };
 
         let result;
         try {
