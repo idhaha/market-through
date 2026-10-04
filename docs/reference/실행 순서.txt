@@ -11,10 +11,10 @@ taskkill /f /pid PID번호
 3. git 반영
 git checkout -b "br_oracle"
 git add .
-git commit -m "fixed two load button"
-git tag -a v3.0.1 -m "fixed two load button"
+git commit -m "appliedd cache in interest/currency tab to speed up chart loading-1"
+git tag -a v3.0.8 -m "appliedd cache in interest/currency tab to speed up chart loading-1"
 git push origin br_oracle
-git push origin v3.0.1
+git push origin v3.0.8
 
 만일 새로운 폴더나 파일을 커밋하고 github에 올리려면
 git add docs/SYSTEM_SPECIFICATION.md
@@ -25,7 +25,10 @@ git push origin br_oracle
 PS D:\Program\Kiwoom> ssh -i C:\Users\yg.gb5pro\.ssh\id_rsa ubuntu@134.185.111.202 
 
 5. 서버에 코드 적용후 재시작
-ubuntu@instance-20260127-2105:~/kiwoom_realtimerank$ ~/update-kiwoom.sh
+ubuntu@instance-20260127-2105:~/kiwoom_realtimerank$ ~/update-kiwoom_2.sh
+
+단, sh파일을 새 파일로 만들었다면, 실행권한을 부여한 후 실행
+chmod +x ~/update-market_2.sh
 
 단, 코드반영 없이 프로세스 무중단으로 환경변수만 적용하여 프로세스를 리로드 하려면 
 ubuntu@instance-20260127-2105:~/kiwoom_realtimerank$ pm2 reload kiwoom-service --update-env
