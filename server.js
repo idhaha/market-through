@@ -6,6 +6,7 @@ const cors = require('cors');
 const fs = require('fs');
 const { exec, execFile } = require('child_process');
 const puppeteer = require('puppeteer');
+const { createDailyCapture } = require('./central-banks');
 const crypto = require('crypto');
 
 // 전역 시장구분 캐시 (종목코드: 'K'/'Q') - 429 에러 방지용
@@ -76,6 +77,21 @@ app.use('/api', (req, res, next) => {
 });
 
 // 1. API 경로를 static 보다 먼저 정의 (우선순위 확보)
+const getCentralBanksCapture = createDailyCapture();
+app.get('/api/central-banks/image', async (req, res) => {
+    res.setHeader('Cache-Control', 'private, no-store');
+    try {
+        const capture = await getCentralBanksCapture(req.query.force_refresh === 'true' || req.query.force_refresh === '1');
+        res.setHeader('X-Capture-Date', capture.date);
+        res.setHeader('X-Captured-At', capture.capturedAt);
+        res.setHeader('Content-Disposition', 'inline; filename="world_central_banks.png"');
+        res.type('png').send(capture.png);
+    } catch (error) {
+        console.error('[Central Banks]', error.message);
+        res.status(502).json({ success: false, error: '중앙은행 금리 이미지를 불러오지 못했습니다. 잠시 후 새로고침해 주세요.' });
+    }
+});
+
 app.get('/ping', (req, res) => {
     res.send(`pong (Server Start: ${SERVER_START_TIME})`);
 });

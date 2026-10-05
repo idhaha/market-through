@@ -774,6 +774,10 @@ footer {
     display: block;
 }
 
+.embedded-iframe[hidden] {
+    display: none;
+}
+
 /* --- Context Menu --- */
 .context-menu {
     position: absolute;

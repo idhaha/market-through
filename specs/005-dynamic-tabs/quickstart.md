@@ -16,10 +16,16 @@
 13. 시리즈를 입력에서 제거해도 디스크 캐시가 유지되고, 다시 등록하면 캐시를 재사용하는지 확인한다. 마지막 사용 시각이 365일 지난 시리즈의 모든 기간 캐시만 서버 시작 또는 하루 주기 정리 때 제거되며, 이후 재조회는 전체 기간부터 다시 채우는지 확인한다.
 
 14. TE 차트가 여러 개 있는 탭(해외종목 또는 금리/환율)에서 새로고침을 누른다. 차트가 한꺼번에 채워지지 않고 하나씩 순서대로 채워지는지, 개발자도구 Network의 `trading-economics` 요청이 동시에 하나만 진행되는지 확인한다. 한 항목이 실패해도 뒤 항목은 계속 로딩되어야 한다.
-15. (운영 서버) 14번 로딩 중 서버에서 `free -m`과 아래 명령을 실행해, 동시에 실행 중인 Chrome 인스턴스가 1개를 넘지 않고 메모리 여유(`available`)가 안정적인지 확인한다(SC-004). 명령은 Puppeteer가 만드는 임시 프로필 폴더 수를 센다.
+15. (운영 서버) 14번 로딩 중 서버에서 `free -m`과 아래 명령을 실행해, 동시에 실행 중인 Chrome 인스턴스가 1개를 넘지 않고 메모리 여유(`available`)가 안정적인지 확인한다(SC-004). 명령은 Puppeteer가 만드는 임시 프로필 폴더 수를 센다(`\+`를 쓰지 않으면 grep 자신이 1개로 잡혀 실제보다 1 크게 나온다).
 
     ```bash
-    ps -eo args | grep -o "puppeteer_dev_chrome_profile-[A-Za-z0-9]*" | sort -u | wc -l
+    ps -eo args | grep -o "puppeteer_dev_chrome_profile-[A-Za-z0-9]\+" | sort -u | wc -l
+    ```
+
+    로딩 중 변화를 보려면 2초마다 2분간 샘플링한다.
+
+    ```bash
+    for i in $(seq 1 60); do echo "$(date +%T) chrome=$(ps -eo args | grep -o 'puppeteer_dev_chrome_profile-[A-Za-z0-9]\+' | sort -u | wc -l) $(free -m | awk '/Mem:/{print "available="$7"MB"}')"; sleep 2; done
     ```
 
 16. FRED 차트를 조회한 뒤 `data/fred-cache/cache.json`의 `lastUsedAt`이 5분 이내에는 바뀌지 않고 5분 뒤에 갱신되는지 확인한다(FR-019). 갱신 성공으로 새로 저장된 키는 즉시 반영된다.
