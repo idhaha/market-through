@@ -6726,19 +6726,39 @@ async function loadBaseInterestCharts(forceRefresh = false) {
         renderBaseInterestCharts(baseInterestCache); return;
     }
     renderBaseInterestCharts({ status: 'loading', charts: [] });
+    let lastProgress = null;
     baseInterestRequest = (async () => {
         let force = forceRefresh;
+        let consecutiveFailures = 0;
         const deadline = Date.now() + 360000;
         while (Date.now() < deadline) {
             const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 15000);
+            const timeout = setTimeout(() => controller.abort(), Math.min(45000, Math.max(1, deadline - Date.now())));
             let response, result;
-            try {
-                response = await fetch(`/api/base-interest/charts${force ? '?force_refresh=true' : ''}`, { cache: 'no-store', signal: controller.signal });
-                result = await response.json();
-            } finally { clearTimeout(timeout); }
+            const url = `/api/base-interest/charts${force ? '?force_refresh=true' : ''}`;
+            // A lost response may still have started the job. Subsequent polls must not force a second run.
             force = false;
+            try {
+                response = await fetch(url, { cache: 'no-store', signal: controller.signal });
+                result = await response.json().catch(error => {
+                    if ([502, 503, 504].includes(response.status)) throw new TypeError('일시적인 서버 응답 오류');
+                    throw error;
+                });
+                consecutiveFailures = 0;
+            } catch (error) {
+                if (controller.signal.aborted || error.name === 'AbortError' || error instanceof TypeError) {
+                    if (++consecutiveFailures <= 3 && Date.now() < deadline) {
+                        const status = document.getElementById('baseInterestStatus');
+                        if (status) status.textContent = `서버 응답이 지연되어 다시 확인 중... (${consecutiveFailures}/3)`;
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+                        continue;
+                    }
+                    throw new Error('서버 응답이 지연되거나 연결이 끊겼습니다. 잠시 후 새로고침해 주세요.');
+                }
+                throw error;
+            } finally { clearTimeout(timeout); }
             if (![200, 202, 502].includes(response.status) || !Array.isArray(result.charts)) throw new Error(result.error || `기준금리 조회 실패 (HTTP ${response.status})`);
+            lastProgress = result;
             renderBaseInterestCharts(result);
             if (result.status !== 'loading') {
                 if (result.status === 'error') throw new Error(result.error || '기준금리 차트 조회에 실패했습니다.');
@@ -6750,6 +6770,7 @@ async function loadBaseInterestCharts(forceRefresh = false) {
     })().catch(error => {
         console.error('[Base Interest]', error);
         if (baseInterestCache?.date === centralBanksToday()) renderBaseInterestCharts({ ...baseInterestCache, refreshError: error.message });
+        else if (lastProgress?.charts?.some(chart => chart.image)) renderBaseInterestCharts({ ...lastProgress, status: 'partial', refreshError: error.message });
         else renderBaseInterestCharts({ status: 'error', error: error.message, charts: [] });
     }).finally(() => { baseInterestRequest = null; });
     return baseInterestRequest;
