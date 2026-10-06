@@ -10,10 +10,10 @@ Toss /calendar 프록시와 SEIBro iframe을 유지하고, Investing.com 소탭�
 
 - **Language/Version**: vanilla JavaScript/CSS, Node.js >=20 (Playwright 1.63 의존성 요구).
 - **Dependencies**: playwright ^1.63.0 추가, 기존 Puppeteer 및 Express 재사용.
-- **Browser**: CENTRAL_BANKS_CHROMIUM_PATH가 지정되면 해당 경로, 아니면 puppeteer.executablePath()가 존재할 때 그 Chromium 사용. 경로가 없으면 Playwright 기본 Chromium을 사용하므로 해당 브라우저 설치가 필요하다.
+- **Browser**: CENTRAL_BANKS_CHROMIUM_PATH 지정 경로 → 설치된 Playwright 기본 Chromium → 기존 Puppeteer Chromium 순으로 선택한다. 지정 경로가 잘못되거나 실행 파일이 전혀 없으면 명확한 오류를 반환한다. Playwright 기본 브라우저를 우선 사용하여 사용자 테스트 파일과 실행 환경을 맞춘다.
 - **Storage**: activeCalendarId만 기존 설정에 저장. PNG/Blob URL 및 조회 Promise는 메모리 전용이며 설정 스냅샷·디스크에 저장하지 않는다.
 - **Testing**: 실제 외부 PNG 캡처, 캐시 로직 모의 검증, headless 브라우저의 지연 응답/이미지 표시 검증 및 구문 검사 수행. 운영 통합 검증은 quickstart 참고.
-- **Constraints**: 외부 차단/DOM 변경 가능. 최대 10초는 테이블 탐색 구간이고 페이지 접속 제한은 별도로 60초이다.
+- **Constraints**: 외부 차단/DOM 변경 가능. 최대 10초는 테이블 탐색 구간이고 페이지 접속 제한은 별도로 45초이다.
 
 ## Constitution Check
 
@@ -44,4 +44,8 @@ Toss /calendar 프록시와 SEIBro iframe을 유지하고, Investing.com 소탭�
 
 ## Deployment / Limits
 
-npm ci 후 서버 재시작이 필요하다. Node.js >=20과 실행 가능한 Chromium을 확인한다. 캐시는 프로세스별이며 서버 재시작 때 초기화된다. 기존 TradingEconomics 브라우저 슬롯과 이 캡처 슬롯은 공유하지 않으므로 두 기능을 함께 쓰는 운영 환경의 메모리는 별도 확인이 필요하다.
+npm ci 후 서버 재시작이 필요하다. Node.js >=20과 실행 가능한 Chromium을 확인한다. 캐시는 프로세스별이며 서버 재시작 때 초기화된다. TradingEconomics, 중앙은행 테이블, 기준금리 차트 캡처는 동일한 브라우저 슬롯을 공유한다. 운영 환경의 메모리와 대기 동작은 별도 확인이 필요하다.
+
+## 브라우저 슬롯 공유 — 2026-10-06
+
+009 기준금리 탭 추가에 따라 중앙은행 테이블 캡처와 기준금리 차트 캡처도 기존 TE 브라우저 카운터를 공유한다. 기존의 별도 슬롯 설명은 이 정책으로 대체한다. 상세는 ../009-base-interest-tab/plan.md 참고.

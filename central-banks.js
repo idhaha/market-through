@@ -12,41 +12,80 @@ function matchesTable(text) {
     return headers.every(header => value.includes(normalize(header))) && banks.filter(bank => value.includes(normalize(bank))).length >= 4;
 }
 
+function resolveBrowserPath() {
+    const configured = process.env.CENTRAL_BANKS_CHROMIUM_PATH;
+    if (configured) {
+        if (!fs.existsSync(configured)) throw new Error('CENTRAL_BANKS_CHROMIUM_PATH의 브라우저 실행 파일이 없습니다.');
+        return configured;
+    }
+    // Match the user's working script when Playwright's browser is installed.
+    if (fs.existsSync(chromium.executablePath())) return chromium.executablePath();
+    const existingChrome = puppeteer.executablePath();
+    if (fs.existsSync(existingChrome)) return existingChrome;
+    throw new Error('Chromium 실행 파일이 없습니다. npx playwright install chromium으로 설치해 주세요.');
+}
+
+async function dismissPopups(page) {
+    const selectors = ['#onetrust-accept-btn-handler', 'button[aria-label="Close"]', 'button[aria-label="닫기"]',
+        '[aria-label="Close"]', '[aria-label="닫기"]', 'button:has-text("×")', 'button:has-text("✕")',
+        '[class*="close"]', '[class*="Close"]', '[data-test*="close"]', '[data-test*="Close"]'];
+    const deadline = Date.now() + 2000;
+    for (const frame of page.frames()) {
+        for (const selector of selectors) {
+            const elements = frame.locator(selector);
+            const count = await elements.count().catch(() => 0);
+            for (let i = 0; i < count; i++) {
+                if (Date.now() >= deadline) return;
+                try {
+                    const element = elements.nth(i);
+                    if (await element.isVisible()) {
+                        await element.click({ timeout: Math.min(500, Math.max(1, deadline - Date.now())) });
+                        return;
+                    }
+                } catch { /* Try the next visible close control. */ }
+            }
+        }
+    }
+    await page.keyboard.press('Escape');
+}
+
 async function captureCentralBanks() {
-    // Reuse the Chromium already installed for this application's Puppeteer routes.
-    const installedChrome = process.env.CENTRAL_BANKS_CHROMIUM_PATH || puppeteer.executablePath();
-    const browser = await chromium.launch({
-        headless: true,
-        ...(fs.existsSync(installedChrome) ? { executablePath: installedChrome } : {}),
-        args: ['--disable-blink-features=AutomationControlled', '--disable-dev-shm-usage', '--no-sandbox']
-    });
+    let stage = 'browser';
+    let browser;
     try {
+        browser = await chromium.launch({
+            headless: true, executablePath: resolveBrowserPath(),
+            args: ['--disable-blink-features=AutomationControlled', '--disable-dev-shm-usage', '--no-sandbox']
+        });
         const context = await browser.newContext({ viewport: { width: 1920, height: 1080 }, locale: 'ko-KR',
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36' });
         const page = await context.newPage();
         page.setDefaultTimeout(2000);
         page.on('dialog', dialog => dialog.dismiss().catch(() => {}));
         await page.addInitScript(() => Object.defineProperty(navigator, 'webdriver', { get: () => undefined }));
-        await page.goto(SOURCE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        stage = 'navigation';
+        const response = await page.goto(SOURCE_URL, { waitUntil: 'domcontentloaded', timeout: 45000 });
+        if (response && response.status() >= 400) throw new Error(`Investing.com HTTP ${response.status()}`);
         await page.waitForTimeout(1000);
-        for (const frame of page.frames()) {
-            for (const selector of ['#onetrust-accept-btn-handler', 'button[aria-label="Close"]', '[aria-label="닫기"]', '[data-test*="close"]', '[class*="popup"] [class*="close"]']) {
-                try {
-                    const button = frame.locator(selector).first();
-                    if (await button.isVisible()) await button.click({ timeout: 500 });
-                } catch { /* Popups may disappear while closing. */ }
-            }
-        }
-        await page.keyboard.press('Escape');
+        await dismissPopups(page);
+        stage = 'table';
         const deadline = Date.now() + 10000;
         while (Date.now() < deadline) {
             const tables = page.locator('table');
             for (let i = 0, count = await tables.count(); i < count; i++) {
                 const table = tables.nth(i);
-                if (await table.isVisible() && matchesTable(await table.innerText({ timeout: 500 }))) {
+                let matches = false;
+                try {
+                    matches = await table.isVisible() && matchesTable(await table.innerText({ timeout: Math.max(1, Math.min(500, deadline - Date.now())) }));
+                } catch {
+                    // A rerender may detach an individual table; continue polling.
+                    continue;
+                }
+                if (matches) {
+                    stage = 'screenshot';
                     await table.scrollIntoViewIfNeeded();
                     const box = await table.boundingBox();
-                    if (!box || !box.width || !box.height) continue;
+                    if (!box || !box.width || !box.height) { stage = 'table'; continue; }
                     const scroll = await page.evaluate(() => ({ x: window.scrollX, y: window.scrollY }));
                     // Chromium capture avoids Playwright's unbounded external-font wait.
                     // No path: PNG stays in memory, including on failure.
@@ -65,8 +104,11 @@ async function captureCentralBanks() {
             await page.waitForTimeout(Math.min(500, Math.max(0, deadline - Date.now())));
         }
         throw new Error('중앙은행 금리 테이블을 찾지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    } catch (error) {
+        error.captureStage = stage;
+        throw error;
     } finally {
-        await browser.close();
+        if (browser) await browser.close();
     }
 }
 
@@ -87,4 +129,4 @@ function createDailyCapture(capture = captureCentralBanks, today = dayKey) {
     };
 }
 
-module.exports = { SOURCE_URL, dayKey, matchesTable, captureCentralBanks, createDailyCapture };
+module.exports = { SOURCE_URL, dayKey, matchesTable, captureCentralBanks, createDailyCapture, resolveBrowserPath, dismissPopups };

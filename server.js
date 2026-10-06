@@ -6,7 +6,8 @@ const cors = require('cors');
 const fs = require('fs');
 const { exec, execFile } = require('child_process');
 const puppeteer = require('puppeteer');
-const { createDailyCapture } = require('./central-banks');
+const { createDailyCapture, captureCentralBanks } = require('./central-banks');
+const { createInterestStore, captureInterestCharts } = require('./base-interest');
 const crypto = require('crypto');
 
 // 전역 시장구분 캐시 (종목코드: 'K'/'Q') - 429 에러 방지용
@@ -77,7 +78,26 @@ app.use('/api', (req, res, next) => {
 });
 
 // 1. API 경로를 static 보다 먼저 정의 (우선순위 확보)
-const getCentralBanksCapture = createDailyCapture();
+async function acquireCaptureBrowserSlot() {
+    const deadline = Date.now() + 45000;
+    while (activeBrowsers >= MAX_BROWSERS && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 500));
+    if (activeBrowsers >= MAX_BROWSERS) throw new Error('브라우저 사용량이 많아 잠시 후 다시 시도해 주세요.');
+    activeBrowsers++;
+    return () => { activeBrowsers = Math.max(0, activeBrowsers - 1); };
+}
+const getCentralBanksCapture = createDailyCapture(async () => {
+    const release = await acquireCaptureBrowserSlot();
+    try { return await captureCentralBanks(); } finally { release(); }
+});
+const getInterestCharts = createInterestStore(async onChart => {
+    const release = await acquireCaptureBrowserSlot();
+    try { await captureInterestCharts(onChart); } finally { release(); }
+});
+app.get('/api/base-interest/charts', (req, res) => {
+    res.setHeader('Cache-Control', 'private, no-store');
+    const result = getInterestCharts(req.query.force_refresh === 'true' || req.query.force_refresh === '1');
+    res.status(result.status === 'loading' ? 202 : result.status === 'error' ? 502 : 200).json(result);
+});
 app.get('/api/central-banks/image', async (req, res) => {
     res.setHeader('Cache-Control', 'private, no-store');
     try {
@@ -87,8 +107,10 @@ app.get('/api/central-banks/image', async (req, res) => {
         res.setHeader('Content-Disposition', 'inline; filename="world_central_banks.png"');
         res.type('png').send(capture.png);
     } catch (error) {
-        console.error('[Central Banks]', error.message);
-        res.status(502).json({ success: false, error: '중앙은행 금리 이미지를 불러오지 못했습니다. 잠시 후 새로고침해 주세요.' });
+        const stage = error.captureStage || 'unknown';
+        fileLog(`[Central Banks] stage=${stage}: ${error.message}`);
+        const reasons = { browser: '캡처 브라우저를 실행하지 못했습니다.', navigation: 'Investing.com 페이지에 접속하지 못했습니다.', table: '중앙은행 금리 테이블을 찾지 못했습니다.', screenshot: '중앙은행 테이블 이미지 캡처에 실패했습니다.' };
+        res.status(502).json({ success: false, stage, error: reasons[stage] || '중앙은행 금리 이미지를 불러오지 못했습니다.' });
     }
 });
 

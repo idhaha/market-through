@@ -28,3 +28,7 @@ world_central_banks.png는 응답 파일명이며 서버 디스크에 저장되�
 - 새로고침 버튼: GET /api/central-banks/image?force_refresh=true — 당일 캐시 우회 후 재캡처. force_refresh=1도 동일하다.
 - 이미 캡처 중이면 추가 브라우저를 실행하지 않고 해당 결과를 공유한다.
 - 강제 캡처 실패 시 해당 요청은 HTTP 502로 응답하고 기존 성공 캐시는 보존한다.
+
+## 오류 진단 보완 — 2026-10-06
+
+캡처 실패의 HTTP 502 JSON에는 stage(browser/navigation/table/screenshot/unknown)를 추가한다. error는 해당 단계의 사용자 안내이며 상세 예외는 서버 로그의 [Central Banks] stage= 항목으로 기록한다. 프록시/누락 라우트의 비JSON 오류는 화면이 HTTP 상태(401/404/502/504)를 함께 표시한다.

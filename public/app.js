@@ -13,6 +13,12 @@ const PERM_TAB_ID = 'tab_rank';
 const ADR_TAB_ID = 'tab_adr';
 const MEMO_TAB_ID = 'tab_memo';
 const EARNINGS_TAB_ID = 'tab_earnings';
+const BASE_INTEREST_TAB_ID = 'tab_base_interest';
+const BASE_INTEREST_BANKS = [
+    ['FED', '연방준비제도'], ['ECB', '유럽중앙은행'], ['BOE', '영국은행'], ['BOJ', '일본은행'],
+    ['BOK', '한국은행'], ['RBA', '호주 연방준비은행'], ['BOC', '캐나다 은행'], ['SNB', '스위스 국립은행'],
+    ['RBI', '인도 연방준비은행'], ['BCB', '브라질 중앙은행'], ['CBR', '러시아 중앙은행'], ['PBOC', '중국인민은행']
+].map(([code, name]) => ({ code, name }));
 let isInitializing = false; // Flag to prevent auto-save during startup
 let isCapturing = false; // Flag to suppress all data-fetching during screenshot capture
 let adrRenderPending = false;
@@ -1229,6 +1235,18 @@ function ensurePermanentTabs() {
     }
     earningsBtn.textContent = '증시캘린더';
     earningsBtn.title = '고정 탭 (증시 캘린더)';
+    let interestBtn = document.querySelector(`.tab-btn[data-tab="${BASE_INTEREST_TAB_ID}"]`);
+    if (!interestBtn) {
+        interestBtn = document.createElement('button');
+        interestBtn.className = 'tab-btn perm-tab';
+        interestBtn.dataset.tab = BASE_INTEREST_TAB_ID;
+        interestBtn.dataset.perm = 'true';
+        interestBtn.draggable = false;
+    }
+    interestBtn.textContent = '기준금리';
+    interestBtn.title = '고정 탭 (기준금리)';
+    tabsWrapper.insertBefore(interestBtn, earningsBtn.nextSibling);
+    createTabContentElement(BASE_INTEREST_TAB_ID);
 }
 
 /**
@@ -1245,6 +1263,7 @@ function resolveTabName(tabId, candidateName = null, tabObj = null) {
         if (memoItem && typeof memoItem.name === 'string' && memoItem.name.trim() && !memoItem.name.includes('(복구)')) return memoItem.name.trim();
         return '메모';
     }
+    if (tabId === BASE_INTEREST_TAB_ID) return '기준금리';
     if (tabId === EARNINGS_TAB_ID) return '증시캘린더';
 
     // 1. 이미 유효하고 '(복구)'가 없는 후보 이름인 경우
@@ -1416,7 +1435,7 @@ async function syncSettingsToServer(data) {
 
 function saveTabState(tabId) {
     const content = document.getElementById(tabId);
-    if (!content || tabId === PERM_TAB_ID || tabId === ADR_TAB_ID || tabId === EARNINGS_TAB_ID || tabId === MEMO_TAB_ID) return;
+    if (!content || tabId === PERM_TAB_ID || tabId === ADR_TAB_ID || tabId === EARNINGS_TAB_ID || tabId === BASE_INTEREST_TAB_ID || tabId === MEMO_TAB_ID) return;
 
     // Special handling for dynamic overseas/exchange tabs: they don't use standard grid saving
     const type = tabData[tabId]?.type;
@@ -1497,7 +1516,7 @@ function applyData(data) {
                 tabData[t.id].name = fixedName;
             }
 
-            if (t.id === PERM_TAB_ID || t.id === ADR_TAB_ID || t.id === EARNINGS_TAB_ID || t.id === MEMO_TAB_ID) {
+            if (t.id === PERM_TAB_ID || t.id === ADR_TAB_ID || t.id === EARNINGS_TAB_ID || t.id === BASE_INTEREST_TAB_ID || t.id === MEMO_TAB_ID) {
                 const btn = document.querySelector(`.tab-btn[data-tab="${t.id}"]`);
                 if (btn) {
                     if (t.id === EARNINGS_TAB_ID) {
@@ -1674,7 +1693,7 @@ async function saveMemoToServer(memoHtml, memoDelta, memoUpdatedAt = Date.now())
 
 function resetDynamicTabs() {
     document.querySelectorAll('.tab-btn:not(.add-tab-btn):not([data-perm])').forEach(b => b.remove());
-    document.querySelectorAll('.tab-content:not(#tab_rank):not(#tab_adr):not(#tab_earnings):not(#tab_memo)').forEach(c => c.remove());
+    document.querySelectorAll('.tab-content:not(#tab_rank):not(#tab_adr):not(#tab_earnings):not(#tab_base_interest):not(#tab_memo)').forEach(c => c.remove());
 }
 
 function activateTab(tabId) {
@@ -1686,7 +1705,7 @@ function activateTab(tabId) {
 
     document.querySelectorAll(".tab-content.active").forEach(tab => {
         if (tab.id !== tabId) {
-            if (tab.id !== PERM_TAB_ID && tab.id !== ADR_TAB_ID && tab.id !== EARNINGS_TAB_ID && tab.id !== MEMO_TAB_ID) {
+            if (tab.id !== PERM_TAB_ID && tab.id !== ADR_TAB_ID && tab.id !== EARNINGS_TAB_ID && tab.id !== BASE_INTEREST_TAB_ID && tab.id !== MEMO_TAB_ID) {
                 saveTabState(tab.id);
                 // tab.innerHTML = ''; // Removed to persist content and prevent reload
             }
@@ -1724,6 +1743,8 @@ function activateTab(tabId) {
                 calendar.refetchEvents();
             }
         }, 100);
+    } else if (tabId === BASE_INTEREST_TAB_ID) {
+        loadBaseInterestCharts();
     } else if (tabId === EARNINGS_TAB_ID || (tabData[tabId] && (tabData[tabId].type === 'overseas_custom' || tabData[tabId].type === 'exchange_rate'))) {
         if (!wasEmpty) {
             redrawTabCharts(tabId);
@@ -1754,6 +1775,8 @@ function initializeTab(tabId) {
             if (adrSelect && lastSavedSettings.adrInterval) {
                 adrSelect.value = lastSavedSettings.adrInterval;
             }
+        } else if (tabId === BASE_INTEREST_TAB_ID) {
+            document.getElementById('refreshBaseInterest')?.addEventListener('click', () => loadBaseInterestCharts(true));
         } else if (tabId === EARNINGS_TAB_ID) {
             const refreshBtn = document.getElementById(`refreshEarnings_${tabId}`);
             if (refreshBtn && !refreshBtn.hasAttribute('data-listener-attached')) {
@@ -1840,7 +1863,7 @@ function createTabContentElement(id) {
     if (document.getElementById(id)) return document.getElementById(id);
     const div = document.createElement("div");
     div.className = "tab-content";
-    if (id === EARNINGS_TAB_ID) div.classList.add("full-tab");
+    if (id === EARNINGS_TAB_ID || id === BASE_INTEREST_TAB_ID) div.classList.add("full-tab");
     div.id = id;
     tabContents.appendChild(div);
     return div;
@@ -1935,6 +1958,16 @@ function createChartGrid(tabId) {
                     </div>
                 </div>
             </div>`;
+    }
+
+    if (tabId === BASE_INTEREST_TAB_ID) {
+        return `<div class="container overseas-container">
+            <header><div class="header-single-line"><h1><strong>기준금리</strong></h1>
+                <div class="header-controls"><button id="refreshBaseInterest" class="btn-primary" style="height:38px; padding:0 15px;">새로고침</button></div>
+            </div><div class="status-info"><span id="baseInterestLastUpdate">-</span><span class="status-separator">|</span><span id="baseInterestStatus">대기 중...</span></div></header>
+            <div class="base-interest-scroll"><div id="baseInterestGrid" class="base-interest-grid">
+                ${BASE_INTEREST_BANKS.map(bank => `<article class="base-interest-card" data-bank-code="${bank.code}"><h2>${bank.code} (${bank.name})</h2><div class="base-interest-chart"><p role="status">화면 로딩 중...</p></div></article>`).join('')}
+            </div></div></div>`;
     }
 
     // 2. Earnings Tab (증시캘린더)
@@ -5536,11 +5569,27 @@ async function loadCentralBanksImage(tabId, forceRefresh = false) {
                     const response = await fetch(`/api/central-banks/image${forceRefresh ? '?force_refresh=true' : ''}`, { cache: 'no-store' });
                     if (!response.ok) {
                         const result = await response.json().catch(() => ({}));
-                        throw new Error(result.error || '금리 일정을 불러오지 못했습니다.');
+                        const messages = {
+                            401: '로그인 세션이 만료되었습니다. 다시 로그인해 주세요.',
+                            404: '금리 이미지 API를 찾을 수 없습니다. 서버의 코드 적용 및 재시작 상태를 확인해 주세요.',
+                            502: '금리 이미지 서버 처리 또는 프록시 연결에 실패했습니다.',
+                            504: '금리 이미지 서버 응답 대기 시간이 초과되었습니다.'
+                        };
+                        throw new Error(`${result.error || messages[response.status] || '금리 일정을 불러오지 못했습니다.'} (HTTP ${response.status})`);
                     }
                     const blob = await response.blob();
+                    if (!blob.type.startsWith('image/png')) throw new Error('이미지 대신 다른 응답을 받았습니다. 로그인 상태와 서버 응답을 확인해 주세요.');
+                    const newUrl = URL.createObjectURL(blob);
+                    const probe = new Image();
+                    probe.src = newUrl;
+                    try {
+                        await probe.decode();
+                    } catch {
+                        URL.revokeObjectURL(newUrl);
+                        throw new Error('받은 이미지가 손상되어 표시할 수 없습니다.');
+                    }
                     if (centralBanksImageCache) URL.revokeObjectURL(centralBanksImageCache.url);
-                    centralBanksImageCache = { date: response.headers.get('X-Capture-Date'), capturedAt: response.headers.get('X-Captured-At'), url: URL.createObjectURL(blob) };
+                    centralBanksImageCache = { date: response.headers.get('X-Capture-Date'), capturedAt: response.headers.get('X-Captured-At'), url: newUrl };
                 })().finally(() => { centralBanksImageRequest = null; });
             }
             await centralBanksImageRequest;
@@ -5559,6 +5608,7 @@ async function loadCentralBanksImage(tabId, forceRefresh = false) {
             if (lastUpdate) lastUpdate.textContent = new Date(centralBanksImageCache.capturedAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
         }
     } catch (error) {
+        console.error('[Central Banks Image]', error);
         if (!isCurrentRender()) return;
         const message = document.createElement('p');
         message.style.cssText = 'padding:20px; color:#333;';
@@ -5818,7 +5868,7 @@ function applyFullStateBackup(data) {
     const allTabBtns = document.querySelectorAll('.tab-btn:not(.add-tab-btn)');
     allTabBtns.forEach(btn => {
         const id = btn.dataset.tab;
-        if (id !== PERM_TAB_ID && id !== ADR_TAB_ID && id !== EARNINGS_TAB_ID && id !== MEMO_TAB_ID) {
+        if (id !== PERM_TAB_ID && id !== ADR_TAB_ID && id !== EARNINGS_TAB_ID && id !== BASE_INTEREST_TAB_ID && id !== MEMO_TAB_ID) {
             btn.remove();
             const content = document.getElementById(id);
             if (content) content.remove();
@@ -5828,7 +5878,7 @@ function applyFullStateBackup(data) {
     // 3. 탭 버튼 및 컨텐츠 재생성 (JSON에 기록된 순서대로)
     if (data.tabs && Array.isArray(data.tabs)) {
         data.tabs.forEach(tab => {
-            if (tab.id !== PERM_TAB_ID && tab.id !== ADR_TAB_ID && tab.id !== EARNINGS_TAB_ID && tab.id !== MEMO_TAB_ID) {
+            if (tab.id !== PERM_TAB_ID && tab.id !== ADR_TAB_ID && tab.id !== EARNINGS_TAB_ID && tab.id !== BASE_INTEREST_TAB_ID && tab.id !== MEMO_TAB_ID) {
                 const fixedName = resolveTabName(tab.id, tab.name, tabData[tab.id]);
                 tab.name = fixedName;
                 createTabButtonElement(tab.id, fixedName);
@@ -6629,3 +6679,78 @@ document.body.addEventListener('click', function (e) {
 document.addEventListener('DOMContentLoaded', () => setTimeout(injectCaptureButtons, 1000));
 setTimeout(injectCaptureButtons, 2000); // defer 로드 fallback
 
+
+
+// Base interest charts are held only in browser memory, never in settings JSON.
+let baseInterestCache = null;
+let baseInterestRequest = null;
+function renderBaseInterestCharts(result) {
+    const grid = document.getElementById('baseInterestGrid');
+    if (!grid) return;
+    const count = result.charts?.filter(chart => chart.image).length || 0;
+    grid.setAttribute('aria-busy', String(result.status === 'loading'));
+    const status = document.getElementById('baseInterestStatus');
+    if (status) status.textContent = result.refreshError || result.error || (result.status === 'loading' ? `화면 로딩 중... (${count}/12)` : result.status === 'partial' ? `일부 조회 실패 (${count}/12) — 새로고침으로 다시 시도해 주세요.` : '조회 완료 (12/12)');
+    const updated = document.getElementById('baseInterestLastUpdate');
+    if (updated && result.capturedAt) updated.textContent = new Date(result.capturedAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+    BASE_INTEREST_BANKS.forEach(bank => {
+        const chart = result.charts?.find(item => item.code === bank.code);
+        const panel = grid.querySelector(`[data-bank-code="${bank.code}"] .base-interest-chart`);
+        if (!panel) return;
+        if (chart?.image && /^data:image\/png;base64,/.test(chart.image)) {
+            if (panel.dataset.image === chart.image) return;
+            const token = Symbol(); panel.renderToken = token;
+            const image = new Image();
+            image.alt = `${bank.code} (${bank.name}) 기준금리 차트`;
+            image.src = chart.image;
+            image.decode().then(() => {
+                if (panel.isConnected && panel.renderToken === token) { panel.replaceChildren(image); panel.dataset.image = chart.image; }
+            }).catch(() => {
+                if (panel.renderToken !== token) return;
+                panel.replaceChildren(Object.assign(document.createElement('p'), { textContent: '차트 이미지를 표시하지 못했습니다. 새로고침해 주세요.' }));
+            });
+        } else {
+            panel.renderToken = null;
+            delete panel.dataset.image;
+            const message = document.createElement('p');
+            message.setAttribute('role', 'status');
+            message.textContent = chart?.error || result.error || '화면 로딩 중...';
+            panel.replaceChildren(message);
+        }
+    });
+}
+async function loadBaseInterestCharts(forceRefresh = false) {
+    if (isCapturing) return;
+    if (baseInterestRequest) return baseInterestRequest;
+    if (!forceRefresh && baseInterestCache?.date === centralBanksToday()) {
+        renderBaseInterestCharts(baseInterestCache); return;
+    }
+    renderBaseInterestCharts({ status: 'loading', charts: [] });
+    baseInterestRequest = (async () => {
+        let force = forceRefresh;
+        const deadline = Date.now() + 360000;
+        while (Date.now() < deadline) {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 15000);
+            let response, result;
+            try {
+                response = await fetch(`/api/base-interest/charts${force ? '?force_refresh=true' : ''}`, { cache: 'no-store', signal: controller.signal });
+                result = await response.json();
+            } finally { clearTimeout(timeout); }
+            force = false;
+            if (![200, 202, 502].includes(response.status) || !Array.isArray(result.charts)) throw new Error(result.error || `기준금리 조회 실패 (HTTP ${response.status})`);
+            renderBaseInterestCharts(result);
+            if (result.status !== 'loading') {
+                if (result.status === 'error') throw new Error(result.error || '기준금리 차트 조회에 실패했습니다.');
+                baseInterestCache = result; return;
+            }
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+        throw new Error('기준금리 차트 조회 시간이 초과되었습니다. 새로고침해 주세요.');
+    })().catch(error => {
+        console.error('[Base Interest]', error);
+        if (baseInterestCache?.date === centralBanksToday()) renderBaseInterestCharts({ ...baseInterestCache, refreshError: error.message });
+        else renderBaseInterestCharts({ status: 'error', error: error.message, charts: [] });
+    }).finally(() => { baseInterestRequest = null; });
+    return baseInterestRequest;
+}

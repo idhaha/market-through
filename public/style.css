@@ -2447,3 +2447,12 @@ body.modal-open {
         margin-left: 5px !important;
     }
 }
+
+/* Fixed base interest tab: prescribed two-column bank order. */
+.base-interest-scroll { flex:1; min-height:0; overflow:auto; padding:20px; }
+.base-interest-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; }
+.base-interest-card { min-width:0; background:#fff; border:1px solid var(--border-color); border-radius:8px; overflow:hidden; }
+.base-interest-card h2 { margin:0; padding:14px 16px; color:#222; font-size:16px; font-weight:600; text-align:left; }
+.base-interest-chart { min-height:220px; }
+.base-interest-chart img { display:block; width:100%; height:auto; }
+.base-interest-chart p { display:flex; align-items:center; justify-content:center; min-height:220px; margin:0; padding:16px; color:#555; text-align:center; }
