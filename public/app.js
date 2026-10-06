@@ -6688,9 +6688,10 @@ function renderBaseInterestCharts(result) {
     const grid = document.getElementById('baseInterestGrid');
     if (!grid) return;
     const count = result.charts?.filter(chart => chart.image).length || 0;
+    const stages = { waiting: '브라우저 실행 대기 중...', browser: '캡처 브라우저 시작 중...', navigation: 'Investing.com 접속 중...', section: '금리 차트 영역 확인 중...', chart: `${result.bank || ''} 차트 조회 중...`, closing: '캡처 마무리 중...' };
     grid.setAttribute('aria-busy', String(result.status === 'loading'));
     const status = document.getElementById('baseInterestStatus');
-    if (status) status.textContent = result.refreshError || result.error || (result.status === 'loading' ? `화면 로딩 중... (${count}/12)` : result.status === 'partial' ? `일부 조회 실패 (${count}/12) — 새로고침으로 다시 시도해 주세요.` : '조회 완료 (12/12)');
+    if (status) status.textContent = result.refreshError || result.error || (result.status === 'loading' ? `${stages[result.stage] || '화면 로딩 중...'} (${count}/12)` : result.status === 'partial' ? `일부 조회 실패 (${count}/12) — 새로고침으로 다시 시도해 주세요.` : '조회 완료 (12/12)');
     const updated = document.getElementById('baseInterestLastUpdate');
     if (updated && result.capturedAt) updated.textContent = new Date(result.capturedAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
     BASE_INTEREST_BANKS.forEach(bank => {

@@ -7,6 +7,23 @@ const BANKS = [
     ['RBI', '인도 연방준비은행'], ['BCB', '브라질 중앙은행'], ['CBR', '러시아 중앙은행'], ['PBOC', '중국인민은행']
 ].map(([code, name]) => ({ code, name }));
 
+const AD_HOSTS = ['doubleclick.net', 'googlesyndication.com', 'googletagservices.com', 'googleadservices.com', 'googletagmanager.com', 'google-analytics.com', 'amazon-adsystem.com', 'taboola.com', 'outbrain.com'];
+function shouldBlockResource(url, type) {
+    if (['media', 'font'].includes(type)) return true;
+    let host;
+    try { host = new URL(url).hostname; } catch { return false; }
+    // Keep Investing.com chart assets and security-check resources intact.
+    return AD_HOSTS.some(domain => host === domain || host.endsWith(`.${domain}`));
+}
+
+async function pageDiagnostic(page, httpStatus) {
+    return page.evaluate(status => ({
+        httpStatus: status, title: document.title, url: location.origin + location.pathname,
+        sectionFound: !!document.querySelector('section#leftColumn'),
+        securityCheck: /just a moment|verify you are human|checking your browser|확인 중|보안 확인/i.test(document.title + ' ' + document.body?.innerText.slice(0, 1500))
+    }), httpStatus).catch(() => ({ httpStatus, title: '(페이지 정보를 읽지 못함)' }));
+}
+
 async function chartState(page) {
     return page.evaluate(() => {
         const section = document.querySelector('section#leftColumn');
@@ -18,9 +35,15 @@ async function chartState(page) {
     });
 }
 
-async function captureInterestCharts(onChart) {
+async function captureInterestCharts(onChart, onStage = () => {}) {
     let browser;
+    const started = Date.now();
+    const progress = (stage, bank = null) => {
+        onStage(stage, bank);
+        console.log(`[Base Interest] stage=${stage}${bank ? ` bank=${bank}` : ''} elapsed=${Date.now() - started}ms`);
+    };
     try {
+        progress('browser');
         const options = { headless: true, args: ['--disable-blink-features=AutomationControlled', '--disable-dev-shm-usage', '--no-sandbox'] };
         if (process.env.CENTRAL_BANKS_CHROMIUM_PATH) browser = await chromium.launch({ ...options, executablePath: resolveBrowserPath() });
         else {
@@ -30,19 +53,35 @@ async function captureInterestCharts(onChart) {
                 browser = await chromium.launch({ ...options, executablePath: resolveBrowserPath() });
             }
         }
-        const context = await browser.newContext({ viewport: { width: 1400, height: 1200 }, locale: 'ko-KR', timezoneId: 'Asia/Seoul',
+        const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 1400, height: 1200 }, locale: 'ko-KR', timezoneId: 'Asia/Seoul',
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36' });
         const page = await context.newPage();
+        await context.route('**/*', route => shouldBlockResource(route.request().url(), route.request().resourceType()) ? route.abort() : route.continue());
         page.setDefaultTimeout(10000);
         page.on('dialog', dialog => dialog.dismiss().catch(() => {}));
         await page.addInitScript(() => Object.defineProperty(navigator, 'webdriver', { get: () => undefined }));
+        progress('navigation');
         const response = await page.goto(SOURCE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
-        if (!response || response.status() >= 400) throw new Error(`중앙은행 페이지 접속 실패 (HTTP ${response?.status() || '응답 없음'})`);
+        if (!response || response.status() >= 400) {
+            console.error('[Base Interest] page diagnostic:', JSON.stringify(await pageDiagnostic(page, response?.status())));
+            const error = new Error(`중앙은행 페이지 접속 실패 (HTTP ${response?.status() || '응답 없음'})`);
+            error.userMessage = `Investing.com 페이지 접속에 실패했습니다. (HTTP ${response?.status() || '응답 없음'})`;
+            throw error;
+        }
         await page.waitForTimeout(5000);
         await dismissPopups(page);
         const section = page.locator('section#leftColumn').first();
-        await section.waitFor({ state: 'visible' });
+        progress('section');
+        try { await section.waitFor({ state: 'visible', timeout: 30000 }); }
+        catch (cause) {
+            const diagnostic = await pageDiagnostic(page, response.status());
+            console.error('[Base Interest] page diagnostic:', JSON.stringify(diagnostic));
+            const error = new Error('중앙은행 차트 영역을 30초 안에 찾지 못했습니다.', { cause });
+            error.userMessage = diagnostic.securityCheck ? 'Investing.com에서 서버 접속에 보안 확인을 요구하여 차트를 읽지 못했습니다.' : 'Investing.com에서 금리 차트 영역을 찾지 못했습니다. 서버 로그의 page diagnostic을 확인해 주세요.';
+            throw error;
+        }
         for (const bank of BANKS) {
+            progress('chart', bank.code);
             try {
                 const before = await chartState(page);
                 const tab = section.locator('ul.tabsForBox a').filter({ hasText: new RegExp(`^${bank.code}$`) }).first();
@@ -71,13 +110,17 @@ async function captureInterestCharts(onChart) {
                     const { data } = await session.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true,
                         clip: { x: box.x + scroll.x, y: box.y + scroll.y, width: box.width, height: box.height, scale: 1 } });
                     onChart({ ...bank, image: `data:image/png;base64,${data}`, error: null });
+                    console.log(`[Base Interest] captured=${bank.code} elapsed=${Date.now() - started}ms`);
                 } finally { await session.detach(); }
             } catch (error) {
                 onChart({ ...bank, image: null, error: `${bank.code} 차트를 불러오지 못했습니다.` });
                 console.error(`[Base Interest] ${bank.code}: ${error.message}`);
             }
         }
-    } finally { if (browser) await browser.close(); }
+    } finally {
+        progress('closing');
+        if (browser) await browser.close();
+    }
 }
 
 // Polling returns immediately; a capture run can safely exceed proxy request timeouts.
@@ -89,20 +132,20 @@ function createInterestStore(capture = captureInterestCharts, today = dayKey) {
     return function getCharts(force = false) {
         if (pending || (!force && state?.date === today())) return state;
         const previous = lastSuccess;
-        state = { id: ++serial, date: today(), capturedAt: null, status: 'loading', error: null, charts: BANKS.map(bank => ({ ...bank, image: null, error: null })) };
+        state = { id: ++serial, date: today(), capturedAt: null, status: 'loading', stage: 'waiting', bank: null, error: null, charts: BANKS.map(bank => ({ ...bank, image: null, error: null })) };
         const run = state;
         pending = true;
         Promise.resolve().then(() => capture(chart => {
             const index = run.charts.findIndex(bank => bank.code === chart.code);
             if (index >= 0) run.charts[index] = chart;
-        })).then(() => {
+        }, (stage, bank) => { run.stage = stage; run.bank = bank || null; })).then(() => {
             const succeeded = run.charts.filter(chart => chart.image).length;
             run.status = succeeded === BANKS.length ? 'ready' : succeeded ? 'partial' : 'error';
             run.capturedAt = new Date().toISOString();
             if (!succeeded) run.error = '기준금리 차트를 불러오지 못했습니다. 새로고침으로 다시 시도해 주세요.';
             if (succeeded) lastSuccess = run;
         }).catch(error => {
-            run.status = 'error'; run.error = '기준금리 차트 조회에 실패했습니다. 새로고침으로 다시 시도해 주세요.';
+            run.status = 'error'; run.error = error.userMessage || '기준금리 차트 조회에 실패했습니다. 새로고침으로 다시 시도해 주세요.';
             console.error('[Base Interest]', error.message);
         }).finally(() => {
             pending = false;
@@ -112,4 +155,4 @@ function createInterestStore(capture = captureInterestCharts, today = dayKey) {
     };
 }
 
-module.exports = { BANKS, chartState, captureInterestCharts, createInterestStore };
+module.exports = { BANKS, chartState, captureInterestCharts, createInterestStore, shouldBlockResource, pageDiagnostic };

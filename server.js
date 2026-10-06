@@ -89,9 +89,9 @@ const getCentralBanksCapture = createDailyCapture(async () => {
     const release = await acquireCaptureBrowserSlot();
     try { return await captureCentralBanks(); } finally { release(); }
 });
-const getInterestCharts = createInterestStore(async onChart => {
+const getInterestCharts = createInterestStore(async (onChart, onStage) => {
     const release = await acquireCaptureBrowserSlot();
-    try { await captureInterestCharts(onChart); } finally { release(); }
+    try { await captureInterestCharts(onChart, onStage); } finally { release(); }
 });
 app.get('/api/base-interest/charts', (req, res) => {
     res.setHeader('Cache-Control', 'private, no-store');
