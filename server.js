@@ -24,6 +24,56 @@ function resolveKiwoomMarketType(basicInfo, fallback = 'Q') {
     return fallback;
 }
 
+async function addConcentrationRates(items, accessToken, amountField) {
+    // 시장 전체 거래대금은 KOSPI/KOSDAQ별 1회씩 조회해 순위 종목에 배분한다.
+    // ka20001: 업종현재거래량요청, trde_prica를 분모로 사용한다.
+    const marketTurnover = {};
+    for (const market of [
+        { type: 'K', mrkt_tp: '0', inds_cd: '001' },
+        { type: 'Q', mrkt_tp: '1', inds_cd: '101' },
+    ]) {
+        if (!items.some(item => item.mkt_type === market.type)) continue;
+        try {
+            const marketResponse = await axios.post(
+                "https://api.kiwoom.com/api/dostk/sect",
+                { mrkt_tp: market.mrkt_tp, inds_cd: market.inds_cd },
+                {
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${accessToken}`,
+                        "api-id": "ka20001",
+                    },
+                    timeout: 5000
+                }
+            );
+            const rawTurnover = marketResponse.data?.trde_prica;
+            const turnover = Number(String(rawTurnover ?? '').replace(/,/g, ''));
+            if (Number.isFinite(turnover) && turnover > 0) {
+                marketTurnover[market.type] = turnover;
+            } else {
+                console.warn(`⚠️ ka20001 ${market.type} 시장 거래대금 응답에 유효한 trde_prica가 없습니다.`);
+            }
+        } catch (marketError) {
+            console.warn(`⚠️ ka20001 ${market.type} 시장 거래대금 조회 실패:`, marketError.response?.data || marketError.message);
+        }
+    }
+
+    const dataWithConcentration = items.map(item => {
+        const marketAmount = marketTurnover[item.mkt_type];
+        const stockAmount = Number(String(item[amountField] ?? '').replace(/,/g, ''));
+        const concentrationRate = Number.isFinite(stockAmount) && marketAmount > 0
+            ? Math.round(stockAmount / marketAmount * 100)
+            : null;
+        return {
+            ...item,
+            market_trde_prica: marketAmount ?? null,
+            concentration_rate: concentrationRate,
+        };
+    });
+
+    return { items: dataWithConcentration, marketTurnover };
+}
+
 // 디버그 로그 파일 설정
 const LOG_DIR = path.join(__dirname, 'dev_tools', 'logs');
 fs.mkdirSync(LOG_DIR, { recursive: true });
@@ -491,6 +541,8 @@ app.get('/api/stock', async (req, res) => {
             await new Promise(resolve => setTimeout(resolve, 100));
         }
 
+        const { items: watchStocksWithConcentration } = await addConcentrationRates(enrichedStocks, accessToken, 'trde_amt');
+
         // 대주가능 목록의 종목 데이터는 eFriend에서 유지하고, 시장구분은
         // 거래대금 상위와 동일하게 Kiwoom ka10100 정보만 사용한다.
         let marketLookupCount = 0;
@@ -545,7 +597,7 @@ app.get('/api/stock', async (req, res) => {
         res.json({
             success: true,
             data: {
-                kiwoom: enrichedStocks,
+                kiwoom: watchStocksWithConcentration,
                 efriend: efriendStocks
             },
             server_time: new Date().toISOString(),
@@ -693,51 +745,7 @@ app.get('/api/transaction_rank', async (req, res) => {
             await new Promise(resolve => setTimeout(resolve, 100));
         }
 
-        // 시장 전체 거래대금은 KOSPI/KOSDAQ별 1회씩 조회해 순위 종목에 배분한다.
-        // ka20001: 업종현재거래량요청, trde_prica를 분모로 사용한다.
-        const marketTurnover = {};
-        for (const market of [
-            { type: 'K', mrkt_tp: '0', inds_cd: '001' },
-            { type: 'Q', mrkt_tp: '1', inds_cd: '101' },
-        ]) {
-            if (!enrichedItems.some(item => item.mkt_type === market.type)) continue;
-            try {
-                const marketResponse = await axios.post(
-                    "https://api.kiwoom.com/api/dostk/sect",
-                    { mrkt_tp: market.mrkt_tp, inds_cd: market.inds_cd },
-                    {
-                        headers: {
-                            "Content-Type": "application/json",
-                            "Authorization": `Bearer ${accessToken}`,
-                            "api-id": "ka20001",
-                        },
-                        timeout: 5000
-                    }
-                );
-                const rawTurnover = marketResponse.data?.trde_prica;
-                const turnover = Number(String(rawTurnover ?? '').replace(/,/g, ''));
-                if (Number.isFinite(turnover) && turnover > 0) {
-                    marketTurnover[market.type] = turnover;
-                } else {
-                    console.warn(`⚠️ ka20001 ${market.type} 시장 거래대금 응답에 유효한 trde_prica가 없습니다.`);
-                }
-            } catch (marketError) {
-                console.warn(`⚠️ ka20001 ${market.type} 시장 거래대금 조회 실패:`, marketError.response?.data || marketError.message);
-            }
-        }
-
-        const dataWithConcentration = enrichedItems.map(item => {
-            const marketAmount = marketTurnover[item.mkt_type];
-            const stockAmount = Number(String(item.trde_prica ?? item.trde_amt ?? '').replace(/,/g, ''));
-            const concentrationRate = Number.isFinite(stockAmount) && marketAmount > 0
-                ? Math.round(stockAmount / marketAmount * 100)
-                : null;
-            return {
-                ...item,
-                market_trde_prica: marketAmount ?? null,
-                concentration_rate: concentrationRate,
-            };
-        });
+        const { items: dataWithConcentration, marketTurnover } = await addConcentrationRates(enrichedItems, accessToken, 'trde_amt');
 
         fileLog(`[Rank] /api/transaction_rank response counts: items=${dataWithConcentration.length}`);
 

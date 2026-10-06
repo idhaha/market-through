@@ -428,49 +428,43 @@ input:checked+.slider:before {
     /* 매매가능금액(원) */
 }
 
-#transactionTable {
+:is(#transactionTable, #stockTable) {
     width: 100%;
     table-layout: fixed;
 }
 
-#transactionTable thead th:nth-child(1),
-#transactionTable tbody td:nth-child(1) {
+:is(#transactionTable, #stockTable) thead th:nth-child(1),
+:is(#transactionTable, #stockTable) tbody td:nth-child(1) {
     width: 8%;
     white-space: nowrap;
 }
 
-#transactionTable thead th:nth-child(2),
-#transactionTable tbody td:nth-child(2) {
+:is(#transactionTable, #stockTable) thead th:nth-child(2),
+:is(#transactionTable, #stockTable) tbody td:nth-child(2) {
     width: 8%;
     white-space: nowrap;
 }
 
-#transactionTable thead th:nth-child(3),
-#transactionTable tbody td:nth-child(3) {
+:is(#transactionTable, #stockTable) thead th:nth-child(3),
+:is(#transactionTable, #stockTable) tbody td:nth-child(3) {
     width: 30%;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-#transactionTable thead th:nth-child(4),
-#transactionTable tbody td:nth-child(4) {
+:is(#transactionTable, #stockTable) thead th:nth-child(4),
+:is(#transactionTable, #stockTable) tbody td:nth-child(4) {
     width: 18%;
 }
 
-#transactionTable thead th:nth-child(5),
-#transactionTable tbody td:nth-child(5) {
+:is(#transactionTable, #stockTable) thead th:nth-child(5),
+:is(#transactionTable, #stockTable) tbody td:nth-child(5) {
     width: 22%;
 }
 
-/* 실시간 조회 순위에서 등락률과 거래대금 사이의 빈 간격을 줄인다. */
-#stockTable thead th:nth-child(4),
-#stockTable tbody td:nth-child(4) {
-    width: 100px;
-}
-
-#transactionTable thead th:nth-child(6),
-#transactionTable tbody td:nth-child(6) {
+:is(#transactionTable, #stockTable) thead th:nth-child(6),
+:is(#transactionTable, #stockTable) tbody td:nth-child(6) {
     width: 14%;
     white-space: nowrap;
 }

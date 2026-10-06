@@ -1,7 +1,7 @@
 # Feature Specification: 증시캘린더 다중 소스 탭
 
 **Updated**: 2026-10-06
-**Status**: 각국 금리 일정 표시 사용자 확인 완료; 세 공급자 당일 유지 로직 브라우저 모의 검증 완료
+**Status**: Implemented — Oracle 서버 동작 사용자 확인 완료 (2026-10-06); 날짜 변경 로직은 로컬 모의 검증 완료
 **Input**: 지표/실적 일정, 배당 일정, 각국 금리 일정을 각각 조회한 뒤 같은 날에는 재사용하고 새로고침 버튼으로 다시 조회한다.
 
 ## User Scenarios & Testing

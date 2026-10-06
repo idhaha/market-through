@@ -682,6 +682,7 @@ function renderTable(data) {
                     ${formatChangeRate(changeRate)}
                 </td>
                 <td class="align-right num-cell">${formatNumber(trdeAmtMillion)}</td>
+                <td class="align-right num-cell">${stock.concentration_rate != null && Number.isFinite(Number(stock.concentration_rate)) ? `${Number(stock.concentration_rate)}%` : '-'}</td>
             </tr>
         `;
     }).join('');
