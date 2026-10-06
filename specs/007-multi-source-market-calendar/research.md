@@ -1,3 +1,15 @@
+# Research / Decisions: 캘린더 iframe 유지
+
+## Current decision — 2026-10-06
+
+iframe tester의 서버 판정은 실제 사용자 브라우저 응답과 다를 수 있다. 실제 조사에서 기본 headless는 403 및 SAMEORIGIN, Chrome 형식 User-Agent는 200과 iframe 로드를 확인했다. 항상 임베드를 차단한다는 기존 가정은 수정한다.
+
+각국 금리 일정을 직접 iframe으로 변경한 뒤 사용자가 표시 성공을 확인했다. 회원가입 팝업은 cross-origin 보안 경계 때문에 부모 앱에서 자동으로 닫을 수 없다. 테이블 이미지 캡처 대신 전체 페이지를 표시한다.
+
+모든 공급자에 전용 iframe을 두어 src 교체 없이 당일 열린 페이지를 유지한다. 앱의 재진입/자동 갱신을 억제하지만 외부 페이지 자체 요청은 차단하지 않는다. 페이지 자체 새로고침을 넘는 영구 캐시는 요구하지 않는다.
+
+## Historical capture implementation (현재 화면에서 미사용)
+
 # Research / Decisions: 각국 금리 일정 이미지
 
 **Date**: 2026-10-05

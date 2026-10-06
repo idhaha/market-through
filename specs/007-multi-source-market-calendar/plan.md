@@ -1,51 +1,28 @@
 # Implementation Plan: 증시캘린더 다중 소스 탭
 
-**Branch**: `007-multi-source-market-calendar` | **Updated**: 2026-10-06 | **Spec**: spec.md
+**Updated**: 2026-10-06 | **Spec**: spec.md
 
 ## Summary
 
-Toss /calendar 프록시와 SEIBro iframe을 유지하고, Investing.com 소탭을 각국 금리 일정으로 변경한다. 중앙은행 페이지는 Playwright로 테이블 PNG를 캡처하여 표시한다. 성공 이미지는 한국시간 기준 당일 메모리에서 재사용하며 이미지 디코딩 전까지 중앙 로딩 안내를 제공한다.
+세 공급자 전용 iframe을 유지한다. Toss는 /calendar 프록시, SEIBro와 Investing.com은 직접 HTTPS 접속을 사용한다. 공급자별 첫 진입과 한국시간 날짜 변경 또는 명시적 새로고침에만 src를 설정한다.
 
 ## Technical Context
 
-- **Language/Version**: vanilla JavaScript/CSS, Node.js >=20 (Playwright 1.63 의존성 요구).
-- **Dependencies**: playwright ^1.63.0 추가, 기존 Puppeteer 및 Express 재사용.
-- **Browser**: CENTRAL_BANKS_CHROMIUM_PATH 지정 경로 → 설치된 Playwright 기본 Chromium → 기존 Puppeteer Chromium 순으로 선택한다. 지정 경로가 잘못되거나 실행 파일이 전혀 없으면 명확한 오류를 반환한다. Playwright 기본 브라우저를 우선 사용하여 사용자 테스트 파일과 실행 환경을 맞춘다.
-- **Storage**: activeCalendarId만 기존 설정에 저장. PNG/Blob URL 및 조회 Promise는 메모리 전용이며 설정 스냅샷·디스크에 저장하지 않는다.
-- **Testing**: 실제 외부 PNG 캡처, 캐시 로직 모의 검증, headless 브라우저의 지연 응답/이미지 표시 검증 및 구문 검사 수행. 운영 통합 검증은 quickstart 참고.
-- **Constraints**: 외부 차단/DOM 변경 가능. 최대 10초는 테이블 탐색 구간이고 페이지 접속 제한은 별도로 45초이다.
+기존 vanilla JavaScript/CSS와 Express를 사용하며 추가 의존성은 없다. activeCalendarId만 기존 설정에 저장한다. iframe과 조회 날짜는 DOM 메모리에서 유지한다.
 
 ## Constitution Check
 
-- Spec-First: 구현 및 사용자 요청을 이 기능 산출물에 반영.
-- External API Resilience: 실패 안내, 재시도, 공급자 격리, 중복 요청 공유.
-- Secrets Isolation: 고정 공개 소스 URL과 기존 API 인증 사용.
-- Solo-Maintainer Simplicity: 기존 설정과 설치된 Chromium 재사용. 추가 브라우저 설치를 피할 수 있도록 실행 경로 선택.
-- Agent-Agnostic Workflow: 일반 Markdown 문서 및 API 계약.
+실제 코드와 검증 결과를 문서화한다. 외부 페이지가 표시되지 않으면 원본 링크로 확인할 수 있다. 추가 서버 브라우저나 디스크 이미지 저장이 필요하지 않다.
 
-## Project Structure
+## Project Structure / Design Decisions
 
-- central-banks.js: 테이블 식별, headless 접속/팝업 처리, PNG 캡처 및 날짜별 메모리 캐시.
-- server.js: 인증 미들웨어 아래 GET /api/central-banks/image.
-- public/app.js: 공급자 전환, 이미지 메모리 캐시, 로딩/오류 표시, 크기와 여백.
-- public/style.css: 소탭 스타일 및 .embedded-iframe[hidden] 표시 억제.
-- specs/007-multi-source-market-calendar/: spec, plan, tasks, quickstart, data-model, research, contracts/api.
-
-## Design Decisions
-
-1. 기존 investing 공급자 ID를 유지해 저장 설정을 호환한다. iframe URL은 about:blank로 설정하고 이미지 선택 시 숨긴다.
-2. 페이지 접속 → 기본 1초 대기 → 팝업 처리 → 최대 10초 반복 탐색 → 네 헤더/은행 네 개 이상 확인 → 테이블만 캡처 → finally 브라우저 종료 순서다.
-3. 외부 폰트 로딩 때문에 locator.screenshot이 대기한 실제 사례가 있었다. Playwright CDP 세션의 Page.captureScreenshot과 테이블 boundingBox 및 문서 스크롤 좌표를 사용해 정확한 영역을 캡처한다. captureBeyondViewport=true, scale=1이며 파일 경로를 지정하지 않는다.
-4. 서버는 날짜, capturedAt, PNG Buffer와 진행 Promise를 보유한다. 서버 날짜는 Asia/Seoul 기준이며 성공 때 날짜를 기록한다.
-5. 화면은 날짜, capturedAt, Blob URL 및 진행 Promise를 보유한다. 교체 시 이전 Object URL을 해제한다. 서버/API 이미지에 HTTP 디스크 캐시를 의존하지 않는다.
-6. 로딩 시작 즉시 중앙 메시지와 aria-busy=true를 설정하고 image.decode() 이후 교체한다. 렌더 토큰으로 이전 호출이 최신 표시를 덮어쓰지 못하게 한다.
-7. 이미지 스타일은 public/app.js의 image.style.cssText에서 width:100%, max-width:800px, height:auto, margin-top:30px로 조절한다.
-8. 일반 진입·자동 갱신은 당일 캐시를 사용한다. 새로고침 버튼만 forceRefresh=true를 전달하고 API의 force_refresh=true로 서버 캐시도 우회한다. 진행 중 캡처는 일반/강제 요청 모두 공유한다. 자정 자동 실행은 제공하지 않는다.
+- public/app.js: iframeEarnings는 Toss iframe 및 공급자 URL/현재 선택 메타데이터를 유지한다. iframeEarningsSeibro는 SEIBro 전용이다. centralBanksFramePanel 안의 centralBanksFrame은 Investing.com 전용이다.
+- initializeTab 및 selectEarningsCalendar는 loadEarningsCalendarFrame을 호출한다. 최초 선택 전에는 src를 지정하지 않는다.
+- loadEarningsCalendarFrame은 공급자별 dataset.loadedDate를 Asia/Seoul 날짜와 비교한다. investing은 기존 loadCentralBanksFrame에 위임한다.
+- 새로고침 버튼만 forceRefresh=true를 전달한다. 전체 자동 갱신은 false로 호출하므로 당일 페이지를 유지한다.
+- Investing.com 로딩 안내는 load 이벤트 또는 20초 후 해제한다. cross-origin 응답 상태를 확인할 수 없으므로 성공으로 단정하지 않는다.
+- public/style.css의 hidden 규칙으로 비선택 iframe 및 로딩 안내를 숨긴다.
 
 ## Deployment / Limits
 
-npm ci 후 서버 재시작이 필요하다. Node.js >=20과 실행 가능한 Chromium을 확인한다. 캐시는 프로세스별이며 서버 재시작 때 초기화된다. TradingEconomics, 중앙은행 테이블, 기준금리 차트 캡처는 동일한 브라우저 슬롯을 공유한다. 운영 환경의 메모리와 대기 동작은 별도 확인이 필요하다.
-
-## 브라우저 슬롯 공유 — 2026-10-06
-
-009 기준금리 탭 추가에 따라 중앙은행 테이블 캡처와 기준금리 차트 캡처도 기존 TE 브라우저 카운터를 공유한다. 기존의 별도 슬롯 설명은 이 정책으로 대체한다. 상세는 ../009-base-interest-tab/plan.md 참고.
+정적 파일 변경을 서비스에 반영하고 브라우저 페이지를 다시 열어야 한다. iframe의 자체 요청과 팝업은 통제하지 않는다. 예전 central-banks.js 및 /api/central-banks/image는 서버에 남아 있으나 현 소탭에서 호출하지 않는다. 기준금리 12개 차트는 별도 009 기능이며 운영 검증은 대기 상태이다.

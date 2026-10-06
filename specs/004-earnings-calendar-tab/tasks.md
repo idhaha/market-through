@@ -147,3 +147,7 @@
 - 실패 재현에서도 SegmentedControl prop/value와 국내 Radio item의 `groupValue`가 `kr`/선택됨으로 렌더됐지만, 다음 프레임 및 350ms 뒤 DOM 선택은 계속 `all`. 실패 때 commit 로그가 없고 성공 재현 때는 나타남.
 - 동일 시점에 월별 proxy 요청이나 `Uncaught` 오류는 관찰되지 않음. 클릭 후 자동 스크롤을 100ms 늦추는 시도도 실패하여 해당 지연 변경은 소스에서 되돌림.
 - 원인과 수정은 미확정. 재개 시 React render가 실제 DOM에 commit되지 않는 경로를 우선 조사하고 T005는 미완료로 유지. `server.js`에는 클릭 단위 진단 계측이 남아 있음.
+
+## Current refresh policy — 2026-10-06
+
+기존 about:blank와 100ms 지연 재로드 및 새로고침 완료 문구 설명은 과거 기록이다. 현재는 공급자 전용 iframe을 보존하고 당일 재진입/자동 갱신을 억제하며 새로고침 버튼으로 현재 공급자의 src를 다시 설정한다. load 이벤트 후 캘린더 표시 중으로 안내한다. 현재 구현과 검증 범위는 ../007-multi-source-market-calendar/plan.md 및 quickstart.md를 따른다.

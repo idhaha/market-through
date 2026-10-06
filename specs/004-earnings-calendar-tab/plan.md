@@ -64,3 +64,6 @@ public/
 
 ## Complexity Tracking
 해당 없음.
+## Current refresh policy — 2026-10-06
+
+기존 about:blank와 100ms 지연 재로드 및 새로고침 완료 문구 설명은 과거 기록이다. 현재는 공급자 전용 iframe을 보존하고 당일 재진입/자동 갱신을 억제하며 새로고침 버튼으로 현재 공급자의 src를 다시 설정한다. load 이벤트 후 캘린더 표시 중으로 안내한다. 현재 구현과 검증 범위는 ../007-multi-source-market-calendar/plan.md 및 quickstart.md를 따른다.

@@ -1766,7 +1766,7 @@ function initializeTab(tabId) {
         content.innerHTML = createChartGrid(tabId);
     }
 
-    if (tabId === EARNINGS_TAB_ID && document.getElementById(`iframeEarnings_${tabId}`)?.dataset.calendarSource === 'investing') loadCentralBanksFrame(tabId);
+    if (tabId === EARNINGS_TAB_ID) loadEarningsCalendarFrame(tabId);
 
     // 2. Attach specialized listeners (idempotent checks included)
     if (!isInitialized) {
@@ -1999,7 +1999,8 @@ function createChartGrid(tabId) {
                     ${calendars.map(calendar => `<button type="button" id="calendarSourceTab_${tabId}_${calendar.id}" class="calendar-source-tab${calendar.id === activeCalendarId ? ' active' : ''}" role="tab" aria-selected="${calendar.id === activeCalendarId}" aria-controls="calendarSourcePanel_${tabId}" data-calendar-source="${calendar.id}">${calendar.label}</button>`).join('')}
                 </div>
                 <div class="overseas-content-scroll calendar-source-panel" id="calendarSourcePanel_${tabId}" role="tabpanel" aria-labelledby="calendarSourceTab_${tabId}_${activeCalendarId}" style="flex:1; overflow:hidden;">
-                    <iframe id="iframeEarnings_${tabId}" src="${selectedCalendar.url}" ${activeCalendarId === 'investing' ? 'hidden' : ''} data-calendar-urls="${encodeURIComponent(JSON.stringify(calendars))}" data-calendar-source="${activeCalendarId}" class="embedded-iframe" style="width:100%; height:100%; border:none;" title="${selectedCalendar.label} 캘린더"></iframe>
+                    <iframe id="iframeEarnings_${tabId}" ${activeCalendarId !== 'toss' ? 'hidden' : ''} data-calendar-urls="${encodeURIComponent(JSON.stringify(calendars))}" data-calendar-source="${activeCalendarId}" class="embedded-iframe" style="width:100%; height:100%; border:none;" title="${selectedCalendar.label} 캘린더"></iframe>
+                    <iframe id="iframeEarningsSeibro_${tabId}" ${activeCalendarId !== 'seibro' ? 'hidden' : ''} class="embedded-iframe" style="width:100%; height:100%; border:none;" title="배당 일정 캘린더"></iframe>
                     <div id="centralBanksFramePanel_${tabId}" ${activeCalendarId === 'investing' ? '' : 'hidden'} style="height:100%; position:relative; background:white;"><iframe id="centralBanksFrame_${tabId}" class="embedded-iframe" style="width:100%; height:100%; border:none;" title="각국 금리 일정 — Investing.com"></iframe><div id="centralBanksFrameLoading_${tabId}" class="central-banks-frame-loading" role="status" hidden style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:white; color:#333; font-size:18px;">화면 로딩 중...</div></div>
                 </div>
             </div>`;
@@ -4902,24 +4903,8 @@ async function refreshExchangeRateCharts(tabId) {
  * 실적 탭 새로고침
  */
 function refreshEarningsTab(tabId, forceRefresh = false) {
-    if (document.getElementById(`iframeEarnings_${tabId}`)?.dataset.calendarSource === 'investing') {
-        loadCentralBanksFrame(tabId, forceRefresh);
-        return;
-    }
-    if (isCapturing) { console.log('[Capture] refreshEarningsTab() skipped (isCapturing)'); return; }
-    const iframe = document.getElementById(`iframeEarnings_${tabId}`);
-    if (iframe) {
-        const currentSrc = iframe.src;
-        console.log(`[Refresh] Reloading Earnings iframe for ${tabId}`);
-        iframe.src = 'about:blank';
-        setTimeout(() => {
-            iframe.src = currentSrc;
-            const statusText = document.getElementById(`earningsStatusText_${tabId}`);
-            const lastUpdate = document.getElementById(`earningsLastUpdate_${tabId}`);
-            if (statusText) statusText.textContent = '새로고침 완료';
-            if (lastUpdate) lastUpdate.textContent = formatTime(new Date());
-        }, 100);
-    }
+    if (isCapturing && document.getElementById(`iframeEarnings_${tabId}`)?.dataset.calendarSource !== 'investing') { console.log('[Capture] refreshEarningsTab() skipped (isCapturing)'); return; }
+    loadEarningsCalendarFrame(tabId, forceRefresh);
 }
 
 /**
@@ -5571,6 +5556,35 @@ function loadCentralBanksFrame(tabId, forceRefresh = false) {
     }, 20000);
 }
 
+function loadEarningsCalendarFrame(tabId, forceRefresh = false) {
+    const metadata = document.getElementById(`iframeEarnings_${tabId}`);
+    if (!metadata) return;
+    const sourceId = metadata.dataset.calendarSource;
+    if (sourceId === 'investing') {
+        loadCentralBanksFrame(tabId, forceRefresh);
+        return;
+    }
+    const frame = sourceId === 'seibro' ? document.getElementById(`iframeEarningsSeibro_${tabId}`) : metadata;
+    const calendars = JSON.parse(decodeURIComponent(metadata.dataset.calendarUrls || '[]'));
+    const selected = calendars.find(calendar => calendar.id === sourceId);
+    if (!frame || !selected) return;
+    const status = document.getElementById(`earningsStatusText_${tabId}`);
+    const lastUpdate = document.getElementById(`earningsLastUpdate_${tabId}`);
+    if (!forceRefresh && frame.dataset.loadedDate === centralBanksToday()) {
+        if (status) status.textContent = '캘린더 표시 중 (당일 페이지 유지)';
+        if (lastUpdate) lastUpdate.textContent = frame.dataset.requestedAt;
+        return;
+    }
+    frame.dataset.loadedDate = centralBanksToday();
+    frame.dataset.requestedAt = formatTime(new Date());
+    frame.onload = () => {
+        if (metadata.dataset.calendarSource === sourceId && status) status.textContent = '캘린더 표시 중';
+    };
+    if (status) status.textContent = '캘린더 접속 중…';
+    if (lastUpdate) lastUpdate.textContent = frame.dataset.requestedAt;
+    frame.src = selected.url;
+}
+
 function selectEarningsCalendar(tabId, sourceId) {
     const iframe = document.getElementById(`iframeEarnings_${tabId}`);
     if (!iframe) return;
@@ -5594,7 +5608,9 @@ function selectEarningsCalendar(tabId, sourceId) {
     if (panel) panel.setAttribute('aria-labelledby', `calendarSourceTab_${tabId}_${sourceId}`);
     const externalLink = document.getElementById(`earningsExternalLink_${tabId}`);
     if (externalLink) externalLink.href = selected.externalUrl;
-    iframe.hidden = sourceId === 'investing';
+    iframe.hidden = sourceId !== 'toss';
+    const seibroFrame = document.getElementById(`iframeEarningsSeibro_${tabId}`);
+    if (seibroFrame) seibroFrame.hidden = sourceId !== 'seibro';
     const framePanel = document.getElementById(`centralBanksFramePanel_${tabId}`);
     if (framePanel) framePanel.hidden = sourceId !== 'investing';
     if (sourceId !== 'investing') {
@@ -5604,9 +5620,8 @@ function selectEarningsCalendar(tabId, sourceId) {
     iframe.title = `${selected.label} 캘린더`;
     if (iframe.dataset.calendarSource !== sourceId) {
         iframe.dataset.calendarSource = sourceId;
-        iframe.src = selected.url;
     }
-    if (sourceId === 'investing') loadCentralBanksFrame(tabId);
+    loadEarningsCalendarFrame(tabId);
     if (tabData[tabId]) {
         tabData[tabId].activeCalendarId = sourceId;
         saveAppData();

@@ -1,3 +1,17 @@
+# Current Tasks: 증시캘린더 iframe 유지 — 2026-10-06
+
+- [x] T028 각국 금리 일정을 직접 iframe으로 전환하고 중앙 로딩/원본 사이트 안내 제공.
+- [x] T029 사용자에게 실제 각국 금리 일정 표시 성공 확인.
+- [x] T030 Toss/SEIBro 전용 iframe을 보존하고 최초 선택 때만 접속.
+- [x] T031 세 공급자 당일 재진입/자동 갱신 억제, 명시적 새로고침 및 날짜 변경 재접속.
+- [x] T032 1400px/390px 모의 브라우저에서 요청 횟수로 재사용/자동 갱신/새로고침/날짜 변경 검증. 구문 및 diff 검사.
+- [x] T033 spec/plan/data-model/contracts/quickstart/research를 현재 iframe 구현과 검증 범위에 맞춰 갱신.
+- [ ] T034 최신 Toss/SEIBro 변경의 Oracle 서비스 실제 콘텐츠/전환/새로고침/날짜 변경 통합 검증.
+
+## Historical tasks
+
+아래 이미지 캡처 작업은 과거 구현 기록이다. 이미지 관련 미완료 운영 작업은 현재 iframe 기능의 요구사항이 아니며, 이미지 API는 현 소탭에서 미사용이다. 과거 검증 결과를 현재 iframe 운영 검증으로 간주하지 않는다.
+
 # Tasks: 증시캘린더 다중 소스 탭
 
 **Input**: `/specs/007-multi-source-market-calendar/`
