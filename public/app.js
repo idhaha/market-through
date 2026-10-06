@@ -1766,7 +1766,7 @@ function initializeTab(tabId) {
         content.innerHTML = createChartGrid(tabId);
     }
 
-    if (tabId === EARNINGS_TAB_ID && document.getElementById(`iframeEarnings_${tabId}`)?.dataset.calendarSource === 'investing') loadCentralBanksImage(tabId);
+    if (tabId === EARNINGS_TAB_ID && document.getElementById(`iframeEarnings_${tabId}`)?.dataset.calendarSource === 'investing') loadCentralBanksFrame(tabId);
 
     // 2. Attach specialized listeners (idempotent checks included)
     if (!isInitialized) {
@@ -2000,7 +2000,7 @@ function createChartGrid(tabId) {
                 </div>
                 <div class="overseas-content-scroll calendar-source-panel" id="calendarSourcePanel_${tabId}" role="tabpanel" aria-labelledby="calendarSourceTab_${tabId}_${activeCalendarId}" style="flex:1; overflow:hidden;">
                     <iframe id="iframeEarnings_${tabId}" src="${selectedCalendar.url}" ${activeCalendarId === 'investing' ? 'hidden' : ''} data-calendar-urls="${encodeURIComponent(JSON.stringify(calendars))}" data-calendar-source="${activeCalendarId}" class="embedded-iframe" style="width:100%; height:100%; border:none;" title="${selectedCalendar.label} 캘린더"></iframe>
-                    <div id="centralBanksImage_${tabId}" ${activeCalendarId === 'investing' ? '' : 'hidden'} style="height:100%; overflow:auto; background:white;"><p class="central-banks-message" style="padding:20px; color:#333;">각국 금리 일정을 조회해 주세요.</p></div>
+                    <div id="centralBanksFramePanel_${tabId}" ${activeCalendarId === 'investing' ? '' : 'hidden'} style="height:100%; position:relative; background:white;"><iframe id="centralBanksFrame_${tabId}" class="embedded-iframe" style="width:100%; height:100%; border:none;" title="각국 금리 일정 — Investing.com"></iframe><div id="centralBanksFrameLoading_${tabId}" class="central-banks-frame-loading" role="status" hidden style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:white; color:#333; font-size:18px;">화면 로딩 중...</div></div>
                 </div>
             </div>`;
     }
@@ -4903,7 +4903,7 @@ async function refreshExchangeRateCharts(tabId) {
  */
 function refreshEarningsTab(tabId, forceRefresh = false) {
     if (document.getElementById(`iframeEarnings_${tabId}`)?.dataset.calendarSource === 'investing') {
-        loadCentralBanksImage(tabId, forceRefresh);
+        loadCentralBanksFrame(tabId, forceRefresh);
         return;
     }
     if (isCapturing) { console.log('[Capture] refreshEarningsTab() skipped (isCapturing)'); return; }
@@ -5541,82 +5541,34 @@ function bulkExportSettings() {
     });
 }
 
-let centralBanksImageCache = null;
-let centralBanksImageRequest = null;
 function centralBanksToday() {
     return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date());
 }
-async function loadCentralBanksImage(tabId, forceRefresh = false) {
-    const panel = document.getElementById(`centralBanksImage_${tabId}`);
-    if (!panel) return;
-    const renderToken = Symbol('centralBanksRender');
-    panel.centralBanksRenderToken = renderToken;
-    const isCurrentRender = () => panel.isConnected && panel.centralBanksRenderToken === renderToken;
-    const loadingMessage = document.createElement('div');
-    loadingMessage.setAttribute('role', 'status');
-    loadingMessage.style.cssText = 'display:flex; align-items:center; justify-content:center; height:100%; min-height:120px; color:#333; font-size:18px;';
-    loadingMessage.textContent = '화면 로딩 중...';
-    panel.setAttribute('aria-busy', 'true');
-    panel.replaceChildren(loadingMessage);
+function loadCentralBanksFrame(tabId, forceRefresh = false) {
+    const frame = document.getElementById(`centralBanksFrame_${tabId}`);
+    if (!frame) return;
+    const today = centralBanksToday();
+    if (!forceRefresh && frame.dataset.loadedDate === today) return;
+    const loading = document.getElementById(`centralBanksFrameLoading_${tabId}`);
     const status = document.getElementById(`earningsStatusText_${tabId}`);
     const lastUpdate = document.getElementById(`earningsLastUpdate_${tabId}`);
     const isSelected = () => document.getElementById(`iframeEarnings_${tabId}`)?.dataset.calendarSource === 'investing';
-    try {
-        if (forceRefresh || centralBanksImageRequest || centralBanksImageCache?.date !== centralBanksToday()) {
-            if (isSelected() && status) status.textContent = '중앙은행 테이블 캡처 중…';
-            if (!centralBanksImageRequest) {
-                centralBanksImageRequest = (async () => {
-                    const response = await fetch(`/api/central-banks/image${forceRefresh ? '?force_refresh=true' : ''}`, { cache: 'no-store' });
-                    if (!response.ok) {
-                        const result = await response.json().catch(() => ({}));
-                        const messages = {
-                            401: '로그인 세션이 만료되었습니다. 다시 로그인해 주세요.',
-                            404: '금리 이미지 API를 찾을 수 없습니다. 서버의 코드 적용 및 재시작 상태를 확인해 주세요.',
-                            502: '금리 이미지 서버 처리 또는 프록시 연결에 실패했습니다.',
-                            504: '금리 이미지 서버 응답 대기 시간이 초과되었습니다.'
-                        };
-                        throw new Error(`${result.error || messages[response.status] || '금리 일정을 불러오지 못했습니다.'} (HTTP ${response.status})`);
-                    }
-                    const blob = await response.blob();
-                    if (!blob.type.startsWith('image/png')) throw new Error('이미지 대신 다른 응답을 받았습니다. 로그인 상태와 서버 응답을 확인해 주세요.');
-                    const newUrl = URL.createObjectURL(blob);
-                    const probe = new Image();
-                    probe.src = newUrl;
-                    try {
-                        await probe.decode();
-                    } catch {
-                        URL.revokeObjectURL(newUrl);
-                        throw new Error('받은 이미지가 손상되어 표시할 수 없습니다.');
-                    }
-                    if (centralBanksImageCache) URL.revokeObjectURL(centralBanksImageCache.url);
-                    centralBanksImageCache = { date: response.headers.get('X-Capture-Date'), capturedAt: response.headers.get('X-Captured-At'), url: newUrl };
-                })().finally(() => { centralBanksImageRequest = null; });
-            }
-            await centralBanksImageRequest;
-        }
-        if (!isCurrentRender()) return;
-        const image = document.createElement('img');
-        image.src = centralBanksImageCache.url;
-        image.alt = '각국 중앙은행의 현재 금리, 다음 회의, 마지막 변경';
-        image.style.cssText = 'display:block; width:100%; max-width:800px; height:auto; margin-top:30px;';
-        await image.decode();
-        if (!isCurrentRender()) return;
-        panel.replaceChildren(image);
-        panel.setAttribute('aria-busy', 'false');
-        if (isSelected()) {
-            if (status) status.textContent = '각국 금리 일정 (당일 이미지)';
-            if (lastUpdate) lastUpdate.textContent = new Date(centralBanksImageCache.capturedAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
-        }
-    } catch (error) {
-        console.error('[Central Banks Image]', error);
-        if (!isCurrentRender()) return;
-        const message = document.createElement('p');
-        message.style.cssText = 'padding:20px; color:#333;';
-        message.textContent = error.message + ' 새로고침 버튼으로 다시 시도해 주세요.';
-        panel.replaceChildren(message);
-        panel.setAttribute('aria-busy', 'false');
-        if (isSelected() && status) status.textContent = '조회 실패';
-    }
+    clearTimeout(frame.loadingTimer);
+    if (loading) loading.hidden = false;
+    if (isSelected() && status) status.textContent = 'Investing.com 페이지 접속 중…';
+    frame.onload = () => {
+        clearTimeout(frame.loadingTimer);
+        if (loading) loading.hidden = true;
+        // Cross-origin frames do not expose their HTTP status or page contents.
+        if (isSelected() && status) status.textContent = 'iframe 표시 · 빈 화면이면 원본 사이트에서 확인해 주세요';
+    };
+    frame.dataset.loadedDate = today;
+    frame.src = 'https://kr.investing.com/central-banks/';
+    if (lastUpdate) lastUpdate.textContent = formatTime(new Date());
+    frame.loadingTimer = setTimeout(() => {
+        if (loading) loading.hidden = true;
+        if (isSelected() && status) status.textContent = '응답 대기 중 · 표시되지 않으면 원본 사이트에서 확인해 주세요';
+    }, 20000);
 }
 
 function selectEarningsCalendar(tabId, sourceId) {
@@ -5643,8 +5595,8 @@ function selectEarningsCalendar(tabId, sourceId) {
     const externalLink = document.getElementById(`earningsExternalLink_${tabId}`);
     if (externalLink) externalLink.href = selected.externalUrl;
     iframe.hidden = sourceId === 'investing';
-    const imagePanel = document.getElementById(`centralBanksImage_${tabId}`);
-    if (imagePanel) imagePanel.hidden = sourceId !== 'investing';
+    const framePanel = document.getElementById(`centralBanksFramePanel_${tabId}`);
+    if (framePanel) framePanel.hidden = sourceId !== 'investing';
     if (sourceId !== 'investing') {
         const status = document.getElementById(`earningsStatusText_${tabId}`);
         if (status) status.textContent = '캘린더 표시 중';
@@ -5654,7 +5606,7 @@ function selectEarningsCalendar(tabId, sourceId) {
         iframe.dataset.calendarSource = sourceId;
         iframe.src = selected.url;
     }
-    if (sourceId === 'investing') loadCentralBanksImage(tabId);
+    if (sourceId === 'investing') loadCentralBanksFrame(tabId);
     if (tabData[tabId]) {
         tabData[tabId].activeCalendarId = sourceId;
         saveAppData();

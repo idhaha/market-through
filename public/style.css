@@ -2456,3 +2456,7 @@ body.modal-open {
 .base-interest-chart { min-height:220px; }
 .base-interest-chart img { display:block; width:100%; height:auto; }
 .base-interest-chart p { display:flex; align-items:center; justify-content:center; min-height:220px; margin:0; padding:16px; color:#555; text-align:center; }
+
+.central-banks-frame-loading[hidden] {
+    display: none !important;
+}
