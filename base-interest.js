@@ -30,8 +30,9 @@ async function chartState(page) {
         const selected = section?.querySelector('ul.tabsForBox li.selected a')?.textContent.trim() || '';
         const charts = (window.Highcharts?.charts || []).filter(chart => chart && section?.contains(chart.renderTo));
         const data = charts.map(chart => chart.series.map(series => (series.points || []).map(p => [p.x, p.y])));
-        const ready = data.some(series => series.some(points => points.some(p => Number.isFinite(p[1]))));
-        return { selected, ready, fingerprint: JSON.stringify(data) };
+        const loading = charts.some(chart => chart.loadingShown);
+        const ready = !loading && data.some(series => series.some(points => points.some(p => Number.isFinite(p[1]))));
+        return { selected, ready, loading, fingerprint: JSON.stringify(data) };
     });
 }
 
@@ -53,12 +54,18 @@ async function captureInterestCharts(onChart, onStage = () => {}) {
                 browser = await chromium.launch({ ...options, executablePath: resolveBrowserPath() });
             }
         }
-        const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 1400, height: 1200 }, locale: 'ko-KR', timezoneId: 'Asia/Seoul',
+        const context = await browser.newContext({ colorScheme: 'light', serviceWorkers: 'block', viewport: { width: 1400, height: 1200 }, locale: 'ko-KR', timezoneId: 'Asia/Seoul',
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36' });
         const page = await context.newPage();
         await context.route('**/*', route => shouldBlockResource(route.request().url(), route.request().resourceType()) ? route.abort() : route.continue());
         page.setDefaultTimeout(10000);
         page.on('dialog', dialog => dialog.dismiss().catch(() => {}));
+        page.on('response', response => {
+            if (['xhr', 'fetch'].includes(response.request().resourceType()) && response.status() >= 400) {
+                const url = new URL(response.url());
+                console.error(`[Base Interest] data HTTP ${response.status()} ${url.origin}${url.pathname}`);
+            }
+        });
         await page.addInitScript(() => Object.defineProperty(navigator, 'webdriver', { get: () => undefined }));
         progress('navigation');
         const response = await page.goto(SOURCE_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -83,27 +90,48 @@ async function captureInterestCharts(onChart, onStage = () => {}) {
         for (const bank of BANKS) {
             progress('chart', bank.code);
             try {
+                await dismissPopups(page);
                 const before = await chartState(page);
                 const tab = section.locator('ul.tabsForBox a').filter({ hasText: new RegExp(`^${bank.code}$`) }).first();
                 await tab.scrollIntoViewIfNeeded();
-                await tab.click({ force: true });
-                const deadline = Date.now() + 15000;
+                // Normal click verifies that a popup is not intercepting the bank tab.
+                await tab.click({ timeout: 10000 });
+                const deadline = Date.now() + 25000;
                 let ready = false;
+                let lastState;
                 while (Date.now() < deadline) {
                     const state = await chartState(page);
+                    lastState = state;
                     if (state.selected === bank.code && state.ready && (before.selected === bank.code || state.fingerprint !== before.fingerprint)) {
                         ready = true; break;
                     }
                     await page.waitForTimeout(300);
                 }
-                if (!ready) throw new Error('선택한 은행의 차트 데이터 변경을 확인하지 못했습니다.');
+                if (!ready) throw new Error(`차트 데이터 전환 시간 초과: selected=${lastState?.selected}, ready=${lastState?.ready}, loading=${lastState?.loading}, changed=${lastState?.fingerprint !== before.fingerprint}`);
                 await dismissPopups(page);
                 await page.waitForTimeout(500);
+                await page.evaluate(() => {
+                    const section = document.querySelector('section#leftColumn');
+                    for (const chart of window.Highcharts?.charts || []) {
+                        if (chart && section?.contains(chart.renderTo)) {
+                            chart.chartBackground?.attr({ fill: '#ffffff' });
+                            chart.renderTo.style.backgroundColor = '#ffffff';
+                        }
+                    }
+                });
                 const chart = section.locator('svg').first();
                 await chart.waitFor({ state: 'visible', timeout: 5000 });
                 await chart.scrollIntoViewIfNeeded();
                 const box = await chart.boundingBox();
                 if (!box || box.width <= 0 || box.height <= 0) throw new Error('차트 영역을 찾지 못했습니다.');
+                const covered = await chart.evaluate(svg => {
+                    const box = svg.getBoundingClientRect();
+                    return [[0.25, 0.25], [0.5, 0.5], [0.75, 0.75]].some(([x, y]) => {
+                        const hit = document.elementFromPoint(box.x + box.width * x, box.y + box.height * y);
+                        return hit && hit !== svg && !svg.contains(hit);
+                    });
+                });
+                if (covered) throw new Error('차트 위에 팝업 또는 로딩 레이어가 남아 있어 캡처하지 않았습니다.');
                 const scroll = await page.evaluate(() => ({ x: window.scrollX, y: window.scrollY }));
                 const session = await context.newCDPSession(page);
                 try {

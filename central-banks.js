@@ -27,23 +27,25 @@ function resolveBrowserPath() {
 
 async function dismissPopups(page) {
     const selectors = ['#onetrust-accept-btn-handler', 'button[aria-label="Close"]', 'button[aria-label="닫기"]',
+        'button[title="Close"]', 'button[title="닫기"]', '.popupCloseIcon', '.closeIcon',
         '[aria-label="Close"]', '[aria-label="닫기"]', 'button:has-text("×")', 'button:has-text("✕")',
         '[class*="close"]', '[class*="Close"]', '[data-test*="close"]', '[data-test*="Close"]'];
-    const deadline = Date.now() + 2000;
-    for (const frame of page.frames()) {
-        for (const selector of selectors) {
-            const elements = frame.locator(selector);
-            const count = await elements.count().catch(() => 0);
-            for (let i = 0; i < count; i++) {
-                if (Date.now() >= deadline) return;
-                try {
-                    const element = elements.nth(i);
-                    if (await element.isVisible()) {
-                        await element.click({ timeout: Math.min(500, Math.max(1, deadline - Date.now())) });
-                        return;
-                    }
-                } catch { /* Try the next visible close control. */ }
-            }
+    const deadline = Date.now() + 5000;
+    frames:
+    for (let pass = 0; pass < 2; pass++) {
+        for (const frame of page.frames()) {
+            const elements = frame.locator(selectors.join(', '));
+        const count = await elements.count().catch(() => 0);
+        // Reverse order avoids skipping another button when a dismissed popup removes DOM nodes.
+        for (let i = count - 1; i >= 0; i--) {
+            if (Date.now() >= deadline) break frames;
+            try {
+                const element = elements.nth(i);
+                if (await element.isVisible()) {
+                    await element.click({ timeout: Math.min(500, Math.max(1, deadline - Date.now())) });
+                }
+            } catch { /* Try the next visible close control. */ }
+        }
         }
     }
     await page.keyboard.press('Escape');
