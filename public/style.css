@@ -24,6 +24,50 @@
     --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
 
+/* Rank chart sits below all three ranking tables. */
+.concentration-chart-panel { margin-top: 20px; width: 50%; max-width: calc(100vw - 50px); }
+.concentration-chart-header { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.concentration-chart-header h2 { font-size: 17px; min-width: 140px; }
+.concentration-market { color: var(--text-muted); font-size: 12px; width: 44px; flex: 0 0 44px; }
+.concentration-controls { display: flex; gap: 3px; }
+.concentration-controls button, .concentration-icon-button {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 32px; height: 30px; padding: 0 8px; border: 1px solid var(--border-color);
+    border-radius: 4px; color: var(--text-secondary); background: var(--bg-primary); cursor: pointer;
+}
+.concentration-controls button.active { color: white; background: var(--accent-primary); border-color: var(--accent-primary); }
+.concentration-controls button:disabled, .concentration-icon-button:disabled { opacity: .35; cursor: default; }
+.concentration-controls button:focus-visible, .concentration-icon-button:focus-visible,
+#tab_rank tr[data-chart-code]:focus-visible { outline: 2px solid #ea580c; outline-offset: 2px; }
+.concentration-chart-summary { display: flex; align-items: baseline; gap: 8px; margin-left: auto; white-space: nowrap; }
+.concentration-chart-title { font-size: 13px; color: var(--text-muted); }
+#concentrationCurrentRate { min-width: 70px; text-align: right; font-size: 14px; font-weight: 600; color: #ea580c; font-variant-numeric: tabular-nums; }
+.concentration-status:empty { display: none; }
+.concentration-status { position: absolute; top: 0; left: 16px; right: 58px; z-index: 1; color: var(--text-muted); font-size: 12px; margin: 0; }
+.concentration-chart-layout { display: flex; align-items: stretch; gap: 16px; }
+.concentration-chart-area { position: relative; height: 340px; flex: 1; min-width: 0; }
+#concentrationCanvas { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: pan-y; }
+#concentrationCanvas.is-loading { filter: blur(2px); opacity: .75; pointer-events: none; }
+.concentration-tooltip { position: absolute; top: 8px; padding: 6px 10px; background: #0f172a; color: white;
+    border-radius: 4px; font-size: 12px; pointer-events: none; white-space: nowrap; }
+.concentration-chart-footer { display: flex; gap: 16px; align-items: center; }
+#concentrationPeriod { color: var(--text-muted); font-size: 12px; min-width: 0; }
+.concentration-chart-footer { flex-wrap: wrap; }
+#concentrationPeriod { flex: 0 0 100%; }
+#concentrationMore { padding: 0; border-radius: 0; background: #ededed; border-color: #a0a0a0; }
+@media (max-width: 700px) {
+    .concentration-chart-panel { padding: 12px; }
+    .concentration-chart-header { gap: 6px; }
+    .concentration-chart-header h2 { min-width: 120px; }
+    .concentration-chart-header .concentration-controls button { min-width: 26px; padding: 0 5px; }
+    .concentration-chart-footer { gap: 8px; }
+}
+#concentrationRange { flex: 1; accent-color: #64748b; min-width: 100px; }
+.concentration-chart-footer .concentration-controls { margin-left: auto; }
+#tab_rank tr[data-chart-code] { cursor: pointer; }
+#tab_rank tr.concentration-selected td { background: #fff7ed; }
+#tab_rank tr.concentration-selected td:first-child { box-shadow: inset 3px 0 #ea580c; }
+
 * {
     margin: 0;
     padding: 0;

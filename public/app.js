@@ -672,7 +672,7 @@ function renderTable(data) {
         const marketLabel = stock.mkt_type || '-';
 
         return `
-            <tr class="fade-in">
+            <tr class="fade-in" ${window.rankChartRowAttributes(stock)}>
                 <td class="align-right">${stock.bigd_rank || (index + 1)}</td>
                 <td class="market-type">${marketLabel}</td>
                 <td>
@@ -728,7 +728,7 @@ function renderEfriendTable(stocks) {
         const tradActiveValue = currentPrice * tradActiveQty;
 
         return `
-            <tr class="fade-in">
+            <tr class="fade-in" ${window.rankChartRowAttributes(stock, true)}>
                 <td class="align-right">${index + 1}</td>
                 <td class="market-type align-center">${marketLabel}</td>
                 <td>${prdtName}</td>
@@ -777,7 +777,7 @@ async function loadTransactionRank() {
                 const marketLabel = stock.mkt_type || '-';
 
                 return `
-                    <tr class="fade-in">
+                    <tr class="fade-in" ${window.rankChartRowAttributes(stock)}>
                         <td class="align-right">${stock.rank || (index + 1)}</td>
                         <td class="market-type">${marketLabel}</td>
                         <td title="${stock.stk_nm || stock.isu_nm || '-'}">${stock.stk_nm || stock.isu_nm || '-'}</td>
@@ -1052,6 +1052,7 @@ function startAutoRefresh() {
         loadData();
         loadTransactionRank();
         loadWatchlistRank();
+        window.refreshConcentrationChart?.();
     }, intervalMs);
 }
 
@@ -1096,6 +1097,7 @@ refreshIntervalSelect.addEventListener('change', (e) => {
     loadData();
     loadTransactionRank();
     loadWatchlistRank();
+    window.refreshConcentrationChart?.();
     startAutoRefresh();
     saveAppData();
 });
@@ -3010,6 +3012,7 @@ document.body.addEventListener('click', function (e) {
         loadData();
         loadTransactionRank();
         loadWatchlistRank();
+        window.refreshConcentrationChart?.();
         return;
     }
 
@@ -4953,6 +4956,7 @@ async function refreshAllTabs() {
     loadData();
     loadTransactionRank();
     loadWatchlistRank();
+    window.refreshConcentrationChart?.();
 
     // 2. ADR 탭
     updateAdrFromSource();

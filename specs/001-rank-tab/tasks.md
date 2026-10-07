@@ -4,7 +4,7 @@
 
 **Prerequisites**: plan.md, spec.md, research.md, data-model.md, contracts/, quickstart.md
 
-**Tests**: 이 기능은 브라운필드(기존 구현) 검증 작업이므로 별도 자동화 테스트는 요청되지 않았다(Constitution 원칙 IV). 대신 quickstart.md 시나리오로 검증한다.
+**Tests**: 기존 패널은 quickstart.md 수동 검증 기록을 유지한다. 추가된 쏠림율 차트는 계산·연속조회 Node 테스트 및 Puppeteer 모의 API 통합 테스트로 검증한다.
 
 **Organization**: 사용자 스토리별로 그룹화. 각 스토리는 "코드가 spec/contracts와 일치하는지 검증 → 불일치 수정 → quickstart 확인" 순서를 따른다.
 
@@ -228,6 +228,26 @@
 
 ## Notes
 
-- 이 tasks.md는 신규 코드 작성이 아니라 **기존 코드의 spec 준수 여부 검증 및 수정**이 목적이다(Constitution 원칙 I).
+- 초기 tasks.md는 **기존 코드의 spec 준수 여부 검증 및 수정**이 목적이며, 2026-10-07 추가 범위는 사용자가 요청한 쏠림율 필드·차트 신규 구현을 포함한다(Constitution 원칙 I).
 - 검증 중 실제로 스펙과 다른 동작을 발견하면, 어느 쪽이 맞는지(코드가 맞고 spec을 고쳐야 하는지, 코드를 고쳐야 하는지) 먼저 판단한 뒤 수정한다.
 - 각 태스크 완료 후 커밋 권장.
+
+## Phase 7: User Story 4 - 쏠림율 확장 (2026-10-07)
+
+- [x] T029 [US1] 두 순위 테이블에 동일 시장별 쏠림율 계산·표시 적용, 시장 미확인 시 null/- 처리 — server.js, public/app.js, public/index.html, public/style.css (FR-008/010).
+- [x] T030 [US4] 인증된 차트 API 및 시장 판별·원천 조회 구현 — server.js, concentration-chart.js (FR-022~024).
+- [x] T031 [US4] 일봉 실제 거래대금, 분봉 사용자 지정 추정식 및 시간 정렬·계산 불가 처리 구현 (FR-024/025).
+- [x] T032 [US4] 별도 원천 연속조회·사용자 귀속 커서·중복 제거·실패 재시도·조회 상한 구현 (FR-026).
+- [x] T033 [US4] 세 테이블 선택, 일/분·간격·추가조회 버튼과 차트 렌더링 구현 — public/concentration-chart.js (FR-022/023/026/027).
+- [x] T034 [US4] 최신 값 헤더 표시, 검증 패널 제거, 로딩 블러·위치 유지, 절반 폭·휴대폰 표시 및 제공 아이콘 반영 (FR-028/029).
+- [x] T035 [US4] 버튼·슬라이더 및 드래그 확대/전체 복원 구현 (FR-030).
+- [x] T036 [US4] Rank 주기·수동·전체조회 연동, 과거 기록·확대 구간 보존, 중복/캡처 건너뛰기와 실패 시 기존 차트 유지 구현 (FR-031).
+- [x] T037 [US4] tests/concentration-chart.test.js 계산·시장 선택·집계·연속조회 11개 테스트 및 tests/concentration-chart-ui.test.js 브라우저 통합 시나리오 통과 확인.
+- [x] T038 [US4] 실제 2026-10-07 삼성전자/코스피 일봉 거래대금과 테이블 수치 검산, 분봉 보정 표본 확인 — quickstart.md 기록 (SC-005).
+- [x] T039 [US4] spec·plan·research·data-model·contracts·quickstart·tasks·품질 체크리스트를 최종 구현에 맞춰 갱신.
+
+의존성: T029/T030 → T031/T032 → T033 → T034/T035/T036 → T037/T038 → T039. 자동화 검증은 SC-006~008의 모의 응답 동작을 확인한다. 운영 환경 전체 재검증 및 기존 T013/T022/T024/T026 보류 항목은 별도로 남기며 완료로 변경하지 않는다.
+
+- [x] T040 [US4] 분봉 하루 전체·확대 구간 X축을 시간만 표시하고 매시 경계 눈금 및 좁은 화면 간격 조절 적용 — public/concentration-chart.js (FR-027).
+- [x] T041 [US4] 확대 구간에서 눈금 여유가 충분할 때 30분 눈금 표시 (FR-027).
+- [x] T042 [US4] X축 시간 접미사 제거: 매시 HH, 30분 간격 HH:mm 표시 적용 (FR-027).

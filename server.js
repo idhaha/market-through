@@ -9,6 +9,7 @@ const puppeteer = require('puppeteer');
 const { createDailyCapture, captureCentralBanks } = require('./central-banks');
 const { createInterestStore, captureInterestCharts } = require('./base-interest');
 const crypto = require('crypto');
+const { createConcentrationChartService } = require('./concentration-chart');
 
 // 전역 시장구분 캐시 (종목코드: 'K'/'Q') - 429 에러 방지용
 const marketCache = {};
@@ -125,6 +126,16 @@ app.use('/api', (req, res, next) => {
     if (!session) return res.status(401).json({ success: false, error: '로그인이 필요합니다.' });
     req.authUser = session;
     next();
+});
+
+const concentrationChartService = createConcentrationChartService({ axios, getAccessToken, marketCache });
+app.post('/api/concentration-chart', async (req, res) => {
+    try {
+        res.json(await concentrationChartService.query(req.body, req.authUser.email));
+    } catch (error) {
+        console.warn('[ConcentrationChart]', error.message);
+        res.status(error.status || 502).json({ success: false, error: error.message });
+    }
 });
 
 // 1. API 경로를 static 보다 먼저 정의 (우선순위 확보)
@@ -446,7 +457,7 @@ app.get('/api/stock', async (req, res) => {
 
             const chunkPromises = chunk.map(async (stock) => {
                 const cleanCd = (stock.stk_cd || "").replace(/[^0-9a-zA-Z]/g, '');
-                let marketType = 'Q'; // 기본값 코스닥(Q) - ka10100 실패 시 안전망
+                let marketType = null; // 시장구분 조회 실패 시 쏠림율 계산 불가
                 let trdeAmtMillion = 0;
 
                 try {
@@ -529,7 +540,7 @@ app.get('/api/stock', async (req, res) => {
                         // We are overriding it. Let's just return trdeAmtMillion.
                     };
                 } catch (err) {
-                    return stock;
+                    return { ...stock, mkt_type: null };
                 }
             });
 
@@ -668,18 +679,18 @@ app.get('/api/transaction_rank', async (req, res) => {
             tokenExpiryTime = 0;
         }
 
-        // The UI renders at most 20 rows. Enrich a few extra candidates to
-        // leave room for ETFs and non-stock instruments removed by filtering.
-        const candidateItems = rawItems.slice(0, 30);
+        // 필터링 후 20개가 모일 때까지 순위 순서대로 후보를 확인한다.
+        const targetCount = 20;
+        const candidateItems = rawItems;
         // Market Enrichment
         console.log(`Step 3: 거래대금상위 시장구분(ka10100) 보정 시작 (${candidateItems.length}/${rawItems.length}개)...`);
         const enrichedItems = [];
         const chunkSize = 1; // 429 에러 방지를 위해 1로 하향
 
-        for (let i = 0; i < candidateItems.length; i += chunkSize) {
+        for (let i = 0; i < candidateItems.length && enrichedItems.length < targetCount; i += chunkSize) {
             const chunk = candidateItems.slice(i, i + chunkSize);
             const chunkPromises = chunk.map(async (item) => {
-                let marketType = (mrkt_tp === "001") ? 'K' : (mrkt_tp === "101" ? 'Q' : 'Q'); // Default if 'All'
+                let marketType = null; // 시장구분 조회 실패 시 쏠림율 계산 불가
                 const stockCode = (item.stk_cd || "").replace(/_AL$/, "");
 
                 try {
@@ -694,7 +705,7 @@ app.get('/api/transaction_rank', async (req, res) => {
                         if (!['0', '10'].includes(String(cached.code))) {
                             return null;
                         }
-                        marketType = cached.type || resolveKiwoomMarketType(cached, marketType);
+                        marketType = ['K', 'Q'].includes(cached.type) ? cached.type : resolveKiwoomMarketType(cached, marketType);
                     } else {
                         // 캐시에 없는 경우, 정확한 필터링을 위해 무조건 ka10100 호출
                         // (KODEX 등이 marketCode 0으로 들어오는 경우를 거르기 위함)
