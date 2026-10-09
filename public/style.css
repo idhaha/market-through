@@ -25,7 +25,7 @@
 }
 
 /* Rank chart sits below all three ranking tables. */
-.concentration-chart-panel { margin-top: 20px; width: 50%; max-width: calc(100vw - 50px); }
+.concentration-chart-panel { margin-top: 20px; width: calc(var(--concentration-base-width, 570px) + 450px); max-width: calc(100vw - 50px); }
 .concentration-chart-header { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .concentration-chart-header h2 { font-size: 17px; min-width: 140px; }
 .concentration-market { color: var(--text-muted); font-size: 12px; width: 44px; flex: 0 0 44px; }
@@ -54,7 +54,7 @@
 #concentrationPeriod { color: var(--text-muted); font-size: 12px; min-width: 0; }
 .concentration-chart-footer { flex-wrap: wrap; }
 #concentrationPeriod { flex: 0 0 100%; }
-#concentrationMore { padding: 0; border-radius: 0; background: #ededed; border-color: #a0a0a0; }
+#concentrationMore { padding: 0; border: 0; border-radius: 0; background: transparent; }
 @media (max-width: 700px) {
     .concentration-chart-panel { padding: 12px; }
     .concentration-chart-header { gap: 6px; }
@@ -2498,3 +2498,52 @@ body.modal-open {
 .central-banks-frame-loading[hidden] {
     display: none !important;
 }
+
+.concentration-five-debug { flex: 0 0 434px; font-size: 12px; font-variant-numeric: tabular-nums; border-left: 1px solid var(--border-color); padding-left: 14px; }
+.concentration-five-debug table { width: 100%; min-width: 0; margin: 6px 0 12px; font-size: 11px; }
+.concentration-five-debug th, .concentration-five-debug td { padding: 3px 4px; text-align: right; white-space: nowrap; }
+#concentrationDebugStatus { color: var(--text-muted); margin: 5px 0; }
+@media (max-width: 700px) {
+ .concentration-chart-layout { flex-direction: column; }
+ .concentration-chart-area { flex: none; }
+ .concentration-five-debug { flex: none; width: 100%; border-left: 0; padding-left: 0; }
+}
+
+.concentration-stock-input { width: 160px; min-width: 120px; font-size: 17px; font-weight: 700; color: var(--text-primary); background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 4px 6px; }
+.concentration-stock-input:hover { border-color: var(--border-color); }
+.concentration-stock-input:focus { outline: 2px solid #ea580c; }
+
+.concentration-charts-column { flex: 1; min-width: 0; }
+.concentration-candle-toggle { display: inline-flex; align-items: center; height: 30px; margin: 0; border: 1px solid var(--border-color); border-radius: 4px; padding: 5px 10px; background: var(--bg-primary); color: var(--text-secondary); cursor: pointer; font-size: 12px; }
+.concentration-candle-area { position: relative; height: 230px; }
+.concentration-candle-area[hidden] { display: none; }
+#concentrationCandleCanvas { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: pan-y; }
+#concentrationCandleCanvas.is-loading { filter: blur(2px); opacity: .75; pointer-events: none; }
+
+.concentration-charts-column .concentration-tooltip { max-width: calc(100% - 16px); white-space: normal; overflow-wrap: anywhere; }
+
+#concentrationTooltip, #concentrationCandleTooltip { position: absolute; z-index: 2; pointer-events: none; display: inline-block; margin: 0; padding: 4px 8px; max-width: 100%; background: var(--bg-panel); color: var(--text-primary); font-size: 12px; white-space: normal; }
+#concentrationTooltip[hidden], #concentrationCandleTooltip[hidden] { display: none; }
+
+.concentration-header-actions { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+
+.concentration-five-debug { overflow-x: auto; }
+
+#concentrationCurrentRate { position: static; min-width: 64px; text-align: right; white-space: nowrap; }
+.concentration-debug-toggle { position: absolute; display: flex; align-items: center; justify-content: center; width: 22px; height: 26px; padding: 0; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-primary); color: var(--text-secondary); cursor: pointer; z-index: 3; }
+.concentration-debug-toggle[aria-expanded="false"] svg { transform: rotate(180deg); }
+#concentrationFiveDebug[hidden] { display: none; }
+.concentration-chart-panel.debug-collapsed { width: var(--concentration-base-width, 570px); }
+
+.concentration-timeframe-row { display: flex; align-items: center; gap: 8px; flex: 0 0 100%; min-width: 0; overflow-x: auto; }
+.concentration-timeframe-row .concentration-controls { flex-shrink: 0; }
+
+.concentration-timeframe-row .concentration-controls { gap: 2px; }
+.concentration-timeframe-row .concentration-controls button { min-width: 28px; padding: 0 5px; }
+.concentration-timeframe-row .concentration-header-actions { gap: 10px; }
+.concentration-timeframe-row .concentration-candle-toggle { white-space: nowrap; }
+
+.concentration-stock-picker { position: relative; }
+#concentrationStockSuggestions { position: absolute; top: 100%; left: 0; z-index: 50; width: 300px; max-width: calc(100vw - 50px); max-height: 280px; overflow-y: auto; background: var(--bg-panel, #fff); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 5px; box-shadow: 0 4px 12px #0002; }
+#concentrationStockSuggestions [role="option"] { padding: 8px 10px; cursor: pointer; font-size: 13px; }
+#concentrationStockSuggestions [role="option"]:hover, #concentrationStockSuggestions [aria-selected="true"] { background: #ea580c22; }

@@ -1388,6 +1388,7 @@ function getSerializedState(sourceData = null) {
         rankInterval: refreshIntervalSelect ? refreshIntervalSelect.value : "2",
         adrInterval: document.getElementById('adrRefreshInterval')?.value,
         watchlistGroupId: watchlistGroupId,
+        rankChartDisplay: window.getConcentrationDisplaySettings?.() || { debugOpen: false, candleOpen: false, mode: 'day', interval: 1 },
         memoHtml: memoHtml,
         memoDelta: memoDelta,
         memoUpdatedAt: Number(localStorage.getItem('memoContent_updatedAt')) || 0,
@@ -1508,6 +1509,7 @@ function applyData(data) {
     isInitializing = true; // Block auto-save during application
     const memoNameMigrationNeeded = migrateMemoTabIconOnce(data);
     try {
+        window.applyConcentrationDisplaySettings?.(data.rankChartDisplay);
         ensurePermanentTabs(); // Always ensure permanent tabs first
         resetDynamicTabs();
         tabData = data.contents || {};
@@ -5830,6 +5832,7 @@ async function restoreServerBackup() {
  * JSON 백업 데이터를 사용하여 전체 애플리케이션 상태 복구
  */
 function applyFullStateBackup(data) {
+    window.applyConcentrationDisplaySettings?.(data.rankChartDisplay);
     console.log("🔄 [Restore] Full state restoration started...");
     migrateMemoTabIconOnce(data);
 

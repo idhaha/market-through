@@ -40,3 +40,9 @@ spec.md에 [NEEDS CLARIFICATION] 마커가 없어 추가 조사 항목 없음.
 분봉 X축은 전체 보기에서 시간만 표시하고, 확대 후 인접 눈금 사이에 충분한 여유가 있으면 30분 간격(09:00·09:30 등)으로 표시한다. 화면이 좁으면 매시 또는 더 넓은 간격을 유지한다.
 
 분봉 X축 눈금에는 시·분 접미사를 붙이지 않는다. 매시 간격은 09·10처럼, 30분 간격은 09:00·09:30처럼 표시한다.
+
+## 개발 도구 폴더 정리 (2026-10-09)
+
+개발용 JS·Python 실행 파일은 dev_tools/debug에 모으고 PNG·TXT·JSON·LOG·HTML 조회 결과 및 자료는 dev_tools/output에 모은다. 기존 experiments/tests/logs/exports 하위 폴더는 이 기준으로 통합했다. 출력 경로는 실행 작업 디렉터리와 무관하게 스크립트 위치 기준 dev_tools/output으로 지정한다. 서버 디버그 로그도 dev_tools/output/server_debug.log에 기록한다. 자동 회귀 테스트도 dev_tools/debug에 포함한다. 과거 fix/patch 스크립트는 일회성 수정 도구이며 이동 과정에서 실행하지 않는다.
+
+데이터 추출 예: node dev_tools/debug/export-kospi-five-minute.js, node dev_tools/debug/check-kospi-outside-session.js. 정리는 파일 이동 전후 SHA256 일치로 검증했고, 변경한 스크립트는 구문 검사로 확인한다. API 호출이나 과거 패치 실행은 검증에 필요하지 않다.

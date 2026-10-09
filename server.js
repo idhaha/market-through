@@ -76,7 +76,7 @@ async function addConcentrationRates(items, accessToken, amountField) {
 }
 
 // 디버그 로그 파일 설정
-const LOG_DIR = path.join(__dirname, 'dev_tools', 'logs');
+const LOG_DIR = path.join(__dirname, 'dev_tools', 'output');
 fs.mkdirSync(LOG_DIR, { recursive: true });
 const LOG_FILE = path.join(LOG_DIR, 'server_debug.log');
 
@@ -129,6 +129,14 @@ app.use('/api', (req, res, next) => {
 });
 
 const concentrationChartService = createConcentrationChartService({ axios, getAccessToken, marketCache });
+app.get('/api/concentration-stocks', (req, res) => {
+    try { res.json({ success: true, stocks: concentrationChartService.searchStocks(req.query.q) }); }
+    catch (error) { res.status(error.status || 503).json({ success: false, error: error.message }); }
+});
+app.get('/api/concentration-stock', async (req, res) => {
+    try { res.json({ success: true, stock: await concentrationChartService.resolveStock(req.query.q) }); }
+    catch (error) { res.status(error.status || 502).json({ success: false, error: error.message }); }
+});
 app.post('/api/concentration-chart', async (req, res) => {
     try {
         res.json(await concentrationChartService.query(req.body, req.authUser.email));
@@ -2753,6 +2761,7 @@ async function getEfriendAccessToken(domain, appKey, secretKey) {
 }
 
 app.listen(PORT, () => {
+    concentrationChartService.startStockDirectorySchedule();
     console.log("\n" + "=".repeat(50));
     console.log(`🚀 서버 구동 완료! (VERSION: SET EXTREMES)`);
     console.log(`링크: http://localhost:${PORT}`);

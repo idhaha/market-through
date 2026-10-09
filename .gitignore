@@ -50,3 +50,7 @@ authorized_emails.json.*.tmp
 data/fred-cache/
 
 dev_tools/
+
+# Test
+move_test
+exports

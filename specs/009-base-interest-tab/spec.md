@@ -2,7 +2,7 @@
 
 **Created**: 2026-10-06
 **Status**: Implemented (운영 통합 검증 대기)
-**Input**: 증시캘린더 오른쪽에 기준금리 고정 탭을 추가하여 Investing.com의 12개 중앙은행 금리 차트를 이미지로 표시한다. 사용자 첨부 move_test/base_interest.js를 구현 참고로 사용한다.
+**Input**: 증시캘린더 오른쪽에 기준금리 고정 탭을 추가하여 Investing.com의 12개 중앙은행 금리 차트를 이미지로 표시한다. 사용자 첨부 dev_tools/debug/base_interest.js를 구현 참고로 사용한다.
 
 ## User Scenarios & Testing
 
