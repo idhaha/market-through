@@ -3,6 +3,14 @@
     let host, getData, persist;
     let draft = null, clickTimer = null, draggedId = null;
     let saveQueue = Promise.resolve();
+    let descriptionFrame = null;
+    let glossaryDraft = null;
+    const glossaryOrder = new Intl.Collator('en', { sensitivity: 'base', numeric: true });
+    function glossaryEntries() {
+        return (Array.isArray(getData().glossary) ? [...getData().glossary] : [])
+            .filter(entry => entry && typeof entry.term === 'string' && typeof entry.description === 'string')
+            .sort((a, b) => glossaryOrder.compare(a.term, b.term));
+    }
     const id = () => crypto.randomUUID();
     const clearClick = () => { clearTimeout(clickTimer); clickTimer = null; };
     const items = () => {
@@ -16,7 +24,10 @@
         });
         return data.items;
     };
-    function message(text) { host.querySelector('[role="status"]').textContent = text; }
+    function message(text) {
+        const status = host.querySelector('[role="status"]');
+        status.textContent = text; status.title = text;
+    }
     function save() {
         message('저장 중…');
         // Serialize saves so older server writes cannot overwrite newer changes.
@@ -156,14 +167,13 @@
                     text.className = 'us-description-text';
                     text.id = `us-description-${item.id}`;
                     text.textContent = item.description;
-                    const previewLines = Math.max(2, item.description.split(/\r\n|\r|\n/).length);
-                    text.style.setProperty('--us-preview-lines', String(previewLines));
                     const toggle = button('펼치기', () => {
                         clearClick();
                         const expanded = toggle.getAttribute('aria-expanded') !== 'true';
                         toggle.setAttribute('aria-expanded', String(expanded));
                         text.classList.toggle('expanded', expanded);
                         toggle.textContent = expanded ? '접기' : '펼치기';
+                        scheduleDescriptions();
                     }, 'us-description-toggle');
                     toggle.setAttribute('aria-expanded', 'false');
                     toggle.setAttribute('aria-controls', text.id);
@@ -202,12 +212,127 @@
         return tr;
     }
     function clearTargets() { host.querySelectorAll('.us-drop-target').forEach(el => el.classList.remove('us-drop-target')); }
+    function renderGlossary() {
+        const list = host.querySelector('.us-glossary-list');
+        list.replaceChildren();
+        const entries = glossaryEntries();
+        entries.forEach(entry => {
+            if (!entry || typeof entry.term !== 'string' || typeof entry.description !== 'string') return;
+            const row = document.createElement('li');
+            const content = document.createElement('div');
+            if (glossaryDraft?.entry === entry) {
+                const termInput = document.createElement('input');
+                termInput.value = glossaryDraft.term; termInput.setAttribute('aria-label', '용어 편집');
+                termInput.addEventListener('input', () => { glossaryDraft.term = termInput.value; });
+                const descriptionInput = document.createElement('textarea');
+                descriptionInput.value = glossaryDraft.description; descriptionInput.rows = 3;
+                descriptionInput.setAttribute('aria-label', '용어 설명 편집');
+                descriptionInput.addEventListener('input', () => { glossaryDraft.description = descriptionInput.value; });
+                const error = document.createElement('p'); error.setAttribute('aria-live', 'polite');
+                const actions = document.createElement('div'); actions.className = 'us-glossary-edit-actions';
+                actions.append(button('저장', () => {
+                    const term = glossaryDraft.term.trim(), description = glossaryDraft.description.trim();
+                    if (!term || !description) { error.textContent = '용어와 설명을 모두 입력해 주세요.'; return; }
+                    const current = glossaryEntries();
+                    if (current.some(item => item !== entry && item.term === term)) { error.textContent = '이미 등록된 용어입니다.'; return; }
+                    Object.assign(entry, { term, description });
+                    getData().glossary = current.sort((a, b) => glossaryOrder.compare(a.term, b.term));
+                    glossaryDraft = null; renderGlossary(); save();
+                }), button('취소', () => { glossaryDraft = null; renderGlossary(); }));
+                content.append(termInput, descriptionInput, error, actions);
+                row.append(content); list.append(row); return;
+            }
+            const term = document.createElement('strong'); term.textContent = entry.term;
+            const description = document.createElement('p'); description.textContent = entry.description;
+            const edit = () => {
+                if (glossaryDraft && !confirm('편집 중인 용어를 취소하고 다른 용어를 편집하시겠습니까?')) return;
+                glossaryDraft = { entry, term: entry.term, description: entry.description };
+                renderGlossary(); host.querySelector('[aria-label="용어 편집"]').focus();
+            };
+            term.addEventListener('dblclick', edit);
+            description.addEventListener('dblclick', edit);
+            content.append(term, description);
+            const remove = button('삭제', () => {
+                if (!confirm(`“${entry.term}” 용어를 삭제하시겠습니까?`)) return;
+                getData().glossary = entries.filter(item => item !== entry);
+                if (glossaryDraft?.entry === entry) glossaryDraft = null;
+                renderGlossary(); save();
+            }, 'us-glossary-delete');
+            remove.setAttribute('aria-label', `${entry.term} 용어 삭제`);
+            row.append(content, remove); list.append(row);
+        });
+        host.querySelector('.us-glossary-empty').hidden = list.children.length > 0;
+        renderGlossaryPreview();
+    }
+    function renderGlossaryPreview() {
+        const preview = host.querySelector('.us-glossary-preview');
+        preview.replaceChildren();
+        const entries = glossaryEntries();
+        entries.forEach(entry => {
+            if (!entry || typeof entry.term !== 'string' || typeof entry.description !== 'string') return;
+            const term = document.createElement('strong'); term.textContent = entry.term;
+            const description = document.createElement('p'); description.textContent = entry.description;
+            const row = document.createElement('span');
+            row.className = 'us-glossary-preview-row';
+            row.append(term, description); preview.append(row);
+        });
+        if (!preview.children.length) preview.textContent = '등록된 용어가 없습니다. 클릭하여 추가하세요.';
+    }
+    function attachGlossary() {
+        const dialog = host.querySelector('.us-glossary-dialog');
+        const form = host.querySelector('.us-glossary-form');
+        const feedback = host.querySelector('.us-glossary-feedback');
+        const info = host.querySelector('.us-glossary-open');
+        info.addEventListener('mouseenter', renderGlossaryPreview);
+        info.addEventListener('focus', renderGlossaryPreview);
+        info.addEventListener('keydown', event => {
+            if (event.key === 'Escape') host.querySelector('.us-glossary-preview').classList.add('dismissed');
+        });
+        info.addEventListener('mouseenter', () => host.querySelector('.us-glossary-preview').classList.remove('dismissed'));
+        info.addEventListener('focus', () => host.querySelector('.us-glossary-preview').classList.remove('dismissed'));
+        host.querySelector('.us-glossary-open').addEventListener('click', () => {
+            renderGlossary(); feedback.textContent = ''; dialog.showModal();
+        });
+        host.querySelector('.us-glossary-close').addEventListener('click', () => dialog.close());
+        dialog.addEventListener('close', () => { glossaryDraft = null; });
+        form.addEventListener('submit', event => {
+            event.preventDefault();
+            const term = form.elements.term.value.trim();
+            const description = form.elements.description.value.trim();
+            if (!term || !description) { feedback.textContent = '용어와 설명을 모두 입력해 주세요.'; return; }
+            const entries = Array.isArray(getData().glossary) ? getData().glossary : [];
+            if (entries.some(entry => entry?.term === term)) { feedback.textContent = '이미 등록된 용어입니다.'; return; }
+            getData().glossary = [...entries, { id: id(), term, description }].sort((a, b) => glossaryOrder.compare(a.term, b.term));
+            form.reset(); feedback.textContent = '용어를 추가했습니다.';
+            renderGlossary(); save(); form.elements.term.focus();
+        });
+    }
+    function scheduleDescriptions() {
+        cancelAnimationFrame(descriptionFrame);
+        descriptionFrame = requestAnimationFrame(() => {
+            host.querySelectorAll('.us-description').forEach(details => {
+                const text = details.querySelector('.us-description-text');
+                const toggle = details.querySelector('button');
+                if (text.classList.contains('expanded')) return;
+                const cell = details.closest('tr').querySelector('.us-item-cell');
+                const title = cell.querySelector('.us-link');
+                const url = cell.querySelector('.us-url-link');
+                const contentHeight = url.getBoundingClientRect().bottom - title.getBoundingClientRect().top;
+                const lineHeight = parseFloat(getComputedStyle(text).lineHeight);
+                const lines = Math.max(3, Math.floor(contentHeight / lineHeight));
+                text.style.setProperty('--us-preview-lines', String(lines));
+                toggle.hidden = true;
+                toggle.hidden = text.scrollHeight <= text.clientHeight + 1;
+            });
+        });
+    }
     function applyColumnWidth() {
         const saved = Number(getData().titleColumnWidth);
         const width = Number.isFinite(saved) && saved >= 15 && saved <= 65 ? saved : 28;
         host.querySelector('.us-title-col').style.width = `${width}%`;
         const handle = host.querySelector('.us-column-resize');
         handle.setAttribute('aria-valuenow', String(Math.round(width)));
+        scheduleDescriptions();
     }
     function attachColumnResize() {
         const handle = host.querySelector('.us-column-resize');
@@ -262,22 +387,19 @@
             const actions = document.createElement('td'); actions.className = 'us-actions';
             if (draft) tr.append(actions); body.append(tr);
         }
-        requestAnimationFrame(() => {
-            host.querySelectorAll('.us-description').forEach(details => {
-                const text = details.querySelector('.us-description-text');
-                details.querySelector('button').hidden = text.scrollHeight <= text.clientHeight + 1;
-            });
-        });
+        scheduleDescriptions();
     }
     window.USLinks = {
-        layout: () => `<div class="container us-links-container"><header class="header-single-line"><h1><strong>자본동향</strong></h1><button type="button" class="btn-primary us-add">항목 추가</button></header><p class="us-help">한 번 클릭: URL 열기 / 더블클릭: 편집 / ⠿ 드래그: 순서 이동</p><p role="status" aria-live="polite" class="us-status"></p><div class="us-table-scroll"><table class="us-links-table"><colgroup><col class="us-title-col"><col></colgroup><thead><tr><th scope="col" class="us-item-heading">항목<span class="us-column-resize" role="separator" aria-label="항목과 설명 열 너비 조절" aria-orientation="vertical" aria-valuemin="15" aria-valuemax="65" aria-valuenow="28" tabindex="0" title="드래그하여 열 너비 조절"></span></th><th scope="col"><span class="us-description-heading">설명</span></th><td class="us-actions-heading" aria-hidden="true" hidden></td></tr></thead><tbody></tbody></table><div class="us-table-footer"><button type="button" class="us-add-circle" aria-label="아래에 항목 추가" title="항목 추가">+</button></div></div></div>`,
+        layout: () => `<div class="container us-links-container"><header class="header-single-line"><h1><strong>자본동향</strong></h1><button type="button" class="btn-primary us-add">항목 추가</button></header><div class="us-info-row"><p role="status" aria-live="polite" class="us-status"></p><p class="us-help">한 번 클릭: URL 열기 / 더블클릭: 편집 / ⠿ 드래그: 순서 이동</p></div><div class="us-table-scroll"><table class="us-links-table"><colgroup><col class="us-title-col"><col></colgroup><thead><tr><th scope="col" class="us-item-heading">항목<span class="us-column-resize" role="separator" aria-label="항목과 설명 열 너비 조절" aria-orientation="vertical" aria-valuemin="15" aria-valuemax="65" aria-valuenow="28" tabindex="0" title="드래그하여 열 너비 조절"></span></th><th scope="col"><span class="us-description-heading">설명<span class="us-glossary-anchor"><button type="button" class="us-glossary-open" aria-label="용어 안내" aria-describedby="usGlossaryPreview">i</button><span id="usGlossaryPreview" class="us-glossary-preview" role="tooltip"></span></span></span></th><td class="us-actions-heading" aria-hidden="true" hidden></td></tr></thead><tbody></tbody></table><dialog class="us-glossary-dialog" aria-labelledby="usGlossaryTitle"><div class="us-glossary-header"><h2 id="usGlossaryTitle">용어 안내</h2><button type="button" class="us-glossary-close" aria-label="용어 안내 닫기">×</button></div><ul class="us-glossary-list"></ul><p class="us-glossary-empty">등록된 용어가 없습니다. 아래에서 추가해 주세요.</p><form class="us-glossary-form"><label>용어<input name="term" aria-label="용어" placeholder="예: VIX" required></label><label>설명<textarea name="description" aria-label="용어 설명" rows="3" required></textarea></label><p class="us-glossary-feedback" aria-live="polite"></p><button type="submit" class="btn-primary">용어 추가</button></form></dialog><div class="us-table-footer"><button type="button" class="us-add-circle" aria-label="아래에 항목 추가" title="항목 추가">+</button></div></div></div>`,
         mount: (element, data, saveData) => {
             if (host === element) return;
             host = element; getData = data; persist = saveData;
             host.querySelector('.us-add').addEventListener('click', () => begin(null));
             host.querySelector('.us-add-circle').addEventListener('click', () => begin(null)); render();
             attachColumnResize();
+            attachGlossary();
+            window.addEventListener('resize', scheduleDescriptions);
         },
-        refresh: () => { if (host) { draft = null; draggedId = null; render(); message(''); } }
+        refresh: () => { if (host) { draft = null; glossaryDraft = null; draggedId = null; render(); renderGlossary(); message(''); } }
     };
 })();

@@ -38,3 +38,7 @@ description은 선택적 문자열이다. 기존 항목에 필드가 없으면 �
 ## Column Width
 
 contents.tab_us.titleColumnWidth는 표 전체 너비 대비 항목 열의 백분율(15–65)이다. 누락/잘못된 값은 28%로 표시한다. 드래그 종료 또는 키보드 조절 후 기존 전체 설정 저장에 포함한다.
+
+## Glossary
+
+contents.tab_us.glossary는 {id, term, description} 항목 배열이다. 항목 링크 목록과 별도로 페이지 전체의 용어를 관리한다. 없는 경우 빈 용어 목록으로 표시한다. 추가 시 앞뒤 공백 제거, 필수값 및 동일 term 중복을 검증한다. 용어와 설명은 같은 ID로 저장하며 삭제 확인 후 쌍 전체를 제거한다.

@@ -2584,7 +2584,7 @@ body.modal-open {
 
 .us-links-table td:first-child .us-link { font-weight: 650; color: #1f2937; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
 .us-description { margin: 0; display: flex; align-items: flex-end; gap: 8px; }
-.us-description-text { flex: 1; min-width: 0; margin: 0; color: #64748b; font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--us-preview-lines, 2); overflow: hidden; }
+.us-description-text { flex: 1; min-width: 0; margin: 0; color: #64748b; font-size: 13px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--us-preview-lines, 3); overflow: hidden; }
 .us-description-text.expanded { display: block; -webkit-line-clamp: unset; white-space: pre-wrap; }
 .us-description-toggle { flex-shrink: 0; white-space: nowrap; line-height: 19.5px; padding: 0; margin: 0; border: 0; background: transparent; color: #2563eb; font-size: 12px; cursor: pointer; }
 .us-description-toggle[hidden] { display: none; }
@@ -2604,3 +2604,43 @@ body.modal-open {
 .us-column-resize { position: absolute; right: -5px; top: 0; bottom: 0; width: 10px; cursor: col-resize; touch-action: none; z-index: 2; }
 .us-column-resize:hover, .us-column-resize:focus-visible, .us-resizing .us-column-resize { background: #2563eb33; outline: none; }
 .us-resizing, .us-resizing * { cursor: col-resize !important; user-select: none; }
+
+.us-info-row { display: flex; align-items: center; gap: 24px; margin: 10px 0; overflow-x: auto; }
+.us-info-row .us-status { flex: 0 0 320px; min-height: 20px; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.us-info-row .us-help { flex-shrink: 0; margin: 0; white-space: nowrap; }
+
+.us-glossary-open { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; margin-left: 7px; padding: 0; border: 1px solid #94a3b8; border-radius: 50%; background: #fff; color: #64748b; font: italic 600 13px Georgia, serif; cursor: pointer; vertical-align: middle; }
+.us-glossary-dialog { width: min(560px, calc(100vw - 40px)); max-height: 80vh; margin: auto; padding: 24px; box-sizing: border-box; border: 1px solid #dce1e7; border-radius: 12px; background: #fff; color: #1f2937; overflow-y: auto; }
+.us-glossary-dialog::backdrop { background: #0006; }
+.us-glossary-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.us-glossary-header h2 { margin: 0; font-size: 20px; }
+.us-glossary-close { border: 0; background: transparent; font-size: 26px; color: #64748b; cursor: pointer; }
+.us-glossary-list { list-style: none; margin: 0 0 20px; padding: 0; }
+.us-glossary-list li { display: flex; align-items: flex-start; gap: 16px; padding: 12px 0; border-bottom: 1px solid #dce1e7; }
+.us-glossary-list li > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.us-glossary-list p { margin: 5px 0 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; color: #64748b; }
+.us-glossary-delete { flex-shrink: 0; height: 32px; padding: 0 9px; border: 1px solid #dce1e7; border-radius: 4px; background: #fff; color: #dc2626; cursor: pointer; }
+.us-glossary-form { display: grid; gap: 12px; }
+.us-glossary-form label { display: grid; gap: 6px; font-size: 14px; }
+.us-glossary-form input, .us-glossary-form textarea { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 4px; font: inherit; }
+.us-glossary-form textarea { resize: vertical; }
+.us-glossary-feedback, .us-glossary-empty { font-size: 13px; color: #64748b; }
+.us-glossary-form .btn-primary { justify-self: end; }
+.us-glossary-dialog button:focus-visible, .us-glossary-open:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+
+.us-links-table th:has(.us-glossary-anchor) { overflow: visible; }
+.us-glossary-anchor { display: inline-block; position: relative; vertical-align: middle; }
+.us-glossary-preview { display: none; position: absolute; top: 100%; right: 0; width: min(380px, 65vw); max-height: 320px; overflow-y: auto; padding: 14px; border: 1px solid #dce1e7; border-radius: 8px; box-shadow: 0 6px 20px #0002; background: #fff; color: #334155; text-align: left; font-size: 13px; font-weight: 400; white-space: normal; overflow-wrap: anywhere; z-index: 30; }
+.us-glossary-anchor:hover .us-glossary-preview:not(.dismissed), .us-glossary-anchor:focus-within .us-glossary-preview:not(.dismissed) { display: block; }
+.us-glossary-preview strong { display: block; }
+.us-glossary-preview p { margin: 4px 0 12px; white-space: pre-wrap; line-height: 1.5; color: #64748b; }
+.us-glossary-preview p:last-child { margin-bottom: 0; }
+
+.us-glossary-preview { width: min(560px, 75vw); }
+.us-glossary-preview-row { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 12px; align-items: baseline; padding: 6px 0; }
+.us-glossary-preview-row strong { min-width: 0; }
+.us-glossary-preview-row p, .us-glossary-preview-row p:last-child { margin: 0; white-space: normal; }
+
+.us-glossary-list input, .us-glossary-list textarea { width: 100%; box-sizing: border-box; padding: 8px; margin-bottom: 8px; border: 1px solid #cbd5e1; border-radius: 4px; font: inherit; }
+.us-glossary-edit-actions { display: flex; gap: 8px; }
+.us-glossary-edit-actions button { padding: 6px 12px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer; }

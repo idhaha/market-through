@@ -38,12 +38,18 @@ node tests/us-links.test.cjs는 설치된 Edge(channel: msedge)의 headless 모�
 
 ## Description Display
 
-items의 선택적 description을 저장하고 초안에도 포함한다. 오른쪽 설명 셀에 설명을 textContent로 표시하여 입력 HTML을 실행하지 않는다. CSS 두 줄 clamp 및 렌더 후 높이 측정으로 넘치는 설명에만 펼치기를 제공한다. 설명 영역 click/dblclick은 셀 URL 동작으로 전파하지 않는다. 설명 본문 dblclick은 해당 항목 편집을 시작하고 설명 textarea에 포커스를 둔다. 펼치기/접기 버튼 dblclick은 편집에서 제외한다. 여러 줄 textarea는 최소 72px이며 제목/URL 및 작업 버튼 36px 정책은 유지한다.
+items의 선택적 description을 저장하고 초안에도 포함한다. 오른쪽 설명 셀에 설명을 textContent로 표시하여 입력 HTML을 실행하지 않는다. CSS 세 줄 clamp 및 렌더 후 높이 측정으로 넘치는 설명에만 펼치기를 제공한다. 설명 영역 click/dblclick은 셀 URL 동작으로 전파하지 않는다. 설명 본문 dblclick은 해당 항목 편집을 시작하고 설명 textarea에 포커스를 둔다. 펼치기/접기 버튼 dblclick은 편집에서 제외한다. 여러 줄 textarea는 최소 72px이며 제목/URL 및 작업 버튼 36px 정책은 유지한다.
 
 설명과 펼치기/접기 버튼은 flex 행으로 구성하여 버튼을 마지막 표시 줄 오른쪽 끝에 정렬한다. 제목은 항목 셀 너비를 활용해 줄바꿈하며 조기 말줄임을 제거한다. URL의 말줄임은 유지한다.
 
-접힌 설명과 펼친 설명 모두 white-space: pre-wrap으로 저장된 줄바꿈을 유지한다. 접힌 상태의 clamp는 max(2, 직접 입력한 줄 수)이며 짧은 여러 줄 설명은 말줄임 없이 모두 표시한다. 긴 문장의 추가 자동 줄바꿈만 펼치기로 확인한다.
+접힌 설명과 펼친 설명 모두 white-space: pre-wrap으로 저장된 줄바꿈을 유지한다. 접힌 상태는 세 줄 clamp를 적용하며 직접 입력한 줄바꿈과 자동 줄바꿈 모두 세 줄을 넘으면 펼치기를 제공한다.
 
 설명 제목은 span으로 표시하고 편집 중 작업 열 너비의 절반만큼 오른쪽으로 보정하여 일반 상태 가운데 위치를 유지한다. 작업 열과 보정값은 동일한 CSS 변수(--us-actions-width)를 사용한다. 설명 본문은 일반 상태에서 계속 확장된다.
 
 항목/설명 열 경계에 pointer capture 드래그 핸들을 두고 항목 col의 백분율 너비를 갱신한다. titleColumnWidth(15–65%, 기본 28%)를 tab_us 설정에 저장하고 render에서 복원한다. 바깥 테두리/행 높이 조절은 제공하지 않는다.
+
+설명 clamp는 max(3, floor(왼쪽 제목 상단부터 URL 하단까지의 높이 / 설명 line-height))로 계산한다. 행 전체 높이를 입력으로 쓰지 않아 설명 확장에 따른 피드백을 방지한다. 렌더·열 너비 조절·window resize에서 프레임 단위로 재계산한다.
+
+상태/동작 안내는 flex 한 줄이며 상태 영역 320px, 간격 24px로 고정한다. 상태 p에 title을 동기화해 긴 메시지를 확인할 수 있게 한다. 좁은 화면에서는 안내 행 가로 스크롤을 제공한다.
+
+용어 안내는 native dialog.showModal로 표시하여 모달 포커스와 Escape 닫기를 제공한다. form submit에서 glossary 추가, 확인 후 삭제를 수행하고 기존 save 큐를 재사용한다. 표시에는 textContent를 사용하며 설정 복원 시 renderGlossary도 갱신한다.
