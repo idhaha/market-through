@@ -156,6 +156,8 @@
                     text.className = 'us-description-text';
                     text.id = `us-description-${item.id}`;
                     text.textContent = item.description;
+                    const previewLines = Math.max(2, item.description.split(/\r\n|\r|\n/).length);
+                    text.style.setProperty('--us-preview-lines', String(previewLines));
                     const toggle = button('펼치기', () => {
                         clearClick();
                         const expanded = toggle.getAttribute('aria-expanded') !== 'true';
