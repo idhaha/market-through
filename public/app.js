@@ -13,6 +13,7 @@ const PERM_TAB_ID = 'tab_rank';
 const ADR_TAB_ID = 'tab_adr';
 const MEMO_TAB_ID = 'tab_memo';
 const EARNINGS_TAB_ID = 'tab_earnings';
+const US_TAB_ID = 'tab_us';
 const BASE_INTEREST_TAB_ID = 'tab_base_interest';
 const BASE_INTEREST_BANKS = [
     ['FED', '연방준비제도'], ['ECB', '유럽중앙은행'], ['BOE', '영국은행'], ['BOJ', '일본은행'],
@@ -1238,6 +1239,18 @@ function ensurePermanentTabs() {
     }
     earningsBtn.textContent = '증시캘린더';
     earningsBtn.title = '고정 탭 (증시 캘린더)';
+    let usBtn = document.querySelector(`.tab-btn[data-tab="${US_TAB_ID}"]`);
+    if (!usBtn) {
+        usBtn = document.createElement('button');
+        usBtn.className = 'tab-btn perm-tab';
+        usBtn.dataset.tab = US_TAB_ID;
+        usBtn.dataset.perm = 'true';
+        usBtn.draggable = false;
+    }
+    usBtn.textContent = '자본동향';
+    usBtn.title = '고정 탭 (자본동향)';
+    tabsWrapper.insertBefore(usBtn, earningsBtn.nextSibling);
+    createTabContentElement(US_TAB_ID);
     let interestBtn = document.querySelector(`.tab-btn[data-tab="${BASE_INTEREST_TAB_ID}"]`);
     if (!interestBtn) {
         interestBtn = document.createElement('button');
@@ -1248,7 +1261,7 @@ function ensurePermanentTabs() {
     }
     interestBtn.textContent = '기준금리';
     interestBtn.title = '고정 탭 (기준금리)';
-    tabsWrapper.insertBefore(interestBtn, earningsBtn.nextSibling);
+    tabsWrapper.insertBefore(interestBtn, usBtn.nextSibling);
     createTabContentElement(BASE_INTEREST_TAB_ID);
 }
 
@@ -1268,6 +1281,7 @@ function resolveTabName(tabId, candidateName = null, tabObj = null) {
     }
     if (tabId === BASE_INTEREST_TAB_ID) return '기준금리';
     if (tabId === EARNINGS_TAB_ID) return '증시캘린더';
+    if (tabId === US_TAB_ID) return '자본동향';
 
     // 1. 이미 유효하고 '(복구)'가 없는 후보 이름인 경우
     if (candidateName && typeof candidateName === 'string' && !candidateName.includes("(복구)") && candidateName.trim() !== "") {
@@ -1439,7 +1453,7 @@ async function syncSettingsToServer(data) {
 
 function saveTabState(tabId) {
     const content = document.getElementById(tabId);
-    if (!content || tabId === PERM_TAB_ID || tabId === ADR_TAB_ID || tabId === EARNINGS_TAB_ID || tabId === BASE_INTEREST_TAB_ID || tabId === MEMO_TAB_ID) return;
+    if (!content || tabId === PERM_TAB_ID || tabId === ADR_TAB_ID || tabId === EARNINGS_TAB_ID || tabId === BASE_INTEREST_TAB_ID || tabId === US_TAB_ID || tabId === MEMO_TAB_ID) return;
 
     // Special handling for dynamic overseas/exchange tabs: they don't use standard grid saving
     const type = tabData[tabId]?.type;
@@ -1513,6 +1527,7 @@ function applyData(data) {
         ensurePermanentTabs(); // Always ensure permanent tabs first
         resetDynamicTabs();
         tabData = data.contents || {};
+        window.USLinks.refresh();
 
         data.tabs.forEach(t => {
             const fixedName = resolveTabName(t.id, t.name, tabData[t.id]);
@@ -1521,7 +1536,7 @@ function applyData(data) {
                 tabData[t.id].name = fixedName;
             }
 
-            if (t.id === PERM_TAB_ID || t.id === ADR_TAB_ID || t.id === EARNINGS_TAB_ID || t.id === BASE_INTEREST_TAB_ID || t.id === MEMO_TAB_ID) {
+            if (t.id === PERM_TAB_ID || t.id === ADR_TAB_ID || t.id === EARNINGS_TAB_ID || t.id === BASE_INTEREST_TAB_ID || t.id === US_TAB_ID || t.id === MEMO_TAB_ID) {
                 const btn = document.querySelector(`.tab-btn[data-tab="${t.id}"]`);
                 if (btn) {
                     if (t.id === EARNINGS_TAB_ID) {
@@ -1698,7 +1713,7 @@ async function saveMemoToServer(memoHtml, memoDelta, memoUpdatedAt = Date.now())
 
 function resetDynamicTabs() {
     document.querySelectorAll('.tab-btn:not(.add-tab-btn):not([data-perm])').forEach(b => b.remove());
-    document.querySelectorAll('.tab-content:not(#tab_rank):not(#tab_adr):not(#tab_earnings):not(#tab_base_interest):not(#tab_memo)').forEach(c => c.remove());
+    document.querySelectorAll('.tab-content:not(#tab_rank):not(#tab_adr):not(#tab_earnings):not(#tab_base_interest):not(#tab_us):not(#tab_memo)').forEach(c => c.remove());
 }
 
 function activateTab(tabId) {
@@ -1710,7 +1725,7 @@ function activateTab(tabId) {
 
     document.querySelectorAll(".tab-content.active").forEach(tab => {
         if (tab.id !== tabId) {
-            if (tab.id !== PERM_TAB_ID && tab.id !== ADR_TAB_ID && tab.id !== EARNINGS_TAB_ID && tab.id !== BASE_INTEREST_TAB_ID && tab.id !== MEMO_TAB_ID) {
+            if (tab.id !== PERM_TAB_ID && tab.id !== ADR_TAB_ID && tab.id !== EARNINGS_TAB_ID && tab.id !== BASE_INTEREST_TAB_ID && tab.id !== US_TAB_ID && tab.id !== MEMO_TAB_ID) {
                 saveTabState(tab.id);
                 // tab.innerHTML = ''; // Removed to persist content and prevent reload
             }
@@ -1748,6 +1763,8 @@ function activateTab(tabId) {
                 calendar.refetchEvents();
             }
         }, 100);
+    } else if (tabId === US_TAB_ID) {
+        // The paired links table is initialized by initializeTab.
     } else if (tabId === BASE_INTEREST_TAB_ID) {
         loadBaseInterestCharts();
     } else if (tabId === EARNINGS_TAB_ID || (tabData[tabId] && (tabData[tabId].type === 'overseas_custom' || tabData[tabId].type === 'exchange_rate'))) {
@@ -1771,6 +1788,10 @@ function initializeTab(tabId) {
         content.innerHTML = createChartGrid(tabId);
     }
 
+    if (tabId === US_TAB_ID) window.USLinks.mount(content, () => {
+        if (!tabData[US_TAB_ID]) tabData[US_TAB_ID] = { name: '자본동향', items: [] };
+        return tabData[US_TAB_ID];
+    }, saveAppData);
     if (tabId === EARNINGS_TAB_ID) loadEarningsCalendarFrame(tabId);
 
     // 2. Attach specialized listeners (idempotent checks included)
@@ -1964,6 +1985,8 @@ function createChartGrid(tabId) {
                 </div>
             </div>`;
     }
+
+    if (tabId === US_TAB_ID) return window.USLinks.layout();
 
     if (tabId === BASE_INTEREST_TAB_ID) {
         return `<div class="container overseas-container">
@@ -5669,6 +5692,7 @@ function chooseServerBackup(files) {
 
     return new Promise(resolve => {
         let finished = false;
+        let deleting = false;
         const selectFile = (filename, moveFocus = false) => {
             selectedFilename = filename;
             list.querySelectorAll('.backup-picker-item').forEach(item => {
@@ -5676,7 +5700,7 @@ function chooseServerBackup(files) {
                 item.setAttribute('aria-selected', String(selected));
                 if (selected && moveFocus) item.focus();
             });
-            restoreButton.disabled = !selectedFilename;
+            restoreButton.disabled = deleting || !selectedFilename;
         };
 
         const renderFiles = () => {
@@ -5688,6 +5712,8 @@ function chooseServerBackup(files) {
 
             list.replaceChildren();
             visibleFiles.forEach(file => {
+                const row = document.createElement('div');
+                row.className = 'backup-picker-row';
                 const item = document.createElement('button');
                 item.type = 'button';
                 item.className = 'backup-picker-item';
@@ -5709,7 +5735,40 @@ function chooseServerBackup(files) {
                 meta.append(date, size);
                 item.append(filename, meta);
                 item.addEventListener('click', () => selectFile(file.filename));
-                list.appendChild(item);
+                const deleteButton = document.createElement('button');
+                deleteButton.type = 'button';
+                deleteButton.className = 'backup-picker-delete';
+                deleteButton.textContent = 'X';
+                deleteButton.title = `${file.filename} 삭제`;
+                deleteButton.setAttribute('aria-label', `${file.filename} 삭제`);
+                deleteButton.disabled = deleting;
+                deleteButton.addEventListener('click', async () => {
+                    if (deleting) return;
+                    if (!confirm(`“${file.filename}” 파일을 서버에서 삭제하시겠습니까?`)) return;
+                    deleting = true;
+                    restoreButton.disabled = true;
+                    list.querySelectorAll('.backup-picker-delete').forEach(button => { button.disabled = true; });
+                    try {
+                        const response = await fetch(`/api/settings/backups/${encodeURIComponent(file.filename)}`, { method: 'DELETE' });
+                        const result = await response.json();
+                        if (!response.ok || !result.success) throw new Error(result.error || '백업 삭제에 실패했습니다.');
+                        const index = sortedFiles.findIndex(entry => entry.filename === file.filename);
+                        if (index >= 0) sortedFiles.splice(index, 1);
+                        if (selectedFilename === file.filename) selectedFilename = null;
+                    } catch (error) {
+                        if (!finished) alert(error.message);
+                    } finally {
+                        deleting = false;
+                        if (!finished) {
+                            renderFiles();
+                            restoreButton.disabled = !selectedFilename;
+                            searchInput.focus();
+                        }
+                    }
+                });
+                row.append(item);
+                if (file.filename !== 'autosaved_user_settings.json') row.append(deleteButton);
+                list.appendChild(row);
             });
 
             summary.textContent = query
@@ -5741,7 +5800,7 @@ function chooseServerBackup(files) {
         };
         const cancel = () => finish(null);
         const restore = () => {
-            if (!selectedFilename) return;
+            if (!selectedFilename || deleting) return;
             finish(sortedFiles.find(file => file.filename === selectedFilename) || null);
         };
         const onBackdropClick = event => {
@@ -5764,7 +5823,7 @@ function chooseServerBackup(files) {
                     ? (direction > 0 ? 0 : items.length - 1)
                     : Math.max(0, Math.min(items.length - 1, currentIndex + direction));
                 selectFile(items[nextIndex].dataset.filename, true);
-            } else if (event.key === 'Enter' && list.contains(document.activeElement) && selectedFilename) {
+            } else if (event.key === 'Enter' && document.activeElement?.classList.contains('backup-picker-item') && selectedFilename) {
                 event.preventDefault();
                 restore();
             } else if (event.key === 'Tab') {
@@ -5839,11 +5898,13 @@ function applyFullStateBackup(data) {
     // 1. 데이터 교체 (Contents)
     tabData = data.contents || {};
 
+    window.USLinks.refresh();
+
     // 2. 기존 커스텀 탭 UI 제거 (영구 탭 제외)
     const allTabBtns = document.querySelectorAll('.tab-btn:not(.add-tab-btn)');
     allTabBtns.forEach(btn => {
         const id = btn.dataset.tab;
-        if (id !== PERM_TAB_ID && id !== ADR_TAB_ID && id !== EARNINGS_TAB_ID && id !== BASE_INTEREST_TAB_ID && id !== MEMO_TAB_ID) {
+        if (id !== PERM_TAB_ID && id !== ADR_TAB_ID && id !== EARNINGS_TAB_ID && id !== BASE_INTEREST_TAB_ID && id !== US_TAB_ID && id !== MEMO_TAB_ID) {
             btn.remove();
             const content = document.getElementById(id);
             if (content) content.remove();
@@ -5853,7 +5914,7 @@ function applyFullStateBackup(data) {
     // 3. 탭 버튼 및 컨텐츠 재생성 (JSON에 기록된 순서대로)
     if (data.tabs && Array.isArray(data.tabs)) {
         data.tabs.forEach(tab => {
-            if (tab.id !== PERM_TAB_ID && tab.id !== ADR_TAB_ID && tab.id !== EARNINGS_TAB_ID && tab.id !== BASE_INTEREST_TAB_ID && tab.id !== MEMO_TAB_ID) {
+            if (tab.id !== PERM_TAB_ID && tab.id !== ADR_TAB_ID && tab.id !== EARNINGS_TAB_ID && tab.id !== BASE_INTEREST_TAB_ID && tab.id !== US_TAB_ID && tab.id !== MEMO_TAB_ID) {
                 const fixedName = resolveTabName(tab.id, tab.name, tabData[tab.id]);
                 tab.name = fixedName;
                 createTabButtonElement(tab.id, fixedName);

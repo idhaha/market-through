@@ -2481,6 +2481,23 @@ app.get('/api/settings/backups/:filename', (req, res) => {
     }
 });
 
+app.delete('/api/settings/backups/:filename', (req, res) => {
+    if (req.params.filename === 'autosaved_user_settings.json') {
+        return res.status(403).json({ success: false, error: '자동 저장 설정 파일은 삭제할 수 없습니다.' });
+    }
+    const backupPath = getBackupPath(req.params.filename);
+    if (!backupPath) return res.status(400).json({ success: false, error: '허용되지 않은 백업 파일명입니다.' });
+    try {
+        fs.unlinkSync(backupPath);
+        res.json({ success: true, filename: req.params.filename });
+    } catch (error) {
+        res.status(error.code === 'ENOENT' ? 404 : 500).json({
+            success: false,
+            error: error.code === 'ENOENT' ? '백업 파일을 찾을 수 없습니다.' : '백업 파일을 삭제하지 못했습니다.'
+        });
+    }
+});
+
 app.post('/api/settings/backups', (req, res) => {
     try {
         const { json } = req.body || {};
