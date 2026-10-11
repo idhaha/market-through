@@ -1,7 +1,7 @@
 (() => {
     'use strict';
     const scopes = [1, 3, 5, 10, 15, 30, 45, 60];
-    const state = { selection: null, mode: 'day', interval: 1, points: [], cursor: null,
+    const state = { selection: null, mode: 'day', interval: 5, points: [], cursor: null,
         hasMore: false, busy: false, visible: 0, start: 0, request: 0, controller: null, hover: null, drag: null };
     const encoded = value => encodeURIComponent(String(value || '')).replace(/'/g, '%27');
     window.rankChartRowAttributes = (stock, efriend = false) => {
@@ -598,6 +598,7 @@
             if (row && ['Enter', ' '].includes(event.key)) { event.preventDefault(); selectRow(row); }
         });
         panel.querySelectorAll('[data-chart-mode]').forEach(button => button.addEventListener('click', () => {
+            if (button.dataset.chartMode === 'minute' && state.mode !== 'minute') state.interval = 5;
             state.mode = button.dataset.chartMode; updateControls(); saveDisplaySettings(); load();
         }));
         panel.querySelectorAll('[data-chart-interval]').forEach(button => button.addEventListener('click', () => {

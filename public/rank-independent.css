@@ -5,10 +5,9 @@
 .rank-independent #independentTransactionContent { flex: 1; min-height: 0; }
 .rank-independent #transactionTable { display: flex; flex-direction: column; height: 100%; }
 .rank-independent #transactionTable thead { flex-shrink: 0; }
-.rank-independent #transactionBody { flex: 1; min-height: 0; max-height: none; overflow-y: auto; container-type: size; }
-/* Scale the list contents with its height, using roughly 20 visible rows. */
-.rank-independent #transactionBody tr { height: clamp(26px, 5cqh, 48px); }
-.rank-independent #transactionBody td { font-size: clamp(12px, 2.5cqh, 20px); padding-block: clamp(2px, 0.5cqh, 6px); vertical-align: middle; }
+.rank-independent #transactionBody { flex: 1; min-height: 0; max-height: none; overflow-y: auto; }
+.rank-independent #transactionBody tr { height: var(--rank-row-height, 28px); }
+.rank-independent #transactionBody td { padding-block: var(--rank-row-padding, 3px); vertical-align: middle; }
 .rank-independent #independentChartContent { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .rank-independent .concentration-chart-header, .rank-independent .concentration-chart-footer { flex-shrink: 0; }
 .rank-independent .concentration-chart-layout { flex: 1; min-height: 0; }
@@ -31,9 +30,6 @@
 .independent-chart-heading > label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
 .independent-chart-heading h2 { font-size: 17px; }
 .rank-independent [hidden] { display: none !important; }
-.rank-independent #tab_rank.independent-has-collapse { grid-template-columns: minmax(0, 1fr); }
-.rank-independent #tab_rank:has(> .independent-collapsed:first-child) { grid-template-rows: auto minmax(300px, 1fr); }
-.rank-independent #tab_rank:has(> .independent-collapsed:last-child) { grid-template-rows: minmax(300px, 1fr) auto; }
-.rank-independent #tab_rank:has(> .independent-collapsed:first-child):has(> .independent-collapsed:last-child) { grid-template-rows: auto auto; align-content: start; }
+.independent-collapsed .independent-chart-heading > label { display: none; }
 .independent-collapsed .panel-header, .independent-collapsed .independent-chart-heading { margin-bottom: 0; padding-bottom: 0; }
 @media(max-width: 950px) { .rank-independent #tab_rank { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(2, minmax(300px, 1fr)); } }

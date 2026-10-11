@@ -35,6 +35,44 @@
     document.addEventListener('DOMContentLoaded', () => {
         const status = document.getElementById('rankConnectionStatus'), pin = document.getElementById('rankStockPinned');
         const layout = document.getElementById('tab_rank');
+        let foldLayout = null;
+        window.addEventListener('resize', () => {
+            if (!foldLayout) return;
+            const panels = [...layout.children];
+            if (panels.every(item => item.classList.contains('independent-collapsed'))) return;
+            // Keep manual resizing available after the native fold resize completes.
+            layout.style.flex = '1'; layout.style.width = '100%'; layout.style.height = 'auto';
+            if (foldLayout.stacked) {
+                layout.style.gridTemplateRows = panels.map(item => item.classList.contains('independent-collapsed') ? (item.querySelector('.independent-panel-title').offsetHeight + 40) + 'px' : 'minmax(300px, 1fr)').join(' ');
+            } else {
+                layout.style.gridTemplateColumns = panels.map(item => item.classList.contains('independent-collapsed') ? Math.max(180, item.querySelector('.independent-panel-title').scrollWidth + 40) + 'px' : 'minmax(0, 1fr)').join(' ');
+                layout.style.gridTemplateRows = 'minmax(300px, 1fr)';
+            }
+        });
+        function resizeForFold(panel, toggle) {
+            const panels = [...layout.children];
+            if (!foldLayout) foldLayout = { stacked: panels[1].offsetTop > panels[0].offsetTop + 20,
+                sizes: panels.map(item => ({ width: item.offsetWidth, height: item.offsetHeight })) };
+            const index = panels.indexOf(panel);
+            if (!panel.classList.contains('independent-collapsed')) foldLayout.sizes[index] = { width: panel.offsetWidth, height: panel.offsetHeight };
+            const before = layout.getBoundingClientRect();
+            toggle();
+            const sizes = panels.map((item, i) => {
+                if (!item.classList.contains('independent-collapsed')) return foldLayout.sizes[i];
+                const heading = item.querySelector('.independent-panel-title');
+                return { width: Math.max(180, heading.scrollWidth + 40), height: heading.offsetHeight + 40 };
+            });
+            const width = foldLayout.stacked ? Math.max(...sizes.map(item => item.width)) : sizes[0].width + sizes[1].width + 14;
+            const height = foldLayout.stacked ? sizes[0].height + sizes[1].height + 14 : Math.max(...sizes.map(item => item.height));
+            layout.style.gridTemplateColumns = foldLayout.stacked ? 'minmax(0, 1fr)' : sizes.map(item => item.width + 'px').join(' ');
+            layout.style.gridTemplateRows = foldLayout.stacked ? sizes.map(item => item.height + 'px').join(' ') : height + 'px';
+            layout.style.flex = 'none'; layout.style.width = width + 'px'; layout.style.height = height + 'px';
+            window.chrome?.webview?.postMessage(`resize-window:${Math.round(width - before.width)},${Math.round(height - before.height)},${innerWidth},${innerHeight}`);
+            if (!panels.some(item => item.classList.contains('independent-collapsed'))) {
+                // Resume responsive sizing after the native window restores its full size.
+                setTimeout(() => { layout.removeAttribute('style'); foldLayout = null; }, 100);
+            }
+        }
         function collapseControl(panel, heading, bodies, controls) {
             const button = document.createElement('button'); button.type = 'button'; button.className = 'independent-collapse';
             button.setAttribute('aria-expanded', 'true'); button.setAttribute('aria-controls', bodies.map(body => body.id).join(' '));
@@ -48,11 +86,21 @@
                 bodies.forEach(body => { body.hidden = collapsed; }); if (controls) controls.hidden = collapsed;
                 layout.classList.toggle('independent-has-collapse', !!layout.querySelector('.independent-collapsed'));
             }
-            button.addEventListener('click', () => { panel.classList.toggle('independent-collapsed'); update(); }); update();
+            button.addEventListener('click', () => resizeForFold(panel, () => { panel.classList.toggle('independent-collapsed'); update(); })); update();
         }
         const table = document.getElementById('transactionTable').closest('.panel');
         const tableBody = table.querySelector('.table-wrapper'); tableBody.id = 'independentTransactionContent';
         collapseControl(table, table.querySelector('h2'), [tableBody], table.querySelector('.panel-controls'));
+        const rows = document.getElementById('transactionBody');
+        // Measure the actual list viewport rather than relying on table container units.
+        const rowSizing = new ResizeObserver(() => {
+            const height = rows.clientHeight;
+            if (!height) return;
+            const rowHeight = Math.min(60, Math.max(24, 24 + height * 0.035));
+            rows.style.setProperty('--rank-row-height', rowHeight + 'px');
+            rows.style.setProperty('--rank-row-padding', (2 + (rowHeight - 24) / 2) + 'px');
+        });
+        rowSizing.observe(rows);
         const chart = document.getElementById('concentrationChartPanel');
         const chartBody = document.createElement('div'); chartBody.id = 'independentChartContent';
         chartBody.append(...chart.childNodes); chart.append(chartBody);

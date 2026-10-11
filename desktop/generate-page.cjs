@@ -13,9 +13,9 @@ if (start < 0 || chartStart < 0 || tableEnd < 0) throw new Error('Rank template 
 fs.writeFileSync(path.join(root, 'public/rank-independent.html'), `<!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>[독립창]</title><link rel="stylesheet" href="style.css?v=20261011_v56">
-<link rel="stylesheet" href="rank-independent.css?v=6">
-<script src="rank-independent-client.js?v=5" defer></script>
-<script src="concentration-chart.js?v=20261011_v32_pin" defer></script></head>
+<link rel="stylesheet" href="rank-independent.css?v=8">
+<script src="rank-independent-client.js?v=7" defer></script>
+<script src="concentration-chart.js?v=20261011_v33" defer></script></head>
 <body class="rank-independent"><div class="independent-toolbar">
 <label><input id="rankStockPinned" type="checkbox"> 쏠림율 차트 종목 동기화 해제</label>
 <span id="rankConnectionStatus" role="status">메인 페이지 연결 중</span>

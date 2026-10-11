@@ -57,7 +57,7 @@ internal sealed class IndependentForm : Form {
         folder = stateDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MarketThrough", "State");
         initial = url; current = url; allowed = new Uri(url).GetLeftPart(UriPartial.Authority);
         Text = "[독립창]"; Font = new Font("맑은 고딕", 9F); FormBorderStyle = FormBorderStyle.None; Padding = new Padding(5); BackColor = Color.FromArgb(210, 218, 230);
-        MinimumSize = new Size(640, 480); Size = new Size(1250, 800); StartPosition = FormStartPosition.Manual;
+        MinimumSize = new Size(320, 160); Size = new Size(1250, 800); StartPosition = FormStartPosition.Manual;
         Directory.CreateDirectory(folder); RestoreBoundsFromDisk();
         var bar = new Panel { Dock = DockStyle.Top, Height = 36, BackColor = Color.FromArgb(226, 232, 240) };
         var title = new Label { Text = "[독립창]", Font = new Font(Font, FontStyle.Bold), Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(8, 0, 0, 0) };
@@ -94,7 +94,20 @@ internal sealed class IndependentForm : Form {
                     Uri next; if (!Uri.TryCreate(e.Uri, UriKind.Absolute, out next) || next.GetLeftPart(UriPartial.Authority) != allowed || next.AbsolutePath != "/rank-independent.html") e.Cancel = true;
                 };
                 web.CoreWebView2.WebMessageReceived += delegate(object sender, CoreWebView2WebMessageReceivedEventArgs e) {
-                    Uri source; if (Uri.TryCreate(e.Source, UriKind.Absolute, out source) && source.GetLeftPart(UriPartial.Authority) == allowed && source.AbsolutePath == "/rank-independent.html" && e.TryGetWebMessageAsString() == "connection-ended") Close();
+                    Uri source;
+                    if (!Uri.TryCreate(e.Source, UriKind.Absolute, out source) || source.GetLeftPart(UriPartial.Authority) != allowed || source.AbsolutePath != "/rank-independent.html") return;
+                    string message;
+                    try { message = e.TryGetWebMessageAsString(); } catch { return; }
+                    if (message == "connection-ended") Close();
+                    else if (message.StartsWith("resize-window:")) {
+                        var values = message.Substring(14).Split(','); int dw, dh, vw, vh;
+                        if (values.Length != 4 || !int.TryParse(values[0], out dw) || !int.TryParse(values[1], out dh) || !int.TryParse(values[2], out vw) || !int.TryParse(values[3], out vh) || vw < 1 || vh < 1 || Math.Abs((long)dw) > 10000 || Math.Abs((long)dh) > 10000) return;
+                        WindowState = FormWindowState.Normal;
+                        var area = Screen.FromRectangle(Bounds).WorkingArea;
+                        Width = Math.Max(MinimumSize.Width, Math.Min(area.Width, Width + (int)Math.Round(dw * (double)web.ClientSize.Width / vw)));
+                        Height = Math.Max(MinimumSize.Height, Math.Min(area.Height, Height + (int)Math.Round(dh * (double)web.ClientSize.Height / vh)));
+                        Left = Math.Max(area.Left, Math.Min(Left, area.Right - Width)); Top = Math.Max(area.Top, Math.Min(Top, area.Bottom - Height));
+                    }
                 };
                 ready = true; web.CoreWebView2.Navigate(initial);
                 var thread = new Thread(Listen); thread.IsBackground = true; thread.Start();
@@ -141,7 +154,7 @@ internal sealed class IndependentForm : Form {
         Bounds = new Rectangle(area.Left + 30, area.Top + 30, Math.Min(1250, area.Width), Math.Min(800, area.Height));
         try {
             var values = json.Deserialize<int[]>(File.ReadAllText(Path.Combine(folder, "bounds.json")));
-            var saved = new Rectangle(values[0], values[1], Math.Max(640, values[2]), Math.Max(480, values[3]));
+            var saved = new Rectangle(values[0], values[1], Math.Max(320, values[2]), Math.Max(160, values[3]));
             var screen = Screen.FromRectangle(saved).WorkingArea;
             saved.Width = Math.Min(saved.Width, screen.Width); saved.Height = Math.Min(saved.Height, screen.Height);
             saved.X = Math.Max(screen.Left, Math.Min(saved.X, screen.Right - saved.Width)); saved.Y = Math.Max(screen.Top, Math.Min(saved.Y, screen.Bottom - saved.Height)); Bounds = saved;
