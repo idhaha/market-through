@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>[독립창]</title><link rel="stylesheet" href="style.css?v=20261011_v56">
+<link rel="stylesheet" href="rank-independent.css?v=6">
+<script src="rank-independent-client.js?v=5" defer></script>
+<script src="concentration-chart.js?v=20261011_v32_pin" defer></script></head>
+<body class="rank-independent"><div class="independent-toolbar">
+<label><input id="rankStockPinned" type="checkbox"> 쏠림율 차트 종목 동기화 해제</label>
+<span id="rankConnectionStatus" role="status">메인 페이지 연결 중</span>
+<div class="independent-refresh-controls">
+<label>갱신 <select id="refreshInterval" class="interval-select">
+                                    <option value="5" data-interval="30000">30초 간격</option>
+                                    <option value="1" data-interval="60000">1분 간격</option>
+                                    <option value="2" data-interval="600000" selected>10분 간격</option>
+                                    <option value="3" data-interval="3600000">1시간 간격</option>
+                                    <option value="4" data-interval="30000">당일누적</option>
+                                </select></label>
+<button type="button" id="rankIndependentRefresh" class="btn-primary">조회</button>
+</div></div>
+<main id="tab_rank"><div class="panel">
+                        <div class="panel-header">
+                            <h2>거래대금 상위 [키움]</h2>
+                            <div class="panel-controls">
+                                <select id="mrktTp" class="interval-select">
+                                    <option value="000" selected>전체</option>
+                                    <option value="001">코스피</option>
+                                    <option value="101">코스닥</option>
+                                </select>
+                                <select id="stexTp" class="interval-select">
+                                    <option value="1">KRX</option>
+                                    <option value="2">NXT</option>
+                                    <option value="3" selected>통합</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="table-wrapper">
+                            <table id="transactionTable">
+                                <thead>
+                                    <tr>
+                                        <th>순위</th>
+                                        <th>시장</th>
+                                        <th>종목명</th>
+                                        <th>등락률</th>
+                                        <th class="align-right">거래대금(백만)</th>
+                                        <th class="align-right">쏠림율</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="transactionBody">
+                                    <!-- Data injected here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+<section class="panel concentration-chart-panel debug-collapsed" id="concentrationChartPanel" aria-label="쏠림율 차트">
+                    <div class="concentration-chart-header">
+                        <div class="concentration-stock-picker"><input role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="concentrationStockSuggestions" id="concentrationStockName" class="concentration-stock-input" type="text" placeholder="종목명 또는 코드" aria-label="차트 종목명 또는 종목코드 입력 후 Enter" autocomplete="off"><div id="concentrationStockSuggestions" role="listbox" hidden></div></div>
+                        <span id="concentrationMarket" class="concentration-market"></span>
+                        <div class="concentration-timeframe-row">
+                        <div class="concentration-controls" role="group" aria-label="봉 종류">
+                            <button type="button" data-chart-mode="day" class="active" aria-pressed="true">일</button>
+                            <button type="button" data-chart-mode="minute" aria-pressed="false">분</button>
+                        </div>
+                        <div class="concentration-controls" role="group" aria-label="분봉 간격">
+                            <button type="button" data-chart-interval="1" aria-label="1분봉" aria-pressed="true" class="active">1</button>
+                            <button type="button" data-chart-interval="3" aria-label="3분봉" aria-pressed="false">3</button>
+                            <button type="button" data-chart-interval="5" aria-label="5분봉" aria-pressed="false">5</button>
+                            <button type="button" data-chart-interval="10" aria-label="10분봉" aria-pressed="false">10</button>
+                            <button type="button" data-chart-interval="15" aria-label="15분봉" aria-pressed="false">15</button>
+                            <button type="button" data-chart-interval="30" aria-label="30분봉" aria-pressed="false">30</button>
+                            <button type="button" data-chart-interval="45" aria-label="45분봉" aria-pressed="false">45</button>
+                            <button type="button" data-chart-interval="60" aria-label="60분봉" aria-pressed="false">60</button>
+                        </div>
+                        <div class="concentration-header-actions">
+                        <button type="button" class="concentration-icon-button" id="concentrationMore" title="과거 데이터 더 불러오기" aria-label="과거 데이터 더 불러오기" disabled>
+                            <svg width="28" height="28" viewBox="0 0 34 34" shape-rendering="crispEdges" aria-hidden="true">
+                                <rect x="1" y="1" width="32" height="32" fill="#ededed"/>
+                                <path d="M10 5v20" stroke="#737373" stroke-width="2"/>
+                                <rect x="6" y="9" width="9" height="12" fill="#505050"/>
+                                <path d="M22 5v20" stroke="#c0c0c0" stroke-width="2"/>
+                                <rect x="18" y="9" width="9" height="12" fill="#969696"/>
+                                <path d="M25 21v10M21 26h10" stroke="#444444" stroke-width="4"/>
+                            </svg>
+                        </button>
+                            <button id="concentrationCandleToggle" class="concentration-candle-toggle" type="button" aria-expanded="false" aria-controls="concentrationCandleArea" aria-label="캔들차트 펼치기">캔들차트</button>
+                            <output id="concentrationCurrentRate" aria-label="현재 쏠림율">-</output>
+                        </div>
+                        </div>
+                    </div>
+                    <div class="concentration-chart-layout">
+                      <div class="concentration-charts-column">
+                      <div class="concentration-chart-area">
+                        <button id="concentrationDebugToggle" class="concentration-debug-toggle" type="button" aria-label="디버깅 펼치기" title="디버깅 펼치기" aria-expanded="false" aria-controls="concentrationFiveDebug">
+                          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+                        </button>
+                        <canvas id="concentrationCanvas" aria-label="시장 거래대금 대비 종목 거래대금 비율 차트, 세로축 자동 범위" role="img"></canvas>
+                        <div id="concentrationTooltip" class="concentration-tooltip" hidden></div>
+                        <p id="concentrationStatus" class="concentration-status" role="status" aria-live="polite"></p>
+                      </div>
+                      <div id="concentrationCandleArea" class="concentration-candle-area" hidden>
+                        <canvas id="concentrationCandleCanvas" aria-label="선택 종목 캔들차트, 쏠림율과 동일한 시간축" role="img"></canvas>
+                        <div id="concentrationCandleTooltip" class="concentration-tooltip" hidden></div>
+                      </div>
+                    <div class="concentration-chart-footer">
+                        <span id="concentrationPeriod">쏠림율</span>
+                        <input id="concentrationRange" type="range" min="0" max="0" value="0" aria-label="차트 과거 구간 이동" disabled>
+                        <div class="concentration-controls" role="group" aria-label="차트 확대 축소">
+                            <button type="button" id="concentrationZoomOut" aria-label="차트 축소" title="축소" disabled>−</button>
+                            <button type="button" id="concentrationZoomIn" aria-label="차트 확대" title="확대" disabled>+</button>
+                        </div>
+                    </div>
+                      </div>
+                      <aside id="concentrationFiveDebug" class="concentration-five-debug" aria-label="5분봉 원본 비교" hidden>
+                        <strong>완료된 최근 5개 5분봉</strong>
+                        <div id="concentrationDebugStatus" role="status">종목을 선택하세요</div>
+                        <div id="concentrationDebugStock"></div>
+                        <div id="concentrationDebugMarket"></div>
+                      </aside>
+                    </div>
+                </section></main></body></html>

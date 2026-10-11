@@ -28,6 +28,9 @@ Thumbs.db
 
 # Build
 dist/
+desktop/packages/
+desktop/build/
+desktop/dist/
 
 # IDE
 .vscode/

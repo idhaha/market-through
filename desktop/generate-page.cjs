@@ -1,0 +1,27 @@
+const fs = require('fs');
+const path = require('path');
+const root = path.join(__dirname, '..');
+const source = fs.readFileSync(path.join(root, 'public/index.html'), 'utf8');
+const start = source.indexOf('<h2>거래대금 상위 [키움]</h2>');
+const tableStart = source.lastIndexOf('<div class="panel">', start);
+const tableEnd = source.indexOf('\n                    <div class="panel">', start);
+const chartStart = source.indexOf('<section class="panel concentration-chart-panel');
+const chartEnd = source.indexOf('</section>', chartStart) + '</section>'.length;
+const refreshStart = source.lastIndexOf('<select', source.indexOf('id="refreshInterval"'));
+const refresh = source.slice(refreshStart, source.indexOf('</select>', refreshStart) + 9);
+if (start < 0 || chartStart < 0 || tableEnd < 0) throw new Error('Rank template not found');
+fs.writeFileSync(path.join(root, 'public/rank-independent.html'), `<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>[독립창]</title><link rel="stylesheet" href="style.css?v=20261011_v56">
+<link rel="stylesheet" href="rank-independent.css?v=6">
+<script src="rank-independent-client.js?v=5" defer></script>
+<script src="concentration-chart.js?v=20261011_v32_pin" defer></script></head>
+<body class="rank-independent"><div class="independent-toolbar">
+<label><input id="rankStockPinned" type="checkbox"> 쏠림율 차트 종목 동기화 해제</label>
+<span id="rankConnectionStatus" role="status">메인 페이지 연결 중</span>
+<div class="independent-refresh-controls">
+<label>갱신 ${refresh}</label>
+<button type="button" id="rankIndependentRefresh" class="btn-primary">조회</button>
+</div></div>
+<main id="tab_rank">${source.slice(tableStart, tableEnd)}${source.slice(chartStart, chartEnd)}</main></body></html>\n`);
+

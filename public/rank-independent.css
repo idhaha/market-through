@@ -1,0 +1,39 @@
+.rank-independent { margin: 0; padding: 8px; overflow: auto; min-width: 0; height: 100dvh; display: flex; flex-direction: column; }
+.rank-independent #tab_rank { display: grid; grid-template-columns: minmax(340px, 1fr) minmax(420px, 1.45fr); grid-template-rows: minmax(300px, 1fr); gap: 14px; align-items: stretch; flex: 1; min-height: 0; overflow: auto; }
+.rank-independent #tab_rank > .panel { display: flex; flex-direction: column; min-height: 0; }
+.rank-independent .panel-header, .independent-chart-heading, .independent-toolbar { flex-shrink: 0; }
+.rank-independent #independentTransactionContent { flex: 1; min-height: 0; }
+.rank-independent #transactionTable { display: flex; flex-direction: column; height: 100%; }
+.rank-independent #transactionTable thead { flex-shrink: 0; }
+.rank-independent #transactionBody { flex: 1; min-height: 0; max-height: none; overflow-y: auto; container-type: size; }
+/* Scale the list contents with its height, using roughly 20 visible rows. */
+.rank-independent #transactionBody tr { height: clamp(26px, 5cqh, 48px); }
+.rank-independent #transactionBody td { font-size: clamp(12px, 2.5cqh, 20px); padding-block: clamp(2px, 0.5cqh, 6px); vertical-align: middle; }
+.rank-independent #independentChartContent { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.rank-independent .concentration-chart-header, .rank-independent .concentration-chart-footer { flex-shrink: 0; }
+.rank-independent .concentration-chart-layout { flex: 1; min-height: 0; }
+.rank-independent .concentration-charts-column { display: flex; flex-direction: column; min-height: 0; }
+.rank-independent .concentration-chart-area { height: auto; flex: 1; min-height: 100px; }
+.rank-independent .concentration-candle-area { height: auto; flex: 1; min-height: 80px; }
+.rank-independent .concentration-chart-panel { margin: 0; width: 100%; max-width: 100%; }
+.independent-toolbar { display: flex; align-items: center; gap: 12px; padding: 0 0 6px; font-size: 13px; }
+.independent-toolbar label { display: flex; align-items: center; gap: 6px; }
+.independent-toolbar > label { flex-shrink: 0; }
+.independent-refresh-controls { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-shrink: 0; }
+.independent-refresh-controls select, .independent-refresh-controls button { height: 32px; padding: 0 10px; font-size: 13px; }
+#rankIndependentRefresh { display: inline-flex; align-items: center; justify-content: center; padding: 0 15px !important; line-height: 1; }
+#rankConnectionStatus { min-width: 0; font-size: 12px; }
+.rank-independent #concentrationDebugToggle { display: none; }
+.independent-panel-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.independent-collapse { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0; border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; padding: 0; font-size: 13px; }
+.independent-collapse:hover { background: var(--bg-panel); border-radius: 4px; }
+.independent-chart-heading { margin-bottom: 10px; display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.independent-chart-heading > label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.independent-chart-heading h2 { font-size: 17px; }
+.rank-independent [hidden] { display: none !important; }
+.rank-independent #tab_rank.independent-has-collapse { grid-template-columns: minmax(0, 1fr); }
+.rank-independent #tab_rank:has(> .independent-collapsed:first-child) { grid-template-rows: auto minmax(300px, 1fr); }
+.rank-independent #tab_rank:has(> .independent-collapsed:last-child) { grid-template-rows: minmax(300px, 1fr) auto; }
+.rank-independent #tab_rank:has(> .independent-collapsed:first-child):has(> .independent-collapsed:last-child) { grid-template-rows: auto auto; align-content: start; }
+.independent-collapsed .panel-header, .independent-collapsed .independent-chart-heading { margin-bottom: 0; padding-bottom: 0; }
+@media(max-width: 950px) { .rank-independent #tab_rank { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(2, minmax(300px, 1fr)); } }

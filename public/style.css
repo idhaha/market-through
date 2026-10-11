@@ -207,6 +207,12 @@ header {
     flex-wrap: wrap;
 }
 
+.rank-title-group { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+.rank-title-group h1 { flex-shrink: 0; }
+#rankIndependentControls { display: flex; align-items: center; gap: 10px; min-width: 0; }
+#rankIndependentControls button { flex-shrink: 0; height: 38px; padding: 0 12px; }
+#rankIndependentControls [role="status"] { font-size: 12px; color: var(--text-secondary); overflow-wrap: anywhere; }
+
 h1 {
     font-size: 1.25rem;
     font-weight: 700;

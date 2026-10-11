@@ -10,6 +10,7 @@ const { createDailyCapture, captureCentralBanks } = require('./central-banks');
 const { createInterestStore, captureInterestCharts } = require('./base-interest');
 const crypto = require('crypto');
 const { createConcentrationChartService } = require('./concentration-chart');
+const { createRankIndependentRelay } = require('./rank-independent');
 
 // 전역 시장구분 캐시 (종목코드: 'K'/'Q') - 429 에러 방지용
 const marketCache = {};
@@ -122,12 +123,15 @@ app.use((req, res, next) => {
 // Only the Google sign-in handshake and session lifecycle endpoints are public.
 app.use('/api', (req, res, next) => {
     if (req.method === 'OPTIONS' || ['/auth/login', '/auth/session', '/auth/logout'].includes(req.path)) return next();
+    // This single endpoint uses a short-lived, scoped capability instead of browser cookies.
+    if (req.method === 'POST' && /^\/rank-independent\/peer\/[a-f0-9]{32}$/.test(req.path)) return next();
     const session = getSessionFromRequest(req);
     if (!session) return res.status(401).json({ success: false, error: '로그인이 필요합니다.' });
     req.authUser = session;
     next();
 });
 
+createRankIndependentRelay().mount(app);
 const concentrationChartService = createConcentrationChartService({ axios, getAccessToken, marketCache });
 app.get('/api/concentration-stocks', (req, res) => {
     try { res.json({ success: true, stocks: concentrationChartService.searchStocks(req.query.q) }); }

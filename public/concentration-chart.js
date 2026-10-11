@@ -35,6 +35,7 @@
         const candleToggle = document.getElementById('concentrationCandleToggle');
         const candleCtx = candleCanvas.getContext('2d');
         let geometry = null;
+        let sharedRevision = 0;
         let candleGeometry = null;
 
         const debugStatus = document.getElementById('concentrationDebugStatus');
@@ -74,6 +75,7 @@
                 seconds: korea.getUTCHours() * 3600 + korea.getUTCMinutes() * 60 + korea.getUTCSeconds() };
         }
         async function refreshFiveDebug(closingTick = false) {
+            if (window.rankIndependentClient) return;
             if (!state.selection || document.hidden || (typeof isCapturing !== 'undefined' && isCapturing)) return;
             const session = debugSessionTime();
             const weekday = session.day !== 0 && session.day !== 6;
@@ -119,6 +121,7 @@
             }
         }
         function scheduleFiveDebug() {
+            if (window.rankIndependentClient) return;
             const delay = 300000 - (Date.now() % 300000) + 2000;
             setTimeout(async () => { await refreshFiveDebug(true); scheduleFiveDebug(); }, delay);
         }
@@ -261,6 +264,7 @@
             saveDisplaySettings();
         });
         function draw() {
+            if (!window.rankIndependentClient) document.dispatchEvent(new Event('rank-chart-state'));
             if (state.busy && state.points.length) { updateControls(); return; }
             const width = chartArea.clientWidth;
             if (!width) return;
@@ -463,12 +467,35 @@
                 status.textContent = `${error.message} · ${refresh ? '다음 갱신 주기에 다시 조회합니다.' : append ? '추가 조회 버튼으로 다시 시도하세요.' : '일/분 버튼으로 다시 시도하세요.'}`;
                 if (error.message.includes('만료')) { state.cursor = null; state.hasMore = false; }
             } finally {
-                if (request === state.request) { state.busy = false; draw(); }
+                if (request === state.request) { state.busy = false; sharedRevision++; draw(); }
             }
         }
         window.refreshConcentrationChart = () => {
             if (!state.selection || state.busy || state.drag || (typeof isCapturing !== 'undefined' && isCapturing)) return;
             return load(false, true);
+        };
+        window.getRankChartState = () => ({ selection: state.selection, mode: state.mode, interval: state.interval,
+            points: state.points, cursor: state.cursor, hasMore: state.hasMore, busy: state.busy,
+            market: market.textContent, status: status.textContent, revision: sharedRevision });
+        window.applyRankChartState = data => {
+            if (!data || !Array.isArray(data.points)) return;
+            const changed = state.selection?.code !== data.selection?.code || state.mode !== data.mode || state.interval !== data.interval;
+            const atEnd = state.start + state.visible >= state.points.length;
+            Object.assign(state, { selection: data.selection, mode: data.mode, interval: data.interval, points: data.points,
+                cursor: data.cursor, hasMore: data.hasMore, busy: data.busy });
+            if (changed || !state.visible) { state.start = 0; state.visible = state.points.length; }
+            else { state.visible = Math.min(state.visible, state.points.length); state.start = atEnd ? state.points.length - state.visible : Math.min(state.start, state.points.length - state.visible); }
+            name.value = state.selection?.name || ''; market.textContent = data.market || ''; status.textContent = data.status || '';
+            selectedRows(); draw();
+        };
+        window.selectRankChartStock = stock => chooseStock(stock);
+        window.setRankChartQuery = (selection, mode, interval, followSelection) => {
+            const changed = state.mode !== mode || state.interval !== interval || (followSelection && state.selection?.code !== selection?.code);
+            state.mode = mode === 'minute' ? 'minute' : 'day'; state.interval = scopes.includes(Number(interval)) ? Number(interval) : 1;
+            if (followSelection && selection && /^[0-9A-Za-z]{6}$/.test(selection.code)) {
+                state.selection = selection; name.value = selection.name;
+            }
+            if (changed) { selectedRows(); saveDisplaySettings(); load(); }
         };
         let lookupVersion = 0;
         const suggestions = document.getElementById('concentrationStockSuggestions');

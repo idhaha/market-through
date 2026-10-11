@@ -11,10 +11,18 @@ taskkill /f /pid PID번호
 3. git 반영
 git checkout -b "br_oracle"
 git add .
-git commit -m "appliedd cache in interest/currency tab to speed up chart loading-1"
-git tag -a v3.0.8 -m "appliedd cache in interest/currency tab to speed up chart loading-1"
+git commit -m "added independant window of Rank tab"
+git tag -a v3.0.24 -m "added independant window of Rank tab"
 git push origin br_oracle
-git push origin v3.0.8
+git push origin v3.0.24
+
+git checkout -b "br_oracle"
+git add .
+git commit -m "fixed interest calendar-1"
+git tag -a v3.0.16 -m "fixed interest calendar-1"
+git push origin br_oracle
+git push origin v3.0.16
+
 
 만일 새로운 폴더나 파일을 커밋하고 github에 올리려면
 git add docs/SYSTEM_SPECIFICATION.md
