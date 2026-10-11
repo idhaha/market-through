@@ -31,7 +31,7 @@
         const button = document.createElement('button'); button.type = 'button'; button.textContent = '독립창'; button.className = 'btn-secondary';
         const message = document.createElement('span'); message.setAttribute('role', 'status');
         controls.append(button, message);
-        let channel, timer, running = false, connected = false, started = 0, peerLastSeen = 0;
+        let channel, timer, running = false, connected = false, started = 0, peerLastSeen = 0, displayCommandId = null;
         let dirty = true, chartKey = '', replies = [], acknowledgements = [];
         const handled = new Set();
         function reset(text = '') {
@@ -52,7 +52,12 @@
             } catch (error) { message.textContent = error.message; }
         }
         function snapshot() {
+            const cell = document.querySelector('#transactionBody tr[data-chart-code] td');
+            const style = cell && getComputedStyle(cell);
             return { rows: document.getElementById('transactionBody').innerHTML, chart: window.getRankChartState?.(), display: window.getConcentrationDisplaySettings?.(),
+                displayCommandId,
+                typography: { rootFontSize: getComputedStyle(document.documentElement).fontSize, family: getComputedStyle(document.body).fontFamily,
+                    pixelRatio: devicePixelRatio, cellFont: style?.fontSize, cellPadding: style && parseFloat(style.paddingTop), rowHeight: cell?.parentElement.getBoundingClientRect().height },
                 conditions: Object.fromEntries(['mrktTp', 'stexTp', 'refreshInterval'].map(id => [id, document.getElementById(id)?.value])) };
         }
         async function execute(command) {
@@ -68,6 +73,7 @@
                 if (command.type === 'refresh') { window.loadTransactionRank?.(); window.refreshConcentrationChart?.(); return; }
                 if (command.type === 'display') {
                     window.applyConcentrationDisplaySettings?.({ ...window.getConcentrationDisplaySettings(), candleOpen: command.candleOpen === true });
+                    displayCommandId = command.id;
                     window.saveAppData?.(); dirty = true; return;
                 }
                 if (command.type !== 'request' || !allowed(command.path) || command.path.length > 300) throw new Error('지원하지 않는 요청입니다.');
@@ -131,6 +137,7 @@
             if (key !== chartKey) { chartKey = key; dirty = true; }
         });
         for (const id of ['mrktTp', 'stexTp', 'refreshInterval']) document.getElementById(id)?.addEventListener('change', () => { dirty = true; });
+        window.addEventListener('resize', () => { dirty = true; });
         window.addEventListener('pagehide', () => { if (channel) rawFetch(`/api/rank-independent/${channel.id}/owner`, { method: 'DELETE', headers: { 'X-Rank-Owner': channel.ownerKey }, keepalive: true }); });
     });
 })();

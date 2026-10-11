@@ -112,8 +112,9 @@ app.use((req, res, next) => {
     next();
 });
 
-// 모든 요청 로그 출력 (매우 잘 보이게)
+// Independent-window traffic is intentionally excluded from console/file logs.
 app.use((req, res, next) => {
+    if (req.path === '/api/rank-independent' || req.path.startsWith('/api/rank-independent/')) return next();
     console.log("=========================================");
     console.log(`[${new Date().toLocaleTimeString()}] 요청 발생: ${req.method} ${req.url}`);
     next();

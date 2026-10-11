@@ -133,6 +133,8 @@
             debugOpen: !debugPanel.hidden, candleOpen: !candleArea.hidden, mode: state.mode, interval: state.interval
         });
         window.applyConcentrationDisplaySettings = settings => {
+            const nextCandleOpen = settings?.candleOpen === true;
+            if (nextCandleOpen !== !candleArea.hidden) document.dispatchEvent(new CustomEvent('rank-candle-display', { detail: { open: nextCandleOpen } }));
             const mode = settings?.mode === 'minute' ? 'minute' : 'day';
             const interval = scopes.includes(Number(settings?.interval)) ? Number(settings.interval) : 1;
             const changed = state.mode !== mode || state.interval !== interval;

@@ -99,6 +99,10 @@ internal sealed class IndependentForm : Form {
                     string message;
                     try { message = e.TryGetWebMessageAsString(); } catch { return; }
                     if (message == "connection-ended") Close();
+                    else if (message.StartsWith("page-scale:")) {
+                        double ratio;
+                        if (double.TryParse(message.Substring(11), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out ratio) && ratio >= 0.25 && ratio <= 4) web.ZoomFactor = Math.Max(0.25, Math.Min(4, web.ZoomFactor * ratio));
+                    }
                     else if (message.StartsWith("resize-window:")) {
                         var values = message.Substring(14).Split(','); int dw, dh, vw, vh;
                         if (values.Length != 4 || !int.TryParse(values[0], out dw) || !int.TryParse(values[1], out dh) || !int.TryParse(values[2], out vw) || !int.TryParse(values[3], out vh) || vw < 1 || vh < 1 || Math.Abs((long)dw) > 10000 || Math.Abs((long)dh) > 10000) return;

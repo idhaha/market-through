@@ -78,11 +78,11 @@ class RankNativeSmoke {
                         }
                         Check(loaded, "Real native WebView2 did not receive the shared Rank snapshot");
                         await core.ExecuteScriptAsync("window.__rowBefore = document.querySelector('#transactionBody tr').getBoundingClientRect().height; window.__fontBefore = getComputedStyle(document.querySelector('#transactionBody td')).fontSize;");
-                        host.Height += 180;
+                        host.Height -= 180;
                         bool resized = false;
                         for (int attempt = 0; attempt < 20; attempt++) {
                             await Task.Delay(100);
-                            var result = await core.ExecuteScriptAsync("document.querySelector('#transactionBody tr').getBoundingClientRect().height > window.__rowBefore && getComputedStyle(document.querySelector('#transactionBody td')).fontSize === window.__fontBefore");
+                            var result = await core.ExecuteScriptAsync("document.querySelector('#transactionBody tr').getBoundingClientRect().height < window.__rowBefore && getComputedStyle(document.querySelector('#transactionBody td')).fontSize === window.__fontBefore");
                             if (result == "true") { resized = true; break; }
                         }
                         Check(resized, "Real WebView2 table rows must resize while font size stays fixed");

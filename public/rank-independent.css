@@ -6,14 +6,14 @@
 .rank-independent #transactionTable { display: flex; flex-direction: column; height: 100%; }
 .rank-independent #transactionTable thead { flex-shrink: 0; }
 .rank-independent #transactionBody { flex: 1; min-height: 0; max-height: none; overflow-y: auto; }
-.rank-independent #transactionBody tr { height: var(--rank-row-height, 28px); }
-.rank-independent #transactionBody td { padding-block: var(--rank-row-padding, 3px); vertical-align: middle; }
+.rank-independent #transactionBody tr { height: var(--rank-row-height, auto); }
+.rank-independent #transactionBody td { padding-block: var(--rank-row-padding, 0.15rem); font-size: var(--rank-row-font, 0.85rem); vertical-align: middle; }
 .rank-independent #independentChartContent { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .rank-independent .concentration-chart-header, .rank-independent .concentration-chart-footer { flex-shrink: 0; }
 .rank-independent .concentration-chart-layout { flex: 1; min-height: 0; }
 .rank-independent .concentration-charts-column { display: flex; flex-direction: column; min-height: 0; }
 .rank-independent .concentration-chart-area { height: auto; flex: 1; min-height: 100px; }
-.rank-independent .concentration-candle-area { height: auto; flex: 1; min-height: 80px; }
+.rank-independent .concentration-candle-area { height: var(--rank-candle-height, 230px); flex: 0 0 var(--rank-candle-height, 230px); min-height: var(--rank-candle-height, 230px); }
 .rank-independent .concentration-chart-panel { margin: 0; width: 100%; max-width: 100%; }
 .independent-toolbar { display: flex; align-items: center; gap: 12px; padding: 0 0 6px; font-size: 13px; }
 .independent-toolbar label { display: flex; align-items: center; gap: 6px; }
