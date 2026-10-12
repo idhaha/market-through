@@ -749,6 +749,7 @@ function renderEfriendTable(stocks) {
 let transactionRankRequest = 0;
 async function loadTransactionRank() {
     if (isCapturing) { console.log('[Capture] loadTransactionRank() skipped (isCapturing)'); return; }
+    window.refreshRankAdrChart?.();
     const mrktTp = mrktTpSelect.value;
     const stexTp = stexTpSelect.value;
     const request = ++transactionRankRequest;

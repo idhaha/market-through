@@ -277,8 +277,9 @@
             if (!width) return;
             const height = chartArea.clientHeight;
             const ratio = window.devicePixelRatio || 1;
-            canvas.width = Math.round(width * ratio);
-            canvas.height = Math.round(height * ratio);
+            const pixelWidth = Math.round(width * ratio), pixelHeight = Math.round(height * ratio);
+            if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
+            if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
             ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
             ctx.clearRect(0, 0, width, height);
             const plot = { left: 16, top: 18, right: width - 58, bottom: height - 34 };
@@ -757,11 +758,22 @@
         const transactionPanel = document.getElementById('transactionTable')?.closest('.panel');
         function matchTransactionWidth() {
             const width = transactionPanel?.getBoundingClientRect().width;
-            if (width > 0) panel.style.setProperty('--concentration-base-width', `${width}px`);
+            if (width > 0 && panel.style.getPropertyValue('--concentration-base-width') !== `${width}px`) {
+                panel.style.setProperty('--concentration-base-width', `${width}px`);
+            }
         }
-        if (transactionPanel) new ResizeObserver(matchTransactionWidth).observe(transactionPanel);
+        let resizeFrame = null;
+        function scheduleChartResize() {
+            if (resizeFrame !== null) return;
+            resizeFrame = requestAnimationFrame(() => {
+                resizeFrame = null;
+                matchTransactionWidth();
+                draw();
+            });
+        }
+        if (transactionPanel) new ResizeObserver(scheduleChartResize).observe(transactionPanel);
         matchTransactionWidth();
-        new ResizeObserver(draw).observe(chartArea);
+        new ResizeObserver(scheduleChartResize).observe(chartArea);
         selectedRows(); draw();
     });
 })();

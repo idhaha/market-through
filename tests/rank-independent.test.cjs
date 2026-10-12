@@ -188,7 +188,7 @@ const { promisify } = require('node:util');
         await main.waitForFunction(() => getRankChartState().selection.code === '000001' && !getRankChartState().busy);
         await child.waitForTimeout(1200);
         assert.equal(await child.evaluate(() => getRankChartState().selection.code), '000002');
-        assert.equal(await child.getByRole('checkbox', { name: '쏠림율 차트 종목 동기화 해제', exact: true }).count(), 1);
+        assert.equal(await child.getByRole('checkbox', { name: 'Rank탭 종목동기화 해제', exact: true }).count(), 1);
         assert.equal(await child.locator('.independent-chart-heading #rankStockPinned').count(), 1, 'Synchronization checkbox must be beside the chart title');
         await child.locator('#concentrationStockName').fill('000003'); await child.locator('#concentrationStockName').press('Enter');
         await child.waitForFunction(() => getRankChartState().selection.code === '000003' && !getRankChartState().busy);

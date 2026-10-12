@@ -1,10 +1,10 @@
 # Tasks: Rank 독립창
 
-- [x] T001 확정 정책(Windows/WebView2, 공유 상태와 개별 viewport, 쏠림율 차트 종목 동기화 해제)을 spec에 반영
+- [x] T001 확정 정책(Windows/WebView2, 공유 상태와 개별 viewport, Rank탭 종목동기화 해제)을 spec에 반영
 - [x] T002 짧은 수명, 인증/소유 검증, RAM/queue 제한 중계 API 구현
 - [x] T003 원본 유지, 독립창 버튼 하나로 실행/미연결 시 안내 및 설치 파일 자동 다운로드, 중복 실행/종료/재실행 상태 구현
 - [x] T004 차트 snapshot/apply API 및 데이터 요청 합치기 구현
-- [x] T005 최소 전용 페이지, 공유 조건·기본 종목 및 쏠림율 차트 종목 동기화 해제 구현
+- [x] T005 최소 전용 페이지, 공유 조건·기본 종목 및 Rank탭 종목동기화 해제 구현
 - [x] T006 개별 zoom/scroll 및 기존 차트 그리기 재사용
 - [x] T007 C# native titlebar/TopMost/minimize/close/resize/drag 구현
 - [x] T008 bounds 저장/복원 및 화면 밖 보정 구현

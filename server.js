@@ -1719,6 +1719,19 @@ app.get('/assets/v2/_next/static/chunks/*', async (req, res) => {
 /**
  * ADR 데이터 프록시 API (CORS 방지용)
  */
+app.get('/api/adr/today', async (req, res) => {
+    const market = req.query.market || 'kospi';
+    if (!['kospi', 'kosdaq'].includes(market)) return res.status(400).json({ error: 'Invalid market' });
+    try {
+        const response = await axios.get('https://jusikbot.com/api/adr/today', {
+            params: { market, _: Date.now() }, timeout: 10000
+        });
+        res.set('Cache-Control', 'no-store').json(response.data);
+    } catch (error) {
+        res.status(502).json({ error: 'ADR 실시간 데이터를 가져오지 못했습니다.' });
+    }
+});
+
 app.get('/api/adr', async (req, res) => {
     console.log("🚀 [API START] /api/adr 요청 발생 (Cache-Busting 적용)");
     try {
