@@ -56,6 +56,7 @@
             const style = cell && getComputedStyle(cell);
             return { rows: document.getElementById('transactionBody').innerHTML, chart: window.getRankChartState?.(), display: window.getConcentrationDisplaySettings?.(),
                 displayCommandId,
+                refreshStatus: { time: document.getElementById('lastUpdate')?.textContent || '-', text: document.getElementById('statusText')?.textContent || '대기 중' },
                 typography: { rootFontSize: getComputedStyle(document.documentElement).fontSize, family: getComputedStyle(document.body).fontFamily,
                     pixelRatio: devicePixelRatio, cellFont: style?.fontSize, cellPadding: style && parseFloat(style.paddingTop), rowHeight: cell?.parentElement.getBoundingClientRect().height },
                 conditions: Object.fromEntries(['mrktTp', 'stexTp', 'refreshInterval'].map(id => [id, document.getElementById(id)?.value])) };
@@ -70,7 +71,7 @@
                     }
                     dirty = true; return;
                 }
-                if (command.type === 'refresh') { window.loadTransactionRank?.(); window.refreshConcentrationChart?.(); return; }
+                if (command.type === 'refresh') { if (window.loadTransactionRank) window.loadTransactionRank(); else window.refreshConcentrationChart?.(); return; }
                 if (command.type === 'display') {
                     window.applyConcentrationDisplaySettings?.({ ...window.getConcentrationDisplaySettings(), candleOpen: command.candleOpen === true });
                     displayCommandId = command.id;
@@ -130,6 +131,11 @@
             } catch (error) { reset(error.message); }
         });
         new MutationObserver(() => { dirty = true; }).observe(document.getElementById('transactionBody'), { childList: true, subtree: true, characterData: true });
+        const statusObserver = new MutationObserver(() => { dirty = true; });
+        for (const id of ['lastUpdate', 'statusText']) {
+            const element = document.getElementById(id);
+            if (element) statusObserver.observe(element, { childList: true, subtree: true, characterData: true });
+        }
         document.addEventListener('rank-chart-state', () => {
             const chart = window.getRankChartState?.(); if (!chart) return;
             // Zoom/scroll redraws do not publish view state or duplicate large snapshots.

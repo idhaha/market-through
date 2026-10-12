@@ -13,6 +13,11 @@
     };
 
     document.addEventListener('DOMContentLoaded', () => {
+        let refreshPending = false, refreshTimer = null;
+        function flushRefresh() {
+            if (!refreshPending || state.busy || state.drag || (typeof isCapturing !== 'undefined' && isCapturing) || refreshTimer) return;
+            refreshTimer = setTimeout(() => { refreshTimer = null; if (refreshPending) window.refreshConcentrationChart?.(); }, 0);
+        }
         const panel = document.getElementById('concentrationChartPanel');
         if (!panel) return;
         const canvas = document.getElementById('concentrationCanvas');
@@ -469,11 +474,13 @@
                 status.textContent = `${error.message} · ${refresh ? '다음 갱신 주기에 다시 조회합니다.' : append ? '추가 조회 버튼으로 다시 시도하세요.' : '일/분 버튼으로 다시 시도하세요.'}`;
                 if (error.message.includes('만료')) { state.cursor = null; state.hasMore = false; }
             } finally {
-                if (request === state.request) { state.busy = false; sharedRevision++; draw(); }
+                if (request === state.request) { state.busy = false; sharedRevision++; draw(); flushRefresh(); }
             }
         }
         window.refreshConcentrationChart = () => {
-            if (!state.selection || state.busy || state.drag || (typeof isCapturing !== 'undefined' && isCapturing)) return;
+            if (!state.selection) return;
+            if (state.busy || state.drag || (typeof isCapturing !== 'undefined' && isCapturing)) { refreshPending = true; return; }
+            refreshPending = false;
             return load(false, true);
         };
         window.getRankChartState = () => ({ selection: state.selection, mode: state.mode, interval: state.interval,
@@ -614,7 +621,7 @@
             const center = state.start + state.visible / 2;
             state.visible = Math.min(state.points.length, Math.max(Math.min(10, state.points.length), Math.round(state.visible * factor)));
             state.start = Math.max(0, Math.min(state.points.length - state.visible, Math.round(center - state.visible / 2)));
-            state.hover = null; tooltip.hidden = true; draw();
+            state.hover = null; tooltip.hidden = true; draw(); flushRefresh();
         }
         zoomIn.addEventListener('click', () => zoom(0.5));
         zoomOut.addEventListener('click', () => zoom(2));
@@ -659,11 +666,11 @@
                     state.start = 0;
                 }
             }
-            state.hover = null; tooltip.hidden = true; draw();
+            state.hover = null; tooltip.hidden = true; draw(); flushRefresh();
         });
         function cancelDrag() {
             if (!state.drag || state.drag.surface !== surface) return;
-            state.drag = null; state.hover = null; tooltip.hidden = true; draw();
+            state.drag = null; state.hover = null; tooltip.hidden = true; draw(); flushRefresh();
         }
         surface.addEventListener('pointercancel', cancelDrag);
         surface.addEventListener('lostpointercapture', cancelDrag);

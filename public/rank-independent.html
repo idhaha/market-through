@@ -1,12 +1,13 @@
 <!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>[독립창]</title><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"><link rel="stylesheet" href="style.css?v=20261011_v56">
-<link rel="stylesheet" href="rank-independent.css?v=11">
-<script src="rank-independent-client.js?v=13" defer></script>
-<script src="concentration-chart.js?v=20261011_v34" defer></script></head>
+<link rel="stylesheet" href="rank-independent.css?v=12">
+<script src="rank-independent-client.js?v=14" defer></script>
+<script src="concentration-chart.js?v=20261012_v35" defer></script></head>
 <body class="rank-independent"><div class="independent-toolbar">
 <label><input id="rankStockPinned" type="checkbox"> 쏠림율 차트 종목 동기화 해제</label>
 <span id="rankConnectionStatus" role="status">메인 페이지 연결 중</span>
+<span id="rankRefreshStatus" role="status"><span id="independentLastUpdate">-</span> | <span id="independentStatusText">대기 중</span></span>
 <div class="independent-refresh-controls">
 <label>갱신 <select id="refreshInterval" class="interval-select">
                                     <option value="5" data-interval="30000">30초 간격</option>

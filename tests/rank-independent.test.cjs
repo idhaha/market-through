@@ -25,6 +25,7 @@ const { promisify } = require('node:util');
     });
     app.get('/api/concentration-stock', (req, res) => res.json({ success: true, stock: { code: '000003', name: '세번째', market: 'K' } }));
     app.get('/main', (req, res) => res.type('html').send(fs.readFileSync('public/rank-independent.html', 'utf8')
+        .replace('<main id="tab_rank">', '<span id="lastUpdate">-</span><span id="statusText">대기 중</span><main id="tab_rank">')
         .replace(/<link rel="stylesheet" href="rank-independent.css[^\"]*">/, '<style>#tab_rank { display:grid; grid-template-columns:1fr 1.45fr; gap:14px; }</style>')
         .replace('<main id="tab_rank">', '<div class="header-single-line"><div class="rank-title-group"><h1>Rank</h1><div id="rankIndependentControls"></div></div></div><main id="tab_rank">')
         .replace(/<script src="rank-independent-client.js[^\"]*" defer><\/script>/, '<script src="rank-independent-main.js?v=20261011_v1" defer></script>')));
@@ -76,6 +77,11 @@ const { promisify } = require('node:util');
         assert.equal(queries.length, before, 'Opening independent window must reuse existing data');
         assert.equal(await main.locator('#transactionBody tr').count(), 2);
         assert.equal(await child.locator('#transactionBody tr').count(), 2);
+        await main.evaluate(() => { document.getElementById('lastUpdate').textContent = '2026/10/12 11:54:53'; document.getElementById('statusText').textContent = '로딩 중'; });
+        await child.waitForFunction(() => document.getElementById('independentStatusText').textContent === '로딩 중');
+        assert.equal(await child.locator('#independentLastUpdate').textContent(), '2026/10/12 11:54:53');
+        await main.evaluate(() => { document.getElementById('statusText').textContent = '완료'; });
+        await child.waitForFunction(() => document.getElementById('independentStatusText').textContent === '완료');
         const heights = async () => child.evaluate(() => ({ table: document.getElementById('transactionBody').clientHeight, chart: document.querySelector('.concentration-chart-area').clientHeight,
             row: document.querySelector('#transactionBody tr').getBoundingClientRect().height, font: parseFloat(getComputedStyle(document.querySelector('#transactionBody td')).fontSize), padding: parseFloat(getComputedStyle(document.querySelector('#transactionBody td')).paddingTop) }));
         const beforeResize = await heights();
@@ -211,6 +217,15 @@ const { promisify } = require('node:util');
         await main.close();
         await reopened.waitForFunction(() => document.getElementById('rankConnectionStatus').textContent.includes('終了') || document.getElementById('rankConnectionStatus').textContent.includes('종료'));
         const missingApp = await browser.newPage();
+        const queuedRefresh = await browser.newPage();
+        await queuedRefresh.goto(origin + '/main');
+        await queuedRefresh.evaluate(() => {
+            selectRankChartStock({ code: '000004', name: '갱신 지연 테스트', market: 'K' });
+            refreshConcentrationChart(); refreshConcentrationChart(); refreshConcentrationChart();
+        });
+        await queuedRefresh.waitForFunction(() => getRankChartState().revision >= 2 && !getRankChartState().busy);
+        assert.equal(queries.filter(query => query.code === '000004' && !query.debug_five).length, 2, 'Refreshes during an active chart query must coalesce into one follow-up query');
+        await queuedRefresh.close();
         await missingApp.goto(origin + '/main');
         assert.equal(await missingApp.getByRole('link', { name: /설치/ }).count(), 0);
         // Run native focus/TopMost checks after browser input tests.

@@ -11,5 +11,8 @@ Push-Location $build
 try { ./RankUninstallTest.exe; if ($LASTEXITCODE -ne 0) { throw '제거 기능 테스트 실패' } }
 finally { Pop-Location }
 Push-Location $root
-try { node tests/rank-independent.test.cjs; if ($LASTEXITCODE -ne 0) { throw 'Rank 독립창 테스트 실패' } }
+try {
+    node tests/rank-refresh.test.cjs; if ($LASTEXITCODE -ne 0) { throw 'Rank 갱신 테스트 실패' }
+    node tests/rank-independent.test.cjs; if ($LASTEXITCODE -ne 0) { throw 'Rank 독립창 테스트 실패' }
+}
 finally { Pop-Location }

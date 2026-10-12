@@ -746,16 +746,19 @@ function renderEfriendTable(stocks) {
 /**
  * Transaction Rank 데이터 로드
  */
+let transactionRankRequest = 0;
 async function loadTransactionRank() {
     if (isCapturing) { console.log('[Capture] loadTransactionRank() skipped (isCapturing)'); return; }
     const mrktTp = mrktTpSelect.value;
     const stexTp = stexTpSelect.value;
+    const request = ++transactionRankRequest;
 
     console.log(`fetching Transaction Rank (mrkt=${mrktTp}, stex=${stexTp})...`);
 
     try {
         const response = await fetch(`/api/transaction_rank?mrkt_tp=${mrktTp}&stex_tp=${stexTp}`);
         const result = await response.json();
+        if (request !== transactionRankRequest) return;
 
         console.log("Transaction Rank Raw Result:", result);
 
@@ -765,6 +768,7 @@ async function loadTransactionRank() {
 
             if (items.length === 0) {
                 transactionBody.innerHTML = `<tr><td colspan="6" class="align-center">데이터가 없습니다.</td></tr>`;
+                window.refreshConcentrationChart?.();
                 return;
             }
 
@@ -791,6 +795,8 @@ async function loadTransactionRank() {
                 `;
             }).join('');
 
+            window.refreshConcentrationChart?.();
+
         } else {
             if (document.querySelector('.tab-content.active')?.id === PERM_TAB_ID) {
                 console.error("Trans Rank Error:", result.error);
@@ -800,6 +806,7 @@ async function loadTransactionRank() {
             }
         }
     } catch (e) {
+        if (request !== transactionRankRequest) return;
         if (document.querySelector('.tab-content.active')?.id === PERM_TAB_ID) {
             console.error("Trans Rank Fetch Fail:", e);
             transactionBody.innerHTML = `<tr><td colspan="6" class="align-center error">통신 오류</td></tr>`;
@@ -1053,7 +1060,6 @@ function startAutoRefresh() {
         loadData();
         loadTransactionRank();
         loadWatchlistRank();
-        window.refreshConcentrationChart?.();
     }, intervalMs);
 }
 
@@ -1098,7 +1104,6 @@ refreshIntervalSelect.addEventListener('change', (e) => {
     loadData();
     loadTransactionRank();
     loadWatchlistRank();
-    window.refreshConcentrationChart?.();
     startAutoRefresh();
     saveAppData();
 });
@@ -1163,9 +1168,10 @@ if (globalRefreshBtn) {
 }
 
 // 페이지 언로드 시 정리
-window.addEventListener('beforeunload', () => {
+window.addEventListener('pagehide', () => {
     stopAutoRefresh();
 });
+window.addEventListener('pageshow', event => { if (event.persisted) startAutoRefresh(); });
 
 // ==========================================================
 // Tab Management Logic
@@ -1560,6 +1566,7 @@ function applyData(data) {
             refreshIntervalSelect.value = '2';
             lastSavedSettings.rankInterval = '2';
         }
+        startAutoRefresh();
         if (data.adrInterval) {
             lastSavedSettings.adrInterval = data.adrInterval === '4' ? '5' : data.adrInterval;
         } else {
@@ -3037,7 +3044,6 @@ document.body.addEventListener('click', function (e) {
         loadData();
         loadTransactionRank();
         loadWatchlistRank();
-        window.refreshConcentrationChart?.();
         return;
     }
 
@@ -4981,7 +4987,6 @@ async function refreshAllTabs() {
     loadData();
     loadTransactionRank();
     loadWatchlistRank();
-    window.refreshConcentrationChart?.();
 
     // 2. ADR 탭
     updateAdrFromSource();
@@ -5926,6 +5931,7 @@ function applyFullStateBackup(data) {
     // 4. 전역 설정 복구
     if (data.rankInterval && refreshIntervalSelect) {
         refreshIntervalSelect.value = data.rankInterval;
+        startAutoRefresh();
     }
     const adrSelect = document.getElementById('adrRefreshInterval');
     if (adrSelect && data.adrInterval) {

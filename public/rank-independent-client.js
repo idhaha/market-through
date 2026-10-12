@@ -168,6 +168,10 @@
         function apply(snapshot) {
             if (!snapshot) return;
             lastSnapshot = snapshot;
+            if (snapshot.refreshStatus) {
+                document.getElementById('independentLastUpdate').textContent = snapshot.refreshStatus.time;
+                document.getElementById('independentStatusText').textContent = snapshot.refreshStatus.text;
+            }
             const body = document.getElementById('transactionBody');
             // Accept only the known table elements/attributes. Never insert executable HTML.
             const template = document.createElement('template'); template.innerHTML = '<table><tbody>' + snapshot.rows + '</tbody></table>';
