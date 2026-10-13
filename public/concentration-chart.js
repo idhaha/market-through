@@ -328,7 +328,7 @@
                 const percent = tick * tickStep;
                 ctx.beginPath(); ctx.setLineDash([3, 5]); ctx.strokeStyle = '#d6dbe1';
                 ctx.moveTo(plot.left, y(percent)); ctx.lineTo(plot.right, y(percent)); ctx.stroke();
-                ctx.fillText(`${percent.toLocaleString()}%`, plot.right + 10, y(percent));
+                ctx.textAlign = 'right'; ctx.fillText(`${percent.toLocaleString()}%`, width - 36, y(percent));
             }
             // Daily bars already represent dates; a separator on every bar forms a dense mesh.
             // Show month boundaries for daily charts and day boundaries for minute charts.

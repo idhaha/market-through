@@ -33,7 +33,7 @@
             const max = Math.max(10,Math.ceil(Math.max(0,...values)/10)*10), y = v => bottom-v/max*(bottom-top);
             const style = getComputedStyle(panel), muted = style.getPropertyValue('--text-muted').trim(), border = '#d6dbe1';
             ctx.textAlign = 'left'; ctx.fillStyle = muted;
-            for (let v=0;v<=max;v+=10) { ctx.strokeStyle=border; ctx.setLineDash([3,5]); ctx.beginPath(); ctx.moveTo(left,y(v)); ctx.lineTo(right,y(v)); ctx.stroke(); ctx.fillText(`${v}조`,right+8,y(v)+4); }
+            for (let v=0;v<=max;v+=10) { ctx.strokeStyle=border; ctx.setLineDash([3,5]); ctx.beginPath(); ctx.moveTo(left,y(v)); ctx.lineTo(right,y(v)); ctx.stroke(); ctx.textAlign='right'; ctx.fillText(`${v}조`,w-36,y(v)+4); }
             ctx.setLineDash([]);
             const ticks = visible.filter((_,i) => i % Math.max(1,Math.ceil(n/Math.max(1,Math.floor((right-left)/90)))) === 0);
             function axis(context,height) { context.fillStyle=muted; context.textAlign='center'; ticks.forEach(t => context.fillText(dateKey(t).slice(2),x(t),height-8)); }
@@ -70,7 +70,7 @@
             const lo=Math.min(...selected.map(p=>p.low)), hi=Math.max(...selected.map(p=>p.high)), margin=Math.max((hi-lo)*.1,hi*.001);
             const cy=v=>size.h-28-(v-lo+margin)/(hi-lo+2*margin)*(size.h-44), cw=Math.max(1,Math.min(8,(right-left)/Math.max(1,n)*.7));
             cc.textAlign='left';
-            for(let i=0;i<5;i++){const v=lo+(hi-lo)*i/4;cc.fillStyle=muted;cc.fillText(v.toFixed(2),right+8,cy(v)+4);cc.strokeStyle=border;cc.setLineDash([3,5]);cc.beginPath();cc.moveTo(left,cy(v));cc.lineTo(right,cy(v));cc.stroke();}
+            for(let i=0;i<5;i++){const v=lo+(hi-lo)*i/4;cc.fillStyle=muted;cc.textAlign='right';cc.fillText(v.toFixed(2),size.w-36,cy(v)+4);cc.strokeStyle=border;cc.setLineDash([3,5]);cc.beginPath();cc.moveTo(left,cy(v));cc.lineTo(right,cy(v));cc.stroke();}
             cc.setLineDash([]);
             selected.forEach(p=>{cc.fillStyle=cc.strokeStyle=p.close>=p.open?'#e11d48':'#2563eb';cc.beginPath();cc.moveTo(x(p.t),cy(p.high));cc.lineTo(x(p.t),cy(p.low));cc.stroke();cc.fillRect(x(p.t)-cw/2,Math.min(cy(p.open),cy(p.close)),cw,Math.max(1,Math.abs(cy(p.open)-cy(p.close))));});
             if(hover&&indices.has(hover)){cc.strokeStyle=muted;cc.setLineDash([3,3]);cc.beginPath();cc.moveTo(x(hover),16);cc.lineTo(x(hover),size.h-28);cc.stroke();cc.setLineDash([]);}
@@ -99,13 +99,34 @@
             const today=dateKey(Date.now()), fromDate=new Date(`${today}T00:00:00Z`);
             fromDate.setUTCMonth(fromDate.getUTCMonth()-({'6m':6,'1y':12,'3y':36,'5y':60}[range]));
             const from=fromDate.toISOString().slice(0,10).replaceAll('-',''), to=today.replaceAll('-','');
-            const results=await Promise.allSettled(['kospi','kosdaq'].map(async market=>{
-                const response=await fetch(`/api/adr/candles?market=${market}&mode=day&from=${from}&to=${to}`,{signal:current.signal});
-                const result=await response.json();if(!response.ok)throw new Error(result.error || '조회 실패');return result;
-            }));
+            const results=[];
+            for (const market of ['kospi','kosdaq']) {
+                if (current.signal.aborted) return;
+                const latest=data[market].at(-1)?.t;
+                const recent=new Date(latest || 0);
+                recent.setUTCDate(recent.getUTCDate()-7);
+                const marketFrom=latest ? Math.max(Number(from),Number(recent.toISOString().slice(0,10).replaceAll('-',''))) : Number(from);
+                try {
+                    const response=await fetch(`/api/adr/candles?market=${market}&mode=day&from=${marketFrom}&to=${to}`,{signal:current.signal});
+                    const result=await response.json();
+                    if(!response.ok)throw new Error(result.error || `HTTP ${response.status}`);
+                    results.push({status:'fulfilled',value:result});
+                } catch(error) {
+                    if(error.name==='AbortError')return;
+                    results.push({status:'rejected',reason:error});
+                }
+            }
             if(current!==controller)return;
             const messages=[];
-            ['kospi','kosdaq'].forEach((m,i)=>{const result=results[i];if(result.status==='fulfilled'){data[m]=result.value.points.filter(p=>Number.isFinite(p.t));if(result.value.partial)messages.push(`${names[m]} 일부 구간`);if(!data[m].some(p=>Number.isFinite(p.market_turnover)))messages.push(`${names[m]} 거래대금 데이터 없음`);}else messages.push(`${names[m]} 조회 실패 · 다음 갱신 때 재시도`);});
+            ['kospi','kosdaq'].forEach((m,i)=>{
+                const result=results[i];
+                if(result.status==='fulfilled'){
+                    const fresh=Array.isArray(result.value.points)?result.value.points.filter(p=>Number.isFinite(p.t)):[];
+                    data[m]=[...new Map([...data[m],...fresh].map(p=>[p.t,p])).values()].sort((a,b)=>a.t-b.t).filter(p=>dateKey(p.t).replaceAll('-','')>=from);
+                    if(result.value.partial)messages.push(`${names[m]} 일부 구간`);
+                    if(!data[m].some(p=>Number.isFinite(p.market_turnover)))messages.push(`${names[m]} 거래대금 데이터 없음`);
+                }else messages.push(data[m].length ? `${names[m]} 갱신 실패 · 이전 데이터 표시 · 다음 갱신 때 재시도` : `${names[m]} 조회 실패 · 다음 갱신 때 재시도`);
+            });
             dates=[...new Set(Object.values(data).flat().map(p=>p.t))].sort((a,b)=>a-b);hover=null;tip.hidden=true;
             status.textContent=messages.join(' · ') || (dates.length?`${dateKey(dates[0])} ~ ${dateKey(dates.at(-1))} · 당일 거래대금은 누적값`:'일별 데이터 없음');draw();
         };

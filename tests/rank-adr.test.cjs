@@ -16,9 +16,11 @@ const assert = require('node:assert/strict');
             window.requests = [];
             window.markerColors = [];
             window.adrAxisLabels = [];
+            window.concentrationAxisLabels = [];
             const originalText = CanvasRenderingContext2D.prototype.fillText;
             CanvasRenderingContext2D.prototype.fillText = function(label,...args) {
-                if (this.canvas.closest('#rankAdrChartPanel') && [80,100,120].includes(label)) window.adrAxisLabels.push({label,color:this.fillStyle});
+                if (this.canvas.closest('#rankAdrChartPanel') && [80,100,120].includes(label)) window.adrAxisLabels.push({label,color:this.fillStyle,x:args[0],align:this.textAlign,width:this.canvas.clientWidth});
+                if (this.canvas.id === 'concentrationCanvas' && /^\d+%$/.test(String(label))) window.concentrationAxisLabels.push({x:args[0],align:this.textAlign,width:this.canvas.clientWidth});
                 return originalText.call(this,label,...args);
             };
             const originalFill = CanvasRenderingContext2D.prototype.fill;
@@ -39,6 +41,11 @@ const assert = require('node:assert/strict');
         await page.waitForFunction(() => document.querySelector('.rank-adr-panel output').textContent === '95.00%');
         assert.ok(await page.evaluate(() => window.markerColors.includes('#f97316')), 'Today ADR has an orange marker');
         assert.ok(await page.evaluate(()=>[80,100,120].every(label=>window.adrAxisLabels.some(p=>p.label===label&&p.color==='#ff6b6b'))),'ADR reference labels share the same red');
+        assert.ok(await page.evaluate(()=>{
+            const label=window.adrAxisLabels.at(-1),canvas=document.querySelector('#rankAdrChartPanel .rank-adr-area canvas');
+            const output=document.querySelector('#rankAdrChartPanel output');
+            return label.align==='right'&&Math.abs(label.x-(label.width-36))<1&&Math.abs(canvas.getBoundingClientRect().left+label.x-output.getBoundingClientRect().right)<1;
+        }),'ADR latest value ends at the right edge of its Y-axis labels');
         assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem(Object.keys(localStorage)[0])).length), 1, 'One sample per minute; previous day excluded');
         await page.selectOption('.rank-adr-panel select', 'kosdaq');
         await page.waitForFunction(() => document.querySelector('.rank-adr-panel output').textContent === '105.00%');
@@ -204,6 +211,11 @@ const assert = require('node:assert/strict');
             window.applyRankChartState({selection:{code:'005930',name:'삼성전자'},mode:'day',interval:1,points:[{time:'20200102',value:12},{time:day,value:15}],market:'코스피'});
         });
         assert.ok(await page.evaluate(()=>window.concentrationStrokes.some(p=>p.color==='#339af0'&&p.width===2)),'Concentration line matches ADR');
+        assert.ok(await page.evaluate(()=>{
+            const label=window.concentrationAxisLabels.at(-1),canvas=document.getElementById('concentrationCanvas');
+            const output=document.getElementById('concentrationCurrentRate');
+            return label.align==='right'&&Math.abs(label.x-(label.width-36))<1&&Math.abs(canvas.getBoundingClientRect().left+label.x-output.getBoundingClientRect().right)<1;
+        }),'Concentration latest value ends at the right edge of its Y-axis labels');
         assert.ok(await page.evaluate(()=>window.concentrationDots.some(p=>p.color==='#f97316'&&p.r===4)),'Today concentration has an orange marker');
         const concentrationSurface=page.locator('#concentrationCanvas');await concentrationSurface.scrollIntoViewIfNeeded();
         const concentrationBounds=await concentrationSurface.boundingBox();

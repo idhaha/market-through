@@ -1765,7 +1765,10 @@ app.get('/api/adr/candles', async (req, res) => {
             await new Promise(resolve => setTimeout(resolve, 350));
         }
         res.set('Cache-Control', 'no-store').json({ points: [...points.values()].sort((a,b) => a.t-b.t), partial: more });
-    } catch (_) { res.status(502).json({ error: '시장 지수 캔들 조회 실패' }); }
+    } catch (error) {
+        console.warn('[MarketIndexCandles] 조회 실패', { market, mode, httpStatus: error.response?.status || null, code: error.code || null, message: error.message });
+        res.status(502).json({ error: '시장 지수 캔들 조회 실패' });
+    }
 });
 
 app.get('/api/adr/today', async (req, res) => {

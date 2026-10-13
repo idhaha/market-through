@@ -89,11 +89,11 @@
                 if ([80, 100, 120].includes(v)) continue;
                 ctx.strokeStyle = gridColor; ctx.setLineDash([3, 5]); ctx.beginPath();
                 ctx.moveTo(left, y(v)); ctx.lineTo(right, y(v)); ctx.stroke();
-                ctx.fillStyle = labelColor; ctx.textAlign = 'left'; ctx.fillText(v, right + 8, y(v) + 4);
+                ctx.fillStyle = labelColor; ctx.textAlign = 'right'; ctx.fillText(v, w - 36, y(v) + 4);
             }
             for (const [v, color] of [[80, '#ff6b6b'], [100, '#ff6b6b'], [120, '#ff6b6b']]) {
                 ctx.strokeStyle = gridColor; ctx.setLineDash([3, 5]); ctx.beginPath(); ctx.moveTo(left, y(v)); ctx.lineTo(right, y(v)); ctx.stroke();
-                ctx.fillStyle = color; ctx.textAlign = 'left'; ctx.fillText(v, right + 8, y(v) + 4);
+                ctx.fillStyle = color; ctx.textAlign = 'right'; ctx.fillText(v, w - 36, y(v) + 4);
             }
             ctx.setLineDash([]); ctx.fillStyle = getComputedStyle(panel).getPropertyValue('--text-muted');
             ctx.textAlign = 'center';
@@ -174,7 +174,7 @@
             const cw = Math.max(1, Math.min(8, (geometry.right - geometry.left) / Math.max(1, mode === 'day' ? geometry.points.length : (geometry.end-geometry.start)/60000) * .7));
             candleGeometry = { ...geometry, top:16, bottom:h-28, y, candleWidth:cw };
             candleCtx.font = '11px Arial'; candleCtx.textAlign = 'left';
-            for (let i=0; i<5; i++) { const v = lo + (hi-lo) * i/4; candleCtx.strokeStyle = '#d6dbe1'; candleCtx.setLineDash([3,5]); candleCtx.beginPath(); candleCtx.moveTo(geometry.left,y(v)); candleCtx.lineTo(geometry.right,y(v)); candleCtx.stroke(); candleCtx.fillStyle='#64748b'; candleCtx.fillText(v.toFixed(2),geometry.right+8,y(v)+4); }
+            for (let i=0; i<5; i++) { const v = lo + (hi-lo) * i/4; candleCtx.strokeStyle = '#d6dbe1'; candleCtx.setLineDash([3,5]); candleCtx.beginPath(); candleCtx.moveTo(geometry.left,y(v)); candleCtx.lineTo(geometry.right,y(v)); candleCtx.stroke(); candleCtx.fillStyle='#64748b'; candleCtx.textAlign='right'; candleCtx.fillText(v.toFixed(2),w-36,y(v)+4); }
             candleCtx.setLineDash([]);
             visible.forEach(p => {
                 const x = geometry.x(p.t), color = p.close >= p.open ? '#e11d48' : '#2563eb';
