@@ -145,19 +145,15 @@ const assert = require('node:assert/strict');
         await surface.scrollIntoViewIfNeeded();
         const bounds = await surface.boundingBox();
         await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + 90);
-        assert.ok(await page.locator('.rank-adr-area .concentration-tooltip').isVisible());
+        assert.ok(await page.locator('#rankAdrChartPanel > .chart-hover-info').isVisible());
         assert.ok(!(await page.locator('.rank-adr-candle-area .concentration-tooltip').isVisible()), 'Candle tooltip is suppressed');
-        const backgrounds = await page.evaluate(() => ['#concentrationTooltip', '.rank-adr-area .concentration-tooltip', '.rank-adr-candle-area .concentration-tooltip'].map(s => getComputedStyle(document.querySelector(s)).backgroundColor));
-        assert.ok(backgrounds.every(color => color === backgrounds[0]), 'ADR info backgrounds match the concentration chart');
-        const infoPositions = await page.evaluate(() => ['.rank-adr-area'].map(selector => {
-            const area=document.querySelector(selector), tip=area.querySelector('.concentration-tooltip');
-            return { left:parseFloat(tip.style.left), top:parseFloat(tip.style.top), width:tip.offsetWidth, height:tip.offsetHeight, areaWidth:area.clientWidth, areaHeight:area.clientHeight };
-        }));
-        for (const info of infoPositions) {
-            assert.ok(Number.isFinite(info.left) && Number.isFinite(info.top), 'Info placement is computed from the hovered point');
-            assert.ok(info.left >= 4 && info.left + info.width <= info.areaWidth - 4);
-            assert.ok(info.top >= 4 && info.top + info.height <= info.areaHeight - 4);
-        }
+        assert.ok(await page.locator('#rankAdrChartPanel > .chart-hover-info').evaluate(tip=>{
+            const info=tip.getBoundingClientRect(),area=tip.nextElementSibling.getBoundingClientRect();
+            return getComputedStyle(tip).position==='static'&&info.bottom<=area.top&&info.height===24;
+        }),'ADR hover info occupies a reserved row above the plot');
+        const rowTop=await page.locator('#rankAdrChartPanel > .chart-hover-info').evaluate(el=>el.getBoundingClientRect().top);
+        await page.mouse.move(bounds.x+bounds.width*.7,bounds.y+90);
+        assert.equal(await page.locator('#rankAdrChartPanel > .chart-hover-info').evaluate(el=>el.getBoundingClientRect().top),rowTop,'Info position remains fixed as the pointer moves');
         await page.screenshot({ path:'dev_tools/output/rank-adr-daily-preview.png', fullPage:true });
         await page.evaluate(async () => {
             const previousFetch=window.fetch;
@@ -193,7 +189,7 @@ const assert = require('node:assert/strict');
         await page.waitForFunction(()=>document.querySelector('#rankAdrChartPanel output').textContent==='70.00%');
         assert.ok(await page.locator('#rankAdrChartPanel .rank-adr-area canvas').evaluate(canvas=>{
             const w=canvas.clientWidth,h=canvas.clientHeight,dpr=window.devicePixelRatio;
-            const bottom=h-30,py=bottom-(70-55)/90*(bottom-16);
+            const bottom=h-30,py=bottom-(70-55)/90*(bottom-10);
             const pixel=canvas.getContext('2d').getImageData(Math.round((w-70+2)*dpr),Math.round(py*dpr),1,1).data;
             return pixel[0]>220&&pixel[1]>60&&pixel[1]<160&&pixel[2]<80&&pixel[3]>200;
         }),'The orange endpoint remains visible beyond the plot clipping edge');
@@ -215,6 +211,11 @@ const assert = require('node:assert/strict');
         await concentrationSurface.dispatchEvent('mousemove',{clientX:concentrationBounds.x+20,clientY:concentrationBounds.y+80});
         assert.ok(await page.evaluate(()=>window.concentrationDots.some(p=>p.color==='#339af0'&&p.r===4&&p.x<100)),'Concentration hover draws a marker at the hovered historical point');
         assert.ok(await page.evaluate(()=>window.concentrationBadges.some(p=>p.label==='12.00%'&&p.x>p.width/2)),'Concentration hover shows its value on the right axis');
+        assert.ok((await page.locator('#concentrationTooltip').textContent()).startsWith('2020-01-02 · 쏠림율'));
+        assert.ok(await page.locator('#concentrationTooltip').evaluate(tip=>tip.nextElementSibling.classList.contains('concentration-chart-area')&&tip.getBoundingClientRect().bottom<=tip.nextElementSibling.getBoundingClientRect().top),'Concentration info is above its plot');
+        const heightBefore=await page.locator('#concentrationChartPanel').evaluate(el=>el.getBoundingClientRect().height);
+        await concentrationSurface.dispatchEvent('mouseleave');
+        assert.equal(await page.locator('#concentrationChartPanel').evaluate(el=>el.getBoundingClientRect().height),heightBefore,'Clearing hover does not resize the panel');
         assert.deepEqual(await page.evaluate(() => window.resizeErrors), []);
         assert.deepEqual(errors, []);
         console.log('PASS ADR minute merge, day filtering, market selection and equal panel sizes');

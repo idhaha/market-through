@@ -33,6 +33,8 @@
         const debugToggle = document.getElementById('concentrationDebugToggle');
         const debugPanel = document.getElementById('concentrationFiveDebug');
         const chartArea = canvas.parentElement;
+        tooltip.className = 'chart-hover-info';
+        chartArea.before(tooltip);
         const ctx = canvas.getContext('2d');
         const candleCanvas = document.getElementById('concentrationCandleCanvas');
         const candleArea = document.getElementById('concentrationCandleArea');
@@ -294,7 +296,7 @@
             ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
             ctx.clearRect(0, 0, width, height);
             ctx.lineWidth = 1;
-            const plot = { left: 16, top: 18, right: width - 58, bottom: height - 34 };
+            const plot = { left: 16, top: 10, right: width - 58, bottom: height - 34 };
             const points = state.points.slice(state.start, state.start + state.visible);
             const maximum = points.reduce((max, point) => Number.isFinite(point.value) ? Math.max(max, point.value) : max, 0);
             let tickStep = 10;
@@ -695,59 +697,6 @@
         surface.addEventListener('pointercancel', cancelDrag);
         surface.addEventListener('lostpointercapture', cancelDrag);
         });
-        function segmentHitsBox(ax, ay, bx, by, box) {
-            let low = 0, high = 1;
-            const dx = bx - ax, dy = by - ay;
-            const tests = [[-dx, ax - box.left], [dx, box.right - ax], [-dy, ay - box.top], [dy, box.bottom - ay]];
-            for (const [p, q] of tests) {
-                if (p === 0) { if (q < 0) return false; continue; }
-                const fraction = q / p;
-                if (p < 0) low = Math.max(low, fraction); else high = Math.min(high, fraction);
-                if (low > high) return false;
-            }
-            return true;
-        }
-        function positionHoverInfo(tip, graph, candle = false) {
-            if (!graph || state.hover == null) { tip.hidden = true; return; }
-            tip.hidden = false;
-            const { plot, points, x, y, width } = graph;
-            const point = points[state.hover];
-            if (!point) { tip.hidden = true; return; }
-            const highY = candle ? (validCandle(point) ? y(point.stock_high) : (plot.top + plot.bottom) / 2) : Number.isFinite(point.value) ? y(point.value) : plot.top;
-            const lowY = candle && validCandle(point) ? y(point.stock_low) : highY;
-            const preferTop = highY - plot.top >= plot.bottom - lowY;
-            tip.style.maxWidth = `${Math.max(40, plot.right - plot.left - 8)}px`;
-            const boxWidth = tip.offsetWidth, boxHeight = tip.offsetHeight;
-            const leftLimit = Math.max(4, plot.left + 4);
-            const rightLimit = Math.max(leftLimit, Math.min(width - boxWidth - 4, plot.right - boxWidth - 4));
-            const clamp = value => Math.max(leftLimit, Math.min(rightLimit, value));
-            const anchor = clamp(x(state.hover) - boxWidth / 2);
-            const candidates = [anchor, clamp(x(state.hover) + 12), clamp(x(state.hover) - boxWidth - 12), leftLimit, rightLimit];
-            for (let left = leftLimit; left <= rightLimit; left += 12) candidates.push(left);
-            candidates.sort((a,b) => Math.abs(a - anchor) - Math.abs(b - anchor));
-            let best = null;
-            for (const isTop of [preferTop, !preferTop]) {
-                const top = isTop ? 4 : Math.max(4, plot.bottom - boxHeight - 4);
-                for (const left of candidates) {
-                    const box = { left: left - 5, right: left + boxWidth + 5, top: top - 5, bottom: top + boxHeight + 5 };
-                    let collisions = 0;
-                    points.forEach((p, i) => {
-                        if (candle) {
-                            if (!validCandle(p)) return;
-                            const half = graph.candleWidth / 2;
-                            if (x(i) + half >= box.left && x(i) - half <= box.right && y(p.stock_low) >= box.top && y(p.stock_high) <= box.bottom) collisions++;
-                        } else if (Number.isFinite(p.value)) {
-                            if (segmentHitsBox(x(i), y(p.value), x(i), y(p.value), box)) collisions++;
-                            if (i && Number.isFinite(points[i - 1].value) && segmentHitsBox(x(i - 1), y(points[i - 1].value), x(i), y(p.value), box)) collisions++;
-                        }
-                    });
-                    if (!best || collisions < best.collisions) best = { left, top, collisions };
-                    if (!collisions) break;
-                }
-                if (best?.collisions === 0) break;
-            }
-            tip.style.left = `${best.left}px`; tip.style.top = `${best.top}px`;
-        }
         function hoverChart(event) {
             if (state.busy || state.drag || !geometry?.points.length) return;
             const { plot, points, x, width } = geometry;
@@ -756,12 +705,12 @@
             const index = Math.max(0, Math.min(points.length - 1, Math.round((offset - plot.left) / (plot.right - plot.left - 24) * (points.length - 1))));
             const point = points[index]; state.hover = index;
             const change = candleChange(point);
-            const text = `${formatDate(point.time)}${state.mode === 'minute' ? ` ${formatTime(point.time)}` : ''} · 쏠림율 ${point.value == null ? '-' : `${point.value.toFixed(2)}%`} · 상승률 ${change == null ? '-' : `${change > 0 ? '+' : ''}${change.toFixed(2)}%`}`;
+            const date = `${point.time.slice(0,4)}-${point.time.slice(4,6)}-${point.time.slice(6,8)}`;
+            const text = `${date}${state.mode === 'minute' ? ` ${formatTime(point.time)}` : ''} · 쏠림율 ${point.value == null ? '-' : `${point.value.toFixed(2)}%`} · 상승률 ${change == null ? '-' : `${change > 0 ? '+' : ''}${change.toFixed(2)}%`}`;
             tooltip.textContent = text;
             tooltip.hidden = false;
             candleTooltip.hidden = true;
             draw();
-            positionHoverInfo(tooltip, geometry);
         }
         function clearHover() { state.hover = null; tooltip.hidden = true; candleTooltip.hidden = true; draw(); }
         [canvas, candleCanvas].forEach(surface => {

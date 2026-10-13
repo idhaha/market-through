@@ -16,6 +16,8 @@
         const select = panel.querySelector('select'), canvas = panel.querySelector('canvas');
         const ctx = canvas.getContext('2d'), status = panel.querySelector('[role="status"]');
         const output = panel.querySelector('output'), tooltip = panel.querySelector('.concentration-tooltip');
+        tooltip.className = 'chart-hover-info';
+        canvas.parentElement.before(tooltip);
         const controls = document.createElement('div'); controls.className = 'rank-adr-controls';
         controls.innerHTML = `<button type="button" data-adr-mode="day">일</button><button type="button" data-adr-mode="minute" class="active">당일 1분</button><span class="rank-adr-ranges" hidden>${['6m','1y','3y','5y'].map(r => `<button type="button" data-adr-range="${r}" class="${r === '1y' ? 'active' : ''}">${r.toUpperCase()}</button>`).join('')}</span><button type="button" class="concentration-candle-toggle" aria-expanded="false">캔들차트</button>`;
         panel.querySelector('.concentration-chart-header').after(controls);
@@ -67,7 +69,7 @@
             ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
             ctx.clearRect(0, 0, w, h);
             ctx.lineWidth = 1;
-            const left = 16, right = w - 70, top = 16, bottom = h - 30;
+            const left = 16, right = w - 70, top = 10, bottom = h - 30;
             const values = visiblePoints.map(p => p.adr);
             if (closing) values.push(closing.adr);
             const min = Math.min(60, ...values) - 5, max = Math.max(140, ...values) + 5;
@@ -140,7 +142,6 @@
                 ctx.fillStyle = dateKey(hover.t) === today ? '#f97316' : '#339af0'; ctx.beginPath(); ctx.arc(x(hover.t), y(hover.adr), 4, 0, Math.PI * 2); ctx.fill();
             }
             drawCandles();
-            if (hover) positionHoverInfo(tooltip, geometry, visiblePoints);
             drawDrag(ctx, geometry);
         }
         function drawHoverValue(context, graph, value, label, color) {
@@ -192,54 +193,6 @@
             if (!drag || !graph) return;
             context.fillStyle = drag.endX >= drag.startX ? 'rgba(15,23,42,.12)' : 'rgba(234,88,12,.12)';
             context.fillRect(Math.min(drag.startX,drag.endX),graph.top,Math.abs(drag.endX-drag.startX),graph.bottom-graph.top);
-        }
-        function segmentHitsBox(ax, ay, bx, by, box) {
-            let low = 0, high = 1;
-            const dx = bx - ax, dy = by - ay;
-            for (const [p,q] of [[-dx,ax-box.left],[dx,box.right-ax],[-dy,ay-box.top],[dy,box.bottom-ay]]) {
-                if (p === 0) { if (q < 0) return false; continue; }
-                const fraction = q / p;
-                if (p < 0) low = Math.max(low,fraction); else high = Math.min(high,fraction);
-                if (low > high) return false;
-            }
-            return true;
-        }
-        function positionHoverInfo(tip, graph, samples, candle = false) {
-            if (!graph || !hover) { tip.hidden = true; return; }
-            tip.hidden = false;
-            const point = candle ? samples.find(p => mode === 'day' ? dateKey(p.t) === dateKey(hover.t) : Math.floor(p.t/60000) === Math.floor(hover.t/60000)) : hover;
-            const highY = candle ? point ? graph.y(point.high) : (graph.top + graph.bottom) / 2 : graph.y(hover.adr);
-            const lowY = candle && point ? graph.y(point.low) : highY;
-            const preferTop = highY - graph.top >= graph.bottom - lowY;
-            tip.style.maxWidth = `${Math.max(40,graph.right-graph.left-8)}px`;
-            const boxWidth = tip.offsetWidth, boxHeight = tip.offsetHeight;
-            const leftLimit = Math.max(4,graph.left+4), rightLimit = Math.max(leftLimit,graph.right-boxWidth-4);
-            const clamp = v => Math.max(leftLimit,Math.min(rightLimit,v));
-            const cursorX = graph.x(hover.t), anchor = clamp(cursorX-boxWidth/2);
-            const candidates = [anchor,clamp(cursorX+12),clamp(cursorX-boxWidth-12),leftLimit,rightLimit];
-            for (let left=leftLimit;left<=rightLimit;left+=12) candidates.push(left);
-            candidates.sort((a,b) => Math.abs(a-anchor)-Math.abs(b-anchor));
-            let best;
-            for (const isTop of [preferTop,!preferTop]) {
-                const top = isTop ? 4 : Math.max(4,graph.bottom-boxHeight-4);
-                for (const left of candidates) {
-                    const box = {left:left-5,right:left+boxWidth+5,top:top-5,bottom:top+boxHeight+5};
-                    let collisions=0;
-                    samples.forEach((p,i) => {
-                        if (candle) {
-                            const half = graph.candleWidth/2;
-                            if (graph.x(p.t)+half>=box.left && graph.x(p.t)-half<=box.right && graph.y(p.low)>=box.top && graph.y(p.high)<=box.bottom) collisions++;
-                        } else {
-                            if (segmentHitsBox(graph.x(p.t),graph.y(p.adr),graph.x(p.t),graph.y(p.adr),box)) collisions++;
-                            if (i && (mode === 'day' || p.t-samples[i-1].t <= 120000) && segmentHitsBox(graph.x(samples[i-1].t),graph.y(samples[i-1].adr),graph.x(p.t),graph.y(p.adr),box)) collisions++;
-                        }
-                    });
-                    if (!best || collisions<best.collisions) best={left,top,collisions};
-                    if (!collisions) break;
-                }
-                if (best?.collisions === 0) break;
-            }
-            tip.style.left=`${best.left}px`; tip.style.top=`${best.top}px`;
         }
         async function loadCandles() {
             candleController?.abort(); candles = []; drawCandles();
@@ -345,7 +298,7 @@
             if (px < geometry.left || px > geometry.right) { clearHover(); return; }
             const p = geometry.points.reduce((a, b) => Math.abs(geometry.x(b.t) - px) < Math.abs(geometry.x(a.t) - px) ? b : a);
             hover = p;
-            tooltip.textContent = `${mode === 'day' ? dateKey(p.t) : timeLabel(p.t)} · ADR ${p.adr.toFixed(2)}%`; tooltip.hidden = false; draw();
+            tooltip.textContent = `${dateKey(p.t)}${mode === 'minute' ? ` ${timeLabel(p.t)}` : ''} · ADR ${p.adr.toFixed(2)}%`; tooltip.hidden = false; draw();
         }
         function clearHover() { hover = null; tooltip.hidden = true; candleTip.hidden = true; draw(); }
         [canvas, candleCanvas].forEach(c => { c.addEventListener('mousemove', hoverChart); c.addEventListener('mouseleave', clearHover); });

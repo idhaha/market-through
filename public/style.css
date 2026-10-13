@@ -41,6 +41,10 @@
 .rank-chart-row .rank-adr-controls output { flex-shrink:1; overflow-wrap:anywhere; white-space:normal; }
 .turnover-hover-info { min-height:24px; flex-shrink:0; font-size:12px; line-height:24px; color:var(--text-primary); }
 .turnover-hover-info[hidden] { display:block; visibility:hidden; }
+.chart-hover-info,
+#concentrationTooltip.chart-hover-info { position:static; display:block; height:24px; min-height:24px; flex-shrink:0; line-height:24px; margin:0; padding:0; max-width:100%; font-size:12px; color:var(--text-primary); background:transparent; border-radius:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none; }
+.chart-hover-info[hidden], #concentrationTooltip.chart-hover-info[hidden] { display:block; visibility:hidden; }
+.concentration-charts-column > .concentration-chart-area { height:calc(var(--concentration-chart-height) - 24px); }
 .rank-adr-panel { width: var(--concentration-base-width, 570px); max-width: calc(100vw - 50px); margin-top: 20px; display: flex; flex-direction: column; box-sizing: border-box; }
 .rank-adr-area { flex: 1; min-height: 280px; position: relative; }
 .rank-adr-panel .rank-adr-area { min-height: 200px; }
