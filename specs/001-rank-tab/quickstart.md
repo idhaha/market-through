@@ -140,9 +140,9 @@ POST /api/concentration-chart에 {code:선택종목, mode:"minute", interval:5, 
 현재 자동화 검증 명령:
 
 ```powershell
-node tests/rank-adr.test.cjs
+node dev_tools/debug/rank-adr.test.cjs
 node tests/adr-routes.test.cjs
-node tests/rank-refresh.test.cjs
+node dev_tools/debug/rank-refresh.test.cjs
 ```
 
 브라우저 테스트는 로컬 Microsoft Edge(Playwright channel=msedge)와 실제 Rank HTML/CSS를 사용하되 API는 모의 응답이다. 캔들 연속조회·시장 업종·가격 배율·오류 계약은 API 모의 테스트로 검증한다. `dev_tools/output/rank-adr-daily-preview.png`는 개발용 모의 화면이다. 실제 ADR history는 확인했지만 실제 키움 장기 캔들·Oracle 배포 완료나 upstream 자정 초기화 시각을 이 테스트가 보장하지 않는다.
@@ -156,7 +156,7 @@ node tests/rank-refresh.test.cjs
 3. 메인과 캔들에서 오른쪽 드래그 확대/왼쪽 전체 복원, ±, 슬라이더를 확인한다. 양 그래프 X축 구간이 같고 캔들 펼침/접힘은 해당 패널만 늘려야 한다.
 4. 거래대금 마우스 이동 점, 양 시장 수평 점선/축 값 배지, 공유 수직선과 위 정보 줄을 확인한다. 시장명/오늘 값은 캔들 버튼 행 오른쪽 두 줄이며 시장명 왼쪽·수치 오른쪽 정렬이다. 오늘 봉이 없으면 —, 과거 확대 창을 봐도 오늘 값은 그대로다.
 5. 모든 Y축은 오른쪽, 가로선은 공통 회색 점선이다. 쏠림율/ADR는 같은 파란 실선이며 오늘 점은 주황색이다. ADR 제목은 ADR, 버튼은 당일 1분, 80/100/120은 같은 빨강이며 MAX/MIN은 없다. 마지막 점과 수치가 오른쪽에서 잘리지 않는지 확인한다.
-6. 모의 회귀 검증: `node tests/rank-turnover.test.cjs`, `node tests/rank-adr.test.cjs`, `node tests/adr-routes.test.cjs`, `node tests/rank-refresh.test.cjs`. 거래대금 축/선택/기간/드래그/이동 점/오늘 값/배지/배치와 쏠림율·ADR 글꼴/점/픽셀 및 공유 거래대금 변환을 확인한다.
+6. 모의 회귀 검증: `node dev_tools/debug/rank-turnover.test.cjs`, `node dev_tools/debug/rank-adr.test.cjs`, `node tests/adr-routes.test.cjs`, `node dev_tools/debug/rank-refresh.test.cjs`. 거래대금 축/선택/기간/드래그/이동 점/오늘 값/배지/배치와 쏠림율·ADR 글꼴/점/픽셀 및 공유 거래대금 변환을 확인한다.
 7. 운영 상세 확인(미완료, T088/T090): 실제 로그인된 응답의 두 시장 `market_turnover`, 동일 원본 일봉 쏠림율 분모 검산, 3Y/5Y partial 여부, 장중 누적 거래대금 갱신, 휴장일 오늘 — 표시, 시장별 실패·누락·느린 응답 및 좁은 화면 가로 스크롤. 모의 테스트는 이 항목의 완료 증거가 아니다.
 
 ### Oracle 운영 검증 기록 — 2026-10-13
@@ -167,7 +167,7 @@ node tests/rank-refresh.test.cjs
 
 ### 마우스 정보 줄 변경 확인 (2026-10-13)
 
-세 차트의 정보가 그래프 위 줄에 나타나고 마우스 이동/이탈에 따라 위치나 패널 높이가 바뀌지 않는지 확인한다. 쏠림율/ADR 날짜는 거래대금처럼 YYYY-MM-DD이며 분봉은 시각이 뒤따른다. `node tests/rank-adr.test.cjs`로 줄 위치·날짜·높이 보존 및 기존 동작을 모의 검증한다. 이 최신 변경의 Oracle 재확인은 T093으로 남긴다.
+세 차트의 정보가 그래프 위 줄에 나타나고 마우스 이동/이탈에 따라 위치나 패널 높이가 바뀌지 않는지 확인한다. 쏠림율/ADR 날짜는 거래대금처럼 YYYY-MM-DD이며 분봉은 시각이 뒤따른다. `node dev_tools/debug/rank-adr.test.cjs`로 줄 위치·날짜·높이 보존 및 기존 동작을 모의 검증한다. 이 최신 변경의 Oracle 재확인은 T093으로 남긴다.
 
 ### 거래대금 갱신 실패 재확인 (미완료)
 

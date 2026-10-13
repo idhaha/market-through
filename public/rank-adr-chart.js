@@ -284,7 +284,17 @@
         controls.querySelectorAll('[data-adr-range]').forEach(button => button.addEventListener('click', () => {
             range = button.dataset.adrRange; controls.querySelectorAll('[data-adr-range]').forEach(b => b.classList.toggle('active', b === button)); changeView();
         }));
-        candleButton.addEventListener('click', () => { candleArea.hidden = !candleArea.hidden; candleButton.setAttribute('aria-expanded', String(!candleArea.hidden)); scheduleResize(); loadCandles(); });
+        window.getRankAdrCandleOpen = () => !candleArea.hidden;
+        window.applyRankAdrCandleOpen = open => {
+            if (candleArea.hidden === (open !== true)) return;
+            candleArea.hidden = open !== true;
+            candleButton.setAttribute('aria-expanded', String(!candleArea.hidden));
+            scheduleResize(); loadCandles();
+        };
+        candleButton.addEventListener('click', () => {
+            window.applyRankAdrCandleOpen(candleArea.hidden);
+            if (typeof saveAppData === 'function') saveAppData();
+        });
         function hoverChart(event) {
             if (drag) return;
             if (!geometry) return;

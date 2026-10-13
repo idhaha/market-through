@@ -46,26 +46,21 @@
         let foldLayout = null;
         let candleResizeHeight = null;
         let candleWindowBase = null;
-        let candleHeight = 230;
+        const candleHeight = 190;
+        let restoringInitialDisplay = false;
+        let initialDisplayApplied = false;
         document.addEventListener('rank-candle-display', event => {
             const chart = document.getElementById('concentrationChartPanel');
-            const chartArea = document.querySelector('.concentration-chart-area');
-            if (event.detail.open && !chart.classList.contains('independent-collapsed')) {
-                candleHeight = Math.max(100, chartArea.clientHeight);
-                chartArea.style.minHeight = candleHeight + 'px';
-                chart.style.setProperty('--rank-candle-height', candleHeight + 'px');
-            }
-            if (!event.detail.open) chartArea.style.minHeight = '';
+            const before = layout.getBoundingClientRect();
+            layout.classList.toggle('independent-candle-open', event.detail.open);
+            // The initial server snapshot describes the current state; only a user toggle changes window size.
+            if (restoringInitialDisplay) return;
             const delta = event.detail.open ? candleHeight : -candleHeight;
             if (foldLayout) foldLayout.sizes[1].height = Math.max(300, foldLayout.sizes[1].height + delta);
             if (chart.classList.contains('independent-collapsed')) { candleWindowBase = null; return; }
-            const before = layout.getBoundingClientRect();
             if (event.detail.open) {
-                candleWindowBase = { layoutHeight: before.height, viewportHeight: innerHeight, gridRows: layout.style.gridTemplateRows };
-                const table = layout.firstElementChild;
-                // In a stacked layout, give the extra height to the chart row only.
-                if (!foldLayout && chart.offsetTop > table.offsetTop + 20) layout.style.gridTemplateRows = `${table.offsetHeight}px minmax(${chart.offsetHeight + candleHeight}px, 1fr)`;
-            } else if (!foldLayout && candleWindowBase) layout.style.gridTemplateRows = candleWindowBase.gridRows;
+                candleWindowBase = { layoutHeight: before.height, viewportHeight: innerHeight };
+            }
             candleResizeHeight = Math.max(300, !event.detail.open && candleWindowBase ? candleWindowBase.layoutHeight : before.height + delta);
             layout.style.minHeight = candleResizeHeight + 'px';
             if (foldLayout) {
@@ -214,7 +209,10 @@
             if (pendingCandleChange && snapshot.displayCommandId === pendingCandleChange) pendingCandleChange = null;
             if (snapshot.display && !pendingCandleChange) {
                 candleOpen = snapshot.display.candleOpen === true;
+                restoringInitialDisplay = !initialDisplayApplied;
                 window.applyConcentrationDisplaySettings?.({ ...window.getConcentrationDisplaySettings(), candleOpen });
+                restoringInitialDisplay = false;
+                initialDisplayApplied = true;
             }
         }
         pin.addEventListener('change', () => { if (!pin.checked) window.applyRankChartState?.(lastSnapshot?.chart); });

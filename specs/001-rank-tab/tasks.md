@@ -307,7 +307,7 @@
 - [x] T070 [US4/US5] 메인 정보창 한 곳·수직선 연동·중복 캔들 정보창과 ADR 커서 날짜 제거·공통 배경 반영 (FR-038).
 - [x] T071 [US4/US5] 공통 줌 바→기간 정보·8px·무채움 트랙·쏠림율 기간 연도·ADR 최종값 버튼 줄 배치 반영 (FR-033/039).
 - [x] T072 [US5] 버튼/슬라이더/양 캔버스 드래그 확대·복원·갱신 후 확대 창 유지 및 ResizeObserver 반복 오류 방지 구현 (FR-037/040).
-- [x] T073 [US5] tests/rank-adr.test.cjs 브라우저 및 tests/adr-routes.test.cjs API 모의 검증, tests/rank-refresh.test.cjs 기존 Rank 갱신 회귀 검증; 실제 ADR 1Y 응답 형식 확인.
+- [x] T073 [US5] dev_tools/debug/rank-adr.test.cjs 브라우저 및 tests/adr-routes.test.cjs API 모의 검증, dev_tools/debug/rank-refresh.test.cjs 기존 Rank 갱신 회귀 검증; 실제 ADR 1Y 응답 형식 확인.
 - [x] T074 [US4/US5] spec·plan·contracts·data-model·research·quickstart·requirements 체크리스트에 최종 구현과 검증 범위 반영.
 
 의존성: T066→T067/T068, T069→T072, T070/T071/T072→T073→T074. 이전 task의 일시적 UI 배치는 FR-038/039와 이 phase로 대체된다. 실제 키움 3Y/5Y 지수 전체 범위 및 Oracle 운영 표시/갱신 검증은 수동 확인 대상으로 남기며 완료로 표시하지 않는다.
@@ -328,7 +328,7 @@
 - [x] T083 [US4/US5/US6] 이동 점·수평 가이드·오른쪽 값 배지·캔들 종가 가이드·오른쪽 경계 제한 및 브라우저 모의 검증 (FR-048).
 - [x] T084 [US6] 캔들 버튼 행 오늘 거래대금 두 줄·시장명 왼쪽/수치 오른쪽 정렬·공통 최종값 글꼴·외부 정보 줄·상단 공백 축소 (FR-049/050).
 - [x] T085 [US5] 제목 ADR/거래대금·당일 1분 문구·MAX/MIN 제거·80/100/120 빨간 눈금·끝 점 clip 해제 및 기존 픽셀 회귀 확인 (FR-033/035/036/047/050).
-- [x] T086 [US4/US5/US6] tests/rank-turnover.test.cjs, tests/rank-adr.test.cjs, tests/adr-routes.test.cjs, tests/rank-refresh.test.cjs 실행 및 모의 검증 범위 기록.
+- [x] T086 [US4/US5/US6] dev_tools/debug/rank-turnover.test.cjs, dev_tools/debug/rank-adr.test.cjs, tests/adr-routes.test.cjs, dev_tools/debug/rank-refresh.test.cjs 실행 및 모의 검증 범위 기록.
 - [x] T087 [US4/US5/US6] spec/plan/tasks/contracts/data-model/research/quickstart/checklist에 거래대금과 최종 공통 요구사항 동기화, 이전 UI 설명 대체 범위 명시.
 - [ ] T088 [US6] 로그인된 실제 키움 두 시장 일봉 거래대금 응답·쏠림율 분모 검산·장중 갱신·휴장일·3Y/5Y partial·시장별 실패/누락/응답 경합의 운영 검증.
 - [x] T089 [US4/US5/US6] Oracle 운영 환경의 쏠림율·ADR·거래대금 세 차트 정상 동작 확인. 2026-10-13 사용자 수동 확인: “oracle에서 세 차트 모드 잘 동작한다.”
@@ -347,3 +347,21 @@
 - [x] T094 [US6] 두 시장 일봉을 순차 조회하고 후속 갱신은 시장별 마지막 수신일 7일 전부터 재조회·병합하도록 변경; 초기 조회/최근 요청/이전 데이터 유지 브라우저 테스트.
 - [x] T095 [US6] 갱신 실패 시 기존 데이터 보유 여부에 맞는 상태 안내 및 서버 시장·모드·HTTP 상태·오류 코드 로그 추가.
 - [ ] T096 [US6] Oracle 반영 후 재시도 시 조회 실패 메시지 소멸/실제 HTTP 상태와 키움 오류 원인 확인. 사용자 보고 시점의 원인은 미확정.
+
+## 쏠림율 기본 종목 (2026-10-13)
+
+- [x] T097 [US4] 초기 거래대금 순위 1위 종목을 쏠림율 차트의 기본 선택으로 연결하고, 경합 응답·후속 갱신에서 선택을 유지하는 테스트 추가 (FR-051).
+
+## 세 차트 캔들 펼침 설정 (2026-10-13)
+
+- [x] T098 [US4/US5/US6] ADR·거래대금 캔들 펼침 상태를 기존 Rank 표시 설정 저장·복원에 연결하고 버튼 상태 및 독립적인 펼침을 브라우저 테스트로 검증 (FR-052).
+
+## 쏠림율 독립창 표시 보정 (2026-10-13)
+
+- [x] T099 [US4] 독립창 마지막값 오른쪽 축 정렬과 마우스 정보 줄 고정 높이를 적용하고 진입·이탈 시 차트 위치 유지 브라우저 테스트 (FR-053).
+- [x] T100 [US4] 독립창 최초 캔들 펼침 복원 시 창 확대 중복 방지와 접기/펼치기 후 수동 크기 변경에서 표·차트 공동 리사이즈 검증 (FR-054).
+
+## 쏠림율 일봉 날짜 구분선 (2026-10-14)
+
+- [x] T101 [US4] 쏠림율 및 연동 캔들 일봉의 날짜 수직선 제거, 분봉 날짜 경계선 유지 및 브라우저 테스트 (FR-027).
+- [x] T102 [US4] 독립창 펼친 캔들 고정 높이·표/차트 행 비율 보정과 최초/재펼침 패널 경계·세로 스크롤 검증 (FR-055).

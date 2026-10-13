@@ -132,7 +132,18 @@
         };
         select.addEventListener('change',()=>{tip.hidden=true;hover=null;candle.setAttribute('aria-label',`${names[select.value]} 지수 일봉 캔들차트`);draw();});
         panel.querySelectorAll('[data-range]').forEach(b=>b.addEventListener('click',()=>{range=b.dataset.range;start=0;count=null;data={kospi:[],kosdaq:[]};dates=[];panel.querySelectorAll('[data-range]').forEach(el=>el.classList.toggle('active',el===b));draw();window.refreshRankTurnoverChart();}));
-        panel.querySelector('.concentration-candle-toggle').addEventListener('click',event=>{candleArea.hidden=!candleArea.hidden;event.currentTarget.setAttribute('aria-expanded',String(!candleArea.hidden));resize();});
+        const candleButton = panel.querySelector('.concentration-candle-toggle');
+        window.getRankTurnoverCandleOpen = () => !candleArea.hidden;
+        window.applyRankTurnoverCandleOpen = open => {
+            if (candleArea.hidden === (open !== true)) return;
+            candleArea.hidden = open !== true;
+            candleButton.setAttribute('aria-expanded', String(!candleArea.hidden));
+            resize();
+        };
+        candleButton.addEventListener('click', () => {
+            window.applyRankTurnoverCandleOpen(candleArea.hidden);
+            if (typeof saveAppData === 'function') saveAppData();
+        });
         function zoom(factor){const n=Math.min(dates.length,count??dates.length),center=start+n/2;count=Math.min(dates.length,Math.max(Math.min(10,dates.length),Math.round(n*factor)));start=Math.round(center-count/2);draw();}
         into.addEventListener('click',()=>zoom(.5));out.addEventListener('click',()=>zoom(2));slider.addEventListener('input',()=>{start=Number(slider.value);draw();});
         [canvas,candle].forEach(c=>{

@@ -13,7 +13,12 @@
 .rank-independent .concentration-chart-layout { flex: 1; min-height: 0; }
 .rank-independent .concentration-charts-column { display: flex; flex-direction: column; min-height: 0; }
 .rank-independent .concentration-chart-area { height: auto; flex: 1; min-height: 100px; }
-.rank-independent .concentration-candle-area { height: var(--rank-candle-height, 230px); flex: 0 0 var(--rank-candle-height, 230px); min-height: var(--rank-candle-height, 230px); }
+.rank-independent .concentration-timeframe-row { padding-right: 36px; box-sizing: border-box; }
+.rank-independent .concentration-header-actions { flex: 1; min-width: 0; }
+.rank-independent #concentrationCurrentRate { margin-left: auto; }
+.rank-independent #concentrationTooltip.chart-hover-info { display: block; height: 24px; min-height: 24px; }
+.rank-independent #concentrationTooltip.chart-hover-info[hidden] { display: block !important; visibility: hidden; }
+.rank-independent .concentration-candle-area { height: 190px; flex: 0 0 190px; min-height: 190px; }
 .rank-independent .concentration-chart-panel { margin: 0; width: 100%; max-width: 100%; }
 .independent-toolbar { display: flex; align-items: center; gap: 12px; padding: 0 0 6px; font-size: 13px; }
 .independent-toolbar label { display: flex; align-items: center; gap: 6px; }
@@ -33,4 +38,7 @@
 .rank-independent [hidden] { display: none !important; }
 .independent-collapsed .independent-chart-heading > label { display: none; }
 .independent-collapsed .panel-header, .independent-collapsed .independent-chart-heading { margin-bottom: 0; padding-bottom: 0; }
-@media(max-width: 950px) { .rank-independent #tab_rank { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(2, minmax(300px, 1fr)); } }
+@media(max-width: 950px) {
+    .rank-independent #tab_rank { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(2, minmax(300px, 1fr)); }
+    .rank-independent #tab_rank.independent-candle-open { grid-template-rows: minmax(300px, 1fr) minmax(525px, 1fr); }
+}

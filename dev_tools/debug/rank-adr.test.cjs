@@ -39,6 +39,16 @@ const assert = require('node:assert/strict');
         await page.waitForTimeout(100);
         await page.evaluate(() => { document.getElementById('tabContents').style.display = 'block'; });
         await page.waitForFunction(() => document.querySelector('.rank-adr-panel output').textContent === '95.00%');
+        assert.equal(await page.evaluate(() => getConcentrationDisplaySettings().adrCandleOpen), false);
+        await page.evaluate(() => document.querySelector('#rankAdrChartPanel .concentration-candle-toggle').click());
+        assert.equal(await page.evaluate(() => getConcentrationDisplaySettings().adrCandleOpen), true);
+        const savedDisplay = await page.evaluate(() => getConcentrationDisplaySettings());
+        await page.evaluate(() => applyConcentrationDisplaySettings({ ...getConcentrationDisplaySettings(), adrCandleOpen: false }));
+        assert.equal(await page.evaluate(() => getRankAdrCandleOpen()), false);
+        await page.evaluate(settings => applyConcentrationDisplaySettings(settings), savedDisplay);
+        assert.equal(await page.locator('#rankAdrChartPanel .concentration-candle-toggle').getAttribute('aria-expanded'), 'true');
+        assert.equal(await page.evaluate(() => getRankAdrCandleOpen()), true);
+        await page.evaluate(() => applyConcentrationDisplaySettings({ ...getConcentrationDisplaySettings(), adrCandleOpen: false }));
         assert.ok(await page.evaluate(() => window.markerColors.includes('#f97316')), 'Today ADR has an orange marker');
         assert.ok(await page.evaluate(()=>[80,100,120].every(label=>window.adrAxisLabels.some(p=>p.label===label&&p.color==='#ff6b6b'))),'ADR reference labels share the same red');
         assert.ok(await page.evaluate(()=>{

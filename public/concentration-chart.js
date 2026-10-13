@@ -137,7 +137,9 @@
         document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshFiveDebug(); });
 
         window.getConcentrationDisplaySettings = () => ({
-            debugOpen: !debugPanel.hidden, candleOpen: !candleArea.hidden, mode: state.mode, interval: state.interval
+            debugOpen: !debugPanel.hidden, candleOpen: !candleArea.hidden, mode: state.mode, interval: state.interval,
+            ...(window.getRankAdrCandleOpen ? { adrCandleOpen: window.getRankAdrCandleOpen() } : {}),
+            ...(window.getRankTurnoverCandleOpen ? { turnoverCandleOpen: window.getRankTurnoverCandleOpen() } : {})
         });
         window.applyConcentrationDisplaySettings = settings => {
             const nextCandleOpen = settings?.candleOpen === true;
@@ -155,6 +157,8 @@
             candleToggle.setAttribute('aria-expanded', String(!candleArea.hidden));
             candleToggle.textContent = '캔들차트';
             candleToggle.setAttribute('aria-label', candleArea.hidden ? '캔들차트 펼치기' : '캔들차트 접기');
+            if (settings && 'adrCandleOpen' in settings) window.applyRankAdrCandleOpen?.(settings.adrCandleOpen === true);
+            if (settings && 'turnoverCandleOpen' in settings) window.applyRankTurnoverCandleOpen?.(settings.turnoverCandleOpen === true);
             state.hover = null; tooltip.hidden = true; candleTooltip.hidden = true;
             draw();
             if (changed && state.selection) load();
@@ -330,21 +334,21 @@
                 ctx.moveTo(plot.left, y(percent)); ctx.lineTo(plot.right, y(percent)); ctx.stroke();
                 ctx.textAlign = 'right'; ctx.fillText(`${percent.toLocaleString()}%`, width - 36, y(percent));
             }
-            // Daily bars already represent dates; a separator on every bar forms a dense mesh.
-            // Show month boundaries for daily charts and day boundaries for minute charts.
-            const boundaryLength = state.mode === 'day' ? 6 : 8;
-            let lastDay = points[0]?.time.slice(0, boundaryLength);
-            let lastBoundaryX = -Infinity;
-            for (let i = 1; i < points.length; i++) {
-                const day = points[i].time.slice(0, boundaryLength);
-                if (day !== lastDay) {
-                    if (x(i) - lastBoundaryX >= 32) {
-                        ctx.beginPath(); ctx.setLineDash([3, 5]); ctx.strokeStyle = '#d6dbe1';
-                        ctx.moveTo(x(i), plot.top); ctx.lineTo(x(i), plot.bottom); ctx.stroke();
-                        lastBoundaryX = x(i);
-                        boundaries.push(lastBoundaryX);
+            // Only minute charts need a vertical guide at each new trading day.
+            if (state.mode === 'minute') {
+                let lastDay = points[0]?.time.slice(0, 8);
+                let lastBoundaryX = -Infinity;
+                for (let i = 1; i < points.length; i++) {
+                    const day = points[i].time.slice(0, 8);
+                    if (day !== lastDay) {
+                        if (x(i) - lastBoundaryX >= 32) {
+                            ctx.beginPath(); ctx.setLineDash([3, 5]); ctx.strokeStyle = '#d6dbe1';
+                            ctx.moveTo(x(i), plot.top); ctx.lineTo(x(i), plot.bottom); ctx.stroke();
+                            lastBoundaryX = x(i);
+                            boundaries.push(lastBoundaryX);
+                        }
+                        lastDay = day;
                     }
-                    lastDay = day;
                 }
             }
             ctx.setLineDash([]);

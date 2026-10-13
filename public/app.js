@@ -794,7 +794,17 @@ async function loadTransactionRank() {
                 `;
             }).join('');
 
-            window.refreshConcentrationChart?.();
+            const firstStock = items[0];
+            const firstCode = String(firstStock.stk_cd || '').replace(/_(AL|NX)$/i, '');
+            if (!window.getRankChartState?.()?.selection && /^[0-9A-Za-z]{6}$/.test(firstCode)) {
+                window.selectRankChartStock?.({
+                    code: firstCode,
+                    name: firstStock.stk_nm || firstStock.isu_nm || firstCode,
+                    market: firstStock.mkt_type
+                });
+            } else {
+                window.refreshConcentrationChart?.();
+            }
 
         } else {
             if (document.querySelector('.tab-content.active')?.id === PERM_TAB_ID) {

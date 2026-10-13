@@ -161,7 +161,7 @@ POST /api/concentration-chart에 {code:선택종목, mode:"minute", interval:5, 
 - 확대 창은 전체 수신 배열과 별도로 관리하고 지수의 표시 범위와 X좌표를 공유한다. 드래그 중 자동 갱신은 종료 후 처리한다. 조회 취소·최신 요청 확인으로 오래된 시장/기간 응답을 차단한다.
 - 두 메인 차트만 정보창을 표시한다. 최종값은 버튼 줄 오른쪽, 하단은 줌 바→기간 정보(8px), 쏠림율 기간은 연도 포함, range 트랙은 채움 없는 동일 색이다.
 - 쏠림율 캔들 높이를 ADR 기준 높이 계산에서 제외한다. ResizeObserver 쓰기는 requestAnimationFrame에서 처리하고 변경된 크기만 적용한다.
-- 검증: `tests/rank-adr.test.cjs`, `tests/adr-routes.test.cjs`, `tests/rank-refresh.test.cjs`. 모의 캔들 조회·브라우저 동작 및 실제 ADR history 응답 확인을 구분한다. 실제 키움 장기 지수 조회와 Oracle 운영 검증은 완료로 주장하지 않는다.
+- 검증: `dev_tools/debug/rank-adr.test.cjs`, `tests/adr-routes.test.cjs`, `dev_tools/debug/rank-refresh.test.cjs`. 모의 캔들 조회·브라우저 동작 및 실제 ADR history 응답 확인을 구분한다. 실제 키움 장기 지수 조회와 Oracle 운영 검증은 완료로 주장하지 않는다.
 
 고정 ADR 제거 시 app.js의 탭 생성·렌더러·이벤트·타이머와 전용 CSS, server.js의 /api/adr HTML 프록시를 삭제한다. applyData/applyFullStateBackup에서 기존 설정을 복사한 후 tab_adr 및 adrInterval만 제거한다. Rank의 세 JSON API와 차트 모듈은 유지한다.
 
@@ -175,7 +175,7 @@ POST /api/concentration-chart에 {code:선택종목, mode:"minute", interval:5, 
 - 최종값은 캔들 버튼 행, 오른쪽 여백 70px, 공통 16px/700/#339af0 글꼴이다. 거래대금은 두 행의 시장명 왼쪽/오늘 값 오른쪽 정렬, 오늘 봉 누락 시 —다. 메인 위 마우스 정보 줄을 유지하되 그래프 상단 여백은 10px로 줄인다.
 - 이동 점·수직선과 값 기준 수평선·축 배지를 표시한다. 배지는 캔버스 폭으로 위치를 제한하고 ADR 마지막 주황색 점은 plot clip 해제 뒤 그려 온전한 원을 유지한다.
 - 기존 문서의 ADR 줄바꿈·MAX/MIN·색상 기준선 및 모든 쏠림율 봉 표식 설명은 최신 spec에 따른다. ADR 데이터 보존/캔들 조회 정책은 유지하며 거래대금은 메모리 상태만 사용한다.
-- 검증은 tests/rank-turnover.test.cjs, tests/rank-adr.test.cjs, tests/adr-routes.test.cjs, tests/rank-refresh.test.cjs에 한정한다. 실제 키움 두 시장 장기 일봉과 Oracle 배포 검증은 수동 확인 대상으로 남긴다.
+- 검증은 dev_tools/debug/rank-turnover.test.cjs, dev_tools/debug/rank-adr.test.cjs, tests/adr-routes.test.cjs, dev_tools/debug/rank-refresh.test.cjs에 한정한다. 실제 키움 두 시장 장기 일봉과 Oracle 배포 검증은 수동 확인 대상으로 남긴다.
 
 ### Oracle 운영 확인 추가 (2026-10-13)
 
@@ -185,7 +185,7 @@ POST /api/concentration-chart에 {code:선택종목, mode:"minute", interval:5, 
 
 쏠림율/ADR도 거래대금과 같은 그래프 위 고정 정보 줄을 사용한다. 쏠림율·ADR 내부 빈 공간 배치 설명은 FR-038/050으로 대체한다. 기존 tooltip 노드를 그래프 앞의 chart-hover-info로 이동하고 내부 충돌 검사 배치 함수를 제거한다. 정보 줄은 24px이며 숨김 시에도 공간을 유지한다. 쏠림율 메인 그래프 높이는 기존 높이에서 24px 차감하고, ADR는 고정 패널 높이 안에서 flex 그래프가 줄 공간을 양보한다. 캔들 높이·공유 커서·수평선/값 배지는 유지한다.
 
-마우스 정보 날짜는 모두 YYYY-MM-DD, 분봉은 뒤에 HH:mm을 추가한다. tests/rank-adr.test.cjs에서 외부 줄 위치·고정 위치·숨김 시 패널 높이 유지·쏠림율 전체 날짜·기존 차트 동작을 검증했다. 이 변경 이후 Oracle 운영 재확인은 아직 하지 않았으며 앞선 T089는 변경 이전 확인이다.
+마우스 정보 날짜는 모두 YYYY-MM-DD, 분봉은 뒤에 HH:mm을 추가한다. dev_tools/debug/rank-adr.test.cjs에서 외부 줄 위치·고정 위치·숨김 시 패널 높이 유지·쏠림율 전체 날짜·기존 차트 동작을 검증했다. 이 변경 이후 Oracle 운영 재확인은 아직 하지 않았으며 앞선 T089는 변경 이전 확인이다.
 거래대금 메인 그래프의 정보 줄 아래 상단 여백(10px)을 기준으로 쏠림율·ADR 메인 그래프도 10px로 맞춘다. 패널·캔들 영역 높이는 변경하지 않는다.
 세 메인 차트의 Y축 눈금은 캔버스 오른쪽에서 36px 지점에 textAlign=right로 그리고 최종값 행도 같은 36px 여백으로 맞춘다. 캔들 Y축 눈금에도 같은 기준을 적용한다.
 
