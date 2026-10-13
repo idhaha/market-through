@@ -23,7 +23,7 @@
 
 1. **고정 탭 (Permanent Tabs) 상세 사양**
    - 1.1 Rank 탭 (실시간 순위 / 거래대금 / 대주 / 관심종목 하락률) *(작성 완료)*
-   - 1.2 ADR 탭 (KOSPI / KOSDAQ 등락비율 차트) *(작성 완료)*
+   - 1.2 ADR (Rank 통합) *(고정탭 제거)*
    - 1.3 메모 탭 (Google Calendar 연동 & Rich Text Memo) *(작성 완료)*
    - 1.4 증시캘린더 탭 (토스증권 캘린더 임베드, 일정 및 AI 요약) *(작성 완료)*
 2. **동적/실시간 탭 (Dynamic Tabs) 통합 상세 사양** *(작성 완료)*
@@ -209,138 +209,9 @@ flowchart TD
 
 ---
 
-## 1.2 ADR 탭 (`tab_adr`)
+## 1.2 ADR (Rank 통합)
 
-### 1.2.1 개요
-* **탭 식별자**: `tab_adr` (`ADR_TAB_ID`)
-* **탭 명칭**: `ADR` (고정)
-* **목적**: 국내 주식시장(KOSPI, KOSDAQ)의 시장 과열 및 침체 여부를 판단하는 대표적 심리/수급 지표인 **등락비율(ADR, Advance Decline Ratio)**의 과거 시계열 추세를 HTML5 Canvas 듀얼 차트로 시각화.
-  $$\text{ADR} = \frac{\text{20일간 상승 종목 수의 합계}}{\text{20일간 하락 종목 수의 합계}} \times 100 (\%)$$
-
-```mermaid
-flowchart LR
-    Source["adrinfo.kr/chart"] -->|HTML 스크랩| BackendProxy["Express 프록시 (/api/adr)"]
-    BackendProxy -->|Raw HTML| ClientParser["클라이언트 괄호 파서<br/>(extractArrayFromHtml)"]
-    ClientParser -->|{kospi: [], kosdaq: []}| StateStore["tabData[tab_adr].adr"]
-    StateStore --> DualCanvas["듀얼 캔버스 동기화 렌더러<br/>(#adr_kospi, #adr_kosdaq)"]
-```
-
----
-
-### 1.2.2 화면 레이아웃 및 UI 구성 요소
-
-| 영역 | 컴포넌트 ID / 클래스 | 유형 | 기능 설명 |
-| :--- | :--- | :--- | :--- |
-| **상단 헤더** | `#tab_adr header` | Container | ADR 탭 제목, 자동 새로고침 주기 선택, 수동 조회 버튼, 상태 표시줄 |
-| **새로고침 주기** | `#adrRefreshInterval` | `<select>` | 자동 조회 간격 (30초, 1분, 10분[기본], 1시간, 당일누적) |
-| **수동 조회** | `#adrManualRefresh` | `<button>` | ADR 데이터 원천 프록시 재호출 트리거 |
-| **상태 표시** | `#adrLastUpdate`, `#adrStatusText` | `<span>` | 최근 갱신 시각 및 처리 상태(데이터 로딩 중... / 업데이트 완료 / 업데이트 실패) |
-| **차트 컨테이너** | `.adr-chart-container` | Flex Container | KOSPI와 KOSDAQ 2개 차트 래퍼를 수용하는 반응형 스크롤 컨테이너 |
-| **KOSPI 차트** | `#adr_kospi` | `<canvas>` | KOSPI 시장의 20일 ADR 시계열 라인 차트 |
-| **KOSDAQ 차트** | `#adr_kosdaq` | `<canvas>` | KOSDAQ 시장의 20일 ADR 시계열 라인 차트 |
-| **기간 선택기** | `.period-btn` | `<button>` 그룹 | 6m (120일), 1y (240일), 2y (480일[기본]), 5y (1200일), 10y (2400일) |
-
----
-
-### 1.2.3 데이터 수집 및 파싱 파이프라인
-
-1. **백엔드 프록시 엔드포인트 (`GET /api/adr`)**:
-   - 브라우저의 CORS(Cross-Origin Resource Sharing) 제한을 우회하기 위해 Node.js 백엔드 프록시 사용.
-   - 요청 대상: `http://adrinfo.kr/chart?t=${timestamp}`
-   - 요청 헤더: Chrome 데스크톱 표준 `User-Agent` 모방 전송.
-   - 타임아웃: 8,000ms.
-   - 응답: 원천 사이트의 원본 HTML 문자열 반환 (`res.send(response.data)`).
-2. **클라이언트 괄호 밸런싱 파서 (`extractArrayFromHtml`)**:
-   - 원천 HTML 내에 인라인 선언된 자바스크립트 전역 배열 추출:
-     - `kospi_adr = [[timestamp, value], ...]`
-     - `kosdaq_adr = [[timestamp, value], ...]`
-   - **안정성 보장 알고리즘**:
-     - 정규식 파싱 시 발생할 수 있는 긴 문자열 메모리 폭주(ReDoS)를 방지하기 위해 **대괄호 균형 스택(Bracket Balance Counter)** 알고리즘 적용 (`[` 만나면 balance++, `]` 만나면 balance--).
-     - balance가 0이 되는 지점을 엄격히 찾아 유효한 JSON 배열 문자열을 절삭.
-     - `JSON.parse` 실행 (말미 쉼표 `, ]` 자동 정규화).
-     - 만약 JSON 파싱 실패 시 정규식 폴백(`\[\s*(\d+)\s*,\s*([-]?\d*\.?\d+)\s*\]`) 2차 안전망 가동.
-   - 정렬 및 정제:
-     - `null` 데이터 포인트 필터링.
-     - 날짜 타임스탬프(`date`) 기준 오름차순(과거 → 현재) 정렬.
-     - 결과 객체 `{ kospi: [{date, value}], kosdaq: [{date, value}] }`를 `tabData['tab_adr'].adr`에 캐싱.
-
----
-
-### 1.2.4 듀얼 차트 동기화 인터랙션 (Dual Chart Synchronization)
-
-두 시장의 지표를 직관적으로 비교하고 분석하기 위해 **강력한 듀얼 인터랙션 동기화 엔진**을 내장합니다.
-
-```mermaid
-sequenceDiagram
-    participant User as 사용자 마우스
-    participant K_Chart as KOSPI 캔버스 (#adr_kospi)
-    participant Sync as 동기화 디스패처 (syncCallback)
-    participant Q_Chart as KOSDAQ 캔버스 (#adr_kosdaq)
-
-    User->>K_Chart: 마우스 이동 (Hover)
-    K_Chart->>K_Chart: hoveredIndex 계산 및 십자선/툴팁 렌더링
-    K_Chart->>Sync: syncToKosdaq(chartState)
-    Sync->>Q_Chart: chartState 전파 (visibleCount, offset, hoveredIndex)
-    Q_Chart->>Q_Chart: requestAnimationFrame(() => drawLineChart()) 대칭 렌더링
-```
-
-1. **Y축 스케일 공유 (`getCombinedRange`)**:
-   - 두 시장의 등락비율 강도를 직접 비교할 수 있도록, 현재 표시 중인 구간의 KOSPI 수치와 KOSDAQ 수치를 합쳐 전체 최소값(`minVal`)과 최대값(`maxVal`)을 산출하여 두 차트의 Y축 눈금을 동일하게 동기화.
-2. **커서 및 십자선 동기화 (`syncToKosdaq` / `syncToKospi`)**:
-   - 한 캔버스에서 마우스가 위치한 데이터 인덱스(`hoveredIndex`)를 감지하면, 반대편 캔버스에도 동일 일자의 수직 십자선(Crosshair) 및 툴팁 박스가 `requestAnimationFrame`을 통해 딜레이 없이 실시간 동기 렌더링.
-3. **패닝 및 스크롤바 동기화**:
-   - 차트 내부를 마우스로 드래그(Panning)하거나 하단 미니 스크롤바를 조작할 때, 두 차트의 `scrollOffset`과 `visibleCount`가 1:1로 일치되어 이동.
-4. **마우스 휠 줌(Zoom) & 이동**:
-   - 캔버스 영역 내에서 휠 조작 시 표시 데이터 개수 및 오프셋 조정.
-
----
-
-### 1.2.5 차트 렌더링 세부 사양 (`drawLineChart`)
-
-* **고해상도 디스플레이(HiDPI/Retina) 지원**:
-  - `window.devicePixelRatio`를 측정하여 캔버스의 실제 픽셀 버퍼 크기를 스케일업(`canvas.width = w * dpr`) 후 `ctx.setTransform(dpr, 0, 0, dpr, 0, 0)` 적용. 번짐 없는 선명한 벡터 렌더링 보장.
-* **영역 및 기준선 가이드**:
-  - **정상 구간 (Normal Zone, 80 ~ 120)**:
-    - Y축 80에서 120 사이 영역을 반투명 회색 배경(`rgba(200, 200, 200, 0.2)`)으로 채움.
-  - **침체/과매도 기준선 (80%)**: 주황색 점선 (`#ffa94d`), 두께 1px, 대시 `[5, 5]`. 수치 80 표기.
-  - **중립/균형 기준선 (100%)**: 빨간색 점선 (`#ff6b6b`), 두께 1px. 수치 100 표기.
-  - **과열/과매수 기준선 (120%)**: 녹색 점선 (`#51cf66`), 두께 1px. 수치 120 표기.
-* **시계열 데이터 라인**:
-  - 선 색상: `#339af0`, 두께: 2px, 조인: `round`.
-  - 최신 데이터 포인트(당일): 반지름 4px의 붉은색 원점(`#ff0000`, 흰색 테두리)으로 하이라이트.
-* **X축 눈금 (일자 표시)**:
-  - 현재 가시 구간을 6등분하여 수직 그리드 라인(`#e9ecef`) 및 `YY.MM` 포맷 일자 출력.
-* **툴팁 박스 (Tooltip)**:
-  - 호버 위치에 날짜(`YYYY-MM-DD`), 시장 구분, ADR 수치(소수점 1자리)를 다크 반투명 박스에 표출.
-
----
-
-### 1.2.6 기간 선택기 (Period Selector)
-
-차트 우측 상단의 기간 버튼을 클릭하면 표시되는 거래일 수가 즉시 전환되며, 항상 최신 데이터가 화면 우측 끝에 오도록 스크롤 오프셋을 자동 재정렬합니다.
-
-| 버튼 레이블 | 표시 거래일 수 (`days`) | 실제 환산 기간 |
-| :---: | :---: | :--- |
-| `6m` | 120일 | 약 6개월 |
-| `1y` | 240일 | 약 1년 |
-| **`2y` (기본값)** | **480일** | **약 2년** |
-| `5y` | 1200일 | 약 5년 |
-| `10y` | 2400일 | 약 10년 (전체 추세) |
-
----
-
-### 1.2.7 제약 사항 및 예외 처리 (Constraints & Fallbacks)
-
-1. **원천 사이트(adrinfo.kr) 응답 구조 변경 방어**:
-   - 응답 텍스트 길이가 100자 미만이거나 파싱 결과 배열 길이가 0인 경우, 차트 영역을 비우지 않고 이전 렌더링 상태를 보존하며 에러 상태 텍스트("업데이트 실패")를 표출.
-2. **KOSPI와 KOSDAQ 데이터 길이 불일치 대응**:
-   - 휴장일이나 거래소 시스템 점검 등으로 두 시장의 데이터 개수가 다를 경우(`kLen !== qLen`), 경고 로그(`console.warn`)를 남기고 각자의 길이에 맞춰 안전하게 클램핑(`Math.min`).
-3. **불필요한 서버 설정 덮어쓰기 금지**:
-   - 시세 지표 갱신 시 `saveAppData()`를 절대 호출하지 않음 (순수 시세 조회 동작과 영구 사용자 설정 저장을 엄격히 분리).
-4. **백그라운드 탭 렌더링 부하 최소화**:
-   - ADR 탭이 비활성화된 상태에서 타이머가 돌 때는 캔버스 재렌더링을 지연시키고, 탭이 활성화되는 순간(`activateTab('tab_adr')`) 단 1회 전체 렌더링 수행.
-
----
+2026-10-13: ADR 고정탭과 전용 갱신 설정 및 HTML 프록시를 제거했다. ADR는 Rank의 쏠림율 오른쪽 차트에서 제공하며 시장·일/1분·기간 선택, 지수 캔들, 공통 커서와 줌을 지원한다. 상세 사양은 [Rank 사양](../specs/001-rank-tab/spec.md)을 따른다. 이전 백업의 tab_adr와 adrInterval은 무시하고 해당 활성 탭은 Rank로 복원한다.
 
 ## 1.3 메모 탭 (`tab_memo`)
 
@@ -660,7 +531,7 @@ flowchart LR
 | `activeTabId` | 현재 활성 탭 ID |
 | `tabs` | 화면의 탭 순서를 따르는 `{id, name}` 목록. DOM에 없는 동적 `tabData`도 일부 유형은 복구해 추가 |
 | `contents` | 탭 ID별 설정/그리드 상태 객체 |
-| `rankInterval`, `adrInterval` | Rank 및 ADR 갱신 선택값 |
+| `rankInterval` | Rank와 Rank ADR 공통 갱신 선택값 |
 | `watchlistGroupId` | 관심종목 입력 또는 선택값, 폴백으로 로컬 값/`074` |
 | `memoHtml`, `memoDelta` | Quill 에디터 값. 에디터가 없으면 로컬 저장값을 사용 |
 | `updatedAt` | 직렬화 시점의 브라우저 `Date.now()` 밀리초 타임스탬프 |

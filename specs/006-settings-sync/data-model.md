@@ -6,7 +6,7 @@
 | activeTabId | 현재 활성 탭 ID |
 | tabs[] | `{id, name}` 목록, 표시 순서 |
 | contents | 탭 ID별 설정/상태 객체 |
-| rankInterval / adrInterval | 갱신 주기 선택값 |
+| rankInterval | 갱신 주기 선택값 |
 | watchlistGroupId | 관심종목 그룹 |
 | memoHtml / memoDelta | 메모 내용(003-memo-tab과 공유 필드) |
 | memoUpdatedAt | 마지막 서버 메모 저장 시각. 일반 설정 저장은 기존 값을 보존한다. |
@@ -35,3 +35,5 @@
 ### 봉 종류와 간격 저장
 
 차트 기본 봉 종류는 day(일봉), 기본 분 간격은 1이다. 기존 rankChartDisplay 설정에 mode(day/minute)와 interval(1·3·5·10·15·30·45·60)을 추가한다. 일·분 및 분 간격 변경은 기존 사용자 설정 자동 저장과 수동 백업에 포함된다. 시작/설정 불러오기/전체 백업 복원 시 선택 버튼과 차트에 적용한다. 필드가 없거나 무효이면 일봉·1분으로 처리한다. 일봉에서도 마지막 분 간격을 보존하고 분봉 전환 시 적용한다.
+
+2026-10-13: 퇴역 ADR 고정탭의 tab_adr 및 adrInterval은 복원 시 제외한다. 활성 tab_adr는 Rank로 대체하고 나머지 설정을 보존한다.

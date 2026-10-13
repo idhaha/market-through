@@ -22,7 +22,7 @@ specs에는 검증되지 않은 계획이나 희망 사항을 현재 구현된 �
 코드와 관련 Spec Kit 문서(spec.md, plan.md, tasks.md, contracts 등)의 내용이 서로 다른 경우, 영향을 받는 spec을 최종 확정하기 전에 어느 쪽이 잘못되었는지 확인하고 해당 불일치를 해결해야 한다.
 
 ### II. External API Resilience
-이 프로젝트는 여러 외부 데이터 소스(Kiwoom REST, eFriend, TradingEconomics, FRED, ECOS, TradingView, Investing.com, Finviz, Toss Securities calendar, Google Calendar, Google Identity Services 로그인, adrinfo.kr ADR 프록시)에 의존한다.
+이 프로젝트는 여러 외부 데이터 소스(Kiwoom REST, eFriend, TradingEconomics, FRED, ECOS, TradingView, Investing.com, Finviz, Toss Securities calendar, Google Calendar, Google Identity Services 로그인, Jusikbot ADR JSON 프록시)에 의존한다.
 
 각 연동은 장애가 발생하더라도 정상적으로 기능을 축소하여 동작해야 한다. 캐시된 데이터나 마지막으로 확인된 데이터를 제공하거나 명확한 오류 상태를 표시해야 하며, 서버가 중단되거나 전체 UI가 빈 화면이 되어서는 안 된다.
 

@@ -90,12 +90,48 @@ POST /api/concentration-chart에 {code:선택종목, mode:"minute", interval:5, 
 
 ## 쏠림율 아래 종목 캔들차트
 
-종목 ka10080/ka10081 원본 open_pric·high_pric·low_pric·cur_prc의 절댓값을 stock_open·stock_high·stock_low·stock_price로 전달한다. 같은 봉 배열과 X좌표를 공유하는 캔들차트를 쏠림율 아래 기본 펼침 상태로 표시하며 버튼으로 접거나 펼친다. 시가보다 현재가가 높으면 붉은색, 낮으면 파란색, 같으면 회색이다. OHLC가 누락·무효이면 해당 위치는 유지하고 캔들을 그리지 않는다.
+종목 ka10080/ka10081 원본 open_pric·high_pric·low_pric·cur_prc의 절댓값을 stock_open·stock_high·stock_low·stock_price로 전달한다. 같은 봉 배열과 X좌표를 공유하는 캔들차트를 쏠림율 아래 기본 닫힘 상태로 두고 버튼으로 펼치거나 접는다. 시가보다 현재가가 높으면 붉은색, 낮으면 파란색, 같으면 회색이다. OHLC가 누락·무효이면 해당 위치는 유지하고 캔들을 그리지 않는다.
 
-일봉·모든 분 간격·추가조회·확대·이동·자동갱신·계산 불가 분봉 제거가 두 차트에 동일하게 반영된다. 어느 차트에서 마우스를 이동해도 동일 봉의 날짜/시간·쏠림율·OHLC와 시가 대비 상승률((현재가/시가-1)×100)을 함께 표시하고 두 차트에 같은 세로 위치선을 표시한다. 시가가 없거나 0이면 상승률은 -다. 가격 축은 현재 표시 범위의 OHLC에 맞춰 조절하되 시간축은 쏠림율 차트와 정확히 공유한다. 서버 재시작 후 새 OHLC 필드를 받을 수 있다.
+일봉·모든 분 간격·추가조회·확대·이동·자동갱신·계산 불가 분봉 제거가 두 차트에 동일하게 반영된다. 어느 차트에서 마우스를 이동해도 동일 봉의 날짜/시간·쏠림율·전일 대비 상승률을 메인 쏠림율 차트 정보창 한 곳에 표시하고 두 차트에 같은 수직선을 표시한다. 전일 종가를 확인할 수 없으면 상승률은 -다. OHLC는 캔들 렌더링에 사용하며 정보창에는 표시하지 않는다. 가격 축은 현재 표시 범위의 OHLC에 맞춰 조절하되 시간축은 쏠림율 차트와 정확히 공유한다. 서버 재시작 후 새 OHLC 필드를 받을 수 있다.
 
 ### 마우스 정보와 전일 대비 상승률
 
-마우스 정보는 상단 차트 밖의 고정 높이 영역 한 곳에 표시해 두 그래프를 가리지 않는다. 날짜/시간 · 쏠림율 · 상승률 순으로 표시하고 OHLC 및 시가 대비 문구는 제거한다. 상승률은 (현재 봉 현재가 / 전일 종가 - 1) × 100이다.
+마우스 정보는 메인 쏠림율 차트 내부의 빈 공간 한 곳에 표시하며 캔들차트에는 중복 정보창을 표시하지 않는다. 날짜/시간 · 쏠림율 · 상승률 순으로 표시하고 OHLC 및 시가 대비 문구는 제거한다. 상승률은 (현재 봉 현재가 / 전일 종가 - 1) × 100이다.
 
 원천 pred_pre 및 pred_pre_sig(1/2 상승, 4/5 하락, 3 보합)로 전일 종가를 복원하여 stock_previous_close·stock_change_rate를 반환한다. 전일 대비 기호가 없으면 명시적 부호가 있는 pred_pre 또는 0만 사용한다. 일봉은 전일 대비 필드가 없을 때 직전 거래일 봉 종가를 사용할 수 있다. 분봉은 직전 분봉 또는 당일 시가를 전일 종가로 대체하지 않는다. 기준을 확인할 수 없으면 상승률은 -다. 새 필드는 서버 재시작 후 적용된다.
+
+## Rank ADR JSON・지수 캔들 API (2026-10-13)
+
+이 세 경로는 기존 Google 로그인 API 인증 미들웨어를 통과해야 한다(미인증 401). 고정 ADR 탭의 GET `/api/adr` HTML 프록시는 삭제했다. 모든 성공 응답은 `Cache-Control: no-store`이며 서버에 차트 기록을 영속 저장하지 않는다.
+
+### GET /api/adr/today?market=kospi
+
+`market`: kospi(기본) 또는 kosdaq. 다른 값은 400. 원천 `https://jusikbot.com/api/adr/today`에 market 및 캐시 무효화 `_` 파라미터를 전달하며 10초 타임아웃을 적용한다. 성공 JSON은 그대로 전달하고 원천 오류는 502 `{error}`다.
+
+원천 필드: `{market, adr, prevAdr, up, down, asOf, intraday:[{t,adr}], marketStatus, lastClosed:{date,adr,up,down,asOf}}`. `intraday.t`는 초 단위 타임스탬프, `asOf`는 밀리초 단위이며 브라우저가 양쪽을 정규화한다. `adr`/`asOf`는 null일 수 있고 intraday는 빈 배열일 수 있다. `lastClosed.date`는 YYYYMMDD의 최근 마감 거래일이며 당일 마감 후에는 그날이다. lastClosed는 분봉 배열이 아니다. 장외 asOf를 분봉 시각으로 대체하지 않는다. 원천 ADR를 사용하며 up/down만으로 ADR를 재계산하지 않는다.
+
+한국시간 09:00~15:30만 분 단위로 병합하고 당일 또는 가장 최근 수신 거래일을 표시한다. 빈 배열 또는 이전 시각 응답이 이미 수신한 분봉을 삭제하지 않는다. 최초 조회에서 분봉이 없으면 lastClosed 마감값만 표시한다. 원천 자정 초기화는 관찰된 동작이며 보장된 API 계약이 아니다.
+
+### GET /api/adr/history?market=kospi&range=1y
+
+`market`: kospi/kosdaq, `range`: 6m/1y(기본)/3y/5y. 무효 값 400. 원천의 같은 경로에 두 파라미터를 전달하고 10초 타임아웃·오류 502를 사용한다. `{market,range,series:[{date:"YYYY-MM-DD",adr}],max,min}` JSON을 그대로 전달한다. 화면은 유효한 series를 날짜순으로 표시하며 원천 max/min 필드로 극값 표식을 표시하지 않는다.
+
+### GET /api/adr/candles?market=kospi&mode=day&from=20251013&to=20261013
+
+`market`: kospi(기본)/kosdaq, `mode`: day/minute(기본), `from`/`to`: 필수 YYYYMMDD, from≤to. 입력 오류 400, 키움 조회 실패·필수 키 누락·응답 형식 오류 502 `{error}`. 기존 KIWOOM_APPKEY/SECRETKEY 및 토큰 캐시를 사용한다.
+
+원천: POST 키움 `/api/dostk/chart`, day는 ka20006·base_dt=to·inds_dt_pole_qry, minute는 ka20005·tic_scope=1·inds_min_pole_qry. 시장 업종은 KOSPI 001, KOSDAQ 101. cont-yn/next-key로 요청 내 최대 12페이지를 조회하고 추가 페이지 사이 350ms 지연을 둔다. 조회 시작일 도달 또는 연속조회 종료 시 중단한다.
+
+응답: `{points:[{t,open,high,low,close}],partial:boolean}`. t는 한국시간 원천 dt/cntr_tm을 변환한 밀리초 timestamp(day는 해당 날짜 09:00). 가격은 open_pric/high_pric/low_pric/cur_prc의 쉼표 제거·절댓값/100 보정이며 무효 OHLC는 제외한다. 날짜 범위 내 중복 timestamp를 제거하고 오름차순으로 반환한다. partial=true는 추가 키움 기록이 있지만 페이지 한도로 중단한 경우다. 프론트는 일부 구간임을 안내하고 조회된 지수만 표시한다. ADR 수치로 캔들 OHLC를 생성하지 않는다.
+
+## 일봉 거래대금 공통 계약 (2026-10-13)
+
+`GET /api/adr/candles`의 day 응답은 `{points:[{t,open,high,low,close,market_turnover}],partial:boolean}`이다. `market_turnover`는 키움 `inds_dt_pole_qry[].trde_prica` 백만원 값을 1,000,000배 한 원 단위 값이다. 쉼표/공백 제거 후 부호 있는 정수 형식을 검증하고 음수·누락·빈 값·비정수는 null로 반환한다. 0은 유효한 거래대금이다. minute 응답에는 이 필드를 추가하지 않는다.
+
+일봉 쏠림율 응답의 `market_turnover`와 새 거래대금 응답은 `concentration-chart.js`의 `dailyTurnover`를 공유한다. 거래대금 전용 추정식이나 별도 `turnover` 필드는 사용하지 않는다. 기존 OHLC 유효성 검사와 범위/중복 제거 정책은 유지되므로 무효 OHLC 봉은 응답에서 제외된다.
+
+거래대금 차트는 같은 API에 market=kospi/kosdaq, mode=day, 선택 기간의 from/to를 전달한다. 업종은 001/101이며 최대 12페이지와 페이지 간 350ms 지연, 인증/400/502/no-store 계약은 기존과 같다. `partial`은 해당 시장 일부 기록만 반환됐음을 의미하고 null 거래대금은 UI에서 선을 끊거나 없음 상태로 표시한다.
+
+캔들용 OHLC와 거래대금을 함께 받아 시장 변경/캔들 펼침은 메모리 데이터로 처리한다. 조회 실패 시 시장별 안내와 기존 수신값 보존을 적용하고 다른 시장 성공 응답을 표시한다. API 서버 변경은 서버 재시작/운영 배포 후 반영되므로 구버전 응답의 필드 누락을 키움 원천 거래대금 없음으로 단정하지 않는다.
+
+ADR history 원천의 max/min 필드는 전달될 수 있으나 화면에는 MAX/MIN 글자·극값 표식을 표시하지 않는다. 기준 눈금 80/100/120은 모두 빨간색 글자이며 기준 가로선은 공통 회색 점선이다.

@@ -36,7 +36,7 @@ const assert = require('node:assert/strict');
         setInterval: (fn, ms) => { timers.set(++timerId, { fn, ms }); return timerId; }, clearInterval: id => timers.delete(id),
         loadData: () => calls.push('data'), loadTransactionRank: () => calls.push('table'), loadWatchlistRank: () => calls.push('watch') });
     const timerStart = source.indexOf('function startAutoRefresh()');
-    vm.runInContext('let autoRefreshInterval = null;\n' + source.slice(timerStart, source.indexOf('function startAdrAutoRefresh()', timerStart)), timerContext);
+    vm.runInContext('let autoRefreshInterval = null;\n' + source.slice(timerStart, source.indexOf("refreshIntervalSelect.addEventListener('change'", timerStart)), timerContext);
     const cleanupStart = source.indexOf('// 페이지 언로드 시 정리');
     vm.runInContext(source.slice(cleanupStart, source.indexOf('// ==========================================================', cleanupStart)), timerContext);
     timerContext.startAutoRefresh(); assert.equal(timers.get(timerId).ms, 30000);

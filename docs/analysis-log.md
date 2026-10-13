@@ -96,3 +96,5 @@ Coverage: 약 95%. Critical: 1건 (해결됨).
 
 \- \[V] 005: tasks.md Foundational 단계에 FRED 서브프로세스 의존성 검증 태스크 추가
 
+
+2026-10-13: 002-adr-tab 사양과 고정 ADR 기능을 삭제하고 Rank ADR 사양(001-rank-tab)으로 통합했다. 위의 과거 검토 기록은 당시 상태를 나타낸다.

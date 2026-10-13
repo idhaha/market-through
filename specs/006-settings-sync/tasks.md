@@ -99,7 +99,7 @@
 | Task | 결과 | 검증 내용 |
 |---|---|---|
 | T001 | ⏳ | 당시 제공된 소스 집합에는 `.gitignore` 파일이 없어 설정 파일이 실제로 git ignore 되는지는 확인하지 못했습니다. 이후 `.gitignore`를 확인하고 갱신했다. |
-| T002 | 🟢 | `getSerializedState()`가 `activeTabId`, `tabs`, `contents`, `rankInterval`, `adrInterval`, `watchlistGroupId`, `memoHtml`, `memoDelta`, `updatedAt`를 모두 반환합니다. `memoTabIconMigrationV1`은 추가 필드입니다. |
+| T002 | 🟢 | `getSerializedState()`가 `activeTabId`, `tabs`, `contents`, `rankInterval`, `watchlistGroupId`, `memoHtml`, `memoDelta`, `updatedAt`를 모두 반환합니다. `memoTabIconMigrationV1`은 추가 필드입니다. |
 | T003 | 🟢 | `GET /api/settings`는 `Cache-Control: no-store...`, `Pragma: no-cache`, `Expires: 0`을 설정하고 계약 형태 `{success:true,data}` / `data:null`을 반환합니다. `POST /api/settings`도 `{success:true}`를 반환합니다. Express JSON body limit은 50MB입니다. |
 
 ### User Story 1

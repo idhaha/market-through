@@ -209,6 +209,15 @@
         function candleChange(point) {
             return Number.isFinite(point.stock_change_rate) ? point.stock_change_rate : null;
         }
+        function drawHoverValue(context, plot, y, value, label) {
+            const py=y(value), badgeY=Math.max(plot.top+10,Math.min(plot.bottom-10,py));
+            context.save();context.lineWidth=1;context.strokeStyle='#339af0';context.setLineDash([3,3]);
+            context.beginPath();context.moveTo(plot.left,py);context.lineTo(plot.right,py);context.stroke();context.setLineDash([]);
+            context.font='bold 11px Arial';context.fillStyle='#339af0';
+            const badgeWidth=context.measureText(label).width+12,badgeX=Math.max(0,Math.min(plot.right,context.canvas.clientWidth-badgeWidth));
+            context.fillRect(badgeX,badgeY-10,badgeWidth,20);
+            context.fillStyle='#fff';context.textAlign='left';context.textBaseline='middle';context.fillText(label,badgeX+6,badgeY);context.restore();
+        }
         function drawCandles(points, plot, x, ratio, labels, boundaries) {
             candleGeometry = null;
             if (candleArea.hidden) return;
@@ -254,6 +263,8 @@
             if (state.hover != null && points[state.hover]) {
                 candleCtx.beginPath(); candleCtx.setLineDash([3,3]); candleCtx.strokeStyle = '#94a3b8';
                 candleCtx.moveTo(x(state.hover), top); candleCtx.lineTo(x(state.hover), bottom); candleCtx.stroke(); candleCtx.setLineDash([]);
+                const point=points[state.hover];
+                if(validCandle(point))drawHoverValue(candleCtx,{...plot,top,bottom},y,point.stock_price,point.stock_price.toLocaleString('ko-KR'));
             }
             if (state.drag) {
                 const left = Math.min(state.drag.startX, state.drag.endX);
@@ -282,6 +293,7 @@
             if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
             ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
             ctx.clearRect(0, 0, width, height);
+            ctx.lineWidth = 1;
             const plot = { left: 16, top: 18, right: width - 58, bottom: height - 34 };
             const points = state.points.slice(state.start, state.start + state.visible);
             const maximum = points.reduce((max, point) => Number.isFinite(point.value) ? Math.max(max, point.value) : max, 0);
@@ -340,7 +352,7 @@
                     ? '표시할 데이터가 없습니다.' : '위 테이블에서 종목을 선택하세요.', width / 2, height / 2);
             } else {
                 ctx.save(); ctx.beginPath(); ctx.rect(plot.left, plot.top, plot.right - plot.left, plot.bottom - plot.top); ctx.clip();
-                ctx.lineWidth = 1.5; ctx.strokeStyle = '#ea580c'; ctx.beginPath();
+                ctx.lineWidth = 2; ctx.strokeStyle = '#339af0'; ctx.setLineDash([]); ctx.beginPath();
                 let connected = false;
                 points.forEach((point, i) => {
                     if (point.value == null) { connected = false; return; }
@@ -348,17 +360,17 @@
                     connected = true;
                 });
                 ctx.stroke();
-                // Mark every valid candle, including full-history views.
+                const today = new Date(Date.now() + 9 * 3600000).toISOString().slice(0,10).replaceAll('-','');
                 points.forEach((point, i) => {
-                    if (point.value == null) return;
-                    ctx.beginPath(); ctx.fillStyle = '#ea580c'; ctx.arc(x(i), y(point.value), 2, 0, 2 * Math.PI); ctx.fill();
+                    if (point.value == null || state.mode !== 'minute' && point.time.slice(0,8) !== today) return;
+                    ctx.beginPath(); ctx.fillStyle = point.time.slice(0,8) === today ? '#f97316' : '#339af0'; ctx.arc(x(i), y(point.value), point.time.slice(0,8) === today ? 4 : 2, 0, 2 * Math.PI); ctx.fill();
                 });
                 ctx.restore();
                 const latest = points.at(-1);
                 if (Number.isFinite(latest?.value) && latest.time === state.points.at(-1)?.time) {
                     const lastX = x(points.length - 1);
                     const lastY = y(latest.value);
-                    ctx.beginPath(); ctx.fillStyle = '#2563eb'; ctx.arc(lastX, lastY, 4, 0, 2 * Math.PI); ctx.fill();
+                    ctx.beginPath(); ctx.fillStyle = latest.time.slice(0,8) === today ? '#f97316' : '#339af0'; ctx.arc(lastX, lastY, 4, 0, 2 * Math.PI); ctx.fill();
                     ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; ctx.stroke();
                 }
                 const singleDay = points[0].time.slice(0, 8) === points.at(-1).time.slice(0, 8);
@@ -406,6 +418,12 @@
                 if (state.hover != null && points[state.hover]) {
                     ctx.beginPath(); ctx.setLineDash([3, 3]); ctx.strokeStyle = '#94a3b8';
                     ctx.moveTo(x(state.hover), plot.top); ctx.lineTo(x(state.hover), plot.bottom); ctx.stroke(); ctx.setLineDash([]);
+                    const point = points[state.hover];
+                    if (Number.isFinite(point.value)) {
+                        drawHoverValue(ctx,plot,y,point.value,`${point.value.toFixed(2)}%`);
+                        ctx.fillStyle = point.time.slice(0,8) === today ? '#f97316' : '#339af0';
+                        ctx.beginPath(); ctx.arc(x(state.hover), y(point.value), 4, 0, Math.PI * 2); ctx.fill();
+                    }
                 }
             }
             if (state.drag) {
@@ -419,8 +437,9 @@
             currentRate.textContent = Number.isFinite(current?.value)
                 ? `${current.value.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}%` : '-';
             const first = points[0], last = points.at(-1);
+            const periodDate = time => `${time.slice(0,4)}-${time.slice(4,6)}-${time.slice(6,8)}`;
             document.getElementById('concentrationPeriod').textContent = first
-                ? `${formatDate(first.time)}${state.mode === 'minute' ? ` ${formatTime(first.time)}` : ''} — ${formatDate(last.time)}${state.mode === 'minute' ? ` ${formatTime(last.time)}` : ''} · ${points.length.toLocaleString()} / ${state.points.length.toLocaleString()}봉`
+                ? `${periodDate(first.time)}${state.mode === 'minute' ? ` ${formatTime(first.time)}` : ''} — ${periodDate(last.time)}${state.mode === 'minute' ? ` ${formatTime(last.time)}` : ''} · ${points.length.toLocaleString()} / ${state.points.length.toLocaleString()}봉`
                 : '쏠림율';
             updateControls();
         }
@@ -738,13 +757,11 @@
             const point = points[index]; state.hover = index;
             const change = candleChange(point);
             const text = `${formatDate(point.time)}${state.mode === 'minute' ? ` ${formatTime(point.time)}` : ''} · 쏠림율 ${point.value == null ? '-' : `${point.value.toFixed(2)}%`} · 상승률 ${change == null ? '-' : `${change > 0 ? '+' : ''}${change.toFixed(2)}%`}`;
-            [tooltip, candleTooltip].forEach(tip => {
-                tip.textContent = text;
-                tip.hidden = false;
-            });
+            tooltip.textContent = text;
+            tooltip.hidden = false;
+            candleTooltip.hidden = true;
             draw();
             positionHoverInfo(tooltip, geometry);
-            positionHoverInfo(candleTooltip, candleGeometry, true);
         }
         function clearHover() { state.hover = null; tooltip.hidden = true; candleTooltip.hidden = true; draw(); }
         [canvas, candleCanvas].forEach(surface => {

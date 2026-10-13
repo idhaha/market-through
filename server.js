@@ -9,7 +9,7 @@ const puppeteer = require('puppeteer');
 const { createDailyCapture, captureCentralBanks } = require('./central-banks');
 const { createInterestStore, captureInterestCharts } = require('./base-interest');
 const crypto = require('crypto');
-const { createConcentrationChartService } = require('./concentration-chart');
+const { createConcentrationChartService, dailyTurnover } = require('./concentration-chart');
 const { createRankIndependentRelay } = require('./rank-independent');
 
 // 전역 시장구분 캐시 (종목코드: 'K'/'Q') - 429 에러 방지용
@@ -1719,6 +1719,55 @@ app.get('/assets/v2/_next/static/chunks/*', async (req, res) => {
 /**
  * ADR 데이터 프록시 API (CORS 방지용)
  */
+app.get('/api/adr/history', async (req, res) => {
+    const market = req.query.market || 'kospi', range = req.query.range || '1y';
+    if (!['kospi', 'kosdaq'].includes(market) || !['6m', '1y', '3y', '5y'].includes(range)) return res.status(400).json({ error: 'Invalid market or range' });
+    try {
+        const response = await axios.get('https://jusikbot.com/api/adr/history', { params: { market, range }, timeout: 10000 });
+        res.set('Cache-Control', 'no-store').json(response.data);
+    } catch (_) { res.status(502).json({ error: 'ADR 일별 데이터를 가져오지 못했습니다.' }); }
+});
+
+app.get('/api/adr/candles', async (req, res) => {
+    const market = req.query.market || 'kospi', mode = req.query.mode || 'minute';
+    const from = String(req.query.from || ''), to = String(req.query.to || '');
+    if (!['kospi', 'kosdaq'].includes(market) || !['day', 'minute'].includes(mode) || !/^\d{8}$/.test(from) || !/^\d{8}$/.test(to) || from > to) return res.status(400).json({ error: 'Invalid candle query' });
+    try {
+        const appKey = (process.env.KIWOOM_APPKEY || '').trim(), secretKey = (process.env.KIWOOM_SECRETKEY || '').trim();
+        if (!appKey || !secretKey) throw new Error('API 키 설정 필요');
+        const token = await getAccessToken(appKey, secretKey);
+        const daily = mode === 'day', points = new Map();
+        let next = '', more = false;
+        for (let page = 0; page < 12; page++) {
+            const response = await axios.post('https://api.kiwoom.com/api/dostk/chart', {
+                inds_cd: market === 'kospi' ? '001' : '101',
+                ...(daily ? { base_dt: to } : { tic_scope: '1' })
+            }, { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'api-id': daily ? 'ka20006' : 'ka20005',
+                'cont-yn': next ? 'Y' : 'N', 'next-key': next }, timeout: 10000 });
+            if (Number(response.data.return_code || 0) !== 0) throw new Error('시장 지수 조회 실패');
+            const rows = response.data[daily ? 'inds_dt_pole_qry' : 'inds_min_pole_qry'];
+            if (!Array.isArray(rows)) throw new Error('시장 지수 응답 형식 오류');
+            let oldest = to;
+            for (const row of rows) {
+                const raw = String(daily ? row.dt : row.cntr_tm || '');
+                if (!(daily ? /^\d{8}$/ : /^\d{14}$/).test(raw)) continue;
+                oldest = oldest < raw.slice(0, 8) ? oldest : raw.slice(0, 8);
+                if (raw.slice(0, 8) < from || raw.slice(0, 8) > to) continue;
+                const time = Date.parse(`${raw.slice(0,4)}-${raw.slice(4,6)}-${raw.slice(6,8)}T${daily ? '09:00:00' : `${raw.slice(8,10)}:${raw.slice(10,12)}:${raw.slice(12,14)}`}+09:00`);
+                const price = v => Math.abs(Number(String(v ?? '').replace(/,/g, ''))) / 100;
+                const point = { t: time, open: price(row.open_pric), high: price(row.high_pric), low: price(row.low_pric), close: price(row.cur_prc) };
+                if (daily) point.market_turnover = dailyTurnover(row).value;
+                if ([point.t, point.open, point.high, point.low, point.close].every(Number.isFinite) && point.low > 0) points.set(time, point);
+            }
+            next = response.headers['cont-yn'] === 'Y' ? response.headers['next-key'] || '' : '';
+            more = Boolean(next && oldest > from);
+            if (!more || !rows.length) break;
+            await new Promise(resolve => setTimeout(resolve, 350));
+        }
+        res.set('Cache-Control', 'no-store').json({ points: [...points.values()].sort((a,b) => a.t-b.t), partial: more });
+    } catch (_) { res.status(502).json({ error: '시장 지수 캔들 조회 실패' }); }
+});
+
 app.get('/api/adr/today', async (req, res) => {
     const market = req.query.market || 'kospi';
     if (!['kospi', 'kosdaq'].includes(market)) return res.status(400).json({ error: 'Invalid market' });
@@ -1729,24 +1778,6 @@ app.get('/api/adr/today', async (req, res) => {
         res.set('Cache-Control', 'no-store').json(response.data);
     } catch (error) {
         res.status(502).json({ error: 'ADR 실시간 데이터를 가져오지 못했습니다.' });
-    }
-});
-
-app.get('/api/adr', async (req, res) => {
-    console.log("🚀 [API START] /api/adr 요청 발생 (Cache-Busting 적용)");
-    try {
-        const timestamp = Date.now();
-        const response = await axios.get(`http://adrinfo.kr/chart?t=${timestamp}`, {
-            timeout: 8000,
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            }
-        });
-        console.log("✅ ADR 데이터 획득 성공 (길이:", response.data.length, ")");
-        res.send(response.data);
-    } catch (error) {
-        console.error("❌ ADR 프록시 에러:", error.message);
-        res.status(500).json({ error: "ADR 데이터를 가져오는데 실패했습니다.", details: error.message });
     }
 });
 

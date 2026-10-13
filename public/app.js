@@ -10,7 +10,6 @@ const API_URL = '/api/stock';
 const STORAGE_KEY = 'MultiChart_State_v1';
 const MEMO_PENDING_SYNC_KEY = 'memoPendingServerSyncV1';
 const PERM_TAB_ID = 'tab_rank';
-const ADR_TAB_ID = 'tab_adr';
 const MEMO_TAB_ID = 'tab_memo';
 const EARNINGS_TAB_ID = 'tab_earnings';
 const US_TAB_ID = 'tab_us';
@@ -22,7 +21,6 @@ const BASE_INTEREST_BANKS = [
 ].map(([code, name]) => ({ code, name }));
 let isInitializing = false; // Flag to prevent auto-save during startup
 let isCapturing = false; // Flag to suppress all data-fetching during screenshot capture
-let adrRenderPending = false;
 let quillEditor; // Global Quill instance
 let currentAuthUser = null;
 // TradingEconomics 요청은 서버가 Chrome을 띄워 처리하므로, 한 번에 1개씩만 보낸다
@@ -582,9 +580,8 @@ if (moreControlsBtn) {
 let currentConfigTabId = null; // Track which tab is being configured
 
 let autoRefreshInterval = null;
-let adrAutoRefreshInterval = null;
 // Default to '2' (10 minutes) as requested
-let lastSavedSettings = { rankInterval: '2', adrInterval: '2' };
+let lastSavedSettings = { rankInterval: '2' };
 
 /**
  * 상태 업데이트
@@ -750,6 +747,7 @@ let transactionRankRequest = 0;
 async function loadTransactionRank() {
     if (isCapturing) { console.log('[Capture] loadTransactionRank() skipped (isCapturing)'); return; }
     window.refreshRankAdrChart?.();
+    window.refreshRankTurnoverChart?.();
     const mrktTp = mrktTpSelect.value;
     const stexTp = stexTpSelect.value;
     const request = ++transactionRankRequest;
@@ -1071,34 +1069,6 @@ function stopAutoRefresh() {
     }
 }
 
-function startAdrAutoRefresh() {
-    if (adrAutoRefreshInterval) {
-        clearInterval(adrAutoRefreshInterval);
-    }
-
-    const select = document.getElementById('adrRefreshInterval');
-    if (!select) return;
-
-    const selectedOption = select.options[select.selectedIndex];
-    const intervalMs = parseInt(selectedOption.dataset.interval) || 30000;
-
-    console.log(`[ADR] 🔄 자동 새로고침 시작 (간격: ${intervalMs}ms)`);
-
-    adrAutoRefreshInterval = setInterval(() => {
-        if (isCapturing) { console.log('[Capture] ADR auto-refresh skipped (isCapturing)'); return; }
-        const now = new Date().toLocaleTimeString();
-        console.log(`[ADR] ⚡ 자동 새로고침 실행 (${now})`);
-        updateAdrFromSource();
-    }, intervalMs);
-}
-
-function stopAdrAutoRefresh() {
-    if (adrAutoRefreshInterval) {
-        clearInterval(adrAutoRefreshInterval);
-        adrAutoRefreshInterval = null;
-    }
-}
-
 refreshIntervalSelect.addEventListener('change', (e) => {
     console.log('[Rank] 새로고침 설정 변경');
     lastSavedSettings.rankInterval = e.target.value;
@@ -1186,30 +1156,13 @@ function ensurePermanentTabs() {
         const btn = document.createElement('button');
         btn.className = 'tab-btn perm-tab';
         btn.dataset.tab = PERM_TAB_ID;
-        btn.textContent = 'Rank';
+        btn.textContent = '트레이딩';
         btn.draggable = false;
         btn.dataset.perm = 'true';
         btn.title = '고정 탭 (조회 순위)';
 
         if (tabsWrapper.firstChild) tabsWrapper.insertBefore(btn, tabsWrapper.firstChild);
         else tabsWrapper.appendChild(btn);
-    }
-
-    // ADR Tab
-    if (!document.querySelector(`.tab-btn[data-tab="${ADR_TAB_ID}"]`)) {
-        const btn = document.createElement('button');
-        btn.className = 'tab-btn perm-tab';
-        btn.dataset.tab = ADR_TAB_ID;
-        btn.textContent = 'ADR';
-        btn.draggable = false;
-        btn.dataset.perm = 'true';
-        btn.title = '고정 탭 (ADR 차트)';
-
-        const rankBtn = document.querySelector(`.tab-btn[data-tab="${PERM_TAB_ID}"]`);
-        if (rankBtn && rankBtn.nextSibling) tabsWrapper.insertBefore(btn, rankBtn.nextSibling);
-        else tabsWrapper.appendChild(btn);
-
-        createTabContentElement(ADR_TAB_ID);
     }
 
     // Memo Tab
@@ -1223,8 +1176,8 @@ function ensurePermanentTabs() {
         btn.title = '고정 탭 (메모)';
         btn.style.fontWeight = 'bold';
 
-        const adrBtn = document.querySelector(`.tab-btn[data-tab="${ADR_TAB_ID}"]`);
-        if (adrBtn && adrBtn.nextSibling) tabsWrapper.insertBefore(btn, adrBtn.nextSibling);
+        const rankBtn = document.querySelector(`.tab-btn[data-tab="${PERM_TAB_ID}"]`);
+        if (rankBtn && rankBtn.nextSibling) tabsWrapper.insertBefore(btn, rankBtn.nextSibling);
         else tabsWrapper.appendChild(btn);
 
         createTabContentElement(MEMO_TAB_ID);
@@ -1277,8 +1230,7 @@ function ensurePermanentTabs() {
  * candidateName 또는 tabData[tabId].name을 기반으로 올바른 탭 이름을 반환
  */
 function resolveTabName(tabId, candidateName = null, tabObj = null) {
-    if (tabId === PERM_TAB_ID) return 'Rank';
-    if (tabId === ADR_TAB_ID) return 'ADR';
+    if (tabId === PERM_TAB_ID) return '트레이딩';
     if (tabId === MEMO_TAB_ID) {
         const memoName = (candidateName && typeof candidateName === 'string') ? candidateName.trim() : '';
         if (memoName && !memoName.includes('(복구)')) return memoName;
@@ -1407,7 +1359,6 @@ function getSerializedState(sourceData = null) {
         tabs: capturedTabs,
         contents: dataToSerialize,
         rankInterval: refreshIntervalSelect ? refreshIntervalSelect.value : "2",
-        adrInterval: document.getElementById('adrRefreshInterval')?.value,
         watchlistGroupId: watchlistGroupId,
         rankChartDisplay: window.getConcentrationDisplaySettings?.() || { debugOpen: false, candleOpen: false, mode: 'day', interval: 1 },
         memoHtml: memoHtml,
@@ -1460,7 +1411,7 @@ async function syncSettingsToServer(data) {
 
 function saveTabState(tabId) {
     const content = document.getElementById(tabId);
-    if (!content || tabId === PERM_TAB_ID || tabId === ADR_TAB_ID || tabId === EARNINGS_TAB_ID || tabId === BASE_INTEREST_TAB_ID || tabId === US_TAB_ID || tabId === MEMO_TAB_ID) return;
+    if (!content || tabId === PERM_TAB_ID || tabId === EARNINGS_TAB_ID || tabId === BASE_INTEREST_TAB_ID || tabId === US_TAB_ID || tabId === MEMO_TAB_ID) return;
 
     // Special handling for dynamic overseas/exchange tabs: they don't use standard grid saving
     const type = tabData[tabId]?.type;
@@ -1524,7 +1475,22 @@ async function loadAppDataFromServer() {
     }
 }
 
+// Ignore retired ADR tab settings in local, server and imported backups.
+function removeRetiredAdrState(data) {
+    if (!data || typeof data !== 'object') return data;
+    const cleaned = { ...data };
+    if (Array.isArray(data.tabs)) cleaned.tabs = data.tabs.filter(tab => tab.id !== 'tab_adr');
+    if (data.contents) {
+        cleaned.contents = { ...data.contents };
+        delete cleaned.contents.tab_adr;
+    }
+    delete cleaned.adrInterval;
+    if (cleaned.activeTabId === 'tab_adr') cleaned.activeTabId = PERM_TAB_ID;
+    return cleaned;
+}
+
 function applyData(data) {
+    data = removeRetiredAdrState(data);
     if (!data || !data.tabs) return;
 
     isInitializing = true; // Block auto-save during application
@@ -1543,7 +1509,7 @@ function applyData(data) {
                 tabData[t.id].name = fixedName;
             }
 
-            if (t.id === PERM_TAB_ID || t.id === ADR_TAB_ID || t.id === EARNINGS_TAB_ID || t.id === BASE_INTEREST_TAB_ID || t.id === US_TAB_ID || t.id === MEMO_TAB_ID) {
+            if (t.id === PERM_TAB_ID || t.id === EARNINGS_TAB_ID || t.id === BASE_INTEREST_TAB_ID || t.id === US_TAB_ID || t.id === MEMO_TAB_ID) {
                 const btn = document.querySelector(`.tab-btn[data-tab="${t.id}"]`);
                 if (btn) {
                     if (t.id === EARNINGS_TAB_ID) {
@@ -1568,12 +1534,6 @@ function applyData(data) {
             lastSavedSettings.rankInterval = '2';
         }
         startAutoRefresh();
-        if (data.adrInterval) {
-            lastSavedSettings.adrInterval = data.adrInterval === '4' ? '5' : data.adrInterval;
-        } else {
-            lastSavedSettings.adrInterval = '2';
-        }
-
         // Only switch tabs IF this is the INITIAL local load (when we don't have a specific trigger)
         // Manual refresh/sync should stay on the current tab (activeContent exists).
         const activeContent = document.querySelector('.tab-content.active');
@@ -1721,7 +1681,7 @@ async function saveMemoToServer(memoHtml, memoDelta, memoUpdatedAt = Date.now())
 
 function resetDynamicTabs() {
     document.querySelectorAll('.tab-btn:not(.add-tab-btn):not([data-perm])').forEach(b => b.remove());
-    document.querySelectorAll('.tab-content:not(#tab_rank):not(#tab_adr):not(#tab_earnings):not(#tab_base_interest):not(#tab_us):not(#tab_memo)').forEach(c => c.remove());
+    document.querySelectorAll('.tab-content:not(#tab_rank):not(#tab_earnings):not(#tab_base_interest):not(#tab_us):not(#tab_memo)').forEach(c => c.remove());
 }
 
 function activateTab(tabId) {
@@ -1733,7 +1693,7 @@ function activateTab(tabId) {
 
     document.querySelectorAll(".tab-content.active").forEach(tab => {
         if (tab.id !== tabId) {
-            if (tab.id !== PERM_TAB_ID && tab.id !== ADR_TAB_ID && tab.id !== EARNINGS_TAB_ID && tab.id !== BASE_INTEREST_TAB_ID && tab.id !== US_TAB_ID && tab.id !== MEMO_TAB_ID) {
+            if (tab.id !== PERM_TAB_ID && tab.id !== EARNINGS_TAB_ID && tab.id !== BASE_INTEREST_TAB_ID && tab.id !== US_TAB_ID && tab.id !== MEMO_TAB_ID) {
                 saveTabState(tab.id);
                 // tab.innerHTML = ''; // Removed to persist content and prevent reload
             }
@@ -1751,14 +1711,7 @@ function activateTab(tabId) {
     // Initialize tab if empty, or just ensure intervals/listeners are active
     const wasEmpty = initializeTab(tabId);
 
-    if (tabId === ADR_TAB_ID) {
-        const adrData = tabData[ADR_TAB_ID]?.adr;
-        if (adrRenderPending && adrData) {
-            renderAdr(adrData.kospi, adrData.kosdaq);
-            adrRenderPending = false;
-        }
-        if (!isCapturing) startAdrAutoRefresh();
-    } else if (tabId === MEMO_TAB_ID) {
+    if (tabId === MEMO_TAB_ID) {
         // Initialize FullCalendar when memo tab is active
         setTimeout(() => {
             if (!calendar) initCalendar();
@@ -1804,12 +1757,7 @@ function initializeTab(tabId) {
 
     // 2. Attach specialized listeners (idempotent checks included)
     if (!isInitialized) {
-        if (tabId === ADR_TAB_ID) {
-            const adrSelect = document.getElementById('adrRefreshInterval');
-            if (adrSelect && lastSavedSettings.adrInterval) {
-                adrSelect.value = lastSavedSettings.adrInterval;
-            }
-        } else if (tabId === BASE_INTEREST_TAB_ID) {
+        if (tabId === BASE_INTEREST_TAB_ID) {
             document.getElementById('refreshBaseInterest')?.addEventListener('click', () => loadBaseInterestCharts(true));
         } else if (tabId === EARNINGS_TAB_ID) {
             const refreshBtn = document.getElementById(`refreshEarnings_${tabId}`);
@@ -1859,9 +1807,7 @@ function initializeTab(tabId) {
     // 3. Trigger initial load if it was empty
     if (!isInitialized) {
         if (!isCapturing) {
-            if (tabId === ADR_TAB_ID) {
-                setTimeout(() => updateAdrFromSource(), 100);
-            } else if (tabData[tabId] && tabData[tabId].type === 'overseas_custom') {
+            if (tabData[tabId] && tabData[tabId].type === 'overseas_custom') {
                 refreshOverseasCustomCharts(tabId);
             } else if (tabData[tabId] && tabData[tabId].type === 'exchange_rate') {
                 refreshExchangeRateCharts(tabId);
@@ -1941,59 +1887,6 @@ function getInvestingUrl() {
 
 
 function createChartGrid(tabId) {
-    // 1. ADR Tab
-    if (tabId === ADR_TAB_ID) {
-        return `
-            <div class="container" style="height: 100%; display: flex; flex-direction: column;">
-                <header>
-                    <div class="header-single-line">
-                        <h1><strong>ADR Chart</strong></h1>
-                        <div class="header-controls">
-                            <div class="refresh-control">
-                                <select id="adrRefreshInterval" class="interval-select">
-                                    <option value="5" data-interval="30000" selected>30초 간격</option>
-                                    <option value="1" data-interval="60000">1분 간격</option>
-                                    <option value="2" data-interval="600000">10분 간격</option>
-                                    <option value="3" data-interval="3600000">1시간 간격</option>
-                                </select>
-                            </div>
-                            <button id="adrManualRefresh" class="btn-primary" style="height: 38px; padding: 0 15px;">조회</button>
-                        </div>
-                    </div>
-                    <div class="status-info">
-                        <span id="adrLastUpdate">-</span>
-                        <span class="status-separator">|</span>
-                        <span id="adrStatusText">대기 중...</span>
-                    </div>
-                </header>
-
-                <div class="adr-chart-container" style="flex: 1; overflow: auto;">
-                    <div class="adr-chart-wrapper">
-                        <div class="adr-chart-header"><h3>K</h3></div>
-                        <div class="adr-period-selector">
-                            <button class="period-btn" data-period="6m">6m</button>
-                            <button class="period-btn" data-period="1y">1y</button>
-                            <button class="period-btn active" data-period="2y">2y</button>
-                            <button class="period-btn" data-period="5y">5y</button>
-                            <button class="period-btn" data-period="10y">10y</button>
-                        </div>
-                        <canvas id="adr_kospi" class="adr-canvas-new" width="500" height="300"></canvas>
-                    </div>
-                    <div class="adr-chart-wrapper">
-                        <div class="adr-chart-header"><h3>Q</h3></div>
-                        <div class="adr-period-selector">
-                            <button class="period-btn" data-period="6m">6m</button>
-                            <button class="period-btn" data-period="1y">1y</button>
-                            <button class="period-btn active" data-period="2y">2y</button>
-                            <button class="period-btn" data-period="5y">5y</button>
-                            <button class="period-btn" data-period="10y">10y</button>
-                        </div>
-                        <canvas id="adr_kosdaq" class="adr-canvas-new" width="500" height="300"></canvas>
-                    </div>
-                </div>
-            </div>`;
-    }
-
     if (tabId === US_TAB_ID) return window.USLinks.layout();
 
     if (tabId === BASE_INTEREST_TAB_ID) {
@@ -2236,15 +2129,6 @@ function createChartGrid(tabId) {
 }
 
 function loadChartsSequentially(container) {
-    if (container.id === ADR_TAB_ID) {
-        const adrCache = (tabData[ADR_TAB_ID] && tabData[ADR_TAB_ID].adr) ? tabData[ADR_TAB_ID].adr : null;
-        if (adrCache) {
-            setTimeout(() => renderAdr(adrCache.kospi, adrCache.kosdaq), 100);
-        } else {
-            updateAdrFromSource();
-        }
-        return;
-    }
     const iframes = container.querySelectorAll('iframe[data-src]');
     iframes.forEach((iframe, index) => {
         const chartBox = iframe.closest('.chart-box');
@@ -2286,718 +2170,6 @@ function loadChartFromInput(inputElement) {
     saveAppData();
 }
 
-// --- ADR Data & Drawing ---
-
-async function updateAdrFromSource() {
-    const url = `/api/adr?t=${Date.now()}`;
-    console.log("🔄 [ADR] Step 1: Fetching from backend proxy:", url);
-    const isAdrActive = () => {
-        const currentTab = document.querySelector('.tab-content.active');
-        return currentTab && currentTab.id === ADR_TAB_ID;
-    };
-
-
-
-    const adrStatusTextElem = document.getElementById('adrStatusText');
-    const adrLastUpdateElem = document.getElementById('adrLastUpdate');
-    if (adrStatusTextElem) adrStatusTextElem.textContent = "데이터 로딩 중...";
-
-    try {
-        const res = await fetch(url, { cache: 'no-store' });
-        console.log("📥 [ADR] Step 2: Response received, status:", res.status, res.ok);
-        if (!res.ok) throw new Error('네트워크 오류: ' + res.status);
-
-        const text = await res.text();
-        console.log("📄 [ADR] Step 3: HTML received, length:", text.length);
-        if (!text || text.length < 100) throw new Error('응답 데이터가 너무 짧거나 비어있습니다.');
-
-        const parsed = parseAdrHtml(text);
-
-        const kLen = parsed.kospi.length;
-        const qLen = parsed.kosdaq.length;
-        if (kLen === 0 || qLen === 0) {
-            throw new Error('KOSPI 또는 KOSDAQ ADR 데이터가 비어 있습니다.');
-        }
-        const kLastDate = kLen > 0 ? new Date(parsed.kospi[kLen - 1].date).toLocaleDateString() : 'N/A';
-        const qLastDate = qLen > 0 ? new Date(parsed.kosdaq[qLen - 1].date).toLocaleDateString() : 'N/A';
-
-        console.log(`✅ [ADR] Step 4: Parsed Data - KOSPI: ${kLen} (${kLastDate}), KOSDAQ: ${qLen} (${qLastDate})`);
-
-        if (kLen !== qLen) {
-            console.warn(`⚠️ [ADR] Data length mismatch! K:${kLen} vs Q:${qLen}`);
-        }
-
-        tabData[ADR_TAB_ID] = tabData[ADR_TAB_ID] || {};
-        tabData[ADR_TAB_ID].adr = { kospi: parsed.kospi, kosdaq: parsed.kosdaq, updated: Date.now() };
-
-        if (isAdrActive()) {
-            console.log("🎨 [ADR] Step 5: Calling renderAdr...");
-            renderAdr(parsed.kospi, parsed.kosdaq);
-            adrRenderPending = false;
-        } else {
-            adrRenderPending = true;
-            console.log('[ADR] 탭 비활성 상태라 데이터 저장 후 렌더링을 보류합니다.');
-        }
-
-        const last = new Date().toLocaleString();
-        if (adrStatusTextElem) adrStatusTextElem.textContent = "업데이트 완료";
-        if (adrLastUpdateElem) adrLastUpdateElem.textContent = last;
-
-    } catch (e) {
-        console.error('❌ [ADR] 업데이트 실패:', e);
-        if (adrStatusTextElem) adrStatusTextElem.textContent = "업데이트 실패";
-    } finally {
-    }
-}
-
-function parseAdrHtml(html) {
-    const out = { kospi: [], kosdaq: [] };
-    try {
-        const rawKospi = extractArrayFromHtml(html, "kospi_adr");
-        const rawKosdaq = extractArrayFromHtml(html, "kosdaq_adr");
-
-        out.kospi = rawKospi.filter(i => i && i[1] !== null).map(i => ({ date: i[0], value: i[1] }));
-        out.kosdaq = rawKosdaq.filter(i => i && i[1] !== null).map(i => ({ date: i[0], value: i[1] }));
-
-        if (out.kospi.length > 0) out.kospi.sort((a, b) => a.date - b.date);
-        if (out.kosdaq.length > 0) out.kosdaq.sort((a, b) => a.date - b.date);
-
-        console.log(`📊 [Parser] Extracted: KOSPI=${out.kospi.length}, KOSDAQ=${out.kosdaq.length}`);
-    } catch (e) {
-        console.error('❌ [Parser] Failed:', e);
-    }
-    return out;
-}
-
-function extractArrayFromHtml(html, name) {
-    let startIdx = html.indexOf(`${name}=`);
-    if (startIdx === -1) startIdx = html.indexOf(`${name} =`);
-    if (startIdx === -1) return [];
-
-    const contentStart = html.indexOf('[', startIdx);
-    if (contentStart === -1) return [];
-
-    let balance = 0;
-    let endIdx = -1;
-    for (let i = contentStart; i < html.length; i++) {
-        if (html[i] === '[') balance++;
-        else if (html[i] === ']') balance--;
-        if (balance === 0) {
-            endIdx = i;
-            break;
-        }
-    }
-    if (endIdx === -1) return [];
-
-    const contentStr = html.substring(contentStart, endIdx + 1).trim();
-    try {
-        return JSON.parse(contentStr.replace(/,\s*\]$/, ']'));
-    } catch (e) {
-        console.warn(`[Parser] JSON.parse failed for ${name}, trying simple regex...`);
-        // Fallback for extremely messy strings
-        const items = [];
-        const itemRegex = /\[\s*(\d+)\s*,\s*([-]?\d*\.?\d+)\s*\]/g;
-        let m;
-        while ((m = itemRegex.exec(contentStr)) !== null) {
-            items.push([parseInt(m[1]), parseFloat(m[2])]);
-        }
-        return items;
-    }
-}
-
-function renderAdr(kospi, kosdaq) {
-    const c1 = document.getElementById('adr_kospi');
-    const c2 = document.getElementById('adr_kosdaq');
-    if (!c1 || !c2) return;
-
-    // Common Range Calculator
-    const getCombinedRange = (offset, count) => {
-        const getVals = (arr) => {
-            if (!arr || arr.length === 0) return [];
-            const start = Math.max(0, Math.min(offset, arr.length - count));
-            const end = Math.min(start + count, arr.length);
-            return arr.slice(start, end).map(d => d.value);
-        };
-        const v1 = getVals(kospi);
-        const v2 = getVals(kosdaq);
-        const all = v1.concat(v2);
-        if (all.length === 0) return null;
-        return { min: Math.min(...all), max: Math.max(...all) };
-    };
-
-    const nearestIndexForDate = (series, dateValue) => {
-        if (!series.length || dateValue == null) return -1;
-        const targetTime = Number.isFinite(Number(dateValue)) ? Number(dateValue) : new Date(dateValue).getTime();
-        if (!Number.isFinite(targetTime)) return -1;
-
-        let low = 0;
-        let high = series.length - 1;
-        while (low < high) {
-            const mid = Math.floor((low + high) / 2);
-            const midTime = new Date(series[mid].date).getTime();
-            if (midTime < targetTime) low = mid + 1;
-            else high = mid;
-        }
-        if (low > 0) {
-            const beforeTime = new Date(series[low - 1].date).getTime();
-            const afterTime = new Date(series[low].date).getTime();
-            if (Math.abs(beforeTime - targetTime) <= Math.abs(afterTime - targetTime)) return low - 1;
-        }
-        return low;
-    };
-
-    const syncChartByDate = (targetCanvas, targetData, targetLabel, state) => {
-        if (!targetCanvas.chartState || !targetData.length) return;
-        const targetState = targetCanvas.chartState;
-        const targetVisibleCount = Math.min(state.visibleCount, targetData.length);
-        const targetStart = nearestIndexForDate(targetData, state.visibleStartDate);
-        const maxOffset = Math.max(0, targetData.length - targetVisibleCount);
-
-        targetState.visibleCount = targetVisibleCount;
-        targetState.scrollOffset = Math.max(0, Math.min(targetStart >= 0 ? targetStart : state.scrollOffset, maxOffset));
-
-        const targetHover = nearestIndexForDate(targetData, state.hoveredDate);
-        const visibleStart = Math.floor(targetState.scrollOffset);
-        targetState.hoveredIndex = targetHover >= visibleStart && targetHover < visibleStart + targetVisibleCount
-            ? targetHover - visibleStart
-            : null;
-
-        requestAnimationFrame(() => drawLineChart(targetCanvas, targetData, targetLabel, targetVisibleCount));
-    };
-
-    const syncToKosdaq = state => syncChartByDate(c2, kosdaq, 'Q ADR', state);
-    const syncToKospi = state => syncChartByDate(c1, kospi, 'K ADR', state);
-
-    c1.rangeCalculator = getCombinedRange;
-    c1.syncCallback = syncToKosdaq;
-    c2.rangeCalculator = getCombinedRange;
-    c2.syncCallback = syncToKospi;
-
-    // Use current visibleCount if already set, else default to 2y (480 trading days).
-    const currentCount = c1.chartState ? c1.chartState.visibleCount : 480;
-    drawLineChart(c1, kospi, 'K ADR', currentCount);
-    drawLineChart(c2, kosdaq, 'Q ADR', currentCount);
-}
-// function drawLineChart(canvas, data, label, visibleCount = 60) {
-function drawLineChart(canvas, data, label, visibleCount = 60, syncCallback = null) {
-    if (!canvas) return;
-    if (data && data.length > 0) visibleCount = Math.max(1, Math.min(visibleCount, data.length));
-    // Interaction listeners are installed once, so keep their data source current
-    // when a later refresh replaces the ADR arrays.
-    canvas.chartData = data;
-    canvas.chartLabel = label;
-    // Store sync callback for future use (e.g. by period buttons)
-    if (syncCallback) canvas.syncCallback = syncCallback;
-
-    const ctx = canvas.getContext('2d');
-    const dpr = window.devicePixelRatio || 1;
-    const w = canvas.clientWidth || 400;
-    const h = canvas.clientHeight || 300;
-
-    const targetW = Math.floor(w * dpr);
-    const targetH = Math.floor(h * dpr);
-
-    // Optimize: Only resize if dimensions changed to avoid layout thrashing loop
-    if (canvas.width !== targetW || canvas.height !== targetH) {
-        canvas.width = targetW;
-        canvas.height = targetH;
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    } else {
-        // Just clear if size hasn't changed (re-use buffer)
-        // Ensure transform is correct just in case context was reset elsewhere (unlikely but safe)
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    }
-
-    // Context settings
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, w, h);
-
-    if (!data || data.length === 0) {
-        ctx.fillStyle = "#6c757d";
-        ctx.font = "16px Arial";
-        ctx.textAlign = "center";
-        ctx.fillText("데이터 없음", w / 2, h / 2);
-        return;
-    }
-
-    // Initialize interacting state if not present
-    if (!canvas.chartState) {
-        canvas.chartState = {
-            scrollOffset: Math.max(0, data.length - visibleCount),
-            isDragging: false,
-            isScrollDragging: false,
-            lastX: 0,
-            hoveredIndex: null,
-            visibleCount: visibleCount,
-            pendingFrame: false // Thread locking for performance
-        };
-    } else {
-        // Update visible count in state in case it changed via buttons
-        canvas.chartState.visibleCount = visibleCount;
-    }
-    const state = canvas.chartState;
-    // prevMaxOffset: The end position of the PREVIOUS data set
-    const prevMaxOffset = Math.max(0, (canvas.lastDataLength || data.length) - visibleCount);
-    // isAtEnd: Were we at the end of the previous data set?
-    // Added !canvas.lastDataLength check to ensure we start at the end for fresh loads
-    const isAtEnd = !canvas.lastDataLength || state.scrollOffset >= prevMaxOffset - 1.0;
-
-    console.log(`📊 [Chart:${label}] Len: ${data.length}, Prev: ${canvas.lastDataLength}, Offset: ${state.scrollOffset.toFixed(2)}, isAtEnd: ${isAtEnd}`);
-
-    // Adjust offset if visibleCount changes (e.g. period change)
-    if (canvas.lastVisibleCount !== visibleCount) {
-        state.scrollOffset = Math.max(0, data.length - visibleCount);
-        canvas.lastVisibleCount = visibleCount;
-    } else if (isAtEnd) {
-        // Always follow to the end if we were at the end, 
-        // especially if data length increased or if it's the first real data load
-        const newMaxOffset = Math.max(0, data.length - visibleCount);
-        if (state.scrollOffset !== newMaxOffset) {
-            state.scrollOffset = newMaxOffset;
-            console.log(`🚀 [Chart:${label}] Followed to end: ${state.scrollOffset}`);
-        }
-    }
-
-    canvas.lastDataLength = data.length;
-
-    // Ensure offset is valid
-    state.scrollOffset = Math.max(0, Math.min(state.scrollOffset, data.length - visibleCount));
-
-    const startIdx = Math.floor(state.scrollOffset);
-    const endIdx = data.length; // Always slice to end, let visibleCount control the actual start if needed
-    // But original logic used startIdx + visibleCount. Let's keep it consistent:
-    const actualEndIdx = Math.min(startIdx + visibleCount, data.length);
-    const visibleSeries = data.slice(startIdx, actualEndIdx);
-    state.visibleStartDate = visibleSeries[0]?.date ?? null;
-    state.visibleEndDate = visibleSeries[visibleSeries.length - 1]?.date ?? null;
-    state.hoveredDate = state.hoveredIndex !== null ? visibleSeries[state.hoveredIndex]?.date ?? null : null;
-
-    // Padding
-    const padding = { top: 60, right: 100, bottom: 80, left: 60 };
-    const plotW = w - padding.left - padding.right;
-    const plotH = h - padding.top - padding.bottom;
-
-    // Y-Axis Range
-    const values = visibleSeries.map(d => d.value);
-    let minVal, maxVal;
-
-    // Use shared calculator if available
-    if (canvas.rangeCalculator) {
-        const range = canvas.rangeCalculator(state.scrollOffset, visibleCount);
-        if (range) {
-            minVal = range.min;
-            maxVal = range.max;
-        }
-    }
-
-    // Fallback or default
-    if (minVal === undefined) {
-        if (values.length > 0) {
-            minVal = Math.min(...values);
-            maxVal = Math.max(...values);
-        } else {
-            minVal = 0; maxVal = 100;
-        }
-    }
-
-    // Add small buffer if flat
-    if (minVal === maxVal) { minVal -= 1; maxVal += 1; }
-
-    const range = maxVal - minVal || 1;
-
-    // --- Draw Areas (80-120) ---
-    if (minVal < 120 && maxVal > 80) {
-        const y80 = padding.top + plotH - ((Math.max(80, minVal) - minVal) / range) * plotH;
-        const y120 = padding.top + plotH - ((Math.min(120, maxVal) - minVal) / range) * plotH;
-        // Clamp Y coords to plot area
-        const topY = Math.max(padding.top, y120);
-        const bottomY = Math.min(padding.top + plotH, y80);
-
-        if (bottomY > topY) {
-            ctx.fillStyle = 'rgba(200, 200, 200, 0.2)';
-            ctx.fillRect(padding.left, topY, plotW, bottomY - topY);
-        }
-    }
-
-    // --- Reference Lines ---
-    const drawRef = (val, color, dashed) => {
-        if (val >= minVal && val <= maxVal) {
-            const y = padding.top + plotH - ((val - minVal) / range) * plotH;
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 1;
-            ctx.setLineDash(dashed ? [5, 5] : []);
-            ctx.beginPath();
-            ctx.moveTo(padding.left, y);
-            ctx.lineTo(padding.left + plotW, y);
-            ctx.stroke();
-            ctx.setLineDash([]);
-
-            ctx.fillStyle = color;
-            ctx.font = 'bold 10px Arial';
-            ctx.textAlign = 'right';
-            ctx.fillText(val, padding.left - 5, y + 3);
-        }
-    };
-    drawRef(80, '#ffa94d', true);
-    drawRef(100, '#ff6b6b', true);
-    drawRef(120, '#51cf66', true);
-
-    // --- Data Line ---
-    ctx.strokeStyle = '#339af0';
-    ctx.lineWidth = 2;
-    ctx.lineJoin = 'round';
-    ctx.beginPath();
-
-    // Store point coordinates for interaction
-    const points = [];
-
-    visibleSeries.forEach((d, i) => {
-        const x = padding.left + (i / (visibleCount - 1)) * plotW;
-        const y = padding.top + plotH - ((d.value - minVal) / range) * plotH;
-
-        points.push({ x, y, data: d, globalIdx: startIdx + i });
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-
-    // Last Point Dot
-    if (points.length > 0) {
-        const lastP = points[points.length - 1];
-        ctx.fillStyle = '#ff0000';
-        ctx.beginPath();
-        ctx.arc(lastP.x, lastP.y, 4, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-    }
-
-    // --- X-Axis Labels ---
-    const tickCount = 6;
-    for (let i = 0; i <= tickCount; i++) {
-        const idx = Math.round((i / tickCount) * (visibleCount - 1));
-        if (visibleSeries[idx]) {
-            const dateObj = new Date(visibleSeries[idx].date);
-            // Format: YY.MM (e.g. 24.12)
-            const yy = String(dateObj.getFullYear()).slice(-2);
-            const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
-            const labelStr = `${yy}.${mm}`;
-
-            const x = padding.left + (idx / (visibleCount - 1)) * plotW;
-            ctx.fillStyle = '#666';
-            ctx.textAlign = 'center';
-            ctx.fillText(labelStr, x, h - padding.bottom + 20);
-
-            // Grid line
-            ctx.beginPath();
-            ctx.moveTo(x, padding.top);
-            ctx.lineTo(x, h - padding.bottom);
-            ctx.strokeStyle = '#e9ecef';
-            ctx.lineWidth = 1;
-            ctx.stroke();
-        }
-    }
-
-    // Draw Hover Tooltip and Crosshair
-    if (state.hoveredIndex !== null && state.hoveredIndex >= 0 && state.hoveredIndex < values.length) {
-        const hoverVal = values[state.hoveredIndex];
-        const hoverDate = visibleSeries[state.hoveredIndex].date;
-        const hX = padding.left + (state.hoveredIndex / (visibleCount - 1)) * plotW;
-        const hY = padding.top + plotH - (hoverVal - minVal) / range * plotH;
-
-        // Crosshair
-        ctx.beginPath();
-        ctx.moveTo(hX, padding.top);
-        ctx.lineTo(hX, h - padding.bottom);
-        ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-        ctx.setLineDash([4, 4]);
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        // Dot
-        ctx.beginPath();
-        ctx.arc(hX, hY, 4, 0, Math.PI * 2);
-        ctx.fillStyle = '#ff0000';
-        ctx.fill();
-
-        // Tooltip
-        const dateStr = new Date(hoverDate).toLocaleDateString('ko-KR', { year: '2-digit', month: '2-digit', day: '2-digit' });
-        const tooltipText = `${dateStr}  ${hoverVal.toFixed(2)}%`;
-
-        ctx.font = '12px Arial'; // Use Arial for better consistency
-        const textWidth = ctx.measureText(tooltipText).width + 24; // More padding
-
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.85)'; // Slightly more transparent
-        let tX = hX + 10;
-        if (tX + textWidth > w) tX = hX - textWidth - 10;
-
-        const tH = 26; // Slightly taller
-        const tY = hY - tH - 10; // Position above the dot
-
-        ctx.beginPath();
-        if (ctx.roundRect) {
-            ctx.roundRect(tX, tY, textWidth, tH, 4);
-            ctx.fill();
-        } else {
-            ctx.fillRect(tX, tY, textWidth, tH);
-        }
-
-        ctx.fillStyle = '#fff';
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(tooltipText, tX + 12, tY + tH / 2);
-
-        // Reset for other drawings
-        ctx.textBaseline = 'alphabetic';
-    }
-
-    // --- SCROLLBAR ---
-    // Draw horizontal scrollbar at bottom
-    const totalDataCount = data.length;
-    if (totalDataCount > 0) {
-        const barHeight = 6;
-        const barY = h - barHeight - 2;
-        const barAreaX = 0;
-        const barAreaW = w;
-
-        // Background
-        ctx.fillStyle = 'rgba(200, 200, 200, 0.2)';
-        ctx.fillRect(barAreaX, barY, barAreaW, barHeight);
-
-        // Thumb
-        const viewRatio = Math.min(visibleCount / totalDataCount, 1);
-        const scrollRatio = state.scrollOffset / totalDataCount;
-
-        let thumbW = Math.max(20, viewRatio * barAreaW);
-        let thumbX = scrollRatio * barAreaW;
-
-        // Clamp
-        thumbX = Math.max(0, Math.min(thumbX, barAreaW - thumbW));
-
-        ctx.fillStyle = 'rgba(100, 100, 100, 0.5)';
-        ctx.beginPath();
-        ctx.roundRect(thumbX, barY, thumbW, barHeight, 3);
-        ctx.fill();
-
-        // Check if mouse is hovering scrollbar to highlight? (Optional implementation)
-        // Store scrollbar rect for hit testing
-        state.scrollbar = {
-            x: thumbX,
-            y: barY,
-            width: thumbW,
-            height: barHeight,
-            areaWidth: barAreaW
-        };
-    } else {
-        state.scrollbar = null;
-    }
-
-    // --- Current Value / Header ---
-    // Determine the item to display in header
-    // If we are essentially at the end, we want the absolute LATEST.
-    const currentMaxOffset = Math.max(0, data.length - visibleCount);
-    const isCurrentlyAtEnd = state.scrollOffset >= currentMaxOffset - 1.0;
-
-    let latestItem;
-    // If hovered, show hovered item in header too
-    if (state.hoveredIndex !== null && visibleSeries[state.hoveredIndex]) {
-        latestItem = visibleSeries[state.hoveredIndex];
-    } else if (isCurrentlyAtEnd || visibleSeries.length === 0) {
-        latestItem = data[data.length - 1];
-    } else {
-        latestItem = visibleSeries[visibleSeries.length - 1];
-    }
-
-    if (latestItem) {
-        const lastDateStr = new Date(latestItem.date).toLocaleDateString();
-        const absLatestDateStr = new Date(data[data.length - 1].date).toLocaleDateString();
-        // Use a hidden log or low-priority log to avoid spamming too much during drag
-        // Only log if it's a "snap" change or every few updates?
-        if (state.scrollOffset % 10 === 0) {
-            console.log(`🏷️ [Header:${label}] Showing: ${lastDateStr}, AbsLatest: ${absLatestDateStr}, isAtEnd: ${isCurrentlyAtEnd}`);
-        }
-    }
-
-    // Or just show Latest always in the corner, and Tooltip shows hovered?
-    // User requested "mouse overlap data". Tooltip covers this.
-
-    // Header
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#333';
-    ctx.font = 'bold 16px Arial';
-    ctx.fillText(`${label}`, padding.left, 30);
-
-    // Latest Value
-    let valColor = '#868e96';
-    if (latestItem.value >= 120) valColor = '#51cf66';
-    else if (latestItem.value >= 100) valColor = '#74c0fc';
-    else if (latestItem.value >= 80) valColor = '#ffa94d';
-    else valColor = '#ff6b6b';
-
-    ctx.textAlign = 'right';
-    ctx.fillStyle = valColor;
-    ctx.font = 'bold 24px Arial';
-    ctx.fillText(latestItem.value.toFixed(2), w - padding.right, 30);
-
-    ctx.font = '12px Arial';
-    ctx.fillStyle = '#666';
-    const lastDate = new Date(latestItem.date);
-    ctx.fillText(`${lastDate.getFullYear()}-${String(lastDate.getMonth() + 1).padStart(2, '0')}-${String(lastDate.getDate()).padStart(2, '0')}`, w - padding.right, 45);
-
-    // --- Event Handlers (One-time) ---
-    if (!canvas.hasInteraction) {
-        canvas.hasInteraction = true;
-
-        // Mouse Move (Hover + Drag)
-        canvas.addEventListener('mousemove', e => {
-            const rect = canvas.getBoundingClientRect();
-            // Store raw event data for the RAF loop
-            canvas.chartState.lastEvent = {
-                x: e.clientX - rect.left,
-                y: e.clientY - rect.top,
-                rect: rect
-            };
-
-            if (canvas.chartState.pendingFrame) return;
-
-            canvas.chartState.pendingFrame = true;
-            requestAnimationFrame(() => {
-                // Read LATEST state from shared variable
-                const lastEv = canvas.chartState.lastEvent;
-                if (!lastEv) {
-                    canvas.chartState.pendingFrame = false;
-                    return;
-                }
-
-                const x = lastEv.x;
-                const rect = lastEv.rect;
-                const activeData = canvas.chartData || data;
-                const activeLabel = canvas.chartLabel || label;
-                const currentVisibleCount = canvas.chartState.visibleCount;
-
-                if (canvas.chartState.isScrollDragging) {
-                    // --- Scrollbar Dragging ---
-                    const dx = x - canvas.chartState.lastX;
-                    canvas.chartState.lastX = x; // update for next delta
-
-                    const totalDataCount = activeData.length;
-                    const barAreaW = canvas.chartState.scrollbar ? canvas.chartState.scrollbar.areaWidth : w;
-
-                    const scrollRatioChange = dx / barAreaW;
-                    const offsetChange = scrollRatioChange * totalDataCount;
-
-                    canvas.chartState.scrollOffset += offsetChange;
-                    drawLineChart(canvas, activeData, activeLabel, currentVisibleCount);
-                    if (canvas.syncCallback) canvas.syncCallback(canvas.chartState);
-
-                } else if (canvas.chartState.isDragging) {
-                    // --- Chart Panning ---
-                    const dx = x - canvas.chartState.lastX;
-                    canvas.chartState.lastX = x;
-
-                    const moveCount = -dx / (plotW / currentVisibleCount);
-                    canvas.chartState.scrollOffset += moveCount;
-                    drawLineChart(canvas, activeData, activeLabel, currentVisibleCount);
-                    if (canvas.syncCallback) canvas.syncCallback(canvas.chartState);
-
-                } else {
-                    // Hover calculation
-                    if (canvas.chartState.scrollbar &&
-                        x >= canvas.chartState.scrollbar.x && x <= canvas.chartState.scrollbar.x + canvas.chartState.scrollbar.width &&
-                        (lastEv.y) >= canvas.chartState.scrollbar.y - 5) {
-                        canvas.style.cursor = 'pointer';
-                    } else {
-                        canvas.style.cursor = 'default';
-                    }
-
-                    if (x >= padding.left && x <= w - padding.right) {
-                        const ratio = (x - padding.left) / plotW;
-                        const idx = Math.round(ratio * (currentVisibleCount - 1));
-                        if (idx >= 0 && idx < currentVisibleCount) {
-                            canvas.chartState.hoveredIndex = idx;
-                            drawLineChart(canvas, activeData, activeLabel, currentVisibleCount);
-                            if (canvas.syncCallback) canvas.syncCallback(canvas.chartState);
-                        }
-                    } else {
-                        if (canvas.chartState.hoveredIndex !== null) {
-                            canvas.chartState.hoveredIndex = null;
-                            drawLineChart(canvas, activeData, activeLabel, currentVisibleCount);
-                            if (canvas.syncCallback) canvas.syncCallback(canvas.chartState);
-                        }
-                    }
-                }
-                canvas.chartState.pendingFrame = false;
-            });
-        });
-
-        // Mouse Down (Start Drag)
-        canvas.addEventListener('mousedown', e => {
-            const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-
-            // 1. Check Scrollbar Hit
-            if (canvas.chartState.scrollbar) {
-                const sb = canvas.chartState.scrollbar;
-                // Add some padding to hit area (e.g. +/- 5px)
-                if (x >= sb.x && x <= sb.x + sb.width && y >= sb.y - 5 && y <= sb.y + sb.height + 5) {
-                    canvas.chartState.isScrollDragging = true;
-                    canvas.chartState.lastX = x;
-                    return; // Don't trigger chart drag
-                }
-            }
-
-            // 2. Check Chart Area Hit (Panning)
-            if (x >= padding.left && x <= w - padding.right) {
-                canvas.chartState.isDragging = true;
-                canvas.chartState.lastX = x;
-                canvas.style.cursor = 'grabbing';
-            }
-        });
-
-        // Mouse Up / Leave
-        const stopDrag = () => {
-            canvas.chartState.isDragging = false;
-            canvas.chartState.isScrollDragging = false;
-            canvas.style.cursor = 'default';
-        };
-        canvas.addEventListener('mouseup', stopDrag);
-        canvas.addEventListener('mouseleave', stopDrag);
-
-        // Wheel (Scroll)
-        canvas.addEventListener('wheel', e => {
-            e.preventDefault();
-            const activeData = canvas.chartData || data;
-            const activeLabel = canvas.chartLabel || label;
-            if (!activeData.length) return;
-            const state = canvas.chartState;
-            const rect = canvas.getBoundingClientRect();
-            const localX = e.clientX - rect.left;
-            const pointerRatio = Math.max(0, Math.min(1, (localX - padding.left) / plotW));
-            const previousCount = state.visibleCount;
-            const anchorIndex = Math.max(0, Math.min(activeData.length - 1,
-                Math.round(state.scrollOffset + pointerRatio * (previousCount - 1))));
-            const zoomFactor = e.deltaY > 0 ? 1.2 : 0.8;
-            const nextCount = Math.max(30, Math.min(activeData.length, Math.round(previousCount * zoomFactor)));
-            state.visibleCount = nextCount;
-            state.scrollOffset = anchorIndex - pointerRatio * (nextCount - 1);
-            state.hoveredIndex = null;
-            requestAnimationFrame(() => {
-                const latestData = canvas.chartData || activeData;
-                const latestLabel = canvas.chartLabel || activeLabel;
-                drawLineChart(canvas, latestData, latestLabel, nextCount);
-                if (canvas.syncCallback) canvas.syncCallback(state);
-            });
-        }, { passive: false });
-    }
-
-
-}
-
-
-
 // ==========================================================
 // Event Listeners for Tabs & Charts
 // ==========================================================
@@ -3010,34 +2182,6 @@ document.body.addEventListener('click', function (e) {
         return;
     }
 
-    // --- ADR Period Buttons ---
-    const periodBtn = e.target.closest('.period-btn');
-    if (periodBtn) {
-        const period = periodBtn.dataset.period;
-        const fullData = tabData[ADR_TAB_ID]?.adr;
-        if (!fullData) return;
-
-        document.querySelectorAll('.adr-chart-wrapper').forEach(wrapper => {
-            wrapper.querySelectorAll('.period-btn').forEach(b => {
-                b.classList.toggle('active', b.dataset.period === period);
-            });
-        });
-
-        const days = { '6m': 120, '1y': 240, '2y': 480, '5y': 1200, '10y': 2400 }[period] || 240;
-        const c1 = document.getElementById('adr_kospi');
-        const c2 = document.getElementById('adr_kosdaq');
-
-        if (c1 && fullData && fullData.kospi) {
-            c1.chartState.scrollOffset = Math.max(0, fullData.kospi.length - days);
-            drawLineChart(c1, fullData.kospi, 'K ADR', days);
-        }
-        if (c2 && fullData && fullData.kosdaq) {
-            c2.chartState.scrollOffset = Math.max(0, fullData.kosdaq.length - days);
-            drawLineChart(c2, fullData.kosdaq, 'Q ADR', days);
-        }
-        return;
-    }
-
     // --- Manual Refresh Buttons ---
     const rankRefreshBtn = e.target.closest('#manualRefresh');
     if (rankRefreshBtn) {
@@ -3045,13 +2189,6 @@ document.body.addEventListener('click', function (e) {
         loadData();
         loadTransactionRank();
         loadWatchlistRank();
-        return;
-    }
-
-    const adrRefreshBtn = e.target.closest('.adr-update-btn') || e.target.closest('#adrManualRefresh');
-    if (adrRefreshBtn) {
-        console.log('[Click] ADR 조회 버튼 클릭 감지');
-        updateAdrFromSource();
         return;
     }
 
@@ -3104,16 +2241,6 @@ document.body.addEventListener('click', function (e) {
         saveAppData();
     }
     if (!contextMenu.contains(e.target) && contextMenu.style.display === 'block') contextMenu.style.display = 'none';
-});
-
-document.body.addEventListener('change', function (e) {
-    if (e.target.id === 'adrRefreshInterval') {
-        console.log('[ADR] 새로고침 간격 변경');
-        lastSavedSettings.adrInterval = e.target.value;
-        updateAdrFromSource();
-        startAdrAutoRefresh();
-        saveAppData();
-    }
 });
 
 document.body.addEventListener('keypress', function (e) {
@@ -4989,17 +4116,14 @@ async function refreshAllTabs() {
     loadTransactionRank();
     loadWatchlistRank();
 
-    // 2. ADR 탭
-    updateAdrFromSource();
-
     // 4. 기타 동적 탭들
     Object.keys(tabData).forEach(tabId => {
         const wasEmpty = initializeTab(tabId);
         const type = tabData[tabId]?.type;
 
-        // Custom/Exchange/ADR are already refreshed inside initializeTab(tabId) if wasEmpty.
+        // Custom/Exchange are already refreshed inside initializeTab(tabId) if wasEmpty.
         // For others (Earnings, Dynamic iframes), we proceed to refresh.
-        if (wasEmpty && (tabId === ADR_TAB_ID || type === 'overseas_custom' || type === 'exchange_rate')) return;
+        if (wasEmpty && (type === 'overseas_custom' || type === 'exchange_rate')) return;
 
         if (tabId === EARNINGS_TAB_ID) {
             refreshEarningsTab(tabId);
@@ -5897,6 +5021,7 @@ async function restoreServerBackup() {
  * JSON 백업 데이터를 사용하여 전체 애플리케이션 상태 복구
  */
 function applyFullStateBackup(data) {
+    data = removeRetiredAdrState(data);
     window.applyConcentrationDisplaySettings?.(data.rankChartDisplay);
     console.log("🔄 [Restore] Full state restoration started...");
     migrateMemoTabIconOnce(data);
@@ -5910,7 +5035,7 @@ function applyFullStateBackup(data) {
     const allTabBtns = document.querySelectorAll('.tab-btn:not(.add-tab-btn)');
     allTabBtns.forEach(btn => {
         const id = btn.dataset.tab;
-        if (id !== PERM_TAB_ID && id !== ADR_TAB_ID && id !== EARNINGS_TAB_ID && id !== BASE_INTEREST_TAB_ID && id !== US_TAB_ID && id !== MEMO_TAB_ID) {
+        if (id !== PERM_TAB_ID && id !== EARNINGS_TAB_ID && id !== BASE_INTEREST_TAB_ID && id !== US_TAB_ID && id !== MEMO_TAB_ID) {
             btn.remove();
             const content = document.getElementById(id);
             if (content) content.remove();
@@ -5920,7 +5045,7 @@ function applyFullStateBackup(data) {
     // 3. 탭 버튼 및 컨텐츠 재생성 (JSON에 기록된 순서대로)
     if (data.tabs && Array.isArray(data.tabs)) {
         data.tabs.forEach(tab => {
-            if (tab.id !== PERM_TAB_ID && tab.id !== ADR_TAB_ID && tab.id !== EARNINGS_TAB_ID && tab.id !== BASE_INTEREST_TAB_ID && tab.id !== US_TAB_ID && tab.id !== MEMO_TAB_ID) {
+            if (tab.id !== PERM_TAB_ID && tab.id !== EARNINGS_TAB_ID && tab.id !== BASE_INTEREST_TAB_ID && tab.id !== US_TAB_ID && tab.id !== MEMO_TAB_ID) {
                 const fixedName = resolveTabName(tab.id, tab.name, tabData[tab.id]);
                 tab.name = fixedName;
                 createTabButtonElement(tab.id, fixedName);
@@ -5934,11 +5059,6 @@ function applyFullStateBackup(data) {
         refreshIntervalSelect.value = data.rankInterval;
         startAutoRefresh();
     }
-    const adrSelect = document.getElementById('adrRefreshInterval');
-    if (adrSelect && data.adrInterval) {
-        adrSelect.value = data.adrInterval === '4' ? '5' : data.adrInterval;
-    }
-
     // 5. 메모 복구
     const backupHasMemo = Object.prototype.hasOwnProperty.call(data, 'memoHtml') || Object.prototype.hasOwnProperty.call(data, 'memoDelta');
     if (backupHasMemo) applyMemoState(data);

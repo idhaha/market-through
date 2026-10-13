@@ -80,7 +80,7 @@
 
 ### Key Entities
 
-- **앱 설정 스냅샷(App Settings Snapshot)**: 활성 탭 ID, 탭 목록·순서, 탭별 콘텐츠, Rank/ADR 갱신 주기, 관심종목 그룹, 메모(HTML/Delta), 갱신 시각을 가진다.
+- **앱 설정 스냅샷(App Settings Snapshot)**: 활성 탭 ID, 탭 목록·순서, 탭별 콘텐츠, Rank 공통 갱신 주기, 관심종목 그룹, 메모(HTML/Delta), 갱신 시각을 가진다.
 - **서버 설정 파일(autosaved_user_settings.json)**: 최신 전체 스냅샷 하나를 보관하며 git에는 포함되지 않는다.
 - **로컬 저장 항목**: 전체 스냅샷, 메모 로컬 사본, 관심종목 그룹 선택값, 사용자 세션 토큰을 복구/세션용 브라우저 사본으로 보관한다. 정상 동기화의 영구 저장소는 서버 프로젝트 루트 파일이다.
 - **프로젝트 루트 백업 파일**: `manualsaved_user_settings_<timestamp>.json` 하나에 전체 설정 스냅샷을 담아 서버 프로젝트 루트에 저장하며 git에는 포함하지 않는다.

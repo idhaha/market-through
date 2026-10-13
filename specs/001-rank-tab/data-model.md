@@ -98,3 +98,25 @@ POST /api/concentration-chart에 {code:선택종목, mode:"minute", interval:5, 
 ### 봉 종류와 간격 저장
 
 차트 기본 봉 종류는 day(일봉), 기본 분 간격은 1이다. 기존 rankChartDisplay 설정에 mode(day/minute)와 interval(1·3·5·10·15·30·45·60)을 추가한다. 일·분 및 분 간격 변경은 기존 사용자 설정 자동 저장과 수동 백업에 포함된다. 시작/설정 불러오기/전체 백업 복원 시 선택 버튼과 차트에 적용한다. 필드가 없거나 무효이면 일봉·1분으로 처리한다. 일봉에서도 마지막 분 간격을 보존하고 분봉 전환 시 적용한다.
+
+## Rank ADR 상태 (2026-10-13)
+
+- **ADRPoint**: t(정규화한 밀리초, 분봉은 분 시작), adr(원천 ADR). 일별 date를 한국시간 09:00의 t로 변환한다.
+- **ADRClosing**: adr, t|null. lastClosed의 최근 마감값이며 분봉 기록이 없을 때만 점으로 표시한다. asOf가 장중 시각이 아니면 위치를 장중 timestamp라고 주장하지 않는다.
+- **ADRView**: market(kospi/kosdaq), mode(minute 기본/day), range(1y 기본 및 6m/3y/5y), chartDay, 전체 points, viewStart, viewCount(null=전체), hover, drag, refreshPending. 시장/모드/기간 변경은 확대 창을 초기화한다.
+- **LatestByMarket**: 시장별 마지막 정규화 수신 시각 t, 거래일, points, closing. 더 오래된 응답으로 날짜를 되돌리지 않고 빈 응답 후 기존 수신 기록을 유지한다. 서버가 아니라 현재 페이지 메모리에만 존재한다.
+- **IndexCandle**: t, open, high, low, close 및 응답 partial. 확대 창과 시간축은 ADRView를 공유하되 가격 축은 표시되는 고저가로 산출한다.
+- **Browser minute cache**: localStorage `rank-adr:{market}:{YYYY-MM-DD}`에 수신한 당일 분봉 배열을 저장할 수 있다. 서버 기록 저장은 없으며 새 브라우저의 전일 분봉 복원을 보장하지 않는다.
+- 쏠림율의 전일 대비 상승률·OHLC 응답은 유지한다. 마우스 표시만 메인 차트 한 곳으로 제한하며 OHLC를 tooltip에 표시하지 않는다.
+
+퇴역 설정 호환: tab_adr 탭 목록/콘텐츠 및 adrInterval은 복원에서 제외한다. 해당 활성 탭은 tab_rank로 대체한다. 입력 스냅샷의 나머지 필드는 변경하지 않는다.
+
+## 거래대금 및 공통 표시 모델 (2026-10-13)
+
+- **DailyTurnover**: `{million:number|NaN, value:number|null}`. 백만원 원본을 엄격히 정수로 파싱하고 유효한 0 이상 값만 원 단위로 변환한다. 일봉 쏠림율 분모와 시장 일봉 응답이 같은 함수를 사용한다. 내부 NaN은 JSON 거래대금으로 내보내지 않고 null을 사용한다.
+- **IndexCandle 확장**: day 봉에 `market_turnover:number|null` 추가, minute에는 없음. OHLC와 거래대금 단위는 각각 지수 /100 및 원 단위로 분리된다.
+- **TurnoverView**: data={kospi:IndexCandle[],kosdaq:IndexCandle[]}, 날짜 합집합 dates, market=kospi 기본, range=1y 기본(6m/3y/5y), start, count(null=전체), hover(timestamp|null), controller, drag, refreshPending. 현재 페이지 메모리만 사용하며 서버/사용자 설정 백업에 저장하지 않는다.
+- **TurnoverDrag**: surface, pointer id, startX/endX, 시작 start/count. 양 캔버스가 같은 날짜 구간과 선택 음영을 공유한다. 오른쪽 드래그는 최소 10봉 범위로 확대, 반대 방향은 전체 복원한다.
+- **TurnoverLatest**: 한국시간 오늘과 일치하는 시장별 마지막 유효 market_turnover를 전체 수신 배열에서 찾는다. 과거 확대 창과 무관하며 오늘 봉이 없으면 —다. 직전 거래일을 오늘 값으로 치환하지 않는다.
+- **HoverGuide**: 쏠림율 value, ADR adr, 두 시장 market_turnover/1e12, 캔들 종가를 기준으로 수평선과 오른쪽 축 배지를 계산한다. canvas 폭으로 배지 X좌표를 제한한다. 커서 임의 Y좌표의 값은 사용하지 않는다.
+- 제목/버튼/축/선/최종값 배치는 FR-032~036과 FR-046~050을 따른다. ADR MAX/MIN 표시는 없고 세 차트와 캔들 Y축은 오른쪽이다.

@@ -9,6 +9,11 @@ function integer(value) {
     return /^[+-]?\d+$/.test(text) ? Number(text) : NaN;
 }
 
+function dailyTurnover(row) {
+    const million = integer(row.trde_prica);
+    return { million, value: Number.isFinite(million) && million >= 0 ? million * 1000000 : null };
+}
+
 function barKey(row, mode, interval) {
     const time = String(mode === 'day' ? row.dt : row.cntr_tm || '');
     if (mode === 'day') return /^\d{8}$/.test(time) ? time : null;
@@ -53,9 +58,9 @@ function aggregateBars(rows, mode, interval) {
             low: previousCandle && mode !== 'day' ? Math.min(previousCandle.low, low) : low
         };
         if (mode === 'day') {
-            const turnoverMillion = integer(row.trde_prica);
-            groups.set(key, { ...candle, price, volume, turnoverMillion, turnover: turnoverMillion * 1000000,
-                valid: Number.isFinite(turnoverMillion) && turnoverMillion >= 0 });
+            const reported = dailyTurnover(row), turnoverMillion = reported.million;
+            groups.set(key, { ...candle, price, volume, turnoverMillion, turnover: reported.value,
+                valid: reported.value !== null });
             continue;
         }
         const previous = groups.get(key);
@@ -337,4 +342,4 @@ function createConcentrationChartService({ axios, getAccessToken, marketCache, n
     return { query, resolveStock, searchStocks, refreshStockDirectory, startStockDirectorySchedule };
 }
 
-module.exports = { createConcentrationChartService, calculatePoints, barKey, MINUTE_SCOPES, recentCompletedFiveBars, alignedFiveBarDebug };
+module.exports = { createConcentrationChartService, calculatePoints, dailyTurnover, barKey, MINUTE_SCOPES, recentCompletedFiveBars, alignedFiveBarDebug };
