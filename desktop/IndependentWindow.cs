@@ -56,11 +56,7 @@ internal sealed class IndependentForm : Form {
         Text = "MarketThrough 독립창"; Font = new Font("맑은 고딕", 9F); FormBorderStyle = FormBorderStyle.Sizable; BackColor = Color.FromArgb(210, 218, 230);
         MinimumSize = new Size(320, 160); Size = new Size(1250, 800); StartPosition = FormStartPosition.Manual;
         Directory.CreateDirectory(folder); RestoreBoundsFromDisk();
-        var bar = new Panel { Dock = DockStyle.Top, Height = 30, BackColor = Color.FromArgb(226, 232, 240) };
-        var top = new CheckBox { Text = "항상 위", AccessibleName = "항상 위", Dock = DockStyle.Right, Width = 90, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft, BackColor = bar.BackColor };
-        top.CheckedChanged += delegate { TopMost = top.Checked; };
-        bar.Controls.Add(top);
-        web.Dock = DockStyle.Fill; Controls.Add(web); Controls.Add(bar);
+        web.Dock = DockStyle.Fill; Controls.Add(web);
         Activated += delegate { EnsureVisibleBounds(); };
         Shown += async delegate {
             try {
@@ -79,6 +75,7 @@ internal sealed class IndependentForm : Form {
                 };
                 web.CoreWebView2.NavigationStarting += delegate(object sender, CoreWebView2NavigationStartingEventArgs e) {
                     Uri next; if (!Uri.TryCreate(e.Uri, UriKind.Absolute, out next) || next.GetLeftPart(UriPartial.Authority) != allowed || next.AbsolutePath != "/rank-independent.html") e.Cancel = true;
+                    else TopMost = false;
                 };
                 web.CoreWebView2.WebMessageReceived += delegate(object sender, CoreWebView2WebMessageReceivedEventArgs e) {
                     Uri source;
@@ -86,6 +83,8 @@ internal sealed class IndependentForm : Form {
                     string message;
                     try { message = e.TryGetWebMessageAsString(); } catch { return; }
                     if (message == "connection-ended") Close();
+                    else if (message == "topmost:true") TopMost = true;
+                    else if (message == "topmost:false") TopMost = false;
                     else if (message.StartsWith("page-scale:")) {
                         double ratio;
                         if (double.TryParse(message.Substring(11), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out ratio) && ratio >= 0.25 && ratio <= 4) web.ZoomFactor = Math.Max(0.25, Math.Min(4, web.ZoomFactor * ratio));
@@ -123,7 +122,7 @@ internal sealed class IndependentForm : Form {
                     if (url != null && !exiting) BeginInvoke(new Action(delegate {
                         try { Program.Validate("marketthrough://open?url=" + Uri.EscapeDataString(url));
                             NotifyClose(); current = url; allowed = new Uri(url).GetLeftPart(UriPartial.Authority);
-                            WindowState = FormWindowState.Normal; EnsureVisibleBounds(); Show(); BringToFront(); Activate();
+                            WindowState = FormWindowState.Normal; TopMost = false; EnsureVisibleBounds(); Show(); BringToFront(); Activate();
                             web.CoreWebView2.Navigate(url);
                         } catch { }
                     }));

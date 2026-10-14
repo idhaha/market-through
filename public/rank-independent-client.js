@@ -35,6 +35,9 @@
     };
     document.addEventListener('DOMContentLoaded', () => {
         const status = document.getElementById('rankConnectionStatus'), pin = document.getElementById('rankStockPinned');
+        document.getElementById('independentAlwaysOnTop').addEventListener('change', event => {
+            window.chrome?.webview?.postMessage(`topmost:${event.target.checked}`);
+        });
         const layout = document.getElementById('tab_rank');
         function collapsedSize(panel) {
             const heading = panel.querySelector('.independent-panel-title');

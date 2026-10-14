@@ -95,6 +95,17 @@ const assert = require('node:assert/strict');
         });
         await independent.goto('http://layout.test/rank-independent.html#id=' + 'a'.repeat(32) + '&token=' + 'b'.repeat(64));
         await independent.waitForFunction(() => window.getRankChartState?.().points.length === 20 && !document.getElementById('concentrationCandleArea').hidden);
+        const topmostPlacement = await independent.evaluate(() => {
+            const top = document.getElementById('independentAlwaysOnTop').closest('label').getBoundingClientRect();
+            const refresh = document.getElementById('refreshInterval').closest('label').getBoundingClientRect();
+            return { top: { right: top.right, center: top.top + top.height / 2 }, refresh: { left: refresh.left, center: refresh.top + refresh.height / 2 } };
+        });
+        assert.ok(topmostPlacement.top.right <= topmostPlacement.refresh.left && Math.abs(topmostPlacement.top.center - topmostPlacement.refresh.center) < 3,
+            `Always-on-top control sits beside the refresh interval: ${JSON.stringify(topmostPlacement)}`);
+        await independent.locator('#independentAlwaysOnTop').check();
+        assert.ok(await independent.evaluate(() => window.resizeMessages.includes('topmost:true')), 'Always-on-top selection reaches the native window');
+        await independent.locator('#independentAlwaysOnTop').uncheck();
+        assert.ok(await independent.evaluate(() => window.resizeMessages.includes('topmost:false')), 'Always-on-top can be cleared');
         assert.equal(await independent.evaluate(() => window.resizeMessages.filter(message => message.startsWith('resize-window:')).length), 0,
             'Restoring the initially open candle must not resize the native window');
         const rowHeights = () => independent.evaluate(() => [...document.querySelectorAll('#tab_rank > .panel')].map(panel => panel.getBoundingClientRect().height));
@@ -114,6 +125,7 @@ const assert = require('node:assert/strict');
         assert.ok(Math.abs(initial[0] - initial[1]) < 2, 'At the reference window height, ranking and chart rows share space evenly');
         const initialGeometry = await geometry();
         assert.ok(initialGeometry.main >= 150 && initialGeometry.main <= 260, `Initial main chart has a balanced height: ${initialGeometry.main}`);
+        assert.ok(Math.abs(initialGeometry.main - initialGeometry.candle) < 2, 'Main and candle plots start at equal heights');
         assert.ok(initialGeometry.footerBottom <= initialGeometry.panelBottom, 'Initial chart content stays inside its panel');
         assert.equal(initialGeometry.bodyScroll, 0);
         await independent.setViewportSize({ width: 850, height: 960 });
@@ -137,10 +149,28 @@ const assert = require('node:assert/strict');
         assert.equal(toggledGeometry.panelOverflow, 0, 'Reopened chart panel does not overflow');
         assert.equal(toggledGeometry.layoutOverflow, 0, 'Reopening candles does not add an inner grid scrollbar');
         assert.equal(toggledGeometry.bodyScroll, 0, 'Reopening candles does not add a vertical page scrollbar');
+        assert.ok(Math.abs(toggledGeometry.main - toggledGeometry.candle) < 2, 'Reopened main and candle plots remain equal');
         await independent.setViewportSize({ width: 850, height: 1160 + closedResize + openResize + 300 });
         const afterToggleGrowth = await rowHeights();
         assert.ok(afterToggleGrowth[0] > toggled[0] + 40, `After toggling candles, window growth still expands the ranking table: ${JSON.stringify({ toggled, afterToggleGrowth })}`);
         assert.ok(afterToggleGrowth[1] > toggled[1] + 40, `After toggling candles, window growth expands the chart: ${JSON.stringify({ toggled, afterToggleGrowth })}`);
+        await independent.setViewportSize({ width: 440, height: 1100 });
+        assert.ok(await independent.evaluate(() => {
+            const row = document.querySelector('.concentration-timeframe-row');
+            const rate = document.getElementById('concentrationCurrentRate');
+            const before = row.scrollLeft;
+            row.scrollLeft = row.scrollWidth;
+            return row.scrollWidth > row.clientWidth + 20 && row.scrollLeft > before
+                && rate.getBoundingClientRect().height < 30 && getComputedStyle(rate).whiteSpace === 'nowrap';
+        }), 'Narrow window scrolls the control row while keeping the latest rate on one line');
+        const narrowOverflow = await independent.evaluate(() => ({
+            bodyWidth: document.body.scrollWidth, viewportWidth: innerWidth,
+            bodyLeft: document.scrollingElement.scrollLeft,
+            toolbarWidth: document.querySelector('.independent-toolbar').scrollWidth
+        }));
+        assert.ok(narrowOverflow.bodyWidth <= narrowOverflow.viewportWidth + 2 && narrowOverflow.bodyLeft === 0,
+            `Narrow window does not push the entire page sideways: ${JSON.stringify(narrowOverflow)}`);
+        await independent.screenshot({ path: 'dev_tools/output/rank-independent-narrow-preview.png', fullPage: true });
         console.log('PASS independent chart sizing, candle reopen without overflow, and daily/minute date-line behavior');
     } finally {
         await browser.close();

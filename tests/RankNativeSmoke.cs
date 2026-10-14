@@ -41,17 +41,8 @@ class RankNativeSmoke {
                     form.Bounds = new Rectangle(999999, 999999, 900, 600);
                     recover.Invoke(form, null);
                     Check(Screen.FromRectangle(form.Bounds).WorkingArea.Contains(form.Bounds), "Running offscreen window recovery");
-                    Panel bar = null; foreach (Control control in form.Controls) if (control is Panel) bar = (Panel)control;
-                    Check(bar != null, "Titlebar");
-                    CheckBox top = null;
-                    foreach (Control control in bar.Controls) {
-                        if (control is CheckBox) top = (CheckBox)control;
-                    }
-                    Check(top != null, "Always-on-top control");
-                    Check(bar.BackColor == Color.FromArgb(226, 232, 240), "Fixed tab titlebar color");
-                    Check(top.Text == "항상 위" && top.AccessibleName == "항상 위", "Always-on-top wording");
-                    Check(top.Width >= TextRenderer.MeasureText(top.Text, top.Font).Width, "Always-on-top text clipped");
-                    top.Checked = true; Check(form.TopMost, "TopMost enabled"); top.Checked = false; Check(!form.TopMost, "TopMost disabled");
+                    Check(form.Controls.Count == 1 && form.Controls[0] is WebView2, "Web page fills the native client area");
+                    form.TopMost = true; Check(form.TopMost, "TopMost enabled"); form.TopMost = false; Check(!form.TopMost, "TopMost disabled");
                     Check(form.FormBorderStyle == FormBorderStyle.Sizable && form.ControlBox && form.MinimizeBox && form.MaximizeBox, "Standard Windows frame");
                 }
             } finally { if (previous != null) File.WriteAllText(state, previous); else File.Delete(state); }

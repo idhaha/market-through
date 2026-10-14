@@ -12,18 +12,22 @@
 .rank-independent .concentration-chart-header, .rank-independent .concentration-chart-footer { flex-shrink: 0; }
 .rank-independent .concentration-chart-layout { flex: 1; min-height: 0; }
 .rank-independent .concentration-charts-column { display: flex; flex-direction: column; min-height: 0; }
-.rank-independent .concentration-chart-area { height: auto; flex: 1; min-height: 100px; }
-.rank-independent .concentration-timeframe-row { padding-right: 36px; box-sizing: border-box; }
-.rank-independent .concentration-header-actions { flex: 1; min-width: 0; }
-.rank-independent #concentrationCurrentRate { margin-left: auto; }
+.rank-independent .concentration-chart-area { height: auto; flex: 1 1 0; min-height: 120px; }
+.rank-independent .concentration-timeframe-row { padding-right: 36px; box-sizing: border-box; overflow-x: auto; overflow-y: hidden; flex-wrap: nowrap; }
+.rank-independent .concentration-timeframe-row::-webkit-scrollbar { height: 9px; }
+.rank-independent .concentration-timeframe-row::-webkit-scrollbar-track { background: var(--bg-panel); border-radius: 5px; }
+.rank-independent .concentration-timeframe-row::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 5px; }
+.rank-independent .concentration-timeframe-row .concentration-header-actions { flex: 1 0 auto; min-width: max-content; }
+.rank-independent #concentrationCurrentRate { margin-left: auto; flex: 0 0 auto; min-width: max-content; white-space: nowrap; overflow-wrap: normal; }
 .rank-independent #concentrationTooltip.chart-hover-info { display: block; height: 24px; min-height: 24px; }
 .rank-independent #concentrationTooltip.chart-hover-info[hidden] { display: block !important; visibility: hidden; }
-.rank-independent .concentration-candle-area { height: 190px; flex: 0 0 190px; min-height: 190px; }
+.rank-independent .concentration-candle-area { height: auto; flex: 1 1 0; min-height: 120px; }
 .rank-independent .concentration-chart-panel { margin: 0; width: 100%; max-width: 100%; }
-.independent-toolbar { display: flex; align-items: center; gap: 12px; padding: 0 0 6px; font-size: 13px; }
+.independent-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 0 0 6px; font-size: 13px; }
 .independent-toolbar label { display: flex; align-items: center; gap: 6px; }
 .independent-toolbar > label { flex-shrink: 0; }
 .independent-refresh-controls { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-shrink: 0; }
+.independent-refresh-controls .independent-topmost { white-space: nowrap; }
 .independent-refresh-controls select, .independent-refresh-controls button { height: 32px; padding: 0 10px; font-size: 13px; }
 #rankIndependentRefresh { display: inline-flex; align-items: center; justify-content: center; padding: 0 15px !important; line-height: 1; }
 #rankConnectionStatus { min-width: 0; font-size: 12px; }
