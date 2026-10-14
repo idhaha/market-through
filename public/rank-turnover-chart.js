@@ -25,10 +25,14 @@
             const visible = dates.slice(start,start+n), indices = new Map(visible.map((t,i) => [t,i]));
             slider.max = String(dates.length-n); slider.value = String(start); slider.disabled = n >= dates.length;
             into.disabled = n <= 10; out.disabled = n >= dates.length;
-            const {w,h} = surface(canvas,ctx), left = 16, right = w-70, top = 10, bottom = h-30;
+            const {w,h} = surface(canvas,ctx), left = 16, top = 10, bottom = h-30;
+            const rows = Object.fromEntries(Object.keys(data).map(m => [m,data[m].filter(p => indices.has(p.t))]));
+            const selected = rows[select.value];
+            const highestCandle = selected.reduce((highest, point) => Math.max(highest, Number(point.high) || 0), 0);
+            const candleAxisWidth = candleArea.hidden || !selected.length ? 0 : ctx.measureText(highestCandle.toFixed(2)).width;
+            const right = w - Math.max(70, 36 + candleAxisWidth + 12);
             if (right <= left || bottom <= top) return;
             const x = t => left + indices.get(t)/Math.max(1,n-1)*(right-left);
-            const rows = Object.fromEntries(Object.keys(data).map(m => [m,data[m].filter(p => indices.has(p.t))]));
             const values = Object.values(rows).flat().filter(p => Number.isFinite(p.market_turnover)).map(p => p.market_turnover/1e12);
             const max = Math.max(10,Math.ceil(Math.max(0,...values)/10)*10), y = v => bottom-v/max*(bottom-top);
             const style = getComputedStyle(panel), muted = style.getPropertyValue('--text-muted').trim(), border = '#d6dbe1';
@@ -66,7 +70,7 @@
             });
             if (candleArea.hidden) return;
             const size=surface(candle,cc); axis(cc,size.h);
-            const selected=rows[select.value]; if (!selected.length) return;
+            if (!selected.length) return;
             const lo=Math.min(...selected.map(p=>p.low)), hi=Math.max(...selected.map(p=>p.high)), margin=Math.max((hi-lo)*.1,hi*.001);
             const cy=v=>size.h-28-(v-lo+margin)/(hi-lo+2*margin)*(size.h-44), cw=Math.max(1,Math.min(8,(right-left)/Math.max(1,n)*.7));
             cc.textAlign='left';

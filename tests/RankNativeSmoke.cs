@@ -34,7 +34,7 @@ class RankNativeSmoke {
             try {
                 File.WriteAllText(state, "[999999,999999,999999,999999]");
                 using (var form = (Form)Activator.CreateInstance(assembly.GetType("IndependentForm"), BindingFlags.Instance | BindingFlags.NonPublic, null, new object[] { target, Path.GetDirectoryName(state) }, null)) {
-                    Check(form.Text == "[독립창]", "Window title");
+                    Check(form.Text == "MarketThrough 독립창", "Window title");
                     Check(Screen.FromRectangle(form.Bounds).WorkingArea.Contains(form.Bounds), "Offscreen bounds recovery");
                     var recover = form.GetType().GetMethod("EnsureVisibleBounds", BindingFlags.Instance | BindingFlags.NonPublic);
                     Check(recover != null, "Running window recovery handler");
@@ -43,21 +43,19 @@ class RankNativeSmoke {
                     Check(Screen.FromRectangle(form.Bounds).WorkingArea.Contains(form.Bounds), "Running offscreen window recovery");
                     Panel bar = null; foreach (Control control in form.Controls) if (control is Panel) bar = (Panel)control;
                     Check(bar != null, "Titlebar");
-                    CheckBox top = null; Label topText = null; Button minimize = null;
+                    CheckBox top = null;
                     foreach (Control control in bar.Controls) {
-                        if (control is Panel) foreach (Control child in control.Controls) { if (child is CheckBox) top = (CheckBox)child; if (child is Label) topText = (Label)child; }
-                        if (control is Button && control.Text == "−") minimize = (Button)control;
+                        if (control is CheckBox) top = (CheckBox)control;
                     }
-                    Check(top != null && minimize != null, "Native title controls");
+                    Check(top != null, "Always-on-top control");
                     Check(bar.BackColor == Color.FromArgb(226, 232, 240), "Fixed tab titlebar color");
-                    Check(topText != null && topText.Text == "항상 위" && top.AccessibleName == "항상 위", "Always-on-top wording");
-                    Check(top.Bounds.Top == minimize.Bounds.Top && top.Height == minimize.Height, "Title controls vertical alignment");
-                    Check(topText.Width >= TextRenderer.MeasureText(topText.Text, topText.Font).Width, "Always-on-top text clipped");
+                    Check(top.Text == "항상 위" && top.AccessibleName == "항상 위", "Always-on-top wording");
+                    Check(top.Width >= TextRenderer.MeasureText(top.Text, top.Font).Width, "Always-on-top text clipped");
                     top.Checked = true; Check(form.TopMost, "TopMost enabled"); top.Checked = false; Check(!form.TopMost, "TopMost disabled");
-                    Check(form.FormBorderStyle == FormBorderStyle.None, "Custom native frame");
+                    Check(form.FormBorderStyle == FormBorderStyle.Sizable && form.ControlBox && form.MinimizeBox && form.MaximizeBox, "Standard Windows frame");
                 }
             } finally { if (previous != null) File.WriteAllText(state, previous); else File.Delete(state); }
-            Console.WriteLine("PASS native protocol origin/page validation, title controls, TopMost property and offscreen bounds recovery");
+            Console.WriteLine("PASS native protocol origin/page validation, standard window frame, TopMost property and offscreen bounds recovery");
             // Initialize the actual installed runtime in a hidden control/message loop.
             var context = new ApplicationContext(); var host = new Form { Width = 1300, Height = 900, Opacity = 0, ShowInTaskbar = false }; var web = new WebView2 { Dock = DockStyle.Fill }; host.Controls.Add(web);
             var handle = host.Handle; var webHandle = web.Handle;

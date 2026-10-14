@@ -69,7 +69,11 @@
             ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
             ctx.clearRect(0, 0, w, h);
             ctx.lineWidth = 1;
-            const left = 16, right = w - 70, top = 10, bottom = h - 30;
+            const left = 16, top = 10, bottom = h - 30;
+            ctx.font = '11px Arial';
+            const highestCandle = candles.reduce((highest, point) => Math.max(highest, Number(point.high) || 0), 0);
+            const candleAxisWidth = candleArea.hidden || !candles.length ? 0 : ctx.measureText(highestCandle.toFixed(2)).width;
+            const right = w - Math.max(70, 36 + candleAxisWidth + 12);
             const values = visiblePoints.map(p => p.adr);
             if (closing) values.push(closing.adr);
             const min = Math.min(60, ...values) - 5, max = Math.max(140, ...values) + 5;
@@ -195,7 +199,7 @@
             context.fillRect(Math.min(drag.startX,drag.endX),graph.top,Math.abs(drag.endX-drag.startX),graph.bottom-graph.top);
         }
         async function loadCandles() {
-            candleController?.abort(); candles = []; drawCandles();
+            candleController?.abort(); candles = []; draw();
             if (candleArea.hidden || !points.length && !closing) return;
             const current = candleController = new AbortController();
             const from = (mode === 'day' && points.length ? dateKey(points[0].t) : chartDay).replaceAll('-','');
@@ -206,7 +210,7 @@
                 const data = await response.json(); if (!response.ok) throw new Error(data.error || '캔들 조회 실패');
                 if (current !== candleController) return;
                 candles = Array.isArray(data.points) ? data.points : [];
-                candleStatus.textContent = data.partial ? '조회된 일부 구간 표시' : candles.length ? '' : '표시할 시장 지수 데이터 없음'; drawCandles();
+                candleStatus.textContent = data.partial ? '조회된 일부 구간 표시' : candles.length ? '' : '표시할 시장 지수 데이터 없음'; draw();
             } catch (e) { if (e.name !== 'AbortError' && current === candleController) candleStatus.textContent = e.message; }
         }
         window.refreshRankAdrChart = async () => {

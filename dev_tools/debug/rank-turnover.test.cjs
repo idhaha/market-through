@@ -17,10 +17,13 @@ const assert=require('node:assert/strict');
             CanvasRenderingContext2D.prototype.fill=function(...args){if(this.marker)window.markers.push({...this.marker,color:this.fillStyle});this.marker=null;return originalFill.apply(this,args);};
             const original=CanvasRenderingContext2D.prototype.fillText;
             window.axisLabels=[];
+            window.candleBodies=[];window.candleAxisLabels=[];
+            const originalRect=CanvasRenderingContext2D.prototype.fillRect;
+            CanvasRenderingContext2D.prototype.fillRect=function(x,y,w,h){if(this.canvas.closest('#rankTurnoverChartPanel .rank-adr-candle-area')&&['#e11d48','#2563eb'].includes(this.fillStyle))window.candleBodies.push({right:x+w});return originalRect.call(this,x,y,w,h);};
             window.badges=[];window.hoverStrokes=[];
             const originalStroke=CanvasRenderingContext2D.prototype.stroke;
             CanvasRenderingContext2D.prototype.stroke=function(...args){window.hoverStrokes.push({color:this.strokeStyle,dash:this.getLineDash()});return originalStroke.apply(this,args);};
-            CanvasRenderingContext2D.prototype.fillText=function(text,...args){window.labels.push(text);if(this.fillStyle==='#ffffff')window.badges.push({text,x:args[0],width:this.canvas.clientWidth});if(text.endsWith('조'))window.axisLabels.push({x:args[0],width:this.canvas.clientWidth,align:this.textAlign});return original.call(this,text,...args);};
+            CanvasRenderingContext2D.prototype.fillText=function(text,...args){window.labels.push(text);if(this.fillStyle==='#ffffff')window.badges.push({text,x:args[0],width:this.canvas.clientWidth});if(text.endsWith('조'))window.axisLabels.push({x:args[0],width:this.canvas.clientWidth,align:this.textAlign});if(this.canvas.closest('#rankTurnoverChartPanel .rank-adr-candle-area')&&/^\d+\.\d{2}$/.test(String(text)))window.candleAxisLabels.push({left:args[0]-this.measureText(text).width});return original.call(this,text,...args);};
             window.inFlight=0;window.maxInFlight=0;window.refreshPhase=null;
             window.fetch=async url=>{
                 window.calls.push(url);window.inFlight++;window.maxInFlight=Math.max(window.maxInFlight,window.inFlight);
@@ -37,6 +40,9 @@ const assert=require('node:assert/strict');
         assert.equal(await page.evaluate(() => getRankTurnoverCandleOpen()), false);
         await panel.locator('.concentration-candle-toggle').click();
         assert.equal(await page.evaluate(() => getRankTurnoverCandleOpen()), true);
+        assert.ok(await page.evaluate(() => window.candleBodies.length && window.candleAxisLabels.length
+            && Math.max(...window.candleBodies.map(p=>p.right))+8<=Math.min(...window.candleAxisLabels.map(p=>p.left))),
+        'Turnover candles stay clear of the right price-axis labels');
         await page.evaluate(() => applyRankTurnoverCandleOpen(false));
         assert.equal(await panel.locator('.concentration-candle-toggle').getAttribute('aria-expanded'), 'false');
         await page.evaluate(() => applyRankTurnoverCandleOpen(true));

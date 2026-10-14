@@ -3,7 +3,6 @@ using System.Drawing;
 using System.IO;
 using System.IO.Pipes;
 using System.Net;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
 using System.Web.Script.Serialization;
@@ -42,8 +41,6 @@ internal static class Program {
     }
 }
 internal sealed class IndependentForm : Form {
-    [DllImport("user32.dll")] static extern bool ReleaseCapture();
-    [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr handle, int msg, IntPtr wParam, IntPtr lParam);
     readonly WebView2 web = new WebView2();
     readonly string folder;
     readonly string initial;
@@ -56,24 +53,13 @@ internal sealed class IndependentForm : Form {
     internal IndependentForm(string url, string stateDirectory) {
         folder = stateDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MarketThrough", "State");
         initial = url; current = url; allowed = new Uri(url).GetLeftPart(UriPartial.Authority);
-        Text = "[독립창]"; Font = new Font("맑은 고딕", 9F); FormBorderStyle = FormBorderStyle.None; Padding = new Padding(5); BackColor = Color.FromArgb(210, 218, 230);
+        Text = "MarketThrough 독립창"; Font = new Font("맑은 고딕", 9F); FormBorderStyle = FormBorderStyle.Sizable; BackColor = Color.FromArgb(210, 218, 230);
         MinimumSize = new Size(320, 160); Size = new Size(1250, 800); StartPosition = FormStartPosition.Manual;
         Directory.CreateDirectory(folder); RestoreBoundsFromDisk();
-        var bar = new Panel { Dock = DockStyle.Top, Height = 36, BackColor = Color.FromArgb(226, 232, 240) };
-        var title = new Label { Text = "[독립창]", Font = new Font(Font, FontStyle.Bold), Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(8, 0, 0, 0) };
-        var close = new Button { Text = "×", Dock = DockStyle.Right, Width = 42, FlatStyle = FlatStyle.Flat, TextAlign = ContentAlignment.MiddleCenter, Padding = Padding.Empty, Margin = Padding.Empty, UseVisualStyleBackColor = false, BackColor = bar.BackColor };
-        var minimize = new Button { Text = "−", Dock = DockStyle.Right, Width = 42, FlatStyle = FlatStyle.Flat, TextAlign = ContentAlignment.MiddleCenter, Padding = Padding.Empty, Margin = Padding.Empty, UseVisualStyleBackColor = false, BackColor = bar.BackColor };
-        close.FlatAppearance.BorderSize = 0; minimize.FlatAppearance.BorderSize = 0;
-        var topGroup = new Panel { Dock = DockStyle.Right, Width = 120, BackColor = bar.BackColor };
-        var top = new CheckBox { Text = "", AccessibleName = "항상 위", Dock = DockStyle.Left, Width = 26, AutoSize = false, CheckAlign = ContentAlignment.MiddleCenter, Margin = Padding.Empty, UseVisualStyleBackColor = false, BackColor = bar.BackColor };
-        var topText = new Label { Text = "항상 위", Dock = DockStyle.Fill, AutoSize = false, AutoEllipsis = false, TextAlign = ContentAlignment.MiddleLeft, Margin = Padding.Empty, UseCompatibleTextRendering = false };
-        topText.Click += delegate { top.Checked = !top.Checked; };
-        topGroup.Controls.Add(topText); topGroup.Controls.Add(top);
-        close.Click += delegate { Close(); }; minimize.Click += delegate { WindowState = FormWindowState.Minimized; };
+        var bar = new Panel { Dock = DockStyle.Top, Height = 30, BackColor = Color.FromArgb(226, 232, 240) };
+        var top = new CheckBox { Text = "항상 위", AccessibleName = "항상 위", Dock = DockStyle.Right, Width = 90, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft, BackColor = bar.BackColor };
         top.CheckedChanged += delegate { TopMost = top.Checked; };
-        MouseEventHandler move = delegate(object sender, MouseEventArgs e) { if (e.Button == MouseButtons.Left) { ReleaseCapture(); SendMessage(Handle, 0xA1, new IntPtr(2), IntPtr.Zero); } };
-        title.MouseDown += move; bar.MouseDown += move;
-        bar.Controls.Add(title); bar.Controls.Add(topGroup); bar.Controls.Add(minimize); bar.Controls.Add(close);
+        bar.Controls.Add(top);
         web.Dock = DockStyle.Fill; Controls.Add(web); Controls.Add(bar);
         Activated += delegate { EnsureVisibleBounds(); };
         Shown += async delegate {
@@ -178,15 +164,5 @@ internal sealed class IndependentForm : Form {
         bounds.X = Math.Max(area.Left, Math.Min(bounds.X, area.Right - bounds.Width));
         bounds.Y = Math.Max(area.Top, Math.Min(bounds.Y, area.Bottom - bounds.Height));
         Bounds = bounds;
-    }
-    protected override void WndProc(ref Message message) {
-        const int hitTest = 0x84;
-        if (message.Msg == hitTest && WindowState == FormWindowState.Normal) {
-            int packed = message.LParam.ToInt32(); var p = PointToClient(new Point((short)(packed & 65535), (short)(packed >> 16)));
-            bool left = p.X < 6, right = p.X >= Width - 6, top = p.Y < 6, bottom = p.Y >= Height - 6;
-            int hit = top ? (left ? 13 : right ? 14 : 12) : bottom ? (left ? 16 : right ? 17 : 15) : left ? 10 : right ? 11 : 0;
-            if (hit != 0) { message.Result = new IntPtr(hit); return; }
-        }
-        base.WndProc(ref message);
     }
 }

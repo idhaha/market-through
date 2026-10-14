@@ -61,6 +61,7 @@ dev_tools/debug/*
 !dev_tools/debug/rank-turnover.test.cjs
 !dev_tools/debug/rank-refresh.test.cjs
 !dev_tools/debug/rank-independent-layout.test.cjs
+!dev_tools/debug/recover-independent-window.ps1
 
 # Test
 move_test

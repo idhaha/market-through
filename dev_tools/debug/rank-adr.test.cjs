@@ -149,6 +149,19 @@ const assert = require('node:assert/strict');
         });
         await page.click('[data-adr-mode="day"]');
         await page.waitForFunction(() => document.querySelector('.rank-adr-panel output').textContent === '110.00%');
+        await page.evaluate(() => {
+            window.candleBodies = []; window.candleAxisLabels = [];
+            const fillRect = CanvasRenderingContext2D.prototype.fillRect;
+            CanvasRenderingContext2D.prototype.fillRect = function(x,y,w,h) {
+                if (this.canvas.closest('.rank-adr-candle-area') && ['#e11d48','#2563eb'].includes(this.fillStyle)) window.candleBodies.push({right:x+w});
+                return fillRect.call(this,x,y,w,h);
+            };
+            const fillText = CanvasRenderingContext2D.prototype.fillText;
+            CanvasRenderingContext2D.prototype.fillText = function(label,x,y) {
+                if (this.canvas.closest('.rank-adr-candle-area') && /^\d+\.\d{2}$/.test(String(label))) window.candleAxisLabels.push({left:x-this.measureText(label).width});
+                return fillText.call(this,label,x,y);
+            };
+        });
         assert.ok(await page.locator('.rank-adr-ranges').isVisible());
         for (const range of ['6m','1y','3y','5y']) {
             await page.click(`[data-adr-range="${range}"]`);
@@ -158,6 +171,9 @@ const assert = require('node:assert/strict');
         await page.waitForFunction(() => window.requests.at(-1).includes('/candles'));
         await page.waitForTimeout(150);
         assert.ok(await page.locator('.rank-adr-candle-area').isVisible());
+        assert.ok(await page.evaluate(() => window.candleBodies.length && window.candleAxisLabels.length
+            && Math.max(...window.candleBodies.map(p => p.right)) + 8 <= Math.min(...window.candleAxisLabels.map(p => p.left))),
+        'ADR candles stay clear of the right price-axis labels');
         const surface = page.locator('.rank-adr-area canvas');
         await surface.scrollIntoViewIfNeeded();
         const bounds = await surface.boundingBox();
@@ -238,6 +254,20 @@ const assert = require('node:assert/strict');
         const heightBefore=await page.locator('#concentrationChartPanel').evaluate(el=>el.getBoundingClientRect().height);
         await concentrationSurface.dispatchEvent('mouseleave');
         assert.equal(await page.locator('#concentrationChartPanel').evaluate(el=>el.getBoundingClientRect().height),heightBefore,'Clearing hover does not resize the panel');
+        await page.evaluate(() => {
+            window.concentrationCandleBodies=[];window.concentrationCandleAxis=[];
+            const rect=CanvasRenderingContext2D.prototype.fillRect;
+            CanvasRenderingContext2D.prototype.fillRect=function(x,y,w,h){if(this.canvas.id==='concentrationCandleCanvas'&&['#e11d48','#2563eb'].includes(this.fillStyle))window.concentrationCandleBodies.push({right:x+w});return rect.call(this,x,y,w,h);};
+            const text=CanvasRenderingContext2D.prototype.fillText;
+            CanvasRenderingContext2D.prototype.fillText=function(label,x,y){if(this.canvas.id==='concentrationCandleCanvas'&&/^\d[\d,]*$/.test(String(label))&&this.textAlign==='left')window.concentrationCandleAxis.push({left:x});return text.call(this,label,x,y);};
+            window.applyRankChartState({selection:{code:'005930',name:'삼성전자'},mode:'day',interval:1,
+                points:[{time:'20200102',value:12,stock_open:3000,stock_high:3100,stock_low:2900,stock_price:3050},
+                    {time:'20200103',value:15,stock_open:3050,stock_high:3200,stock_low:3000,stock_price:3150}],market:'코스피'});
+            window.applyConcentrationDisplaySettings({...window.getConcentrationDisplaySettings(),candleOpen:true});
+        });
+        assert.ok(await page.evaluate(()=>window.concentrationCandleBodies.length&&window.concentrationCandleAxis.length
+            && Math.max(...window.concentrationCandleBodies.map(p=>p.right))+8<=Math.min(...window.concentrationCandleAxis.map(p=>p.left))),
+        'Concentration candles stay clear of the right price-axis labels');
         assert.deepEqual(await page.evaluate(() => window.resizeErrors), []);
         assert.deepEqual(errors, []);
         console.log('PASS ADR minute merge, day filtering, market selection and equal panel sizes');
