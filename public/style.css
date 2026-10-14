@@ -31,6 +31,7 @@
 .turnover-legend > [data-market] { display:grid; grid-template-columns:70px minmax(0,1fr); align-items:baseline; gap:6px; min-width:0; white-space:nowrap; }
 .turnover-legend > [data-market] > span { text-align:left; }
 .rank-turnover-panel .turnover-legend output { margin-left:0; }
+.rank-turnover-panel .turnover-legend [data-market="kosdaq"] output { color:#e11d48; }
 .rank-chart-row .rank-adr-controls { padding-right:36px; box-sizing:border-box; }
 .rank-chart-row .concentration-timeframe-row { padding-right:36px; box-sizing:border-box; }
 .rank-chart-row .concentration-header-actions { flex:1; }

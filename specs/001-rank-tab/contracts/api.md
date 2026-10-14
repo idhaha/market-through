@@ -126,12 +126,16 @@ POST /api/concentration-chart에 {code:선택종목, mode:"minute", interval:5, 
 
 ## 일봉 거래대금 공통 계약 (2026-10-13)
 
-`GET /api/adr/candles`의 day 응답은 `{points:[{t,open,high,low,close,market_turnover}],partial:boolean}`이다. `market_turnover`는 키움 `inds_dt_pole_qry[].trde_prica` 백만원 값을 1,000,000배 한 원 단위 값이다. 쉼표/공백 제거 후 부호 있는 정수 형식을 검증하고 음수·누락·빈 값·비정수는 null로 반환한다. 0은 유효한 거래대금이다. minute 응답에는 이 필드를 추가하지 않는다.
+`GET /api/adr/candles`의 day 응답은 `{points:[{t,open,high,low,close,market_turnover}],partial:boolean}`이다. `market_turnover`는 키움 `inds_dt_pole_qry[].trde_prica` 백만원 값을 1,000,000배 한 원 단위 값이다. 쉼표/공백 제거 후 부호 있는 정수 형식을 검증하고 음수·누락·빈 값·비정수는 null로 반환한다. 0은 유효한 거래대금이다. minute 응답에는 실제 거래대금 필드를 추가하지 않는다. 대신 `market_turnover_estimate`(원)를 분봉 `abs(cur_prc)/100 × trde_qty × 10,000`으로 산출하며 거래량이 무효이면 null이다. 이는 실제 거래대금이 아닌 추정치다.
 
-일봉 쏠림율 응답의 `market_turnover`와 새 거래대금 응답은 `concentration-chart.js`의 `dailyTurnover`를 공유한다. 거래대금 전용 추정식이나 별도 `turnover` 필드는 사용하지 않는다. 기존 OHLC 유효성 검사와 범위/중복 제거 정책은 유지되므로 무효 OHLC 봉은 응답에서 제외된다.
+제공된 `업종분봉거래대금.xlsx`의 ka20005 응답 필드 표에는 `trde_qty`(거래량)와 `acc_trde_qty`(누적거래량)는 있지만 거래대금 필드는 없다. 같은 파일의 Response Example은 `inds_dt_pole_qry`/`dt`/`trde_prica`를 담은 일봉 형태로, 분봉 응답 필드 표와 다르므로 `trde_prica`가 ka20005에 있다고 해석하지 않는다. 실제 당일 누적 거래대금의 분 단위 과거값은 이 API만으로 복원할 수 없다.
+
+일봉 쏠림율 응답의 `market_turnover`와 거래대금 일봉 응답은 `concentration-chart.js`의 `dailyTurnover`를 공유한다. 일봉에 추정식이나 별도 `turnover` 필드는 사용하지 않는다. 기존 OHLC 유효성 검사와 범위/중복 제거 정책은 유지되므로 무효 OHLC 봉은 응답에서 제외된다.
 
 거래대금 차트는 같은 API에 market=kospi/kosdaq, mode=day, 선택 기간의 from/to를 전달한다. 업종은 001/101이며 최대 12페이지와 페이지 간 350ms 지연, 인증/400/502/no-store 계약은 기존과 같다. `partial`은 해당 시장 일부 기록만 반환됐음을 의미하고 null 거래대금은 UI에서 선을 끊거나 없음 상태로 표시한다.
 
 캔들용 OHLC와 거래대금을 함께 받아 시장 변경/캔들 펼침은 메모리 데이터로 처리한다. 조회 실패 시 시장별 안내와 기존 수신값 보존을 적용하고 다른 시장 성공 응답을 표시한다. API 서버 변경은 서버 재시작/운영 배포 후 반영되므로 구버전 응답의 필드 누락을 키움 원천 거래대금 없음으로 단정하지 않는다.
+
+당일1분(누적)은 `mode=minute&from=오늘&to=오늘`로 시장별 조회한다. 클라이언트는 `market_turnover_estimate`를 시각순으로 합산해 봉 시각의 누적 추정값을 만든다. 전일 기준은 `mode=day` 응답에서 오늘보다 이른 가장 최근 유효 `market_turnover`를 사용한다. 마우스 정보는 YYYY-MM-DD HH:mm과 각 시장의 `x.xx조원(전일대비 xx.x%)`이며 기준값이 없거나 0이면 괄호를 생략한다. 비율은 해당 분의 누적 추정값 ÷ 전일 실제값 × 100이므로 실제 거래대금의 확정 비율이 아니다.
 
 ADR history 원천의 max/min 필드는 전달될 수 있으나 화면에는 MAX/MIN 글자·극값 표식을 표시하지 않는다. 기준 눈금 80/100/120은 모두 빨간색 글자이며 기준 가로선은 공통 회색 점선이다.

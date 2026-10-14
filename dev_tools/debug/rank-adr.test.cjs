@@ -142,7 +142,7 @@ const assert = require('node:assert/strict');
                     { date:'2025-12-31', adr:95 }, { date:'2026-01-02', adr:105 }, { date:'2026-02-02', adr:85 }, { date:'2026-03-02', adr:110 }
                 ] }));
                 if (url.includes('/candles')) return new Response(JSON.stringify({ points: ['2025-12-31','2026-01-02','2026-02-02','2026-03-02'].map(date => ({
-                    t:Date.parse(`${date}T09:00:00+09:00`), open:3000, high:3050, low:2950, close:3020
+                    t:Date.parse(`${date}T09:00:00+09:00`), open:160000, high:3200000, low:150000, close:170000
                 })) }));
                 return new Response(JSON.stringify({ intraday:[], marketStatus:'closed' }));
             };
@@ -158,7 +158,7 @@ const assert = require('node:assert/strict');
             };
             const fillText = CanvasRenderingContext2D.prototype.fillText;
             CanvasRenderingContext2D.prototype.fillText = function(label,x,y) {
-                if (this.canvas.closest('.rank-adr-candle-area') && /^\d+\.\d{2}$/.test(String(label))) window.candleAxisLabels.push({left:x-this.measureText(label).width});
+                if (this.canvas.closest('.rank-adr-candle-area') && /^-?\d+\.\d{2}$/.test(String(label))) window.candleAxisLabels.push({left:x-this.measureText(label).width,value:Number(label)});
                 return fillText.call(this,label,x,y);
             };
         });
@@ -174,6 +174,8 @@ const assert = require('node:assert/strict');
         assert.ok(await page.evaluate(() => window.candleBodies.length && window.candleAxisLabels.length
             && Math.max(...window.candleBodies.map(p => p.right)) + 8 <= Math.min(...window.candleAxisLabels.map(p => p.left))),
         'ADR candles stay clear of the right price-axis labels');
+        assert.ok(await page.evaluate(() => window.candleAxisLabels.length >= 5 && window.candleAxisLabels.every(p => p.value >= 0)),
+        'ADR index candle axis does not display negative prices');
         const surface = page.locator('.rank-adr-area canvas');
         await surface.scrollIntoViewIfNeeded();
         const bounds = await surface.boundingBox();
@@ -259,15 +261,17 @@ const assert = require('node:assert/strict');
             const rect=CanvasRenderingContext2D.prototype.fillRect;
             CanvasRenderingContext2D.prototype.fillRect=function(x,y,w,h){if(this.canvas.id==='concentrationCandleCanvas'&&['#e11d48','#2563eb'].includes(this.fillStyle))window.concentrationCandleBodies.push({right:x+w});return rect.call(this,x,y,w,h);};
             const text=CanvasRenderingContext2D.prototype.fillText;
-            CanvasRenderingContext2D.prototype.fillText=function(label,x,y){if(this.canvas.id==='concentrationCandleCanvas'&&/^\d[\d,]*$/.test(String(label))&&this.textAlign==='left')window.concentrationCandleAxis.push({left:x});return text.call(this,label,x,y);};
+            CanvasRenderingContext2D.prototype.fillText=function(label,x,y){if(this.canvas.id==='concentrationCandleCanvas'&&/^-?\d[\d,]*$/.test(String(label))&&this.textAlign==='left')window.concentrationCandleAxis.push({left:x,value:Number(String(label).replaceAll(',',''))});return text.call(this,label,x,y);};
             window.applyRankChartState({selection:{code:'005930',name:'삼성전자'},mode:'day',interval:1,
-                points:[{time:'20200102',value:12,stock_open:3000,stock_high:3100,stock_low:2900,stock_price:3050},
-                    {time:'20200103',value:15,stock_open:3050,stock_high:3200,stock_low:3000,stock_price:3150}],market:'코스피'});
+                points:[{time:'20200102',value:12,stock_open:160000,stock_high:170000,stock_low:150000,stock_price:165000},
+                    {time:'20200103',value:15,stock_open:1600000,stock_high:3200000,stock_low:1500000,stock_price:3150000}],market:'코스피'});
             window.applyConcentrationDisplaySettings({...window.getConcentrationDisplaySettings(),candleOpen:true});
         });
         assert.ok(await page.evaluate(()=>window.concentrationCandleBodies.length&&window.concentrationCandleAxis.length
             && Math.max(...window.concentrationCandleBodies.map(p=>p.right))+8<=Math.min(...window.concentrationCandleAxis.map(p=>p.left))),
         'Concentration candles stay clear of the right price-axis labels');
+        assert.ok(await page.evaluate(()=>window.concentrationCandleAxis.length===5
+            && window.concentrationCandleAxis.every(p=>p.value>=0)), 'Positive stock prices never produce a negative Y-axis tick');
         assert.deepEqual(await page.evaluate(() => window.resizeErrors), []);
         assert.deepEqual(errors, []);
         console.log('PASS ADR minute merge, day filtering, market selection and equal panel sizes');

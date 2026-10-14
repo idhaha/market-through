@@ -1757,6 +1757,11 @@ app.get('/api/adr/candles', async (req, res) => {
                 const price = v => Math.abs(Number(String(v ?? '').replace(/,/g, ''))) / 100;
                 const point = { t: time, open: price(row.open_pric), high: price(row.high_pric), low: price(row.low_pric), close: price(row.cur_prc) };
                 if (daily) point.market_turnover = dailyTurnover(row).value;
+                else {
+                    const quantity = Number(String(row.trde_qty ?? '').replace(/,/g, ''));
+                    point.market_turnover_estimate = Number.isFinite(quantity) && quantity >= 0
+                        ? point.close * quantity * 10000 : null;
+                }
                 if ([point.t, point.open, point.high, point.low, point.close].every(Number.isFinite) && point.low > 0) points.set(time, point);
             }
             next = response.headers['cont-yn'] === 'Y' ? response.headers['next-key'] || '' : '';

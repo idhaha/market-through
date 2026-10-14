@@ -114,9 +114,9 @@ POST /api/concentration-chart에 {code:선택종목, mode:"minute", interval:5, 
 ## 거래대금 및 공통 표시 모델 (2026-10-13)
 
 - **DailyTurnover**: `{million:number|NaN, value:number|null}`. 백만원 원본을 엄격히 정수로 파싱하고 유효한 0 이상 값만 원 단위로 변환한다. 일봉 쏠림율 분모와 시장 일봉 응답이 같은 함수를 사용한다. 내부 NaN은 JSON 거래대금으로 내보내지 않고 null을 사용한다.
-- **IndexCandle 확장**: day 봉에 `market_turnover:number|null` 추가, minute에는 없음. OHLC와 거래대금 단위는 각각 지수 /100 및 원 단위로 분리된다.
-- **TurnoverView**: data={kospi:IndexCandle[],kosdaq:IndexCandle[]}, 날짜 합집합 dates, market=kospi 기본, range=1y 기본(6m/3y/5y), start, count(null=전체), hover(timestamp|null), controller, drag, refreshPending. 현재 페이지 메모리만 사용하며 서버/사용자 설정 백업에 저장하지 않는다.
+- **IndexCandle 확장**: day 봉은 실제 `market_turnover:number|null`, minute 봉은 별도 `market_turnover_estimate:number|null`(원)를 가진다. minute의 값은 실제 거래대금으로 취급하지 않는다. OHLC와 거래대금 단위는 각각 지수 /100 및 원 단위로 분리된다.
+- **TurnoverView**: mode(day 기본/minute), dailyData·minuteData={kospi:IndexCandle[],kosdaq:IndexCandle[]}, previous={kospi:number|null,kosdaq:number|null}, 표시 data와 날짜/시각 합집합 dates, market=kospi 기본, 일봉 range=1y 기본(6m/3y/5y), start, count(null=전체), hover(timestamp|null), controller, drag, refreshPending. 분봉의 표시 market_turnover는 당일 market_turnover_estimate를 시각순으로 누적한 파생값이다. 현재 페이지 메모리만 사용하며 서버/사용자 설정 백업에 저장하지 않는다.
 - **TurnoverDrag**: surface, pointer id, startX/endX, 시작 start/count. 양 캔버스가 같은 날짜 구간과 선택 음영을 공유한다. 오른쪽 드래그는 최소 10봉 범위로 확대, 반대 방향은 전체 복원한다.
-- **TurnoverLatest**: 한국시간 오늘과 일치하는 시장별 마지막 유효 market_turnover를 전체 수신 배열에서 찾는다. 과거 확대 창과 무관하며 오늘 봉이 없으면 —다. 직전 거래일을 오늘 값으로 치환하지 않는다.
+- **TurnoverLatest**: 한국시간 오늘과 일치하는 시장별 마지막 유효 market_turnover를 전체 수신 배열에서 찾는다. 일봉은 실제값, 분봉은 추정 누적값이다. 과거 확대 창과 무관하며 오늘 봉이 없으면 —다. 직전 거래일을 오늘 값으로 치환하지 않는다. 분봉 hover 비율은 해당 시각의 누적 추정값 / previous × 100이며 previous가 null/0이면 비율이 없다.
 - **HoverGuide**: 쏠림율 value, ADR adr, 두 시장 market_turnover/1e12, 캔들 종가를 기준으로 수평선과 오른쪽 축 배지를 계산한다. canvas 폭으로 배지 X좌표를 제한한다. 커서 임의 Y좌표의 값은 사용하지 않는다.
 - 제목/버튼/축/선/최종값 배치는 FR-032~036과 FR-046~050을 따른다. ADR MAX/MIN 표시는 없고 세 차트와 캔들 Y축은 오른쪽이다.

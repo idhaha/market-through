@@ -5,7 +5,7 @@
         if (!adr || document.getElementById('rankTurnoverChartPanel')) return;
         const panel = document.createElement('section');
         panel.id = 'rankTurnoverChartPanel'; panel.className = 'panel rank-adr-panel rank-turnover-panel';
-        panel.innerHTML = `<div class="concentration-chart-header"><select class="interval-select" aria-label="거래대금 시장 선택"><option value="kospi">KOSPI</option><option value="kosdaq">KOSDAQ</option></select><h2>거래대금</h2><div class="turnover-legend"><span data-market="kospi"><span>● KOSPI</span><output data-latest="kospi">—</output></span><span data-market="kosdaq"><span>● KOSDAQ</span><output data-latest="kosdaq">—</output></span></div></div><div class="rank-adr-controls"><button type="button" class="active" disabled>일</button><span class="rank-adr-ranges">${['6m','1y','3y','5y'].map(r => `<button type="button" data-range="${r}" class="${r === '1y' ? 'active' : ''}">${r.toUpperCase()}</button>`).join('')}</span><button type="button" class="concentration-candle-toggle" aria-expanded="false">캔들차트</button></div><div class="turnover-hover-info" aria-live="off"></div><div class="rank-adr-area"><canvas role="img" aria-label="코스피 코스닥 일별 거래대금 차트"></canvas><div class="concentration-tooltip" hidden></div></div><div class="rank-adr-candle-area" hidden><canvas role="img" aria-label="선택 시장 지수 일봉 캔들차트"></canvas></div><div class="concentration-chart-footer rank-adr-zoom"><input type="range" min="0" max="0" value="0" aria-label="거래대금 과거 구간 이동" disabled><div class="concentration-controls"><button type="button" aria-label="거래대금 차트 축소">−</button><button type="button" aria-label="거래대금 차트 확대">+</button></div></div><p role="status" class="rank-adr-status"></p>`;
+        panel.innerHTML = `<div class="concentration-chart-header"><select class="interval-select" aria-label="거래대금 시장 선택"><option value="kospi">KOSPI</option><option value="kosdaq">KOSDAQ</option></select><h2>거래대금</h2><div class="turnover-legend"><span data-market="kospi"><span>● KOSPI</span><output data-latest="kospi">—</output></span><span data-market="kosdaq"><span>● KOSDAQ</span><output data-latest="kosdaq">—</output></span></div></div><div class="rank-adr-controls"><button type="button" data-mode="day" class="active">일</button><button type="button" data-mode="minute">당일1분(누적)</button><span class="rank-adr-ranges">${['6m','1y','3y','5y'].map(r => `<button type="button" data-range="${r}" class="${r === '1y' ? 'active' : ''}">${r.toUpperCase()}</button>`).join('')}</span><button type="button" class="concentration-candle-toggle" aria-expanded="false">캔들차트</button></div><div class="turnover-hover-info" aria-live="off"></div><div class="rank-adr-area"><canvas role="img" aria-label="코스피 코스닥 거래대금 차트"></canvas><div class="concentration-tooltip" hidden></div></div><div class="rank-adr-candle-area" hidden><canvas role="img" aria-label="선택 시장 지수 캔들차트"></canvas></div><div class="concentration-chart-footer rank-adr-zoom"><input type="range" min="0" max="0" value="0" aria-label="거래대금 과거 구간 이동" disabled><div class="concentration-controls"><button type="button" aria-label="거래대금 차트 축소">−</button><button type="button" aria-label="거래대금 차트 확대">+</button></div></div><p role="status" class="rank-adr-status"></p>`;
         adr.after(panel);
         panel.querySelector('.rank-adr-controls').append(panel.querySelector('.turnover-legend'));
         const select = panel.querySelector('select'), canvas = panel.querySelector('.rank-adr-area canvas'), ctx = canvas.getContext('2d');
@@ -13,7 +13,8 @@
         const tip = panel.querySelector('.turnover-hover-info'), status = panel.querySelector('[role="status"]'), slider = panel.querySelector('input');
         const [out, into] = panel.querySelectorAll('.concentration-controls button');
         const colors = {kospi:'#339af0',kosdaq:'#e11d48'}, names = {kospi:'KOSPI',kosdaq:'KOSDAQ'};
-        let data = {kospi:[],kosdaq:[]}, dates = [], range = '1y', start = 0, count = null, controller, hover = null, geometry, drag = null, refreshPending = false;
+        let data = {kospi:[],kosdaq:[]}, dailyData = {kospi:[],kosdaq:[]}, minuteData = {kospi:[],kosdaq:[]}, previous = {kospi:null,kosdaq:null};
+        let mode = 'day', dates = [], range = '1y', start = 0, count = null, controller, hover = null, geometry, drag = null, refreshPending = false;
         const dateKey = t => new Date(t + 9 * 3600000).toISOString().slice(0,10);
         function surface(c, context) {
             const w = c.clientWidth, h = c.clientHeight, dpr = window.devicePixelRatio || 1;
@@ -34,22 +35,35 @@
             if (right <= left || bottom <= top) return;
             const x = t => left + indices.get(t)/Math.max(1,n-1)*(right-left);
             const values = Object.values(rows).flat().filter(p => Number.isFinite(p.market_turnover)).map(p => p.market_turnover/1e12);
-            const max = Math.max(10,Math.ceil(Math.max(0,...values)/10)*10), y = v => bottom-v/max*(bottom-top);
+            const benchmarks = mode === 'minute' ? Object.values(previous).filter(Number.isFinite).map(v=>v/1e12) : [];
+            const max = Math.max(10,Math.ceil(Math.max(0,...values,...benchmarks)/10)*10), y = v => bottom-v/max*(bottom-top);
             const style = getComputedStyle(panel), muted = style.getPropertyValue('--text-muted').trim(), border = '#d6dbe1';
             ctx.textAlign = 'left'; ctx.fillStyle = muted;
             for (let v=0;v<=max;v+=10) { ctx.strokeStyle=border; ctx.setLineDash([3,5]); ctx.beginPath(); ctx.moveTo(left,y(v)); ctx.lineTo(right,y(v)); ctx.stroke(); ctx.textAlign='right'; ctx.fillText(`${v}조`,w-36,y(v)+4); }
             ctx.setLineDash([]);
+            if (mode === 'minute' && Number.isFinite(previous[select.value])) {
+                const benchmark = previous[select.value]/1e12;
+                ctx.save();ctx.strokeStyle='#f97316';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(left,y(benchmark));ctx.lineTo(right,y(benchmark));ctx.stroke();
+                const label=`전일 ${benchmark.toFixed(2)}조`, lineY=y(benchmark);
+                ctx.font='bold 11px Arial';ctx.textAlign='right';
+                const labelY=lineY-top>=25 ? lineY-10 : lineY+18;
+                const labelWidth=ctx.measureText(label).width, labelRight=right-4;
+                ctx.fillStyle=getComputedStyle(panel).getPropertyValue('--bg-primary').trim() || '#fff';
+                ctx.fillRect(labelRight-labelWidth-4,labelY-12,labelWidth+8,16);
+                ctx.fillStyle='#f97316';ctx.fillText(label,labelRight,labelY);ctx.restore();
+            }
             const ticks = visible.filter((_,i) => i % Math.max(1,Math.ceil(n/Math.max(1,Math.floor((right-left)/90)))) === 0);
-            function axis(context,height) { context.fillStyle=muted; context.textAlign='center'; ticks.forEach(t => context.fillText(dateKey(t).slice(2),x(t),height-8)); }
+            function axis(context,height) { context.fillStyle=muted; context.textAlign='center'; ticks.forEach(t => context.fillText(mode==='minute' ? new Date(t+9*3600000).toISOString().slice(11,16) : dateKey(t).slice(2),x(t),height-8)); }
             axis(ctx,h);
             for (const m of [select.value === 'kospi' ? 'kosdaq' : 'kospi',select.value]) {
                 ctx.globalAlpha = m === select.value ? 1 : .22; ctx.strokeStyle=colors[m]; ctx.lineWidth=m === select.value ? 2 : 1.5; ctx.beginPath();
                 let connected=false;
                 rows[m].forEach(p => { if (!Number.isFinite(p.market_turnover)) {connected=false;return;} if (!connected) ctx.moveTo(x(p.t),y(p.market_turnover/1e12)); else ctx.lineTo(x(p.t),y(p.market_turnover/1e12)); connected=true; }); ctx.stroke();
                 if (rows[m].length === 1 && Number.isFinite(rows[m][0].market_turnover)) {ctx.beginPath();ctx.arc(x(rows[m][0].t),y(rows[m][0].market_turnover/1e12),3,0,Math.PI*2);ctx.fillStyle=colors[m];ctx.fill();}
+                const latestToday = rows[m].filter(p => dateKey(p.t) === dateKey(Date.now()) && Number.isFinite(p.market_turnover)).at(-1)?.t;
                 rows[m].forEach(p => {
-                    if (!Number.isFinite(p.market_turnover) || dateKey(p.t) !== dateKey(Date.now()) && p.t !== hover) return;
-                    ctx.fillStyle = dateKey(p.t) === dateKey(Date.now()) ? '#f97316' : colors[m];
+                    if (!Number.isFinite(p.market_turnover) || p.t !== latestToday && p.t !== hover) return;
+                    ctx.fillStyle = p.t === latestToday ? '#f97316' : colors[m];
                     ctx.beginPath(); ctx.arc(x(p.t),y(p.market_turnover/1e12),4,0,Math.PI*2); ctx.fill();
                 });
             }
@@ -63,7 +77,7 @@
                     if (Number.isFinite(point?.market_turnover)) drawHoverValue(ctx,{left,right,top,bottom,y},point.market_turnover/1e12,`${(point.market_turnover/1e12).toFixed(1)}조`,colors[m]);
                 }
             }
-            panel.querySelectorAll('[data-market]').forEach(el => {el.style.color=colors[el.dataset.market];el.querySelector('span').style.opacity=el.dataset.market===select.value?'1':'.3';});
+            panel.querySelectorAll('[data-market]').forEach(el => {el.style.color=colors[el.dataset.market];el.querySelector('span').style.opacity='1';});
             panel.querySelectorAll('[data-latest]').forEach(el => {
                 const point=data[el.dataset.latest].filter(p=>dateKey(p.t)===dateKey(Date.now())&&Number.isFinite(p.market_turnover)).at(-1);
                 el.textContent=point?`${(point.market_turnover/1e12).toFixed(2)}조원`:'—';
@@ -100,6 +114,41 @@
             if (drag) {refreshPending=true;return;}
             refreshPending=false;
             controller?.abort(); const current=controller=new AbortController(); status.textContent='거래대금 조회 중';
+            if (mode === 'minute') {
+                const today = dateKey(Date.now()), day = today.replaceAll('-',''), messages = [];
+                for (const market of ['kospi','kosdaq']) {
+                    if (current.signal.aborted) return;
+                    try {
+                        if (!dailyData[market].some(p => dateKey(p.t) < today && Number.isFinite(p.market_turnover))) {
+                            const fromDate = new Date(`${today}T00:00:00Z`);fromDate.setUTCDate(fromDate.getUTCDate()-14);
+                            const response = await fetch(`/api/adr/candles?market=${market}&mode=day&from=${fromDate.toISOString().slice(0,10).replaceAll('-','')}&to=${day}`,{signal:current.signal});
+                            if (!response.ok) throw new Error('전일 거래대금 조회 실패');
+                            const result = await response.json();dailyData[market]=result.points || [];
+                        }
+                        previous[market]=dailyData[market].filter(p=>dateKey(p.t)<today&&Number.isFinite(p.market_turnover)).at(-1)?.market_turnover ?? null;
+                        const response=await fetch(`/api/adr/candles?market=${market}&mode=minute&from=${day}&to=${day}`,{signal:current.signal});
+                        if (!response.ok) throw new Error('당일 분봉 조회 실패');
+                        const result=await response.json();let sum=0;
+                        minuteData[market]=(result.points || []).filter(p=>dateKey(p.t)===today).sort((a,b)=>a.t-b.t).map(p=>{
+                            if (Number.isFinite(p.market_turnover_estimate)) sum+=p.market_turnover_estimate;
+                            return {...p,market_turnover:Number.isFinite(p.market_turnover_estimate)?sum:null};
+                        });
+                        if (!minuteData[market].length) messages.push(`${names[market]} 당일 분봉 없음`);
+                        if (previous[market]===null) messages.push(`${names[market]} 전일 기준값 없음`);
+                        if (result.partial) messages.push(`${names[market]} 일부 구간`);
+                    } catch(error) {
+                        if(error.name==='AbortError')return;
+                        messages.push(`${names[market]} 조회 실패 · 다음 갱신 때 재시도`);
+                    }
+                }
+                if(current!==controller)return;
+                data=minuteData;dates=[...new Set(Object.values(data).flat().map(p=>p.t))].sort((a,b)=>a-b);hover=null;tip.hidden=true;
+                const ratios=['kospi','kosdaq'].map(m=>{
+                    const amount=data[m].at(-1)?.market_turnover, base=previous[m];
+                    return Number.isFinite(amount)&&Number.isFinite(base)&&base>0?`${names[m]} 전일 대비 ${(amount/base*100).toFixed(1)}%`:null;
+                }).filter(Boolean);
+                status.textContent=['1분 누적 거래대금은 지수×거래량 기반 추정값',...ratios,...messages].join(' · ');draw();return;
+            }
             const today=dateKey(Date.now()), fromDate=new Date(`${today}T00:00:00Z`);
             fromDate.setUTCMonth(fromDate.getUTCMonth()-({'6m':6,'1y':12,'3y':36,'5y':60}[range]));
             const from=fromDate.toISOString().slice(0,10).replaceAll('-',''), to=today.replaceAll('-','');
@@ -131,10 +180,20 @@
                     if(!data[m].some(p=>Number.isFinite(p.market_turnover)))messages.push(`${names[m]} 거래대금 데이터 없음`);
                 }else messages.push(data[m].length ? `${names[m]} 갱신 실패 · 이전 데이터 표시 · 다음 갱신 때 재시도` : `${names[m]} 조회 실패 · 다음 갱신 때 재시도`);
             });
-            dates=[...new Set(Object.values(data).flat().map(p=>p.t))].sort((a,b)=>a-b);hover=null;tip.hidden=true;
+            dailyData=data;dates=[...new Set(Object.values(data).flat().map(p=>p.t))].sort((a,b)=>a-b);hover=null;tip.hidden=true;
             status.textContent=messages.join(' · ') || (dates.length?`${dateKey(dates[0])} ~ ${dateKey(dates.at(-1))} · 당일 거래대금은 누적값`:'일별 데이터 없음');draw();
         };
-        select.addEventListener('change',()=>{tip.hidden=true;hover=null;candle.setAttribute('aria-label',`${names[select.value]} 지수 일봉 캔들차트`);draw();});
+        panel.querySelectorAll('[data-mode]').forEach(button=>button.addEventListener('click',()=>{
+            if(mode===button.dataset.mode)return;
+            mode=button.dataset.mode;data=mode==='minute'?minuteData:dailyData;dates=[...new Set(Object.values(data).flat().map(p=>p.t))].sort((a,b)=>a-b);
+            start=0;count=null;hover=null;tip.hidden=true;
+            panel.querySelectorAll('[data-mode]').forEach(el=>el.classList.toggle('active',el===button));
+            panel.querySelector('.rank-adr-ranges').hidden=mode==='minute';
+            canvas.setAttribute('aria-label',`코스피 코스닥 ${mode==='minute'?'당일 1분 누적 추정':'일별'} 거래대금 차트`);
+            candle.setAttribute('aria-label',`${names[select.value]} 지수 ${mode==='minute'?'1분봉':'일봉'} 캔들차트`);
+            window.refreshRankTurnoverChart();
+        }));
+        select.addEventListener('change',()=>{tip.hidden=true;hover=null;candle.setAttribute('aria-label',`${names[select.value]} 지수 ${mode==='minute'?'1분봉':'일봉'} 캔들차트`);draw();});
         panel.querySelectorAll('[data-range]').forEach(b=>b.addEventListener('click',()=>{range=b.dataset.range;start=0;count=null;data={kospi:[],kosdaq:[]};dates=[];panel.querySelectorAll('[data-range]').forEach(el=>el.classList.toggle('active',el===b));draw();window.refreshRankTurnoverChart();}));
         const candleButton = panel.querySelector('.concentration-candle-toggle');
         window.getRankTurnoverCandleOpen = () => !candleArea.hidden;
@@ -177,7 +236,12 @@
             const cancel=()=>{if(drag?.surface===c){drag=null;draw();if(refreshPending)window.refreshRankTurnoverChart();}};
             c.addEventListener('pointercancel',cancel);c.addEventListener('lostpointercapture',cancel);
         });
-        [canvas,candle].forEach(c=>{c.addEventListener('mousemove',event=>{if(drag || !geometry?.visible.length)return;const px=event.clientX-c.getBoundingClientRect().left;if(px<geometry.left||px>geometry.right)return;hover=geometry.visible.reduce((a,b)=>Math.abs(geometry.x(a)-px)<Math.abs(geometry.x(b)-px)?a:b);tip.textContent=dateKey(hover)+' · '+['kospi','kosdaq'].map(m=>{const p=data[m].find(p=>p.t===hover);return `${names[m]} ${Number.isFinite(p?.market_turnover)?(p.market_turnover/1e12).toFixed(2)+'조원':'—'}`;}).join(' · ');tip.hidden=false;draw();});c.addEventListener('mouseleave',()=>{hover=null;tip.hidden=true;draw();});});
+        [canvas,candle].forEach(c=>{c.addEventListener('mousemove',event=>{if(drag || !geometry?.visible.length)return;const px=event.clientX-c.getBoundingClientRect().left;if(px<geometry.left||px>geometry.right)return;hover=geometry.visible.reduce((a,b)=>Math.abs(geometry.x(a)-px)<Math.abs(geometry.x(b)-px)?a:b);tip.textContent=dateKey(hover)+(mode==='minute'?' '+new Date(hover+9*3600000).toISOString().slice(11,16):'')+' · '+['kospi','kosdaq'].map(m=>{
+            const p=data[m].find(p=>p.t===hover), amount=p?.market_turnover;
+            if(!Number.isFinite(amount))return `${names[m]} —`;
+            const ratio=mode==='minute'&&Number.isFinite(previous[m])&&previous[m]>0 ? `(전일대비 ${(amount/previous[m]*100).toFixed(1)}%)` : '';
+            return `${names[m]} ${(amount/1e12).toFixed(2)}조원${ratio}`;
+        }).join(' · ');tip.hidden=false;draw();});c.addEventListener('mouseleave',()=>{hover=null;tip.hidden=true;draw();});});
         function resize(){const base=Number.parseFloat(adr.style.getPropertyValue('--rank-adr-base-height')) || 450;panel.style.height=`${base+(candleArea.hidden?0:280)}px`;draw();}
         new ResizeObserver(resize).observe(adr);new ResizeObserver(draw).observe(canvas.parentElement);resize();window.refreshRankTurnoverChart();
     }

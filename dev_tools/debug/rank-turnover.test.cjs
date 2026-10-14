@@ -23,7 +23,7 @@ const assert=require('node:assert/strict');
             window.badges=[];window.hoverStrokes=[];
             const originalStroke=CanvasRenderingContext2D.prototype.stroke;
             CanvasRenderingContext2D.prototype.stroke=function(...args){window.hoverStrokes.push({color:this.strokeStyle,dash:this.getLineDash()});return originalStroke.apply(this,args);};
-            CanvasRenderingContext2D.prototype.fillText=function(text,...args){window.labels.push(text);if(this.fillStyle==='#ffffff')window.badges.push({text,x:args[0],width:this.canvas.clientWidth});if(text.endsWith('조'))window.axisLabels.push({x:args[0],width:this.canvas.clientWidth,align:this.textAlign});if(this.canvas.closest('#rankTurnoverChartPanel .rank-adr-candle-area')&&/^\d+\.\d{2}$/.test(String(text)))window.candleAxisLabels.push({left:args[0]-this.measureText(text).width});return original.call(this,text,...args);};
+            CanvasRenderingContext2D.prototype.fillText=function(text,...args){window.labels.push(text);if(this.fillStyle==='#ffffff')window.badges.push({text,x:args[0],width:this.canvas.clientWidth});if(text.endsWith('조'))window.axisLabels.push({x:args[0],width:this.canvas.clientWidth,align:this.textAlign});if(this.canvas.closest('#rankTurnoverChartPanel .rank-adr-candle-area')&&/^-?\d+\.\d{2}$/.test(String(text)))window.candleAxisLabels.push({left:args[0]-this.measureText(text).width,value:Number(text)});return original.call(this,text,...args);};
             window.inFlight=0;window.maxInFlight=0;window.refreshPhase=null;
             window.fetch=async url=>{
                 window.calls.push(url);window.inFlight++;window.maxInFlight=Math.max(window.maxInFlight,window.inFlight);
@@ -31,7 +31,7 @@ const assert=require('node:assert/strict');
                 if(window.refreshPhase==='failed')return new Response('{}',{status:502});
                 const kosdaq=url.includes('kosdaq');
                 const days=window.refreshPhase==='recent'?[30]:Array.from({length:30},(_,i)=>i+1);
-                return new Response(JSON.stringify({points:days.map(day=>({t:Date.UTC(2026,8,day),market_turnover:window.refreshPhase==='recent'&&!kosdaq?20e12:(kosdaq?5:15)*1e12+(day-1)*1e11,open:3000,high:3100,low:2900,close:3050}))}));
+                return new Response(JSON.stringify({points:days.map(day=>({t:Date.UTC(2026,8,day),market_turnover:window.refreshPhase==='recent'&&!kosdaq?20e12:(kosdaq?5:15)*1e12+(day-1)*1e11,open:160000,high:3200000,low:150000,close:170000}))}));
             };
         });
         await page.addScriptTag({content:fs.readFileSync('public/rank-turnover-chart.js','utf8')});
@@ -43,6 +43,8 @@ const assert=require('node:assert/strict');
         assert.ok(await page.evaluate(() => window.candleBodies.length && window.candleAxisLabels.length
             && Math.max(...window.candleBodies.map(p=>p.right))+8<=Math.min(...window.candleAxisLabels.map(p=>p.left))),
         'Turnover candles stay clear of the right price-axis labels');
+        assert.ok(await page.evaluate(() => window.candleAxisLabels.length>=5&&window.candleAxisLabels.every(p=>p.value>=0)),
+        'Turnover index candle axis does not display negative prices');
         await page.evaluate(() => applyRankTurnoverCandleOpen(false));
         assert.equal(await panel.locator('.concentration-candle-toggle').getAttribute('aria-expanded'), 'false');
         await page.evaluate(() => applyRankTurnoverCandleOpen(true));
@@ -98,7 +100,8 @@ const assert=require('node:assert/strict');
         assert.equal(await panel.locator('.turnover-hover-info').evaluate(el=>el.nextElementSibling.className),'rank-adr-area');
         await panel.locator('select').selectOption('kosdaq');
         assert.equal(await panel.locator('[data-market="kosdaq"] > span').evaluate(el=>el.style.opacity),'1');
-        assert.equal(await panel.locator('[data-market="kospi"] > span').evaluate(el=>el.style.opacity),'0.3');
+        assert.equal(await panel.locator('[data-market="kospi"] > span').evaluate(el=>el.style.opacity),'1');
+        assert.equal(await panel.locator('[data-latest="kosdaq"]').evaluate(el=>getComputedStyle(el).color),'rgb(225, 29, 72)');
         await panel.locator('.concentration-candle-toggle').click();
         assert.equal(await panel.locator('.concentration-candle-toggle').getAttribute('aria-expanded'),'true');
         assert.ok(await panel.locator('.rank-adr-candle-area').isVisible());

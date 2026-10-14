@@ -100,7 +100,8 @@ const assert = require('node:assert/strict');
             const refresh = document.getElementById('refreshInterval').closest('label').getBoundingClientRect();
             return { top: { right: top.right, center: top.top + top.height / 2 }, refresh: { left: refresh.left, center: refresh.top + refresh.height / 2 } };
         });
-        assert.ok(topmostPlacement.top.right <= topmostPlacement.refresh.left && Math.abs(topmostPlacement.top.center - topmostPlacement.refresh.center) < 3,
+        assert.ok(topmostPlacement.refresh.left - topmostPlacement.top.right >= 18
+            && Math.abs(topmostPlacement.top.center - topmostPlacement.refresh.center) < 3,
             `Always-on-top control sits beside the refresh interval: ${JSON.stringify(topmostPlacement)}`);
         await independent.locator('#independentAlwaysOnTop').check();
         assert.ok(await independent.evaluate(() => window.resizeMessages.includes('topmost:true')), 'Always-on-top selection reaches the native window');

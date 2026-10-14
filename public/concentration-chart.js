@@ -239,7 +239,7 @@
             let minimum = candles.reduce((min, p) => Math.min(min, p.stock_low), Infinity);
             let maximum = candles.reduce((max, p) => Math.max(max, p.stock_high), -Infinity);
             const padding = Math.max((maximum - minimum) * .08, maximum * .001);
-            minimum -= padding; maximum += padding;
+            minimum = Math.max(0, minimum - padding); maximum += padding;
             const y = price => bottom - (price - minimum) / (maximum - minimum) * (bottom - top);
             const candleWidth = Math.max(1, Math.min(10, (plot.right - plot.left - 24) / Math.max(1, points.length) * .7));
             candleGeometry = { plot: { ...plot, top, bottom }, points, x, y, candleWidth, width, height };
