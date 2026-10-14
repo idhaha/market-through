@@ -36,6 +36,11 @@ class RankNativeSmoke {
                 using (var form = (Form)Activator.CreateInstance(assembly.GetType("IndependentForm"), BindingFlags.Instance | BindingFlags.NonPublic, null, new object[] { target, Path.GetDirectoryName(state) }, null)) {
                     Check(form.Text == "[독립창]", "Window title");
                     Check(Screen.FromRectangle(form.Bounds).WorkingArea.Contains(form.Bounds), "Offscreen bounds recovery");
+                    var recover = form.GetType().GetMethod("EnsureVisibleBounds", BindingFlags.Instance | BindingFlags.NonPublic);
+                    Check(recover != null, "Running window recovery handler");
+                    form.Bounds = new Rectangle(999999, 999999, 900, 600);
+                    recover.Invoke(form, null);
+                    Check(Screen.FromRectangle(form.Bounds).WorkingArea.Contains(form.Bounds), "Running offscreen window recovery");
                     Panel bar = null; foreach (Control control in form.Controls) if (control is Panel) bar = (Panel)control;
                     Check(bar != null, "Titlebar");
                     CheckBox top = null; Label topText = null; Button minimize = null;

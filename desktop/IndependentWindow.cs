@@ -75,6 +75,7 @@ internal sealed class IndependentForm : Form {
         title.MouseDown += move; bar.MouseDown += move;
         bar.Controls.Add(title); bar.Controls.Add(topGroup); bar.Controls.Add(minimize); bar.Controls.Add(close);
         web.Dock = DockStyle.Fill; Controls.Add(web); Controls.Add(bar);
+        Activated += delegate { EnsureVisibleBounds(); };
         Shown += async delegate {
             try {
                 var env = await CoreWebView2Environment.CreateAsync(null, Path.Combine(folder, "WebView2"));
@@ -135,7 +136,9 @@ internal sealed class IndependentForm : Form {
                     using (var reader = new StreamReader(serverPipe)) { url = reader.ReadLine(); }
                     if (url != null && !exiting) BeginInvoke(new Action(delegate {
                         try { Program.Validate("marketthrough://open?url=" + Uri.EscapeDataString(url));
-                            NotifyClose(); current = url; allowed = new Uri(url).GetLeftPart(UriPartial.Authority); WindowState = FormWindowState.Normal; Activate(); web.CoreWebView2.Navigate(url);
+                            NotifyClose(); current = url; allowed = new Uri(url).GetLeftPart(UriPartial.Authority);
+                            WindowState = FormWindowState.Normal; EnsureVisibleBounds(); Show(); BringToFront(); Activate();
+                            web.CoreWebView2.Navigate(url);
                         } catch { }
                     }));
                 }
@@ -163,6 +166,18 @@ internal sealed class IndependentForm : Form {
             saved.Width = Math.Min(saved.Width, screen.Width); saved.Height = Math.Min(saved.Height, screen.Height);
             saved.X = Math.Max(screen.Left, Math.Min(saved.X, screen.Right - saved.Width)); saved.Y = Math.Max(screen.Top, Math.Min(saved.Y, screen.Bottom - saved.Height)); Bounds = saved;
         } catch { }
+    }
+    void EnsureVisibleBounds() {
+        if (WindowState != FormWindowState.Normal) return;
+        var bounds = Bounds;
+        var area = Screen.FromRectangle(bounds).WorkingArea;
+        var visible = Rectangle.Intersect(bounds, area);
+        if (visible.Width >= Math.Min(160, bounds.Width) && visible.Height >= Math.Min(80, bounds.Height)) return;
+        bounds.Width = Math.Min(bounds.Width, area.Width);
+        bounds.Height = Math.Min(bounds.Height, area.Height);
+        bounds.X = Math.Max(area.Left, Math.Min(bounds.X, area.Right - bounds.Width));
+        bounds.Y = Math.Max(area.Top, Math.Min(bounds.Y, area.Bottom - bounds.Height));
+        Bounds = bounds;
     }
     protected override void WndProc(ref Message message) {
         const int hitTest = 0x84;
