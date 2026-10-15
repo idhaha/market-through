@@ -141,9 +141,9 @@
             const todayPoint = visiblePoints.filter(p => dateKey(p.t) === today).at(-1);
             if (todayPoint) { ctx.fillStyle = '#f97316'; ctx.beginPath(); ctx.arc(x(todayPoint.t), y(todayPoint.adr), 4, 0, Math.PI * 2); ctx.fill(); }
             if (hover) {
-                ctx.strokeStyle = '#64748b'; ctx.setLineDash([3,3]); ctx.beginPath(); ctx.moveTo(x(hover.t), top); ctx.lineTo(x(hover.t), bottom); ctx.stroke(); ctx.setLineDash([]);
-                drawHoverValue(ctx, geometry, hover.adr, `${hover.adr.toFixed(2)}%`, '#339af0');
-                ctx.fillStyle = dateKey(hover.t) === today ? '#f97316' : '#339af0'; ctx.beginPath(); ctx.arc(x(hover.t), y(hover.adr), 4, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = '#000'; ctx.setLineDash([3,3]); ctx.beginPath(); ctx.moveTo(x(hover.t), top); ctx.lineTo(x(hover.t), bottom); ctx.stroke(); ctx.setLineDash([]);
+                drawHoverValue(ctx, geometry, hover.adr, `${hover.adr.toFixed(2)}%`, '#000');
+                ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(x(hover.t), y(hover.adr), 4, 0, Math.PI * 2); ctx.fill();
             }
             drawCandles();
             drawDrag(ctx, geometry);
@@ -186,9 +186,9 @@
                 candleCtx.fillRect(x-cw/2,Math.min(y(p.open),y(p.close)),cw,Math.max(1,Math.abs(y(p.open)-y(p.close))));
             });
             if (hover) {
-                candleCtx.strokeStyle='#64748b'; candleCtx.setLineDash([3,3]); candleCtx.beginPath(); candleCtx.moveTo(geometry.x(hover.t),16); candleCtx.lineTo(geometry.x(hover.t),h-28); candleCtx.stroke(); candleCtx.setLineDash([]);
+                candleCtx.strokeStyle='#000'; candleCtx.setLineDash([3,3]); candleCtx.beginPath(); candleCtx.moveTo(geometry.x(hover.t),16); candleCtx.lineTo(geometry.x(hover.t),h-28); candleCtx.stroke(); candleCtx.setLineDash([]);
                 const point = visible.find(p => p.t === hover.t);
-                if (point) drawHoverValue(candleCtx, candleGeometry, point.close, point.close.toFixed(2), '#339af0');
+                if (point) drawHoverValue(candleCtx, candleGeometry, point.close, point.close.toFixed(2), '#000');
                 candleTip.hidden = true;
             } else candleTip.hidden = true;
             drawDrag(candleCtx, candleGeometry);
@@ -227,7 +227,7 @@
                     points = (Array.isArray(data.series) ? data.series : []).filter(p => /^\d{4}-\d{2}-\d{2}$/.test(p.date) && p.adr != null && Number.isFinite(Number(p.adr))).map(p => ({ t: Date.parse(`${p.date}T09:00:00+09:00`), adr: Number(p.adr) })).sort((a,b) => a.t-b.t);
                     closing = null; hover = null; tooltip.hidden = true;
                     panel.querySelector('h2').textContent = 'ADR';
-                    output.textContent = points.length ? `${points.at(-1).adr.toFixed(2)}%` : '—';
+                    output.textContent = points.length ? `${points.at(-1).adr.toFixed(1)}%` : '—';
                     canvas.setAttribute('aria-label', `${market.toUpperCase()} ADR 일별 ${range.toUpperCase()} 차트`);
                     status.textContent = points.length ? `${dateKey(points[0].t)} ~ ${dateKey(points.at(-1).t)}` : '일별 데이터 없음';
                     draw(); loadCandles(); return;
@@ -269,7 +269,7 @@
                     if (latest) latestByMarket.set(market, { t: latest.t, day: chartDay, points, closing });
                 }
                 if (chartDay === day && points.length) { try { localStorage.setItem(key, JSON.stringify(points)); } catch (_) { /* Storage is optional. */ } }
-                output.textContent = points.length ? `${points.at(-1).adr.toFixed(2)}%` : closing ? `${closing.adr.toFixed(2)}%` : '—';
+                output.textContent = points.length ? `${points.at(-1).adr.toFixed(1)}%` : closing ? `${closing.adr.toFixed(1)}%` : '—';
                 const session = chartDay < day ? '직전 거래일 · 당일 데이터 대기' : data.marketStatus === 'open' ? '장중' : '장 마감';
                 panel.querySelector('h2').textContent = 'ADR';
                 canvas.setAttribute('aria-label', `${chartDay} ADR ${closing ? '마감값 · 분봉 기록 없음' : '분봉 차트'}`);

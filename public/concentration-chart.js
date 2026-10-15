@@ -217,9 +217,9 @@
         }
         function drawHoverValue(context, plot, y, value, label) {
             const py=y(value), badgeY=Math.max(plot.top+10,Math.min(plot.bottom-10,py));
-            context.save();context.lineWidth=1;context.strokeStyle='#339af0';context.setLineDash([3,3]);
+            context.save();context.lineWidth=1;context.strokeStyle='#000';context.setLineDash([3,3]);
             context.beginPath();context.moveTo(plot.left,py);context.lineTo(plot.right,py);context.stroke();context.setLineDash([]);
-            context.font='bold 11px Arial';context.fillStyle='#339af0';
+            context.font='bold 11px Arial';context.fillStyle='#000';
             const badgeWidth=context.measureText(label).width+12,badgeX=Math.max(0,Math.min(plot.right,context.canvas.clientWidth-badgeWidth));
             context.fillRect(badgeX,badgeY-10,badgeWidth,20);
             context.fillStyle='#fff';context.textAlign='left';context.textBaseline='middle';context.fillText(label,badgeX+6,badgeY);context.restore();
@@ -267,7 +267,7 @@
                 candleCtx.fillRect(x(i) - bodyWidth / 2, bodyTop, bodyWidth, Math.max(1, Math.abs(y(point.stock_open) - y(point.stock_price))));
             });
             if (state.hover != null && points[state.hover]) {
-                candleCtx.beginPath(); candleCtx.setLineDash([3,3]); candleCtx.strokeStyle = '#94a3b8';
+                candleCtx.beginPath(); candleCtx.setLineDash([3,3]); candleCtx.strokeStyle = '#000';
                 candleCtx.moveTo(x(state.hover), top); candleCtx.lineTo(x(state.hover), bottom); candleCtx.stroke(); candleCtx.setLineDash([]);
                 const point=points[state.hover];
                 if(validCandle(point))drawHoverValue(candleCtx,{...plot,top,bottom},y,point.stock_price,point.stock_price.toLocaleString('ko-KR'));
@@ -422,12 +422,12 @@
                     }
                 }
                 if (state.hover != null && points[state.hover]) {
-                    ctx.beginPath(); ctx.setLineDash([3, 3]); ctx.strokeStyle = '#94a3b8';
+                    ctx.beginPath(); ctx.setLineDash([3, 3]); ctx.strokeStyle = '#000';
                     ctx.moveTo(x(state.hover), plot.top); ctx.lineTo(x(state.hover), plot.bottom); ctx.stroke(); ctx.setLineDash([]);
                     const point = points[state.hover];
                     if (Number.isFinite(point.value)) {
                         drawHoverValue(ctx,plot,y,point.value,`${point.value.toFixed(2)}%`);
-                        ctx.fillStyle = point.time.slice(0,8) === today ? '#f97316' : '#339af0';
+                        ctx.fillStyle = '#000';
                         ctx.beginPath(); ctx.arc(x(state.hover), y(point.value), 4, 0, Math.PI * 2); ctx.fill();
                     }
                 }
@@ -441,7 +441,7 @@
             drawCandles(points, plot, x, ratio, xLabels, boundaries);
             const current = state.points.at(-1);
             currentRate.textContent = Number.isFinite(current?.value)
-                ? `${current.value.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}%` : '-';
+                ? `${current.value.toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%` : '-';
             const first = points[0], last = points.at(-1);
             const periodDate = time => `${time.slice(0,4)}-${time.slice(4,6)}-${time.slice(6,8)}`;
             document.getElementById('concentrationPeriod').textContent = first

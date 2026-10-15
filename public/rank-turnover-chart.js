@@ -70,7 +70,7 @@
             ctx.globalAlpha=1; ctx.lineWidth=1;
             geometry = {visible,x,left,right,top,bottom};
             drawDrag(ctx, top, bottom);
-            if (hover && indices.has(hover)) {ctx.strokeStyle=muted;ctx.setLineDash([3,3]);ctx.beginPath();ctx.moveTo(x(hover),top);ctx.lineTo(x(hover),bottom);ctx.stroke();ctx.setLineDash([]);}
+            if (hover && indices.has(hover)) {ctx.strokeStyle='#000';ctx.setLineDash([3,3]);ctx.beginPath();ctx.moveTo(x(hover),top);ctx.lineTo(x(hover),bottom);ctx.stroke();ctx.setLineDash([]);}
             if (hover && indices.has(hover)) {
                 for (const m of ['kospi','kosdaq']) {
                     const point=rows[m].find(p=>p.t===hover);
@@ -80,7 +80,7 @@
             panel.querySelectorAll('[data-market]').forEach(el => {el.style.color=colors[el.dataset.market];el.querySelector('span').style.opacity='1';});
             panel.querySelectorAll('[data-latest]').forEach(el => {
                 const point=data[el.dataset.latest].filter(p=>dateKey(p.t)===dateKey(Date.now())&&Number.isFinite(p.market_turnover)).at(-1);
-                el.textContent=point?`${(point.market_turnover/1e12).toFixed(2)}조원`:'—';
+                el.textContent=point?`${(point.market_turnover/1e12).toFixed(1)}조원`:'—';
             });
             if (candleArea.hidden) return;
             const size=surface(candle,cc); axis(cc,size.h);
@@ -91,7 +91,7 @@
             for(let i=0;i<5;i++){const v=lo+(hi-lo)*i/4;cc.fillStyle=muted;cc.textAlign='right';cc.fillText(v.toFixed(2),size.w-36,cy(v)+4);cc.strokeStyle=border;cc.setLineDash([3,5]);cc.beginPath();cc.moveTo(left,cy(v));cc.lineTo(right,cy(v));cc.stroke();}
             cc.setLineDash([]);
             selected.forEach(p=>{cc.fillStyle=cc.strokeStyle=p.close>=p.open?'#e11d48':'#2563eb';cc.beginPath();cc.moveTo(x(p.t),cy(p.high));cc.lineTo(x(p.t),cy(p.low));cc.stroke();cc.fillRect(x(p.t)-cw/2,Math.min(cy(p.open),cy(p.close)),cw,Math.max(1,Math.abs(cy(p.open)-cy(p.close))));});
-            if(hover&&indices.has(hover)){cc.strokeStyle=muted;cc.setLineDash([3,3]);cc.beginPath();cc.moveTo(x(hover),16);cc.lineTo(x(hover),size.h-28);cc.stroke();cc.setLineDash([]);}
+            if(hover&&indices.has(hover)){cc.strokeStyle='#000';cc.setLineDash([3,3]);cc.beginPath();cc.moveTo(x(hover),16);cc.lineTo(x(hover),size.h-28);cc.stroke();cc.setLineDash([]);}
             const hovered=selected.find(p=>p.t===hover);
             if(hovered)drawHoverValue(cc,{left,right,top:16,bottom:size.h-28,y:cy},hovered.close,hovered.close.toFixed(2),colors[select.value]);
             drawDrag(cc,16,size.h-28);

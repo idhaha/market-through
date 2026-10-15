@@ -71,7 +71,7 @@
                     }
                     dirty = true; return;
                 }
-                if (command.type === 'refresh') { if (window.loadTransactionRank) window.loadTransactionRank(); else window.refreshConcentrationChart?.(); return; }
+                if (command.type === 'refresh') { if (window.loadTransactionRank) await window.loadTransactionRank({ refreshMarketCharts: false, reportStatus: true }); else window.refreshConcentrationChart?.(); return; }
                 if (command.type === 'display') {
                     window.applyConcentrationDisplaySettings?.({ ...window.getConcentrationDisplaySettings(), candleOpen: command.candleOpen === true });
                     displayCommandId = command.id;

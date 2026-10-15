@@ -9,7 +9,7 @@ const { promisify } = require('node:util');
 
 (async () => {
     const app = express(); app.use(express.json({ limit: '5mb' }));
-    let clock = Date.now(), ticket, queries = [];
+    let clock = Date.now(), ticket, queries = [], transactionQueries = 0;
     app.use((req, res, next) => {
         req.authUser = { email: req.get('X-Test-User') || 'owner@test' };
         if (req.path === '/api/rank-independent' && req.method === 'POST') {
@@ -21,7 +21,15 @@ const { promisify } = require('node:util');
     const points = Array.from({ length: 40 }, (_, index) => ({ time: '202608' + String(index + 1).padStart(2, '0'), value: index + 10, stock_price: 1000 }));
     app.post('/api/concentration-chart', async (req, res) => {
         queries.push(req.body); await new Promise(resolve => setTimeout(resolve, 60));
-        res.json({ success: true, points, market: 'K', cursor: 'cursor', has_more: true, debug_five_bars: { stock: [], market: [], fetched_at: new Date().toISOString() } });
+        res.json({ success: true, points: points.map(point => ({ ...point, value: point.value + transactionQueries })), market: 'K', cursor: 'cursor', has_more: true, debug_five_bars: { stock: [], market: [], fetched_at: new Date().toISOString() } });
+    });
+    app.get('/api/transaction_rank', async (req, res) => {
+        transactionQueries++;
+        await new Promise(resolve => setTimeout(resolve, 800));
+        res.json({ success: true, items: [
+            { stk_cd: '000001', stk_nm: '첫번째', mkt_type: 'K', trde_amt: '123456', concentration_rate: 42 },
+            { stk_cd: '000002', stk_nm: '두번째', mkt_type: 'K', trde_amt: '654321', concentration_rate: 21 }
+        ] });
     });
     app.get('/api/concentration-stock', (req, res) => res.json({ success: true, stock: { code: '000003', name: '세번째', market: 'K' } }));
     app.get('/main', (req, res) => res.type('html').send(fs.readFileSync('public/rank-independent.html', 'utf8')
@@ -32,6 +40,36 @@ const { promisify } = require('node:util');
     // Capture protocol launches; a real external-app prompt blocks headless input.
     app.get('/rank-independent-main.js', (req, res) => res.type('js').send(fs.readFileSync('public/rank-independent-main.js', 'utf8')
         .replace("location.href = 'marketthrough://open?url=' + encodeURIComponent(url);", "window.testLaunchUrl = 'marketthrough://open?url=' + encodeURIComponent(url);")));
+    async function verifyIndependentRefresh(main, child) {
+        // Exercise the production table loader through the real peer refresh command.
+        const appSource = fs.readFileSync('public/app.js', 'utf8');
+        const loader = appSource.slice(appSource.indexOf('let transactionRankRequest = 0;'), appSource.indexOf('/**', appSource.indexOf('let transactionRankRequest = 0;')));
+        await main.addScriptTag({ content: `
+            const isCapturing = false, PERM_TAB_ID = 'tab_rank';
+            const mrktTpSelect = document.getElementById('mrktTp'), stexTpSelect = document.getElementById('stexTp');
+            const statusText = document.getElementById('statusText');
+            const transactionBody = document.getElementById('transactionBody'), lastUpdate = document.getElementById('lastUpdate');
+            const formatTime = date => date.toISOString(), formatNumber = value => String(value);
+            const getPriceClass = () => '', formatChangeRate = value => String(value);
+            ${appSource.slice(appSource.indexOf('function updateStatus('), appSource.indexOf('/**', appSource.indexOf('function updateStatus(')))}
+            window.marketRefreshes = 0;
+            window.refreshRankAdrChart = window.refreshRankTurnoverChart = () => window.marketRefreshes++;
+            ${loader}
+        ` });
+        const chartQueriesBeforeRefresh = queries.length;
+        await child.locator('#rankIndependentRefresh').click();
+        await child.waitForFunction(() => document.getElementById('independentStatusText').textContent === '로딩 중');
+        await child.waitForFunction(() => document.getElementById('transactionBody').textContent.includes('123456'));
+        await child.waitForFunction(() => getRankChartState().points.at(-1)?.value === 50 && !getRankChartState().busy);
+        assert.equal(transactionQueries, 1, 'Independent refresh must query the transaction table');
+        assert.ok(queries.length > chartQueriesBeforeRefresh, 'Independent refresh must query the concentration chart');
+        assert.equal(await main.evaluate(() => window.marketRefreshes), 0, 'Independent refresh must skip ADR and turnover charts');
+        assert.equal(await child.locator('#independentStatusText').textContent(), '완료');
+        assert.notEqual(await child.locator('#independentLastUpdate').textContent(), '2026/10/12 11:54:53');
+        await main.evaluate(() => loadTransactionRank());
+        assert.equal(await main.evaluate(() => window.marketRefreshes), 2, 'Main refresh must keep ADR and turnover chart refreshes');
+        await main.waitForFunction(() => !getRankChartState().busy);
+    }
     app.use(express.static('public'));
     const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve));
     const origin = `http://127.0.0.1:${server.address().port}`;
@@ -82,6 +120,12 @@ const { promisify } = require('node:util');
         assert.equal(await child.locator('#independentLastUpdate').textContent(), '2026/10/12 11:54:53');
         await main.evaluate(() => { document.getElementById('statusText').textContent = '완료'; });
         await child.waitForFunction(() => document.getElementById('independentStatusText').textContent === '완료');
+        if (process.env.RANK_REFRESH_ONLY === '1') {
+            await verifyIndependentRefresh(main, child);
+            assert.deepEqual(errors, []);
+            console.log('PASS independent refresh: table, concentration, status; no ADR/turnover; main refresh preserved');
+            return;
+        }
         const heights = async () => child.evaluate(() => ({ table: document.getElementById('transactionBody').clientHeight, chart: document.querySelector('.concentration-chart-area').clientHeight,
             row: document.querySelector('#transactionBody tr').getBoundingClientRect().height, font: parseFloat(getComputedStyle(document.querySelector('#transactionBody td')).fontSize), padding: parseFloat(getComputedStyle(document.querySelector('#transactionBody td')).paddingTop) }));
         const beforeResize = await heights();
@@ -203,6 +247,7 @@ const { promisify } = require('node:util');
         await child.locator('#rankStockPinned').uncheck();
         await child.waitForFunction(() => getRankChartState().selection.code === '000001');
         assert.equal(await child.locator('#concentrationStockName').getAttribute('readonly'), null);
+        await verifyIndependentRefresh(main, child);
         // Native close notification enables the original button and leaves original content intact.
         await json(`/api/rank-independent/peer/${ticket.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ticket.token}` }, body: '{"close":true}' });
         await main.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent === '독립창' && !button.disabled));

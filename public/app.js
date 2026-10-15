@@ -744,10 +744,13 @@ function renderEfriendTable(stocks) {
  * Transaction Rank 데이터 로드
  */
 let transactionRankRequest = 0;
-async function loadTransactionRank() {
+async function loadTransactionRank({ refreshMarketCharts = true, reportStatus = false } = {}) {
     if (isCapturing) { console.log('[Capture] loadTransactionRank() skipped (isCapturing)'); return; }
-    window.refreshRankAdrChart?.();
-    window.refreshRankTurnoverChart?.();
+    if (refreshMarketCharts) {
+        window.refreshRankAdrChart?.();
+        window.refreshRankTurnoverChart?.();
+    }
+    if (reportStatus) updateStatus('loading', '거래대금 조회 중...');
     const mrktTp = mrktTpSelect.value;
     const stexTp = stexTpSelect.value;
     const request = ++transactionRankRequest;
@@ -758,6 +761,13 @@ async function loadTransactionRank() {
         const response = await fetch(`/api/transaction_rank?mrkt_tp=${mrktTp}&stex_tp=${stexTp}`);
         const result = await response.json();
         if (request !== transactionRankRequest) return;
+
+        if (reportStatus) {
+            if (result.success) {
+                lastUpdate.textContent = formatTime(new Date());
+                updateStatus('success', '거래대금 조회 완료');
+            } else updateStatus('error', result.error || '거래대금 조회 실패');
+        }
 
         console.log("Transaction Rank Raw Result:", result);
 
@@ -816,6 +826,7 @@ async function loadTransactionRank() {
         }
     } catch (e) {
         if (request !== transactionRankRequest) return;
+        if (reportStatus) updateStatus('error', '거래대금 조회 실패');
         if (document.querySelector('.tab-content.active')?.id === PERM_TAB_ID) {
             console.error("Trans Rank Fetch Fail:", e);
             transactionBody.innerHTML = `<tr><td colspan="6" class="align-center error">통신 오류</td></tr>`;
