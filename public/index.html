@@ -9,10 +9,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=20261014_v73">
+    <link rel="stylesheet" href="style.css?v=20261016_v77">
     <script src="concentration-chart.js?v=20261015_v54" defer></script>
-    <script src="rank-adr-chart.js?v=20261015_v36" defer></script>
-    <script src="rank-turnover-chart.js?v=20261015_v23" defer></script>
+    <script src="rank-adr-chart.js?v=20261016_v38" defer></script>
+    <script src="rank-turnover-chart.js?v=20261016_v25" defer></script>
     <script src="rank-independent-main.js?v=20261015_v10" defer></script>
     <script src="us-links.js?v=20261010_v24" defer></script>
     <script src="app.js?v=20261015_v36" defer></script>
@@ -279,6 +279,7 @@
                 <div class="rank-chart-row">
                 <section class="panel concentration-chart-panel" id="concentrationChartPanel" aria-label="쏠림율 차트">
                     <div class="concentration-chart-header">
+                        <h2 id="concentrationChartTitle">쏠림율</h2>
                         <div class="concentration-stock-picker"><input role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="concentrationStockSuggestions" id="concentrationStockName" class="concentration-stock-input" type="text" placeholder="종목명 또는 코드" aria-label="차트 종목명 또는 종목코드 입력 후 Enter" autocomplete="off"><div id="concentrationStockSuggestions" role="listbox" hidden></div></div>
                         <span id="concentrationMarket" class="concentration-market"></span>
                         <div class="concentration-timeframe-row">
@@ -336,8 +337,8 @@
                 </section>
                 <section class="panel rank-adr-panel" id="rankAdrChartPanel" aria-label="당일 ADR 차트">
                     <div class="concentration-chart-header">
-                        <select class="interval-select" aria-label="ADR 시장 선택"><option value="kospi">KOSPI</option><option value="kosdaq">KOSDAQ</option></select>
-                        <h2>ADR</h2><output>—</output>
+                        <h2>ADR</h2>
+                        <div class="rank-market-choice" role="radiogroup" aria-label="ADR 시장 선택"><label><input type="radio" name="rank-adr-market" value="kospi" checked>KOSPI</label><label><input type="radio" name="rank-adr-market" value="kosdaq">KOSDAQ</label></div><output>—</output>
                     </div>
                     <div class="rank-adr-area"><canvas role="img" aria-label="당일 ADR 분봉 차트"></canvas><div class="concentration-tooltip" hidden></div></div>
                     <p role="status" class="rank-adr-status">당일 데이터 대기 중</p>

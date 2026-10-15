@@ -10,10 +10,11 @@
         if (!panel) {
         panel = document.createElement('section');
         panel.className = 'panel rank-adr-panel';
-        panel.innerHTML = `<div class="concentration-chart-header"><select class="interval-select" aria-label="ADR 시장 선택"><option value="kospi">KOSPI</option><option value="kosdaq">KOSDAQ</option></select><h2>ADR</h2><output></output></div><div class="rank-adr-area"><canvas role="img" aria-label="당일 ADR 분봉 차트"></canvas><div class="concentration-tooltip" hidden></div></div><p role="status" class="rank-adr-status"></p>`;
+        panel.innerHTML = `<div class="concentration-chart-header"><h2>ADR</h2><div class="rank-market-choice" role="radiogroup" aria-label="ADR 시장 선택"><label><input type="radio" name="rank-adr-market" value="kospi" checked>KOSPI</label><label><input type="radio" name="rank-adr-market" value="kosdaq">KOSDAQ</label></div><output></output></div><div class="rank-adr-area"><canvas role="img" aria-label="당일 ADR 분봉 차트"></canvas><div class="concentration-tooltip" hidden></div></div><p role="status" class="rank-adr-status"></p>`;
         row.append(panel);
         }
-        const select = panel.querySelector('select'), canvas = panel.querySelector('canvas');
+        let selectedMarket = 'kospi';
+        const canvas = panel.querySelector('canvas');
         const ctx = canvas.getContext('2d'), status = panel.querySelector('[role="status"]');
         const output = panel.querySelector('output'), tooltip = panel.querySelector('.concentration-tooltip');
         tooltip.className = 'chart-hover-info';
@@ -206,7 +207,7 @@
             const to = (mode === 'day' && points.length ? dateKey(points.at(-1).t) : chartDay).replaceAll('-','');
             candleStatus.textContent = '시장 지수 조회 중';
             try {
-                const response = await fetch(`/api/adr/candles?market=${select.value}&mode=${mode}&from=${from}&to=${to}`, { signal: current.signal });
+                const response = await fetch(`/api/adr/candles?market=${selectedMarket}&mode=${mode}&from=${from}&to=${to}`, { signal: current.signal });
                 const data = await response.json(); if (!response.ok) throw new Error(data.error || '캔들 조회 실패');
                 if (current !== candleController) return;
                 candles = Array.isArray(data.points) ? data.points : [];
@@ -217,7 +218,7 @@
             if (drag) { refreshPending=true; return; }
             refreshPending=false;
             controller?.abort(); controller = new AbortController();
-            const current = controller, market = select.value, day = dateKey(Date.now());
+            const current = controller, market = selectedMarket, day = dateKey(Date.now());
             const key = `rank-adr:${market}:${day}`;
             try {
                 if (mode === 'day') {
@@ -279,7 +280,7 @@
             } catch (error) { if (error.name !== 'AbortError') status.textContent = 'ADR 조회 실패 · 다음 Rank 갱신 때 재시도'; }
         };
         function changeView() { controller?.abort(); candleController?.abort(); viewStart=0; viewCount=null; drag=null; points = []; closing = null; hover = null; candles = []; tooltip.hidden = true; candleTip.hidden = true; output.textContent = '—'; draw(); window.refreshRankAdrChart(); }
-        select.addEventListener('change', () => { chartDay = dateKey(Date.now()); changeView(); });
+        panel.querySelector('.rank-market-choice').addEventListener('change', event => { selectedMarket = event.target.value; chartDay = dateKey(Date.now()); changeView(); });
         controls.querySelectorAll('[data-adr-mode]').forEach(button => button.addEventListener('click', () => {
             mode = button.dataset.adrMode;
             controls.querySelectorAll('[data-adr-mode]').forEach(b => b.classList.toggle('active', b === button));

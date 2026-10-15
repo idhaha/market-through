@@ -160,7 +160,8 @@
         const chartBody = document.createElement('div'); chartBody.id = 'independentChartContent';
         chartBody.append(...chart.childNodes); chart.append(chartBody);
         const chartHeading = document.createElement('div'); chartHeading.className = 'independent-chart-heading';
-        const chartTitle = document.createElement('h2'); chartTitle.textContent = '쏠림율차트'; chartHeading.append(chartTitle); chart.prepend(chartHeading);
+        const chartTitle = document.getElementById('concentrationChartTitle');
+        chartHeading.append(chartTitle, chart.querySelector('.concentration-stock-picker'), document.getElementById('concentrationMarket')); chart.prepend(chartHeading);
         collapseControl(chart, chartTitle, [chartBody]);
         chartHeading.append(pin.closest('label'));
         function apply(snapshot) {

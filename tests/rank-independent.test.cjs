@@ -153,10 +153,10 @@ const { promisify } = require('node:util');
         assert.match(await child.evaluate(() => window.foldMessages[0]), /^resize-window:-\d+,0,/);
         assert.equal(await child.locator('#transactionTable').isVisible(), false);
         assert.equal(await main.locator('#transactionTable').isVisible(), true);
-        await child.getByRole('button', { name: '쏠림율차트 접기', exact: true }).click();
+        await child.getByRole('button', { name: '쏠림율 접기', exact: true }).click();
         assert.equal(await child.locator('#concentrationCanvas').isVisible(), false);
         await child.getByRole('button', { name: '거래대금 상위 [키움] 펼치기', exact: true }).click();
-        await child.getByRole('button', { name: '쏠림율차트 펼치기', exact: true }).click();
+        await child.getByRole('button', { name: '쏠림율 펼치기', exact: true }).click();
         assert.equal(await child.locator('#concentrationCanvas').isVisible(), true);
         assert.equal(queries.length, collapseQueries, 'Panel folding must not issue market queries');
         assert.equal(await child.evaluate(() => location.hash), '');
@@ -206,12 +206,12 @@ const { promisify } = require('node:util');
         testWindowMaxHeight = 1100;
         await main.locator('#concentrationCandleToggle').click();
         await child.waitForFunction(() => !document.getElementById('concentrationCandleArea').hidden);
-        await child.getByRole('button', { name: '쏠림율차트 접기', exact: true }).click();
-        const chartExpand = child.getByRole('button', { name: '쏠림율차트 펼치기', exact: true });
+        await child.getByRole('button', { name: '쏠림율 접기', exact: true }).click();
+        const chartExpand = child.getByRole('button', { name: '쏠림율 펼치기', exact: true });
         await child.waitForFunction(() => { const r = document.querySelector('#concentrationChartPanel .independent-collapse').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; });
         assert.ok(await chartExpand.evaluate(el => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }), 'Chart expand control must remain inside folded window');
         await child.getByRole('button', { name: '거래대금 상위 [키움] 접기', exact: true }).click();
-        for (const name of ['거래대금 상위 [키움] 펼치기', '쏠림율차트 펼치기']) {
+        for (const name of ['거래대금 상위 [키움] 펼치기', '쏠림율 펼치기']) {
             const button = child.getByRole('button', { name, exact: true });
             await child.waitForFunction(() => [...document.querySelectorAll('.independent-collapse')].every(el => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }));
             assert.equal(await button.isVisible(), true);

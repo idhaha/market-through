@@ -19,6 +19,20 @@ const fs=require('node:fs'), assert=require('node:assert/strict'), express=requi
  await page.evaluate(()=>{applyRankChartState({selection:{code:'005930',name:'삼성전자'},mode:'day',interval:5,points:Array.from({length:10},(_,i)=>({time:'202610'+String(i+1).padStart(2,'0'),value:42.85,stock_open:100000,stock_high:120000,stock_low:90000,stock_price:110000.52})),busy:false});applyConcentrationDisplaySettings({mode:'day',interval:5,candleOpen:true});});
  await page.waitForFunction(()=>axisLabels.filter(p=>p.canvas?.includes('캔들')&&p.x===p.width-4).length>=10);
  assert.equal(await page.locator('#concentrationDebugToggle, #concentrationFiveDebug').count(),0);
+ await page.evaluate(()=>{document.getElementById('concentrationMarket').textContent='코스피';});
+ const baselines=await page.evaluate(()=>{
+   const groups=[['#concentrationChartTitle','.concentration-stock-picker','#concentrationMarket'],['#rankAdrChartPanel h2','#rankAdrChartPanel .rank-market-choice label'],['#rankTurnoverChartPanel h2','#rankTurnoverChartPanel .rank-market-choice label']];
+   return groups.map(selectors=>selectors.map(selector=>{const node=document.querySelector(selector), probe=document.createElement('span');probe.style.cssText='display:inline-block;width:0;height:0;padding:0;margin:0;border:0;vertical-align:baseline';const previousWhiteSpace=node.style.whiteSpace;node.style.whiteSpace='nowrap';node.append(probe);const baseline=probe.getBoundingClientRect().top;probe.remove();node.style.whiteSpace=previousWhiteSpace;return baseline;}));
+ });
+ assert.ok(baselines.every(group=>Math.max(...group)-Math.min(...group)<1),JSON.stringify(baselines));
+ assert.equal(await page.locator('#rankAdrChartPanel select, #rankTurnoverChartPanel select').count(),0);
+ await page.locator('#rankAdrChartPanel input[value="kosdaq"]').check();
+ assert.equal(await page.locator('#rankTurnoverChartPanel input[value="kospi"]').isChecked(),true);
+ await page.waitForFunction(()=>document.querySelector('#rankAdrChartPanel canvas').getAttribute('aria-label').includes('KOSDAQ'));
+ await page.locator('#rankTurnoverChartPanel input[value="kosdaq"]').check();
+ await page.locator('#rankAdrChartPanel input[value="kospi"]').check();
+ assert.equal(await page.locator('#rankTurnoverChartPanel input[value="kosdaq"]').isChecked(),true);
+
  const labels=await page.evaluate(()=>axisLabels.filter(p=>(p.canvas==='concentrationCandleCanvas'||p.canvas?.includes('캔들'))&&p.x===p.width-4));
  assert.ok(labels.length>=15);assert.ok(labels.every(p=>!p.text.includes('.')),JSON.stringify(labels));
  const bounds=await page.evaluate(()=>[...document.querySelectorAll('.rank-chart-row>.panel')].map(panel=>{const canvas=panel.querySelector('canvas'),plus=panel.querySelector('#concentrationZoomIn, .rank-adr-zoom .concentration-controls button:last-child');return {id:panel.id,canvas:canvas.getBoundingClientRect().right,plus:plus.getBoundingClientRect().right};}));

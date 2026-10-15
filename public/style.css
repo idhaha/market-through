@@ -70,7 +70,7 @@
 .concentration-chart-panel { --concentration-chart-height: 280px; margin-top: 20px; width: var(--concentration-base-width, 570px); max-width: calc(100vw - 50px); }
 .rank-chart-row > .concentration-chart-panel { width: 100%; max-width: none; }
 .concentration-chart-header { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
-.concentration-chart-header h2 { font-size: 17px; min-width: 140px; }
+.concentration-chart-header h2 { margin: 0; font-size: 17px; min-width: 0; flex-shrink: 0; color: var(--text-primary); }
 .concentration-market { color: var(--text-muted); font-size: 12px; width: 44px; flex: 0 0 44px; }
 .concentration-controls { display: flex; gap: 3px; }
 .concentration-controls button, .concentration-icon-button {
@@ -101,7 +101,7 @@
 @media (max-width: 700px) {
     .concentration-chart-panel { padding: 12px; }
     .concentration-chart-header { gap: 6px; }
-    .concentration-chart-header h2 { min-width: 120px; }
+    .concentration-chart-header h2 { min-width: 0; }
     .concentration-chart-header .concentration-controls button { min-width: 26px; padding: 0 5px; }
     .concentration-chart-footer { gap: 8px; }
 }
@@ -2480,7 +2480,7 @@ body.modal-open {
  .concentration-chart-area { flex: none; }
 }
 
-.concentration-stock-input { width: 160px; min-width: 120px; font-size: 17px; font-weight: 700; color: var(--text-primary); background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 4px 6px; }
+.concentration-stock-input { width: 160px; min-width: 120px; font-size: 17px; font-weight: 600; color: #1d4ed8; background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 4px 6px; }
 .concentration-stock-input:hover { border-color: var(--border-color); }
 .concentration-stock-input:focus { outline: 2px solid #ea580c; }
 
@@ -2610,3 +2610,14 @@ body.modal-open {
 .us-glossary-list input, .us-glossary-list textarea { width: 100%; box-sizing: border-box; padding: 8px; margin-bottom: 8px; border: 1px solid #cbd5e1; border-radius: 4px; font: inherit; }
 .us-glossary-edit-actions { display: flex; gap: 8px; }
 .us-glossary-edit-actions button { padding: 6px 12px; border: 1px solid #cbd5e1; border-radius: 4px; background: #fff; cursor: pointer; }
+
+/* Align actual text baselines, including native input text and radio labels. */
+.concentration-chart-header { align-items: baseline; }
+.concentration-chart-header h2, #concentrationChartTitle { display: block; height: 32px; margin: 0; padding: 0; line-height: 32px; font-family: inherit; }
+.concentration-stock-picker { display: block; height: 32px; line-height: 32px; }
+.concentration-stock-input { box-sizing: border-box; height: 32px; margin: 0; padding: 0 6px; border: 0; line-height: 32px; font-family: inherit; vertical-align: baseline; }
+.concentration-market { display: block; height: 32px; margin: 0; padding: 0; line-height: 32px; font-family: inherit; }
+.rank-market-choice { display: block; min-height: 32px; line-height: 32px; }
+.rank-market-choice label { display: inline-block; margin: 0 12px 0 0; font-size: 13px; line-height: 32px; white-space: nowrap; cursor: pointer; }
+.rank-market-choice label:last-child { margin-right: 0; }
+.rank-market-choice input { width: 14px; height: 14px; margin: 0 4px 0 0; vertical-align: -2px; accent-color: var(--accent-primary); }
