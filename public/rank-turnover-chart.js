@@ -30,8 +30,8 @@
             const rows = Object.fromEntries(Object.keys(data).map(m => [m,data[m].filter(p => indices.has(p.t))]));
             const selected = rows[select.value];
             const highestCandle = selected.reduce((highest, point) => Math.max(highest, Number(point.high) || 0), 0);
-            const candleAxisWidth = candleArea.hidden || !selected.length ? 0 : ctx.measureText(highestCandle.toFixed(2)).width;
-            const right = w - Math.max(70, 36 + candleAxisWidth + 12);
+            const candleAxisWidth = candleArea.hidden || !selected.length ? 0 : ctx.measureText(Math.round(highestCandle).toLocaleString('ko-KR')).width;
+            const right = w - Math.max(58, candleAxisWidth + 12);
             if (right <= left || bottom <= top) return;
             const x = t => left + indices.get(t)/Math.max(1,n-1)*(right-left);
             const values = Object.values(rows).flat().filter(p => Number.isFinite(p.market_turnover)).map(p => p.market_turnover/1e12);
@@ -39,7 +39,7 @@
             const max = Math.max(10,Math.ceil(Math.max(0,...values,...benchmarks)/10)*10), y = v => bottom-v/max*(bottom-top);
             const style = getComputedStyle(panel), muted = style.getPropertyValue('--text-muted').trim(), border = '#d6dbe1';
             ctx.textAlign = 'left'; ctx.fillStyle = muted;
-            for (let v=0;v<=max;v+=10) { ctx.strokeStyle=border; ctx.setLineDash([3,5]); ctx.beginPath(); ctx.moveTo(left,y(v)); ctx.lineTo(right,y(v)); ctx.stroke(); ctx.textAlign='right'; ctx.fillText(`${v}조`,w-36,y(v)+4); }
+            for (let v=0;v<=max;v+=10) { ctx.strokeStyle=border; ctx.setLineDash([3,5]); ctx.beginPath(); ctx.moveTo(left,y(v)); ctx.lineTo(right,y(v)); ctx.stroke(); ctx.textAlign='right'; ctx.fillText(`${v}조`,w-4,y(v)+4); }
             ctx.setLineDash([]);
             if (mode === 'minute' && Number.isFinite(previous[select.value])) {
                 const benchmark = previous[select.value]/1e12;
@@ -88,12 +88,12 @@
             const lo=Math.min(...selected.map(p=>p.low)), hi=Math.max(...selected.map(p=>p.high)), margin=Math.max((hi-lo)*.1,hi*.001);
             const cy=v=>size.h-28-(v-lo+margin)/(hi-lo+2*margin)*(size.h-44), cw=Math.max(1,Math.min(8,(right-left)/Math.max(1,n)*.7));
             cc.textAlign='left';
-            for(let i=0;i<5;i++){const v=lo+(hi-lo)*i/4;cc.fillStyle=muted;cc.textAlign='right';cc.fillText(v.toFixed(2),size.w-36,cy(v)+4);cc.strokeStyle=border;cc.setLineDash([3,5]);cc.beginPath();cc.moveTo(left,cy(v));cc.lineTo(right,cy(v));cc.stroke();}
+            for(let i=0;i<5;i++){const v=lo+(hi-lo)*i/4;cc.fillStyle=muted;cc.textAlign='right';cc.fillText(Math.round(v).toLocaleString('ko-KR'),size.w-4,cy(v)+4);cc.strokeStyle=border;cc.setLineDash([3,5]);cc.beginPath();cc.moveTo(left,cy(v));cc.lineTo(right,cy(v));cc.stroke();}
             cc.setLineDash([]);
             selected.forEach(p=>{cc.fillStyle=cc.strokeStyle=p.close>=p.open?'#e11d48':'#2563eb';cc.beginPath();cc.moveTo(x(p.t),cy(p.high));cc.lineTo(x(p.t),cy(p.low));cc.stroke();cc.fillRect(x(p.t)-cw/2,Math.min(cy(p.open),cy(p.close)),cw,Math.max(1,Math.abs(cy(p.open)-cy(p.close))));});
             if(hover&&indices.has(hover)){cc.strokeStyle='#000';cc.setLineDash([3,3]);cc.beginPath();cc.moveTo(x(hover),16);cc.lineTo(x(hover),size.h-28);cc.stroke();cc.setLineDash([]);}
             const hovered=selected.find(p=>p.t===hover);
-            if(hovered)drawHoverValue(cc,{left,right,top:16,bottom:size.h-28,y:cy},hovered.close,hovered.close.toFixed(2),colors[select.value]);
+            if(hovered)drawHoverValue(cc,{left,right,top:16,bottom:size.h-28,y:cy},hovered.close,Math.round(hovered.close).toLocaleString('ko-KR'),colors[select.value]);
             drawDrag(cc,16,size.h-28);
         }
         function drawHoverValue(context,graph,value,label,color) {

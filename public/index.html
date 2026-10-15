@@ -10,9 +10,9 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css?v=20261014_v73">
-    <script src="concentration-chart.js?v=20261015_v53" defer></script>
-    <script src="rank-adr-chart.js?v=20261015_v35" defer></script>
-    <script src="rank-turnover-chart.js?v=20261015_v22" defer></script>
+    <script src="concentration-chart.js?v=20261015_v54" defer></script>
+    <script src="rank-adr-chart.js?v=20261015_v36" defer></script>
+    <script src="rank-turnover-chart.js?v=20261015_v23" defer></script>
     <script src="rank-independent-main.js?v=20261015_v10" defer></script>
     <script src="us-links.js?v=20261010_v24" defer></script>
     <script src="app.js?v=20261015_v36" defer></script>
@@ -277,7 +277,7 @@
                     </div>
                 </div>
                 <div class="rank-chart-row">
-                <section class="panel concentration-chart-panel debug-collapsed" id="concentrationChartPanel" aria-label="쏠림율 차트">
+                <section class="panel concentration-chart-panel" id="concentrationChartPanel" aria-label="쏠림율 차트">
                     <div class="concentration-chart-header">
                         <div class="concentration-stock-picker"><input role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="concentrationStockSuggestions" id="concentrationStockName" class="concentration-stock-input" type="text" placeholder="종목명 또는 코드" aria-label="차트 종목명 또는 종목코드 입력 후 Enter" autocomplete="off"><div id="concentrationStockSuggestions" role="listbox" hidden></div></div>
                         <span id="concentrationMarket" class="concentration-market"></span>
@@ -315,9 +315,6 @@
                     <div class="concentration-chart-layout">
                       <div class="concentration-charts-column">
                       <div class="concentration-chart-area">
-                        <button id="concentrationDebugToggle" class="concentration-debug-toggle" type="button" aria-label="디버깅 펼치기" title="디버깅 펼치기" aria-expanded="false" aria-controls="concentrationFiveDebug">
-                          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
-                        </button>
                         <canvas id="concentrationCanvas" aria-label="시장 거래대금 대비 종목 거래대금 비율 차트, 세로축 자동 범위" role="img"></canvas>
                         <div id="concentrationTooltip" class="concentration-tooltip" hidden></div>
                         <p id="concentrationStatus" class="concentration-status" role="status" aria-live="polite"></p>
@@ -335,12 +332,6 @@
                         </div>
                     </div>
                       </div>
-                      <aside id="concentrationFiveDebug" class="concentration-five-debug" aria-label="5분봉 원본 비교" hidden>
-                        <strong>완료된 최근 5개 5분봉</strong>
-                        <div id="concentrationDebugStatus" role="status">종목을 선택하세요</div>
-                        <div id="concentrationDebugStock"></div>
-                        <div id="concentrationDebugMarket"></div>
-                      </aside>
                     </div>
                 </section>
                 <section class="panel rank-adr-panel" id="rankAdrChartPanel" aria-label="당일 ADR 차트">

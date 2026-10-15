@@ -30,8 +30,6 @@
         const zoomOut = document.getElementById('concentrationZoomOut');
         const tooltip = document.getElementById('concentrationTooltip');
         const currentRate = document.getElementById('concentrationCurrentRate');
-        const debugToggle = document.getElementById('concentrationDebugToggle');
-        const debugPanel = document.getElementById('concentrationFiveDebug');
         const chartArea = canvas.parentElement;
         tooltip.className = 'chart-hover-info';
         chartArea.before(tooltip);
@@ -45,99 +43,8 @@
         let sharedRevision = 0;
         let candleGeometry = null;
 
-        const debugStatus = document.getElementById('concentrationDebugStatus');
-        let debugBusy = false;
-        let debugCode = null;
-        let debugController = null;
-        let debugRequest = 0;
-        function renderDebugBars(id, title, bars) {
-            const container = document.getElementById(id);
-            container.replaceChildren();
-            const heading = document.createElement('strong'); heading.textContent = title; container.append(heading);
-            const table = document.createElement('table');
-            const header = table.createTHead().insertRow();
-            ['cntr_tm', 'cur_prc', 'trde_qty', '계산 거래대금(원)'].forEach(text => {
-                const cell = document.createElement('th'); cell.textContent = text; header.append(cell);
-            });
-            const body = table.createTBody();
-            (bars || []).forEach(bar => {
-                const row = body.insertRow();
-                const time = String(bar.cntr_tm || '');
-                const parse = value => {
-                    const text = String(value ?? '').replace(/,/g, '').trim();
-                    return /^[+-]?\d+$/.test(text) ? Number(text) : NaN;
-                };
-                const price = Math.abs(parse(bar.cur_prc)), volume = parse(bar.trde_qty);
-                const amount = id === 'concentrationDebugMarket' ? (price / 100) * (volume * 10000) : price * volume;
-                const formatted = Number.isFinite(amount) && volume >= 0 ? amount.toLocaleString('ko-KR', { maximumFractionDigits: 0 }) : null;
-                [`${time.slice(4,6)}/${time.slice(6,8)} ${time.slice(8,10)}:${time.slice(10,12)}`, bar.cur_prc, bar.trde_qty, formatted]
-                    .forEach(value => { row.insertCell().textContent = value == null ? '-' : String(value); });
-            });
-            container.append(table);
-        }
-        let debugClosingDate = null;
-        function debugSessionTime() {
-            const korea = new Date(Date.now() + 9 * 60 * 60 * 1000);
-            return { day: korea.getUTCDay(), date: korea.toISOString().slice(0, 10),
-                seconds: korea.getUTCHours() * 3600 + korea.getUTCMinutes() * 60 + korea.getUTCSeconds() };
-        }
-        async function refreshFiveDebug(closingTick = false) {
-            if (window.rankIndependentClient) return;
-            if (!state.selection || document.hidden || (typeof isCapturing !== 'undefined' && isCapturing)) return;
-            const session = debugSessionTime();
-            const weekday = session.day !== 0 && session.day !== 6;
-            const trading = weekday && session.seconds >= 9 * 3600 && session.seconds < 15 * 3600 + 30 * 60;
-            const finalBar = weekday && closingTick && session.seconds >= 15 * 3600 + 30 * 60
-                && session.seconds < 15 * 3600 + 31 * 60 && debugClosingDate !== session.date;
-            if (!trading && !finalBar) {
-                debugStatus.textContent = 'KRX 정규장 외 · 디버깅 갱신 중지';
-                return;
-            }
-            const selection = { ...state.selection };
-            if (debugBusy && debugCode === selection.code) return;
-            debugController?.abort();
-            const request = ++debugRequest;
-            const changed = debugCode !== selection.code;
-            debugCode = selection.code;
-            debugBusy = true;
-            const controller = new AbortController(); debugController = controller;
-            const timeout = setTimeout(() => controller.abort(), 60000);
-            if (changed) {
-                renderDebugBars('concentrationDebugStock', `${selection.name} · ka10080`, []);
-                renderDebugBars('concentrationDebugMarket', '해당 시장 · ka20005', []);
-            }
-            debugStatus.textContent = '5분봉 조회 중';
-            try {
-                const response = await fetch('/api/concentration-chart', { method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ code: selection.code, mode: 'minute', interval: 5, debug_five: true }), signal: controller.signal });
-                const result = await response.json();
-                if (request !== debugRequest || state.selection?.code !== selection.code) return;
-                if (!response.ok || !result.success) throw new Error(result.error || '조회 실패');
-                if (!result.debug_five_bars) throw new Error('5분봉 원본 응답이 없습니다. 서버 재시작을 확인하세요.');
-                renderDebugBars('concentrationDebugStock', `${selection.name} · ka10080 · 통합 거래소`, result.debug_five_bars.stock);
-                renderDebugBars('concentrationDebugMarket', result.market === 'Q' ? '코스닥 · ka20005 · 업종 101' : '코스피 · ka20005 · 업종 001', result.debug_five_bars.market);
-                if (finalBar) debugClosingDate = session.date;
-                const empty = !result.debug_five_bars.stock.length || !result.debug_five_bars.market.length;
-                debugStatus.textContent = `${empty ? '완료된 5분봉 데이터가 부족합니다. · ' : ''}조회 ${new Date(result.debug_five_bars.fetched_at).toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul', hour12: false })} · 시장과 동일 봉 시각${finalBar ? ' · KRX 종료, 갱신 중지' : ''}`;
-            } catch (error) {
-                if (request === debugRequest && error.name !== 'AbortError') debugStatus.textContent = `${error.message} · 다음 5분 마감에 재조회`;
-            } finally {
-                clearTimeout(timeout);
-                if (request === debugRequest) debugBusy = false;
-            }
-        }
-        function scheduleFiveDebug() {
-            if (window.rankIndependentClient) return;
-            const delay = 300000 - (Date.now() % 300000) + 2000;
-            setTimeout(async () => { await refreshFiveDebug(true); scheduleFiveDebug(); }, delay);
-        }
-        refreshFiveDebug();
-        scheduleFiveDebug();
-        document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshFiveDebug(); });
-
         window.getConcentrationDisplaySettings = () => ({
-            debugOpen: !debugPanel.hidden, candleOpen: !candleArea.hidden, mode: state.mode, interval: state.interval,
+            candleOpen: !candleArea.hidden, mode: state.mode, interval: state.interval,
             ...(window.getRankAdrCandleOpen ? { adrCandleOpen: window.getRankAdrCandleOpen() } : {}),
             ...(window.getRankTurnoverCandleOpen ? { turnoverCandleOpen: window.getRankTurnoverCandleOpen() } : {})
         });
@@ -148,12 +55,7 @@
             const interval = scopes.includes(Number(settings?.interval)) ? Number(settings.interval) : 1;
             const changed = state.mode !== mode || state.interval !== interval;
             state.mode = mode; state.interval = interval;
-            debugPanel.hidden = settings?.debugOpen !== true;
             candleArea.hidden = settings?.candleOpen !== true;
-            panel.classList.toggle('debug-collapsed', debugPanel.hidden);
-            debugToggle.setAttribute('aria-expanded', String(!debugPanel.hidden));
-            debugToggle.setAttribute('aria-label', debugPanel.hidden ? '디버깅 펼치기' : '디버깅 접기');
-            debugToggle.title = debugPanel.hidden ? '디버깅 펼치기' : '디버깅 접기';
             candleToggle.setAttribute('aria-expanded', String(!candleArea.hidden));
             candleToggle.textContent = '캔들차트';
             candleToggle.setAttribute('aria-label', candleArea.hidden ? '캔들차트 펼치기' : '캔들차트 접기');
@@ -166,14 +68,7 @@
         function saveDisplaySettings() {
             if (typeof saveAppData === 'function') saveAppData();
         }
-        debugToggle.addEventListener('click', () => {
-            const settings = window.getConcentrationDisplaySettings();
-            settings.debugOpen = !settings.debugOpen;
-            window.applyConcentrationDisplaySettings(settings);
-            saveDisplaySettings();
-        });
         function updateControls() {
-            debugToggle.disabled = state.busy;
             canvas.classList.toggle('is-loading', state.busy);
             candleCanvas.classList.toggle('is-loading', state.busy);
             if (state.busy || state.hover == null) candleTooltip.hidden = true;
@@ -248,8 +143,8 @@
                 const price = minimum + (maximum - minimum) * tick / 4;
                 candleCtx.beginPath(); candleCtx.setLineDash([3,5]); candleCtx.strokeStyle = '#d6dbe1';
                 candleCtx.moveTo(plot.left, y(price)); candleCtx.lineTo(plot.right, y(price)); candleCtx.stroke();
-                candleCtx.fillStyle = '#64748b'; candleCtx.textAlign = 'left';
-                candleCtx.fillText(Math.round(price).toLocaleString('ko-KR'), plot.right + 8, y(price));
+                candleCtx.fillStyle = '#64748b'; candleCtx.textAlign = 'right';
+                candleCtx.fillText(Math.round(price).toLocaleString('ko-KR'), width - 4, y(price));
             }
             candleCtx.setLineDash([]);
             boundaries.forEach(boundaryX => {
@@ -270,7 +165,7 @@
                 candleCtx.beginPath(); candleCtx.setLineDash([3,3]); candleCtx.strokeStyle = '#000';
                 candleCtx.moveTo(x(state.hover), top); candleCtx.lineTo(x(state.hover), bottom); candleCtx.stroke(); candleCtx.setLineDash([]);
                 const point=points[state.hover];
-                if(validCandle(point))drawHoverValue(candleCtx,{...plot,top,bottom},y,point.stock_price,point.stock_price.toLocaleString('ko-KR'));
+                if(validCandle(point))drawHoverValue(candleCtx,{...plot,top,bottom},y,point.stock_price,Math.round(point.stock_price).toLocaleString('ko-KR'));
             }
             if (state.drag) {
                 const left = Math.min(state.drag.startX, state.drag.endX);
@@ -314,9 +209,7 @@
             ctx.font = '12px Inter, sans-serif';
             const maxPrice = points.reduce((max, point) => Math.max(max, point.stock_high || 0), 0);
             const priceMargin = !candleArea.hidden ? ctx.measureText(Math.ceil(maxPrice * 1.1).toLocaleString()).width + 18 : 0;
-            plot.right = width - Math.max(58, priceMargin, ctx.measureText(`${axisMaximum.toLocaleString()}%`).width + 18) - 26;
-            debugToggle.style.left = `${width - 22}px`;
-            debugToggle.style.top = `${(plot.top + plot.bottom) / 2 - 13}px`;
+            plot.right = width - Math.max(58, priceMargin, ctx.measureText(`${axisMaximum.toLocaleString()}%`).width + 18);
             const xLabels = [];
             const boundaries = [];
             canvas.setAttribute('aria-label', `시장 거래대금 대비 종목 거래대금 비율 차트, 세로축 0~${axisMaximum.toLocaleString()}%, 자동 범위`);
@@ -332,7 +225,7 @@
                 const percent = tick * tickStep;
                 ctx.beginPath(); ctx.setLineDash([3, 5]); ctx.strokeStyle = '#d6dbe1';
                 ctx.moveTo(plot.left, y(percent)); ctx.lineTo(plot.right, y(percent)); ctx.stroke();
-                ctx.textAlign = 'right'; ctx.fillText(`${percent.toLocaleString()}%`, width - 36, y(percent));
+                ctx.textAlign = 'right'; ctx.fillText(`${percent.toLocaleString()}%`, width - 4, y(percent));
             }
             // Only minute charts need a vertical guide at each new trading day.
             if (state.mode === 'minute') {
@@ -471,7 +364,6 @@
                 const result = await response.json();
                 if (request !== state.request) return;
                 if (!response.ok || !result.success) throw new Error(result.error || '차트 조회 실패');
-                if (debugCode !== state.selection.code) refreshFiveDebug();
                 const freshPoints = state.mode === 'minute' ? result.points.filter(point => Number.isFinite(point.value)) : result.points;
                 if ((refresh || append) && previous.points.length && result.points.length) {
                     const earliest = result.points[0].time;
@@ -544,7 +436,7 @@
             lookupVersion++; hideSuggestions();
             state.selection = { code: stock.code, name: stock.name };
             name.value = stock.name; market.textContent = stock.market === 'K' ? '코스피' : '코스닥';
-            selectedRows(); load(); refreshFiveDebug();
+            selectedRows(); load();
         }
         function highlightSuggestion(index) {
             activeSuggestion = index;
@@ -622,7 +514,7 @@
             state.selection = { code: row.dataset.chartCode, name: decodeURIComponent(row.dataset.chartName) };
             name.value = state.selection.name;
             market.textContent = row.dataset.chartMarket === 'K' ? '코스피' : row.dataset.chartMarket === 'Q' ? '코스닥' : '-';
-            selectedRows(); load(); refreshFiveDebug();
+            selectedRows(); load();
         }
         document.getElementById('tab_rank').addEventListener('click', event => {
             const row = event.target.closest('tr[data-chart-code]');
