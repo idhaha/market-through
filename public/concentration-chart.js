@@ -243,7 +243,7 @@
             const y = price => bottom - (price - minimum) / (maximum - minimum) * (bottom - top);
             const candleWidth = Math.max(1, Math.min(10, (plot.right - plot.left - 24) / Math.max(1, points.length) * .7));
             candleGeometry = { plot: { ...plot, top, bottom }, points, x, y, candleWidth, width, height };
-            candleCtx.font = '11px Inter, sans-serif'; candleCtx.textBaseline = 'middle';
+            candleCtx.font = '12px Inter, sans-serif'; candleCtx.textBaseline = 'middle';
             for (let tick = 0; tick <= 4; tick++) {
                 const price = minimum + (maximum - minimum) * tick / 4;
                 candleCtx.beginPath(); candleCtx.setLineDash([3,5]); candleCtx.strokeStyle = '#d6dbe1';

@@ -19,7 +19,7 @@
         function surface(c, context) {
             const w = c.clientWidth, h = c.clientHeight, dpr = window.devicePixelRatio || 1;
             c.width = Math.round(w*dpr); c.height = Math.round(h*dpr); context.setTransform(dpr,0,0,dpr,0,0); context.clearRect(0,0,w,h);
-            context.font = '11px Arial'; return {w,h};
+            context.font = '12px Inter, sans-serif'; return {w,h};
         }
         function draw() {
             const n = Math.min(dates.length,count ?? dates.length); start = Math.max(0,Math.min(start,dates.length-n));
@@ -53,7 +53,7 @@
                 ctx.fillStyle='#f97316';ctx.fillText(label,labelRight,labelY);ctx.restore();
             }
             const ticks = visible.filter((_,i) => i % Math.max(1,Math.ceil(n/Math.max(1,Math.floor((right-left)/90)))) === 0);
-            function axis(context,height) { context.fillStyle=muted; context.textAlign='center'; ticks.forEach(t => context.fillText(mode==='minute' ? new Date(t+9*3600000).toISOString().slice(11,16) : dateKey(t).slice(2),x(t),height-8)); }
+            function axis(context,height) { context.font='12px Inter, sans-serif'; context.fillStyle=muted; context.textAlign='center'; ticks.forEach(t => context.fillText(mode==='minute' ? new Date(t+9*3600000).toISOString().slice(11,16) : dateKey(t).slice(2),x(t),height-8)); }
             axis(ctx,h);
             for (const m of [select.value === 'kospi' ? 'kosdaq' : 'kospi',select.value]) {
                 ctx.globalAlpha = m === select.value ? 1 : .22; ctx.strokeStyle=colors[m]; ctx.lineWidth=m === select.value ? 2 : 1.5; ctx.beginPath();

@@ -70,7 +70,7 @@
             ctx.clearRect(0, 0, w, h);
             ctx.lineWidth = 1;
             const left = 16, top = 10, bottom = h - 30;
-            ctx.font = '11px Arial';
+            ctx.font = '12px Inter, sans-serif';
             const highestCandle = candles.reduce((highest, point) => Math.max(highest, Number(point.high) || 0), 0);
             const candleAxisWidth = candleArea.hidden || !candles.length ? 0 : ctx.measureText(highestCandle.toFixed(2)).width;
             const right = w - Math.max(70, 36 + candleAxisWidth + 12);
@@ -86,7 +86,7 @@
             };
             geometry = { x, y, left, right, top, bottom, start, end, points:visiblePoints };
             ctx.fillStyle = 'rgba(200, 200, 200, 0.2)'; ctx.fillRect(left, y(120), right - left, y(80) - y(120));
-            ctx.font = '11px Arial';
+            ctx.font = '12px Inter, sans-serif';
             const gridColor = '#d6dbe1';
             const labelColor = getComputedStyle(panel).getPropertyValue('--text-muted').trim() || '#64748b';
             for (let v = Math.ceil(min / 10) * 10; v <= max; v += 10) {
@@ -158,7 +158,7 @@
             context.fillStyle = '#fff'; context.textAlign = 'left'; context.textBaseline = 'middle'; context.fillText(label, badgeX + 6, badgeY); context.restore();
         }
         function drawXAxis(context, height) {
-            context.font = '11px Arial'; context.fillStyle = getComputedStyle(panel).getPropertyValue('--text-muted').trim() || '#64748b';
+            context.font = '12px Inter, sans-serif'; context.fillStyle = getComputedStyle(panel).getPropertyValue('--text-muted').trim() || '#64748b';
             for (const tick of geometry.ticks) { context.textAlign = tick.align || 'center'; context.fillText(tick.label, tick.x, height - 8); }
         }
         function drawCandles() {
@@ -177,7 +177,7 @@
             const margin = Math.max((hi - lo) * 0.1, hi * .001), y = v => h - 28 - (v - lo + margin) / (hi - lo + margin * 2) * (h - 44);
             const cw = Math.max(1, Math.min(8, (geometry.right - geometry.left) / Math.max(1, mode === 'day' ? geometry.points.length : (geometry.end-geometry.start)/60000) * .7));
             candleGeometry = { ...geometry, top:16, bottom:h-28, y, candleWidth:cw };
-            candleCtx.font = '11px Arial'; candleCtx.textAlign = 'left';
+            candleCtx.font = '12px Inter, sans-serif'; candleCtx.textAlign = 'left';
             for (let i=0; i<5; i++) { const v = lo + (hi-lo) * i/4; candleCtx.strokeStyle = '#d6dbe1'; candleCtx.setLineDash([3,5]); candleCtx.beginPath(); candleCtx.moveTo(geometry.left,y(v)); candleCtx.lineTo(geometry.right,y(v)); candleCtx.stroke(); candleCtx.fillStyle='#64748b'; candleCtx.textAlign='right'; candleCtx.fillText(v.toFixed(2),w-36,y(v)+4); }
             candleCtx.setLineDash([]);
             visible.forEach(p => {
