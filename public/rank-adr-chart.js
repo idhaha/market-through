@@ -104,8 +104,8 @@
             ctx.textAlign = 'center';
             if (!visiblePoints.length && closing) {
                 const markerX = closing.t ? x(closing.t) : (left + right) / 2;
-                ctx.fillStyle = '#339af0';
-                ctx.beginPath(); ctx.arc(markerX, y(closing.adr), 5, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#f97316';
+                ctx.beginPath(); ctx.arc(markerX, y(closing.adr), 4, 0, Math.PI * 2); ctx.fill();
                 ctx.textAlign = markerX > (left + right) / 2 ? 'right' : 'left';
                 ctx.fillText(`마감 ${closing.adr.toFixed(2)}%`, markerX > (left + right) / 2 ? markerX - 10 : markerX + 10, y(closing.adr) - 10);
                 ctx.textAlign = 'center';
@@ -136,11 +136,10 @@
             ctx.save(); ctx.beginPath(); ctx.rect(left, top, right - left, bottom - top); ctx.clip();
             ctx.strokeStyle = '#339af0'; ctx.lineWidth = 2; ctx.beginPath();
             visiblePoints.forEach((p, i) => { if (!i || (mode === 'minute' && p.t - visiblePoints[i - 1].t > 120000)) ctx.moveTo(x(p.t), y(p.adr)); else ctx.lineTo(x(p.t), y(p.adr)); }); ctx.stroke();
-            const today = dateKey(Date.now());
             ctx.restore();
-            // Keep the minute line continuous; only the latest current-day point is marked.
-            const todayPoint = visiblePoints.filter(p => dateKey(p.t) === today).at(-1);
-            if (todayPoint) { ctx.fillStyle = '#f97316'; ctx.beginPath(); ctx.arc(x(todayPoint.t), y(todayPoint.adr), 4, 0, Math.PI * 2); ctx.fill(); }
+            // Mark the latest data point even before today's first sample arrives.
+            const latestPoint = points.at(-1);
+            if (latestPoint && visiblePoints.some(p => p.t === latestPoint.t)) { ctx.fillStyle = '#f97316'; ctx.beginPath(); ctx.arc(x(latestPoint.t), y(latestPoint.adr), 4, 0, Math.PI * 2); ctx.fill(); }
             if (hover) {
                 ctx.strokeStyle = '#000'; ctx.setLineDash([3,3]); ctx.beginPath(); ctx.moveTo(x(hover.t), top); ctx.lineTo(x(hover.t), bottom); ctx.stroke(); ctx.setLineDash([]);
                 drawHoverValue(ctx, geometry, hover.adr, `${hover.adr.toFixed(2)}%`, '#000');
@@ -220,6 +219,7 @@
             controller?.abort(); controller = new AbortController();
             const current = controller, market = selectedMarket, day = dateKey(Date.now());
             const key = `rank-adr:${market}:${day}`;
+            const beforeOpen = new Date(Date.now() + 9 * 3600000).getUTCHours() < 9;
             try {
                 if (mode === 'day') {
                     const response = await fetch(`/api/adr/history?market=${market}&range=${range}`, { signal: current.signal });
@@ -237,30 +237,39 @@
                 if (!response.ok) throw new Error('조회 실패');
                 const data = await response.json();
                 if (current !== controller) return;
-                let saved = []; try { saved = JSON.parse(localStorage.getItem(key) || '[]'); } catch (_) { /* Storage is optional. */ }
+                let saved = [];
+                try {
+                    saved = JSON.parse(localStorage.getItem(key) || '[]');
+                    const session = JSON.parse(localStorage.getItem(`rank-adr-session:${market}`) || 'null');
+                    saved = [...(Array.isArray(saved) ? saved : []), ...(Array.isArray(session?.points) ? session.points : [])];
+                    if (!saved.length) {
+                        const oldKey = Object.keys(localStorage).filter(item => item.startsWith(`rank-adr:${market}:`) && item.slice(-10) <= day).sort().at(-1);
+                        if (oldKey) saved = JSON.parse(localStorage.getItem(oldKey) || '[]');
+                    }
+                } catch (_) { /* Storage is optional. */ }
                 const normalize = p => {
                     if (!p || p.adr == null || !Number.isFinite(Number(p.adr))) return null;
                     let t = Number(p.t); if (t < 1e12) t *= 1000;
-                    if (!Number.isFinite(t) || t <= 0 || dateKey(t) > day) return null;
+                    if (!Number.isFinite(t) || t <= 0 || dateKey(t) > day || beforeOpen && dateKey(t) === day) return null;
                     const minute = Math.floor(t / 60000) * 60000;
                     const clock = new Date(minute + 9 * 3600000); const m = clock.getUTCHours() * 60 + clock.getUTCMinutes();
                     return m >= 540 && m <= 930 ? { t: minute, adr: Number(p.adr) } : null;
                 };
                 const upstream = (Array.isArray(data.intraday) ? data.intraday : []).map(normalize).filter(Boolean);
                 if (data.adr != null && data.asOf != null) { const p = normalize({ t: data.asOf, adr: data.adr }); if (p) upstream.push(p); }
-                const today = [...(Array.isArray(saved) ? saved : []), ...upstream].map(normalize).filter(p => p && dateKey(p.t) === day);
+                const received = [...(Array.isArray(saved) ? saved : []), ...(latestByMarket.get(market)?.points || []), ...upstream].map(normalize).filter(Boolean);
                 const last = data.lastClosed;
                 const lastDate = /^\d{8}$/.test(last?.date || '') ? `${last.date.slice(0, 4)}-${last.date.slice(4, 6)}-${last.date.slice(6, 8)}` : null;
                 closing = null;
                 const previous = latestByMarket.get(market);
                 const lastSample = last?.asOf != null ? normalize({ t: last.asOf, adr: last.adr }) : null;
-                const latest = [...upstream, ...today, ...(lastSample ? [lastSample] : [])].sort((a, b) => a.t - b.t).at(-1);
+                const latest = [...received, ...(lastSample ? [lastSample] : [])].sort((a, b) => a.t - b.t).at(-1);
                 // Keep the last received session until a newer timestamp advances it.
                 if (previous && (!latest || latest.t < previous.t)) {
                     points = previous.points; closing = previous.closing; chartDay = previous.day;
                 } else {
                     chartDay = latest ? dateKey(latest.t) : lastDate && lastDate <= day ? lastDate : previous?.day || day;
-                    const selected = chartDay === day ? today : upstream.filter(p => dateKey(p.t) === chartDay);
+                    const selected = received.filter(p => dateKey(p.t) === chartDay);
                     if (!selected.length && lastDate === chartDay) {
                         const sample = last.asOf != null ? normalize({ t: last.asOf, adr: last.adr }) : null;
                         closing = { adr: Number(last.adr), t: sample && dateKey(sample.t) === chartDay ? sample.t : null };
@@ -269,7 +278,7 @@
                     points = [...minutes.values()].sort((a, b) => a.t - b.t);
                     if (latest) latestByMarket.set(market, { t: latest.t, day: chartDay, points, closing });
                 }
-                if (chartDay === day && points.length) { try { localStorage.setItem(key, JSON.stringify(points)); } catch (_) { /* Storage is optional. */ } }
+                if (points.length) { try { localStorage.setItem(`rank-adr:${market}:${chartDay}`, JSON.stringify(points)); localStorage.setItem(`rank-adr-session:${market}`, JSON.stringify({ points })); } catch (_) { /* Storage is optional. */ } }
                 output.textContent = points.length ? `${points.at(-1).adr.toFixed(1)}%` : closing ? `${closing.adr.toFixed(1)}%` : '—';
                 const session = chartDay < day ? '직전 거래일 · 당일 데이터 대기' : data.marketStatus === 'open' ? '장중' : '장 마감';
                 panel.querySelector('h2').textContent = 'ADR';

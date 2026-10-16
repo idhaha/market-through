@@ -11,6 +11,7 @@ const { createInterestStore, captureInterestCharts } = require('./base-interest'
 const crypto = require('crypto');
 const { createConcentrationChartService, dailyTurnover } = require('./concentration-chart');
 const { createRankIndependentRelay } = require('./rank-independent');
+const { createRetainedLogs } = require('./retained-logs');
 
 // 전역 시장구분 캐시 (종목코드: 'K'/'Q') - 429 에러 방지용
 const marketCache = {};
@@ -76,19 +77,12 @@ async function addConcentrationRates(items, accessToken, amountField) {
     return { items: dataWithConcentration, marketTurnover };
 }
 
-// 디버그 로그 파일 설정
+// Keep Korean-date log files for today and yesterday; clean at startup and midnight.
 const LOG_DIR = path.join(__dirname, 'dev_tools', 'output');
-fs.mkdirSync(LOG_DIR, { recursive: true });
-const LOG_FILE = path.join(LOG_DIR, 'server_debug.log');
-
+const retainedLogs = createRetainedLogs({ directory: LOG_DIR, names: ['server_debug.log', 'puppeteer_debug.log'] });
 function fileLog(message) {
-    const logMessage = `[${new Date().toLocaleString()}] ${message}\n`;
     console.log(message);
-    try {
-        fs.appendFileSync(LOG_FILE, logMessage);
-    } catch (e) {
-        // ignore
-    }
+    retainedLogs.append('server_debug.log', message);
 }
 
 const app = express();
@@ -2246,7 +2240,7 @@ app.get('/api/trading-economics', async (req, res) => {
 
             } catch (e) {
                 console.error(`   ❌ Scraping error: ${e.message}`);
-                fs.appendFileSync(path.join(LOG_DIR, 'puppeteer_debug.log'), `   ❌ ${e.message}\n`);
+                retainedLogs.append('puppeteer_debug.log', `   ❌ ${e.message}`);
                 throw e;
             } finally {
                 if (browser) {

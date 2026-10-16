@@ -61,10 +61,10 @@
                 let connected=false;
                 rows[m].forEach(p => { if (!Number.isFinite(p.market_turnover)) {connected=false;return;} if (!connected) ctx.moveTo(x(p.t),y(p.market_turnover/1e12)); else ctx.lineTo(x(p.t),y(p.market_turnover/1e12)); connected=true; }); ctx.stroke();
                 if (rows[m].length === 1 && Number.isFinite(rows[m][0].market_turnover)) {ctx.beginPath();ctx.arc(x(rows[m][0].t),y(rows[m][0].market_turnover/1e12),3,0,Math.PI*2);ctx.fillStyle=colors[m];ctx.fill();}
-                const latestToday = rows[m].filter(p => dateKey(p.t) === dateKey(Date.now()) && Number.isFinite(p.market_turnover)).at(-1)?.t;
+                const latestTime = data[m].filter(p => Number.isFinite(p.market_turnover)).at(-1)?.t;
                 rows[m].forEach(p => {
-                    if (!Number.isFinite(p.market_turnover) || p.t !== latestToday && p.t !== hover) return;
-                    ctx.fillStyle = p.t === latestToday ? '#f97316' : colors[m];
+                    if (!Number.isFinite(p.market_turnover) || p.t !== latestTime && p.t !== hover) return;
+                    ctx.fillStyle = p.t === latestTime ? '#f97316' : colors[m];
                     ctx.beginPath(); ctx.arc(x(p.t),y(p.market_turnover/1e12),4,0,Math.PI*2); ctx.fill();
                 });
             }
@@ -80,7 +80,7 @@
             }
             panel.querySelectorAll('[data-market]').forEach(el => {el.style.color=colors[el.dataset.market];el.querySelector('span').style.opacity='1';});
             panel.querySelectorAll('[data-latest]').forEach(el => {
-                const point=data[el.dataset.latest].filter(p=>dateKey(p.t)===dateKey(Date.now())&&Number.isFinite(p.market_turnover)).at(-1);
+                const point=data[el.dataset.latest].filter(p=>Number.isFinite(p.market_turnover)).at(-1);
                 el.textContent=point?`${(point.market_turnover/1e12).toFixed(1)}조원`:'—';
             });
             if (candleArea.hidden) return;
@@ -117,24 +117,49 @@
             controller?.abort(); const current=controller=new AbortController(); status.textContent='거래대금 조회 중';
             if (mode === 'minute') {
                 const today = dateKey(Date.now()), day = today.replaceAll('-',''), messages = [];
+                const beforeOpen = new Date(Date.now() + 9 * 3600000).getUTCHours() < 9;
                 for (const market of ['kospi','kosdaq']) {
                     if (current.signal.aborted) return;
                     try {
+                        if (!minuteData[market].length) {
+                            try {
+                                const session = JSON.parse(localStorage.getItem(`rank-turnover-session:${market}`) || 'null');
+                                if (Array.isArray(session?.points)) minuteData[market] = session.points.filter(p => Number.isFinite(p.t) && dateKey(p.t) <= today && (!beforeOpen || dateKey(p.t) < today));
+                                if (Number.isFinite(session?.previous)) previous[market] = session.previous;
+                            } catch (_) { /* Storage is optional. */ }
+                        }
                         if (!dailyData[market].some(p => dateKey(p.t) < today && Number.isFinite(p.market_turnover))) {
                             const fromDate = new Date(`${today}T00:00:00Z`);fromDate.setUTCDate(fromDate.getUTCDate()-14);
                             const response = await fetch(`/api/adr/candles?market=${market}&mode=day&from=${fromDate.toISOString().slice(0,10).replaceAll('-','')}&to=${day}`,{signal:current.signal});
                             if (!response.ok) throw new Error('전일 거래대금 조회 실패');
                             const result = await response.json();dailyData[market]=result.points || [];
                         }
-                        previous[market]=dailyData[market].filter(p=>dateKey(p.t)<today&&Number.isFinite(p.market_turnover)).at(-1)?.market_turnover ?? null;
-                        const response=await fetch(`/api/adr/candles?market=${market}&mode=minute&from=${day}&to=${day}`,{signal:current.signal});
-                        if (!response.ok) throw new Error('당일 분봉 조회 실패');
-                        const result=await response.json();let sum=0;
-                        minuteData[market]=(result.points || []).filter(p=>dateKey(p.t)===today).sort((a,b)=>a.t-b.t).map(p=>{
+                        const priorDay = dailyData[market].filter(p => dateKey(p.t) < today).map(p => dateKey(p.t)).sort().at(-1);
+                        const retainedDay = minuteData[market].at(-1) ? dateKey(minuteData[market].at(-1).t) : null;
+                        const fallbackDay = [priorDay, retainedDay].filter(Boolean).sort().at(-1);
+                        const queryDay = beforeOpen && fallbackDay ? fallbackDay.replaceAll('-','') : day;
+                        let response=await fetch(`/api/adr/candles?market=${market}&mode=minute&from=${queryDay}&to=${queryDay}`,{signal:current.signal});
+                        if (!response.ok) throw new Error('분봉 조회 실패');
+                        let result=await response.json();
+                        let fresh=(result.points || []).filter(p=>Number.isFinite(p.t) && dateKey(p.t)<=today && (!beforeOpen || dateKey(p.t)<today));
+                        if (!fresh.length && !minuteData[market].length && fallbackDay && queryDay===day) {
+                            const fallback=fallbackDay.replaceAll('-','');
+                            response=await fetch(`/api/adr/candles?market=${market}&mode=minute&from=${fallback}&to=${fallback}`,{signal:current.signal});
+                            if (!response.ok) throw new Error('직전 거래일 분봉 조회 실패');
+                            result=await response.json();fresh=(result.points || []).filter(p=>Number.isFinite(p.t)&&dateKey(p.t)===fallbackDay);
+                        }
+                        if (current!==controller) return;
+                        const sessionDay=[...minuteData[market],...fresh].map(p=>dateKey(p.t)).sort().at(-1);
+                        const merged=new Map([...minuteData[market],...fresh].filter(p=>dateKey(p.t)===sessionDay).map(p=>[p.t,p]));
+                        let sum=0;
+                        minuteData[market]=[...merged.values()].sort((a,b)=>a.t-b.t).map(p=>{
                             if (Number.isFinite(p.market_turnover_estimate)) sum+=p.market_turnover_estimate;
                             return {...p,market_turnover:Number.isFinite(p.market_turnover_estimate)?sum:null};
                         });
-                        if (!minuteData[market].length) messages.push(`${names[market]} 당일 분봉 없음`);
+                        previous[market]=dailyData[market].filter(p=>dateKey(p.t)<sessionDay&&Number.isFinite(p.market_turnover)).at(-1)?.market_turnover ?? previous[market];
+                        if (minuteData[market].length) {
+                            try { localStorage.setItem(`rank-turnover-session:${market}`,JSON.stringify({points:minuteData[market],previous:previous[market]})); } catch (_) { /* Storage is optional. */ }
+                        } else messages.push(`${names[market]} 당일 분봉 없음`);
                         if (previous[market]===null) messages.push(`${names[market]} 전일 기준값 없음`);
                         if (result.partial) messages.push(`${names[market]} 일부 구간`);
                     } catch(error) {

@@ -11,7 +11,7 @@ const fs=require('node:fs'), assert=require('node:assert/strict'), express=requi
  app.use(express.static('public'));const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));
  const browser=await chromium.launch({channel:'msedge',headless:true});
  try {const page=await browser.newPage({viewport:{width:1650,height:1050}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.addInitScript(()=>{window.axisLabels=[];const orig=CanvasRenderingContext2D.prototype.fillText;CanvasRenderingContext2D.prototype.fillText=function(text,x,y,...args){if(this.textAlign==='right')window.axisLabels.push({canvas:this.canvas.id||this.canvas.getAttribute('aria-label'),text:String(text),x,width:this.canvas.clientWidth});return orig.call(this,text,x,y,...args);};});
+ await page.addInitScript(()=>{window.markers=[];const arc=CanvasRenderingContext2D.prototype.arc,fill=CanvasRenderingContext2D.prototype.fill;CanvasRenderingContext2D.prototype.arc=function(...args){this.lastMarker=args;return arc.apply(this,args);};CanvasRenderingContext2D.prototype.fill=function(...args){if(this.lastMarker){window.markers.push({canvas:this.canvas.id||this.canvas.getAttribute('aria-label'),color:this.fillStyle});this.lastMarker=null;}return fill.apply(this,args);};window.axisLabels=[];const orig=CanvasRenderingContext2D.prototype.fillText;CanvasRenderingContext2D.prototype.fillText=function(text,x,y,...args){if(this.textAlign==='right')window.axisLabels.push({canvas:this.canvas.id||this.canvas.getAttribute('aria-label'),text:String(text),x,width:this.canvas.clientWidth});return orig.call(this,text,x,y,...args);};});
  await page.goto('http://127.0.0.1:'+server.address().port+'/fixture');
  await page.locator('#rankAdrChartPanel [data-adr-mode="day"]').click();
  await page.locator('#rankAdrChartPanel .concentration-candle-toggle').click();
@@ -19,6 +19,10 @@ const fs=require('node:fs'), assert=require('node:assert/strict'), express=requi
  await page.evaluate(()=>{applyRankChartState({selection:{code:'005930',name:'삼성전자'},mode:'day',interval:5,points:Array.from({length:10},(_,i)=>({time:'202610'+String(i+1).padStart(2,'0'),value:42.85,stock_open:100000,stock_high:120000,stock_low:90000,stock_price:110000.52})),busy:false});applyConcentrationDisplaySettings({mode:'day',interval:5,candleOpen:true});});
  await page.waitForFunction(()=>axisLabels.filter(p=>p.canvas?.includes('캔들')&&p.x===p.width-4).length>=10);
  assert.equal(await page.locator('#concentrationDebugToggle, #concentrationFiveDebug').count(),0);
+ const orange=await page.evaluate(()=>markers.filter(marker=>marker.color==='#f97316').map(marker=>marker.canvas));
+ assert.ok(orange.includes('concentrationCanvas'),JSON.stringify(orange));
+ assert.ok(orange.some(label=>label.includes('ADR')),JSON.stringify(orange));
+ assert.ok(orange.filter(label=>label.includes('거래대금')).length>=2,JSON.stringify(orange));
  await page.evaluate(()=>{document.getElementById('concentrationMarket').textContent='코스피';});
  const baselines=await page.evaluate(()=>{
    const groups=[['#concentrationChartTitle','.concentration-stock-picker','#concentrationMarket'],['#rankAdrChartPanel h2','#rankAdrChartPanel .rank-market-choice label'],['#rankTurnoverChartPanel h2','#rankTurnoverChartPanel .rank-market-choice label']];
@@ -37,6 +41,13 @@ const fs=require('node:fs'), assert=require('node:assert/strict'), express=requi
  assert.ok(labels.length>=15);assert.ok(labels.every(p=>!p.text.includes('.')),JSON.stringify(labels));
  const bounds=await page.evaluate(()=>[...document.querySelectorAll('.rank-chart-row>.panel')].map(panel=>{const canvas=panel.querySelector('canvas'),plus=panel.querySelector('#concentrationZoomIn, .rank-adr-zoom .concentration-controls button:last-child');return {id:panel.id,canvas:canvas.getBoundingClientRect().right,plus:plus.getBoundingClientRect().right};}));
  assert.ok(bounds.every(p=>Math.abs(p.canvas-p.plus)<2),JSON.stringify(bounds));assert.deepEqual(errors,[]);
+ const minuteMarkers=await page.evaluate(()=>{
+   markers.length=0;
+   const day=new Date(Date.now()+9*3600000).toISOString().slice(0,10).replaceAll('-','');
+   applyRankChartState({selection:{code:'005930',name:'삼성전자'},mode:'minute',interval:1,points:Array.from({length:30},(_,i)=>({time:day+'09'+String(i).padStart(2,'0')+'00',value:10+i})),busy:false});
+   return markers.filter(marker=>marker.canvas==='concentrationCanvas'&&marker.color==='#f97316').length;
+ });
+ assert.equal(minuteMarkers,1,'Minute concentration chart must have exactly one orange latest-value dot');
  console.log('PASS integer candle axes, no debug panel, chart edges aligned with zoom +:',JSON.stringify(bounds));
  }finally{await browser.close();server.close();}
 })().catch(e=>{console.error(e);process.exitCode=1});

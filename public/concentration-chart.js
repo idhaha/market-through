@@ -259,18 +259,12 @@
                     connected = true;
                 });
                 ctx.stroke();
-                const today = new Date(Date.now() + 9 * 3600000).toISOString().slice(0,10).replaceAll('-','');
-                points.forEach((point, i) => {
-                    if (point.value == null || state.mode !== 'minute' && point.time.slice(0,8) !== today) return;
-                    ctx.beginPath(); ctx.fillStyle = point.time.slice(0,8) === today ? '#f97316' : '#339af0'; ctx.arc(x(i), y(point.value), point.time.slice(0,8) === today ? 4 : 2, 0, 2 * Math.PI); ctx.fill();
-                });
                 ctx.restore();
                 const latest = points.at(-1);
                 if (Number.isFinite(latest?.value) && latest.time === state.points.at(-1)?.time) {
                     const lastX = x(points.length - 1);
                     const lastY = y(latest.value);
-                    ctx.beginPath(); ctx.fillStyle = latest.time.slice(0,8) === today ? '#f97316' : '#339af0'; ctx.arc(lastX, lastY, 4, 0, 2 * Math.PI); ctx.fill();
-                    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; ctx.stroke();
+                    ctx.beginPath(); ctx.fillStyle = '#f97316'; ctx.arc(lastX, lastY, 4, 0, 2 * Math.PI); ctx.fill();
                 }
                 const singleDay = points[0].time.slice(0, 8) === points.at(-1).time.slice(0, 8);
                 const timeLabels = state.mode === 'minute' && (singleDay || points.length <= 120);
