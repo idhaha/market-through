@@ -39,7 +39,7 @@ SDK package는 고정 버전 `Microsoft.Web.WebView2 1.0.3537.50`을 공식 NuGe
 ./desktop/test.ps1
 ```
 
-`tests/RankNativeSmoke.cs`를 desktop/build의 WebView2 DLL을 참조해 x64 exe로 컴파일하면 테스트가 실제 WebView2 런타임 초기화와 relay 페이지 로드도 확인한다. 사용자 상태를 변경하지 않고 workspace 내 native-test-state를 사용한다.
+`dev/tests/RankNativeSmoke.cs`를 desktop/build의 WebView2 DLL을 참조해 x64 exe로 컴파일하면 테스트가 실제 WebView2 런타임 초기화와 relay 페이지 로드도 확인한다. 사용자 상태를 변경하지 않고 workspace 내 native-test-state를 사용한다.
 
 남은 인수 확인: 운영 HTTPS에서 실제 Google 로그인 연결, protocol 실행/다중 실행, 다른 일반 앱과의 항상 위, 실제 drag/resize/최소화·복원, 다중 모니터 복원, runtime 없는 새 PC 자동 설치. 자동 테스트가 이 인수 확인을 대체하지 않는다.
 

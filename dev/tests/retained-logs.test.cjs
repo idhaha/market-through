@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { createRetainedLogs } = require('../retained-logs');
+const { createRetainedLogs } = require('../../retained-logs');
 
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'market-through-log-test-'));
 const names = ['server_debug.log', 'puppeteer_debug.log'];

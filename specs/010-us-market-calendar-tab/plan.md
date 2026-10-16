@@ -30,7 +30,7 @@ applyData 및 applyFullStateBackup에서 USLinks.refresh를 호출하여 변경�
 
 ## Verification and Limits
 
-node tests/us-links.test.cjs는 설치된 Edge(channel: msedge)의 headless 모드로 목록 기능과 실제 app.js의 고정 탭·설정 직렬화/복원을 검증한다. 서버 저장은 테스트에서 모의 처리하므로 운영 파일 쓰기와 실제 로그인 환경은 수동 검증 대상이다. 최근 UI 수정의 세부 시각 검증은 quickstart를 따른다.
+node dev/tests/us-links.test.cjs는 설치된 Edge(channel: msedge)의 headless 모드로 목록 기능과 실제 app.js의 고정 탭·설정 직렬화/복원을 검증한다. 서버 저장은 테스트에서 모의 처리하므로 운영 파일 쓰기와 실제 로그인 환경은 수동 검증 대상이다. 최근 UI 수정의 세부 시각 검증은 quickstart를 따른다.
 
 ## Related Specifications
 

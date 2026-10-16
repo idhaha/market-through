@@ -171,7 +171,8 @@ const assert = require('node:assert/strict');
         }));
         assert.ok(narrowOverflow.bodyWidth <= narrowOverflow.viewportWidth + 2 && narrowOverflow.bodyLeft === 0,
             `Narrow window does not push the entire page sideways: ${JSON.stringify(narrowOverflow)}`);
-        await independent.screenshot({ path: 'dev_tools/output/rank-independent-narrow-preview.png', fullPage: true });
+        fs.mkdirSync('dev/output', { recursive: true });
+        await independent.screenshot({ path: 'dev/output/rank-independent-narrow-preview.png', fullPage: true });
         console.log('PASS independent chart sizing, candle reopen without overflow, and daily/minute date-line behavior');
     } finally {
         await browser.close();

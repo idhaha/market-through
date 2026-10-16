@@ -43,9 +43,9 @@ spec.md에 [NEEDS CLARIFICATION] 마커가 없어 추가 조사 항목 없음.
 
 ## 개발 도구 폴더 정리 (2026-10-09)
 
-개발용 JS·Python 실행 파일은 dev_tools/debug에 모으고 PNG·TXT·JSON·LOG·HTML 조회 결과 및 자료는 dev_tools/output에 모은다. 기존 experiments/tests/logs/exports 하위 폴더는 이 기준으로 통합했다. 출력 경로는 실행 작업 디렉터리와 무관하게 스크립트 위치 기준 dev_tools/output으로 지정한다. 서버 디버그 로그도 dev_tools/output/server_debug.log에 기록한다. 자동 회귀 테스트도 dev_tools/debug에 포함한다. 과거 fix/patch 스크립트는 일회성 수정 도구이며 이동 과정에서 실행하지 않는다.
+자동 검증 코드는 dev/tests, 조회·추출·점검·복구 및 수동 실험 도구는 dev/scripts에 모으고 PNG·TXT·JSON·HTML 테스트 결과 및 자료는 dev/output에 모은다. 기존 experiments/tests/logs/exports 하위 폴더는 이 기준으로 통합했다. 출력 경로는 실행 작업 디렉터리와 무관하게 스크립트 위치 기준 dev/output으로 지정한다. 운영 로그는 프로젝트 바로 아래 logs에 일자별로 기록하고, dev/output에는 테스트 결과물만 저장한다. 자동 회귀 테스트도 dev/tests에 포함한다. 과거 fix/patch 스크립트는 일회성 수정 도구이며 이동 과정에서 실행하지 않는다.
 
-데이터 추출 예: node dev_tools/debug/export-kospi-five-minute.js, node dev_tools/debug/check-kospi-outside-session.js. 정리는 파일 이동 전후 SHA256 일치로 검증했고, 변경한 스크립트는 구문 검사로 확인한다. API 호출이나 과거 패치 실행은 검증에 필요하지 않다.
+데이터 추출 예: node dev/scripts/export-kospi-five-minute.js, node dev/scripts/check-kospi-outside-session.js. 정리는 파일 이동 전후 SHA256 일치로 검증했고, 변경한 스크립트는 구문 검사로 확인한다. API 호출이나 과거 패치 실행은 검증에 필요하지 않다.
 
 ## Rank ADR 결정 및 확인 범위 (2026-10-13)
 

@@ -31,8 +31,8 @@ Rank의 거래대금 상위, 실시간 조회순위, 대주가능 테이블 아�
 ## 검증
 
 ```powershell
-node --test dev_tools/debug/concentration-chart.test.js
-node --test dev_tools/debug/concentration-chart-ui.test.js
+node --test dev/tests/concentration-chart.test.js
+node --test dev/tests/concentration-chart-ui.test.js
 ```
 
 브라우저 테스트는 로컬 임시 서버와 모의 API 응답을 사용하고 외부 네트워크 요청을 차단한다. 실제 API 키나 로그인 세션을 사용하지 않는다. 실제 키움 응답의 시간 구간·단위와 운영 데이터는 별도 현장 검증 대상이다.

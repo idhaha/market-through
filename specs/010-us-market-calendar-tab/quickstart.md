@@ -9,7 +9,7 @@
 ```powershell
 node --check public/app.js
 node --check public/us-links.js
-node tests/us-links.test.cjs
+node dev/tests/us-links.test.cjs
 git diff --check
 ```
 

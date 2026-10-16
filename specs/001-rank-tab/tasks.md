@@ -180,7 +180,7 @@
 
 - **빈 상태 안내** — Rank 패널 1~4의 빈 데이터 문구를 `데이터가 없습니다.`로 통일했다. 숨김 처리된 패널 4는 사용자 지시에 따라 이후 실제 화면 검증에서 제외한다.
 - **T022 실제 확인 필요** — 관심종목 패널(현재 사용자가 숨김 처리)을 잠시 표시한 뒤 다른 그룹을 선택하고 페이지를 새로고침해 선택값이 유지되는지 확인한다. 패널을 계속 숨겨 둘 경우 이 브라우저 시나리오는 미검증으로 남긴다.
-- **T024 추후 재개** — 사용자가 지금은 확인할 수 없으므로 장외 시간에 다시 확인하기로 했다. 다음에 장외 공백이 재현되면 `dev_tools/output/server_debug.log`에서 원본/최종 응답 건수를 대조한다. 해당 장외 검증은 추후 재개한다.
+- **T024 추후 재개** — 사용자가 지금은 확인할 수 없으므로 장외 시간에 다시 확인하기로 했다. 다음에 장외 공백이 재현되면 `logs/server_debug.YYYY-MM-DD.log`에서 원본/최종 응답 건수를 대조한다. 해당 장외 검증은 추후 재개한다.
 - **T012** — Codex 사용 가능 시 T006~T011b에서 발견된 불일치를 `server.js`, `public/app.js`에서 일괄 결정·수정한다.
 - **T024는 사용자 요청으로 보류**하며, 장외 재검증 기회가 생기면 재개한다. 남은 Rank 전체 검증(T013/T022/T026)과 숨김 패널4 확인은 미완료 기록으로 유지한다.
 
@@ -242,7 +242,7 @@
 - [x] T034 [US4] 최신 값 헤더 표시, 검증 패널 제거, 로딩 블러·위치 유지, 절반 폭·휴대폰 표시 및 제공 아이콘 반영 (FR-028/029).
 - [x] T035 [US4] 버튼·슬라이더 및 드래그 확대/전체 복원 구현 (FR-030).
 - [x] T036 [US4] Rank 주기·수동·전체조회 연동, 과거 기록·확대 구간 보존, 중복/캡처 건너뛰기와 실패 시 기존 차트 유지 구현 (FR-031).
-- [x] T037 [US4] dev_tools/debug/concentration-chart.test.js 계산·시장 선택·집계·연속조회 11개 테스트 및 dev_tools/debug/concentration-chart-ui.test.js 브라우저 통합 시나리오 통과 확인.
+- [x] T037 [US4] dev/tests/concentration-chart.test.js 계산·시장 선택·집계·연속조회 11개 테스트 및 dev/tests/concentration-chart-ui.test.js 브라우저 통합 시나리오 통과 확인.
 - [x] T038 [US4] 실제 2026-10-07 삼성전자/코스피 일봉 거래대금과 테이블 수치 검산, 분봉 보정 표본 확인 — quickstart.md 기록 (SC-005).
 - [x] T039 [US4] spec·plan·research·data-model·contracts·quickstart·tasks·품질 체크리스트를 최종 구현에 맞춰 갱신.
 
@@ -294,7 +294,7 @@
 
 - [x] T063 [US4] 기본 일봉 및 일/분·분 간격 사용자 설정 저장/복원 연결·검증.
 
-- [x] T064 개발 실행 파일 73개를 dev_tools/debug, 출력물 19개를 dev_tools/output으로 통합하고 출력·서버 로그 경로 및 spec-kit 문서 갱신.
+- [x] T064 개발 실행 파일 73개를 dev/tests, 출력물 19개를 dev/output으로 통합하고 출력·서버 로그 경로 및 spec-kit 문서 갱신.
 
 - [x] T065 루트 tests 및 move_test 파일도 개발 도구 폴더로 통합, 상대 참조·검증 명령·문서 수정 및 테스트 실행.
 
@@ -307,7 +307,7 @@
 - [x] T070 [US4/US5] 메인 정보창 한 곳·수직선 연동·중복 캔들 정보창과 ADR 커서 날짜 제거·공통 배경 반영 (FR-038).
 - [x] T071 [US4/US5] 공통 줌 바→기간 정보·8px·무채움 트랙·쏠림율 기간 연도·ADR 최종값 버튼 줄 배치 반영 (FR-033/039).
 - [x] T072 [US5] 버튼/슬라이더/양 캔버스 드래그 확대·복원·갱신 후 확대 창 유지 및 ResizeObserver 반복 오류 방지 구현 (FR-037/040).
-- [x] T073 [US5] dev_tools/debug/rank-adr.test.cjs 브라우저 및 tests/adr-routes.test.cjs API 모의 검증, dev_tools/debug/rank-refresh.test.cjs 기존 Rank 갱신 회귀 검증; 실제 ADR 1Y 응답 형식 확인.
+- [x] T073 [US5] dev/tests/rank-adr.test.cjs 브라우저 및 dev/tests/adr-routes.test.cjs API 모의 검증, dev/tests/rank-refresh.test.cjs 기존 Rank 갱신 회귀 검증; 실제 ADR 1Y 응답 형식 확인.
 - [x] T074 [US4/US5] spec·plan·contracts·data-model·research·quickstart·requirements 체크리스트에 최종 구현과 검증 범위 반영.
 
 의존성: T066→T067/T068, T069→T072, T070/T071/T072→T073→T074. 이전 task의 일시적 UI 배치는 FR-038/039와 이 phase로 대체된다. 실제 키움 3Y/5Y 지수 전체 범위 및 Oracle 운영 표시/갱신 검증은 수동 확인 대상으로 남기며 완료로 표시하지 않는다.
@@ -328,7 +328,7 @@
 - [x] T083 [US4/US5/US6] 이동 점·수평 가이드·오른쪽 값 배지·캔들 종가 가이드·오른쪽 경계 제한 및 브라우저 모의 검증 (FR-048).
 - [x] T084 [US6] 캔들 버튼 행 오늘 거래대금 두 줄·시장명 왼쪽/수치 오른쪽 정렬·공통 최종값 글꼴·외부 정보 줄·상단 공백 축소 (FR-049/050).
 - [x] T085 [US5] 제목 ADR/거래대금·당일 1분 문구·MAX/MIN 제거·80/100/120 빨간 눈금·끝 점 clip 해제 및 기존 픽셀 회귀 확인 (FR-033/035/036/047/050).
-- [x] T086 [US4/US5/US6] dev_tools/debug/rank-turnover.test.cjs, dev_tools/debug/rank-adr.test.cjs, tests/adr-routes.test.cjs, dev_tools/debug/rank-refresh.test.cjs 실행 및 모의 검증 범위 기록.
+- [x] T086 [US4/US5/US6] dev/tests/rank-turnover.test.cjs, dev/tests/rank-adr.test.cjs, dev/tests/adr-routes.test.cjs, dev/tests/rank-refresh.test.cjs 실행 및 모의 검증 범위 기록.
 - [x] T087 [US4/US5/US6] spec/plan/tasks/contracts/data-model/research/quickstart/checklist에 거래대금과 최종 공통 요구사항 동기화, 이전 UI 설명 대체 범위 명시.
 - [ ] T088 [US6] 로그인된 실제 키움 두 시장 일봉 거래대금 응답·쏠림율 분모 검산·장중 갱신·휴장일·3Y/5Y partial·시장별 실패/누락/응답 경합의 운영 검증.
 - [x] T089 [US4/US5/US6] Oracle 운영 환경의 쏠림율·ADR·거래대금 세 차트 정상 동작 확인. 2026-10-13 사용자 수동 확인: “oracle에서 세 차트 모드 잘 동작한다.”
@@ -371,6 +371,6 @@
 - [x] T103 [US6] ka20005 분봉에 실제 거래대금 필드가 없음을 첨부 API 표로 확인하고, 별도 추정 필드와 일봉 실제 필드를 분리한다 (FR-056).
 - [x] T104 [US6] 두 시장 당일 1분 추정 거래대금을 시각순으로 누적하고, 전일 실제 일봉을 주황색 수평선·겹치지 않는 레이블로 표시한다 (FR-056).
 - [x] T105 [US6] 분봉 선 스타일·마지막 주황 점을 일봉과 통일하고, 마우스 정보에 시장별 시각 누적 금액과 전일 대비 한 자리 소수 비율을 표시한다 (FR-056).
-- [x] T106 [US6] `dev_tools/debug/rank-turnover-minute.test.cjs`로 누적·기준선·레이블 간격·시장별 비율·일봉 전환을 모의 검증하고 2026-10-14 실제 키움 분봉 추정/일봉 실제값의 큰 오차를 기록한다 (SC-017).
+- [x] T106 [US6] `dev/tests/rank-turnover-minute.test.cjs`로 누적·기준선·레이블 간격·시장별 비율·일봉 전환을 모의 검증하고 2026-10-14 실제 키움 분봉 추정/일봉 실제값의 큰 오차를 기록한다 (SC-017).
 - [ ] T107 [US6] Oracle 배포 뒤 장중 갱신·분봉 연속조회 완전성·휴장일·전일 기준 누락·좁은 화면의 실사용 동작을 재확인한다. 로컬 모의 테스트나 단일 일자 실측으로 완료 처리하지 않는다.
 - [x] T108 [US6] KOSPI/KOSDAQ 범례의 시장명·최신 수치를 선택 여부와 무관하게 시장 고유색으로 선명하게 표시하고, 미선택 선의 흐림 처리만 유지한다 (FR-049).

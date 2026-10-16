@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 (async () => {
     const source = fs.readFileSync('server.js','utf8');
     const routes = new Map(), calls = [];
-    const context = { dailyTurnover: require('../concentration-chart').dailyTurnover, app: { get: (path, handler) => routes.set(path,handler) }, process: { env: { KIWOOM_APPKEY:'key', KIWOOM_SECRETKEY:'secret' } },
+    const context = { dailyTurnover: require('../../concentration-chart').dailyTurnover, app: { get: (path, handler) => routes.set(path,handler) }, process: { env: { KIWOOM_APPKEY:'key', KIWOOM_SECRETKEY:'secret' } },
         getAccessToken: async (key,secret) => { assert.equal(key,'key'); assert.equal(secret,'secret'); return 'token'; }, setTimeout: fn => fn(),
         axios: { get: async (url,options) => { calls.push({url,options}); return {data:{series:[]}}; }, post: async (url,body,options) => {
             calls.push({url,body,options});
@@ -19,7 +19,7 @@ const assert = require('node:assert/strict');
     await routes.get('/api/adr/candles')({query:{market:'kosdaq',mode:'day',from:'20260102',to:'20260302'}},res);
     assert.equal(res.data.points.length,2); assert.equal(res.data.points[0].open,3000); assert.equal(res.data.points[0].low,2950);
     assert.equal(res.data.points[1].market_turnover,10e12); assert.equal(res.data.points[0].market_turnover,null);
-    const { calculatePoints } = require('../concentration-chart');
+    const { calculatePoints } = require('../../concentration-chart');
     const row = {dt:'20260302',cur_prc:'302000',open_pric:'300000',high_pric:'305000',low_pric:'295000',trde_qty:'100',trde_prica:'10,000,000'};
     const concentration = calculatePoints(new Map([[row.dt,row]]),new Map([[row.dt,row]]),'day',1);
     assert.equal(res.data.points[1].market_turnover,concentration[0].market_turnover,'Both charts use identical reported market turnover');

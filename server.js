@@ -78,7 +78,7 @@ async function addConcentrationRates(items, accessToken, amountField) {
 }
 
 // Keep Korean-date log files for today and yesterday; clean at startup and midnight.
-const LOG_DIR = path.join(__dirname, 'dev_tools', 'output');
+const LOG_DIR = path.join(__dirname, 'logs');
 const retainedLogs = createRetainedLogs({ directory: LOG_DIR, names: ['server_debug.log', 'puppeteer_debug.log'] });
 function fileLog(message) {
     console.log(message);

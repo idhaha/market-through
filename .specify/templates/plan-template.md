@@ -72,7 +72,7 @@ src/
 ├── cli/
 └── lib/
 
-tests/
+dev/tests/
 ├── contract/
 ├── integration/
 └── unit/
@@ -83,14 +83,14 @@ backend/
 │   ├── models/
 │   ├── services/
 │   └── api/
-└── tests/
+└── dev/tests/
 
 frontend/
 ├── src/
 │   ├── components/
 │   ├── pages/
 │   └── services/
-└── tests/
+└── dev/tests/
 
 # [REMOVE IF UNUSED] Option 3: Mobile + API (when "iOS/Android" detected)
 api/

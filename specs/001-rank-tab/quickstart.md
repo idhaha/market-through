@@ -34,8 +34,8 @@
 자동화 검증:
 
 ```powershell
-node --test dev_tools/debug/concentration-chart.test.js
-node --test dev_tools/debug/concentration-chart-ui.test.js
+node --test dev/tests/concentration-chart.test.js
+node --test dev/tests/concentration-chart-ui.test.js
 ```
 
 브라우저 테스트는 로컬 모의 API와 외부 요청 차단을 사용한다. 이전 실행에서 계산/연속조회 11개 테스트와 브라우저 통합 시나리오가 통과했다. 운영 환경의 속도 및 기존 SC-001~004 전체 검증 완료를 뜻하지 않는다.
@@ -122,9 +122,9 @@ POST /api/concentration-chart에 {code:선택종목, mode:"minute", interval:5, 
 
 ## 개발 도구 폴더 정리 (2026-10-09)
 
-개발용 JS·Python 실행 파일은 dev_tools/debug에 모으고 PNG·TXT·JSON·LOG·HTML 조회 결과 및 자료는 dev_tools/output에 모은다. 기존 experiments/tests/logs/exports 하위 폴더는 이 기준으로 통합했다. 출력 경로는 실행 작업 디렉터리와 무관하게 스크립트 위치 기준 dev_tools/output으로 지정한다. 서버 디버그 로그도 dev_tools/output/server_debug.log에 기록한다. 자동 회귀 테스트도 dev_tools/debug에 포함한다. 과거 fix/patch 스크립트는 일회성 수정 도구이며 이동 과정에서 실행하지 않는다.
+자동 검증 코드는 dev/tests, 조회·추출·점검·복구 및 수동 실험 도구는 dev/scripts에 모으고 PNG·TXT·JSON·HTML 테스트 결과 및 자료는 dev/output에 모은다. 기존 experiments/tests/logs/exports 하위 폴더는 이 기준으로 통합했다. 출력 경로는 실행 작업 디렉터리와 무관하게 스크립트 위치 기준 dev/output으로 지정한다. 운영 로그는 프로젝트 바로 아래 logs에 일자별로 기록하고, dev/output에는 테스트 결과물만 저장한다. 자동 회귀 테스트도 dev/tests에 포함한다. 과거 fix/patch 스크립트는 일회성 수정 도구이며 이동 과정에서 실행하지 않는다.
 
-데이터 추출 예: node dev_tools/debug/export-kospi-five-minute.js, node dev_tools/debug/check-kospi-outside-session.js. 정리는 파일 이동 전후 SHA256 일치로 검증했고, 변경한 스크립트는 구문 검사로 확인한다. API 호출이나 과거 패치 실행은 검증에 필요하지 않다.
+데이터 추출 예: node dev/scripts/export-kospi-five-minute.js, node dev/scripts/check-kospi-outside-session.js. 정리는 파일 이동 전후 SHA256 일치로 검증했고, 변경한 스크립트는 구문 검사로 확인한다. API 호출이나 과거 패치 실행은 검증에 필요하지 않다.
 
 ## Rank ADR 및 공통 차트 검증 (2026-10-13)
 
@@ -140,14 +140,14 @@ POST /api/concentration-chart에 {code:선택종목, mode:"minute", interval:5, 
 현재 자동화 검증 명령:
 
 ```powershell
-node dev_tools/debug/rank-adr.test.cjs
-node tests/adr-routes.test.cjs
-node dev_tools/debug/rank-refresh.test.cjs
+node dev/tests/rank-adr.test.cjs
+node dev/tests/adr-routes.test.cjs
+node dev/tests/rank-refresh.test.cjs
 ```
 
-브라우저 테스트는 로컬 Microsoft Edge(Playwright channel=msedge)와 실제 Rank HTML/CSS를 사용하되 API는 모의 응답이다. 캔들 연속조회·시장 업종·가격 배율·오류 계약은 API 모의 테스트로 검증한다. `dev_tools/output/rank-adr-daily-preview.png`는 개발용 모의 화면이다. 실제 ADR history는 확인했지만 실제 키움 장기 캔들·Oracle 배포 완료나 upstream 자정 초기화 시각을 이 테스트가 보장하지 않는다.
+브라우저 테스트는 로컬 Microsoft Edge(Playwright channel=msedge)와 실제 Rank HTML/CSS를 사용하되 API는 모의 응답이다. 캔들 연속조회·시장 업종·가격 배율·오류 계약은 API 모의 테스트로 검증한다. `dev/output/rank-adr-daily-preview.png`는 개발용 모의 화면이다. 실제 ADR history는 확인했지만 실제 키움 장기 캔들·Oracle 배포 완료나 upstream 자정 초기화 시각을 이 테스트가 보장하지 않는다.
 
-7. 이전 tab_adr·adrInterval이 포함된 로컬/서버/가져오기 백업을 복원한다. ADR 고정탭은 나타나지 않고 해당 활성 탭은 Rank로 돌아오며 다른 탭·메모·Rank 설정은 보존되어야 한다. `node --test tests/adr-retirement.test.cjs`로 호환 처리를 검증한다.
+7. 이전 tab_adr·adrInterval이 포함된 로컬/서버/가져오기 백업을 복원한다. ADR 고정탭은 나타나지 않고 해당 활성 탭은 Rank로 돌아오며 다른 탭·메모·Rank 설정은 보존되어야 한다. `node --test dev/tests/adr-retirement.test.cjs`로 호환 처리를 검증한다.
 
 ## 거래대금 및 공통 차트 확인 (2026-10-13)
 
@@ -156,12 +156,12 @@ node dev_tools/debug/rank-refresh.test.cjs
 3. 메인과 캔들에서 오른쪽 드래그 확대/왼쪽 전체 복원, ±, 슬라이더를 확인한다. 양 그래프 X축 구간이 같고 캔들 펼침/접힘은 해당 패널만 늘려야 한다.
 4. 거래대금 마우스 이동 점, 양 시장 수평 점선/축 값 배지, 공유 수직선과 위 정보 줄을 확인한다. 시장명/오늘 값은 캔들 버튼 행 오른쪽 두 줄이며 시장명 왼쪽·수치 오른쪽 정렬이다. 오늘 봉이 없으면 —, 과거 확대 창을 봐도 오늘 값은 그대로다.
 5. 모든 Y축은 오른쪽, 가로선은 공통 회색 점선이다. 쏠림율/ADR는 같은 파란 실선이며 오늘 점은 주황색이다. ADR 제목은 ADR, 버튼은 당일 1분, 80/100/120은 같은 빨강이며 MAX/MIN은 없다. 마지막 점과 수치가 오른쪽에서 잘리지 않는지 확인한다.
-6. 모의 회귀 검증: `node dev_tools/debug/rank-turnover.test.cjs`, `node dev_tools/debug/rank-adr.test.cjs`, `node tests/adr-routes.test.cjs`, `node dev_tools/debug/rank-refresh.test.cjs`. 거래대금 축/선택/기간/드래그/이동 점/오늘 값/배지/배치와 쏠림율·ADR 글꼴/점/픽셀 및 공유 거래대금 변환을 확인한다.
+6. 모의 회귀 검증: `node dev/tests/rank-turnover.test.cjs`, `node dev/tests/rank-adr.test.cjs`, `node dev/tests/adr-routes.test.cjs`, `node dev/tests/rank-refresh.test.cjs`. 거래대금 축/선택/기간/드래그/이동 점/오늘 값/배지/배치와 쏠림율·ADR 글꼴/점/픽셀 및 공유 거래대금 변환을 확인한다.
 7. 운영 상세 확인(미완료, T088/T090): 실제 로그인된 응답의 두 시장 `market_turnover`, 동일 원본 일봉 쏠림율 분모 검산, 3Y/5Y partial 여부, 장중 누적 거래대금 갱신, 휴장일 오늘 — 표시, 시장별 실패·누락·느린 응답 및 좁은 화면 가로 스크롤. 모의 테스트는 이 항목의 완료 증거가 아니다.
 
 8. `당일1분(누적)`에서 두 시장의 추정 누적선과 시장 선택 강조를 확인한다. 미선택 선은 흐리지만 KOSPI/KOSDAQ 범례의 시장명·최신 수치는 항상 각 시장 고유색으로 선명해야 한다. 분봉 선 스타일은 일봉과 같고 주황색 점은 각 시장의 마지막 봉에만 있어야 한다. 주황색 전일 실제 거래대금 기준선과 `전일 x.xx조` 레이블이 겹치지 않는지 확인한다. 마우스 정보는 `YYYY-MM-DD HH:mm · KOSPI x.xx조원(전일대비 xx.x%) · KOSDAQ x.xx조원(전일대비 xx.x%)`이며 해당 시각 누적값으로 계산한다. 전일 기준이 없으면 비율만 생략한다. 추정 안내는 상태 줄에 있고 수치 앞의 `≈` 표시는 없어야 한다. 휴장일에는 전일 분봉을 당일처럼 표시하지 않는다.
 
-분봉 회귀 검증: `node dev_tools/debug/rank-turnover-minute.test.cjs`. 모의 응답 검증과 실제 키움 정확도 확인은 구분한다. 2026-10-14 실제 응답 비교에서 KOSPI 추정은 실제보다 6.19% 높고 KOSDAQ은 36.80% 낮았다. 정확한 분 단위 거래대금으로 해석하지 않는다.
+분봉 회귀 검증: `node dev/tests/rank-turnover-minute.test.cjs`. 모의 응답 검증과 실제 키움 정확도 확인은 구분한다. 2026-10-14 실제 응답 비교에서 KOSPI 추정은 실제보다 6.19% 높고 KOSDAQ은 36.80% 낮았다. 정확한 분 단위 거래대금으로 해석하지 않는다.
 
 ### Oracle 운영 검증 기록 — 2026-10-13
 
@@ -171,7 +171,7 @@ node dev_tools/debug/rank-refresh.test.cjs
 
 ### 마우스 정보 줄 변경 확인 (2026-10-13)
 
-세 차트의 정보가 그래프 위 줄에 나타나고 마우스 이동/이탈에 따라 위치나 패널 높이가 바뀌지 않는지 확인한다. 쏠림율/ADR 날짜는 거래대금처럼 YYYY-MM-DD이며 분봉은 시각이 뒤따른다. `node dev_tools/debug/rank-adr.test.cjs`로 줄 위치·날짜·높이 보존 및 기존 동작을 모의 검증한다. 이 최신 변경의 Oracle 재확인은 T093으로 남긴다.
+세 차트의 정보가 그래프 위 줄에 나타나고 마우스 이동/이탈에 따라 위치나 패널 높이가 바뀌지 않는지 확인한다. 쏠림율/ADR 날짜는 거래대금처럼 YYYY-MM-DD이며 분봉은 시각이 뒤따른다. `node dev/tests/rank-adr.test.cjs`로 줄 위치·날짜·높이 보존 및 기존 동작을 모의 검증한다. 이 최신 변경의 Oracle 재확인은 T093으로 남긴다.
 
 ### 거래대금 갱신 실패 재확인 (미완료)
 

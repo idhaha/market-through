@@ -189,7 +189,8 @@ const assert = require('node:assert/strict');
         const rowTop=await page.locator('#rankAdrChartPanel > .chart-hover-info').evaluate(el=>el.getBoundingClientRect().top);
         await page.mouse.move(bounds.x+bounds.width*.7,bounds.y+90);
         assert.equal(await page.locator('#rankAdrChartPanel > .chart-hover-info').evaluate(el=>el.getBoundingClientRect().top),rowTop,'Info position remains fixed as the pointer moves');
-        await page.screenshot({ path:'dev_tools/output/rank-adr-daily-preview.png', fullPage:true });
+        fs.mkdirSync('dev/output', { recursive: true });
+        await page.screenshot({ path:'dev/output/rank-adr-daily-preview.png', fullPage:true });
         await page.evaluate(async () => {
             const previousFetch=window.fetch;
             window.fetch = async url => url.includes('/history') ? new Response(JSON.stringify({series:Array.from({length:120},(_,i) => ({date:new Date(Date.UTC(2026,0,1+i)).toISOString().slice(0,10),adr:90+i%30}))})) : previousFetch(url);

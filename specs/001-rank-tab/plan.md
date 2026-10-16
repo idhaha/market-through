@@ -88,7 +88,7 @@ FR-010 및 FR-022~031을 추가 범위로 관리한다. 두 테이블은 공통 
 
 브라우저는 기존 정적 JavaScript와 canvas로 선·격자·드래그 영역을 그린다. 로딩 중 기존 그림을 보존하고 블러를 적용한다. 자동 갱신은 기존 Rank 타이머를 공유하며 최신 페이지를 과거 기록에 병합하고 확대 구간을 유지한다. 요청 취소와 응답 버전 검사로 종목 변경 경합을 방지한다.
 
-추가 소스: `concentration-chart.js`, `public/concentration-chart.js`, `dev_tools/debug/concentration-chart.test.js`, `dev_tools/debug/concentration-chart-ui.test.js`. 상세 구현 참고: ../../docs/CONCENTRATION_CHART.md. 기존 SC-001~004 미검증 항목은 차트 테스트 통과와 별개로 유지한다.
+추가 소스: `concentration-chart.js`, `public/concentration-chart.js`, `dev/tests/concentration-chart.test.js`, `dev/tests/concentration-chart-ui.test.js`. 상세 구현 참고: ../../docs/CONCENTRATION_CHART.md. 기존 SC-001~004 미검증 항목은 차트 테스트 통과와 별개로 유지한다.
 
 분봉 X축은 하루 전체 또는 120봉 이하 구간에서 시간만 표시하며 매시 경계를 기준으로 눈금을 배치한다. 좁은 화면에서는 눈금 간격을 늘리고 툴팁·하단 기간의 분 표시는 유지한다.
 
@@ -147,9 +147,9 @@ POST /api/concentration-chart에 {code:선택종목, mode:"minute", interval:5, 
 
 ## 개발 도구 폴더 정리 (2026-10-09)
 
-개발용 JS·Python 실행 파일은 dev_tools/debug에 모으고 PNG·TXT·JSON·LOG·HTML 조회 결과 및 자료는 dev_tools/output에 모은다. 기존 experiments/tests/logs/exports 하위 폴더는 이 기준으로 통합했다. 출력 경로는 실행 작업 디렉터리와 무관하게 스크립트 위치 기준 dev_tools/output으로 지정한다. 서버 디버그 로그도 dev_tools/output/server_debug.log에 기록한다. 자동 회귀 테스트도 dev_tools/debug에 포함한다. 과거 fix/patch 스크립트는 일회성 수정 도구이며 이동 과정에서 실행하지 않는다.
+자동 검증 코드는 dev/tests, 조회·추출·점검·복구 및 수동 실험 도구는 dev/scripts에 모으고 PNG·TXT·JSON·HTML 테스트 결과 및 자료는 dev/output에 모은다. 기존 experiments/tests/logs/exports 하위 폴더는 이 기준으로 통합했다. 출력 경로는 실행 작업 디렉터리와 무관하게 스크립트 위치 기준 dev/output으로 지정한다. 운영 로그는 프로젝트 바로 아래 logs에 일자별로 기록하고, dev/output에는 테스트 결과물만 저장한다. 자동 회귀 테스트도 dev/tests에 포함한다. 과거 fix/patch 스크립트는 일회성 수정 도구이며 이동 과정에서 실행하지 않는다.
 
-데이터 추출 예: node dev_tools/debug/export-kospi-five-minute.js, node dev_tools/debug/check-kospi-outside-session.js. 정리는 파일 이동 전후 SHA256 일치로 검증했고, 변경한 스크립트는 구문 검사로 확인한다. API 호출이나 과거 패치 실행은 검증에 필요하지 않다.
+데이터 추출 예: node dev/scripts/export-kospi-five-minute.js, node dev/scripts/check-kospi-outside-session.js. 정리는 파일 이동 전후 SHA256 일치로 검증했고, 변경한 스크립트는 구문 검사로 확인한다. API 호출이나 과거 패치 실행은 검증에 필요하지 않다.
 
 ## Rank ADR 및 공통 표시 갱신 (2026-10-13)
 
@@ -161,7 +161,7 @@ POST /api/concentration-chart에 {code:선택종목, mode:"minute", interval:5, 
 - 확대 창은 전체 수신 배열과 별도로 관리하고 지수의 표시 범위와 X좌표를 공유한다. 드래그 중 자동 갱신은 종료 후 처리한다. 조회 취소·최신 요청 확인으로 오래된 시장/기간 응답을 차단한다.
 - 두 메인 차트만 정보창을 표시한다. 최종값은 버튼 줄 오른쪽, 하단은 줌 바→기간 정보(8px), 쏠림율 기간은 연도 포함, range 트랙은 채움 없는 동일 색이다.
 - 쏠림율 캔들 높이를 ADR 기준 높이 계산에서 제외한다. ResizeObserver 쓰기는 requestAnimationFrame에서 처리하고 변경된 크기만 적용한다.
-- 검증: `dev_tools/debug/rank-adr.test.cjs`, `tests/adr-routes.test.cjs`, `dev_tools/debug/rank-refresh.test.cjs`. 모의 캔들 조회·브라우저 동작 및 실제 ADR history 응답 확인을 구분한다. 실제 키움 장기 지수 조회와 Oracle 운영 검증은 완료로 주장하지 않는다.
+- 검증: `dev/tests/rank-adr.test.cjs`, `dev/tests/adr-routes.test.cjs`, `dev/tests/rank-refresh.test.cjs`. 모의 캔들 조회·브라우저 동작 및 실제 ADR history 응답 확인을 구분한다. 실제 키움 장기 지수 조회와 Oracle 운영 검증은 완료로 주장하지 않는다.
 
 고정 ADR 제거 시 app.js의 탭 생성·렌더러·이벤트·타이머와 전용 CSS, server.js의 /api/adr HTML 프록시를 삭제한다. applyData/applyFullStateBackup에서 기존 설정을 복사한 후 tab_adr 및 adrInterval만 제거한다. Rank의 세 JSON API와 차트 모듈은 유지한다.
 
@@ -175,14 +175,14 @@ POST /api/concentration-chart에 {code:선택종목, mode:"minute", interval:5, 
 - 최종값은 캔들 버튼 행, 오른쪽 여백 70px, 공통 16px/700 글꼴이다. 쏠림율·ADR는 파란색, 거래대금은 각 시장명과 오늘 값을 시장 고유색으로 항상 선명하게 표시한다. 거래대금은 두 행의 시장명 왼쪽/오늘 값 오른쪽 정렬, 오늘 봉 누락 시 —다. 메인 위 마우스 정보 줄을 유지하되 그래프 상단 여백은 10px로 줄인다.
 - 이동 점·수직선과 값 기준 수평선·축 배지를 표시한다. 배지는 캔버스 폭으로 위치를 제한하고 ADR 마지막 주황색 점은 plot clip 해제 뒤 그려 온전한 원을 유지한다.
 - 기존 문서의 ADR 줄바꿈·MAX/MIN·색상 기준선 및 모든 쏠림율 봉 표식 설명은 최신 spec에 따른다. ADR 데이터 보존/캔들 조회 정책은 유지하며 거래대금은 메모리 상태만 사용한다.
-- 검증은 dev_tools/debug/rank-turnover.test.cjs, dev_tools/debug/rank-adr.test.cjs, tests/adr-routes.test.cjs, dev_tools/debug/rank-refresh.test.cjs에 한정한다. 실제 키움 두 시장 장기 일봉과 Oracle 배포 검증은 수동 확인 대상으로 남긴다.
+- 검증은 dev/tests/rank-turnover.test.cjs, dev/tests/rank-adr.test.cjs, dev/tests/adr-routes.test.cjs, dev/tests/rank-refresh.test.cjs에 한정한다. 실제 키움 두 시장 장기 일봉과 Oracle 배포 검증은 수동 확인 대상으로 남긴다.
 
 ### 거래대금 당일1분(누적) 확장 (2026-10-14)
 
 - 일봉의 실제 `market_turnover`와 분봉의 `market_turnover_estimate`를 분리한다. ka20005의 `cur_prc/100 × trde_qty × 10,000`은 추정식이며 첨부 API 필드 표에는 실제 분봉 거래대금이 없다. `acc_trde_qty`는 누적거래량이고 예시의 `trde_prica`는 일봉 형태이므로 분봉 거래대금으로 사용하지 않는다.
 - 당일 분봉만 조회해 오름차순으로 추정값을 누적한다. 일봉 캐시에서 오늘 이전의 마지막 실제 거래대금을 시장별 전일 기준으로 가져온다. 두 시장의 선·강조·오늘 마지막 주황 점·캔들/줌 동작은 일봉과 공유한다.
 - 축은 전일 기준선을 포함한다. 선택 시장의 전일 수평선과 레이블은 코스닥 선과 구별되는 주황색이며 레이블은 선과 간격을 두고 위쪽 공간이 부족하면 아래에 놓는다. 장 초반 누적선이 낮게 보이는 한계는 상태 줄의 최신 전일 대비 비율과 마우스 정보의 시각별 비율로 보완한다.
-- 최신값에는 추정 기호를 붙이지 않고 상태 줄에 추정임을 명시한다. 마우스 정보는 시장별 금액 뒤에 `(전일대비 xx.x%)`를 붙이며 전일 기준이 없거나 0이면 생략한다. `dev_tools/debug/rank-turnover-minute.test.cjs`에서 누적·기준선·레이블 간격·마지막 점·비율을 모의 검증한다. 실제 키움 데이터 비교는 별도 관찰이며 운영 배포 검증은 아니다.
+- 최신값에는 추정 기호를 붙이지 않고 상태 줄에 추정임을 명시한다. 마우스 정보는 시장별 금액 뒤에 `(전일대비 xx.x%)`를 붙이며 전일 기준이 없거나 0이면 생략한다. `dev/tests/rank-turnover-minute.test.cjs`에서 누적·기준선·레이블 간격·마지막 점·비율을 모의 검증한다. 실제 키움 데이터 비교는 별도 관찰이며 운영 배포 검증은 아니다.
 
 ### Oracle 운영 확인 추가 (2026-10-13)
 
@@ -192,7 +192,7 @@ POST /api/concentration-chart에 {code:선택종목, mode:"minute", interval:5, 
 
 쏠림율/ADR도 거래대금과 같은 그래프 위 고정 정보 줄을 사용한다. 쏠림율·ADR 내부 빈 공간 배치 설명은 FR-038/050으로 대체한다. 기존 tooltip 노드를 그래프 앞의 chart-hover-info로 이동하고 내부 충돌 검사 배치 함수를 제거한다. 정보 줄은 24px이며 숨김 시에도 공간을 유지한다. 쏠림율 메인 그래프 높이는 기존 높이에서 24px 차감하고, ADR는 고정 패널 높이 안에서 flex 그래프가 줄 공간을 양보한다. 캔들 높이·공유 커서·수평선/값 배지는 유지한다.
 
-마우스 정보 날짜는 모두 YYYY-MM-DD, 분봉은 뒤에 HH:mm을 추가한다. dev_tools/debug/rank-adr.test.cjs에서 외부 줄 위치·고정 위치·숨김 시 패널 높이 유지·쏠림율 전체 날짜·기존 차트 동작을 검증했다. 이 변경 이후 Oracle 운영 재확인은 아직 하지 않았으며 앞선 T089는 변경 이전 확인이다.
+마우스 정보 날짜는 모두 YYYY-MM-DD, 분봉은 뒤에 HH:mm을 추가한다. dev/tests/rank-adr.test.cjs에서 외부 줄 위치·고정 위치·숨김 시 패널 높이 유지·쏠림율 전체 날짜·기존 차트 동작을 검증했다. 이 변경 이후 Oracle 운영 재확인은 아직 하지 않았으며 앞선 T089는 변경 이전 확인이다.
 거래대금 메인 그래프의 정보 줄 아래 상단 여백(10px)을 기준으로 쏠림율·ADR 메인 그래프도 10px로 맞춘다. 패널·캔들 영역 높이는 변경하지 않는다.
 세 메인 차트의 Y축 눈금은 캔버스 오른쪽에서 36px 지점에 textAlign=right로 그리고 최종값 행도 같은 36px 여백으로 맞춘다. 캔들 Y축 눈금에도 같은 기준을 적용한다.
 

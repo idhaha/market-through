@@ -26,13 +26,16 @@ d:\Program\MarketThrough\
 ├── package.json           # 프로젝트 의존성
 ├── .env                   # 환경 변수 (API 키)
 ├── docs/                  # 시스템 사양서
-├── dev_tools/             # 테스트, 디버깅, 실험 파일 및 로그
-│   ├── tests/
-│   ├── debug/
-│   ├── experiments/
-│   └── logs/
+├── dev/                   # 개발용 코드와 실행 결과
+│   ├── tests/             # 자동 검증 테스트
+│   ├── scripts/           # 조회·추출·점검·복구 도구
+│   ├── output/            # 생성된 테스트 결과물 (Git 제외)
+│   └── README.md          # 분류 기준과 실행 안내
+├── logs/                  # 운영 로그: 한국 시간 기준 오늘·어제 (Git 제외)
 └── .gitignore             # Git 제외 파일
 ```
+
+개발 파일의 분류 기준과 실행 방법은 [dev/README.md](dev/README.md)를 참고한다.
 
 ## 🚀 Oracle Cloud 배포 가이드
 

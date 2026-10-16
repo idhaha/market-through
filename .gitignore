@@ -52,17 +52,11 @@ authorized_emails.json
 authorized_emails.json.*.tmp
 data/fred-cache/
 
-dev_tools/
-!dev_tools/
-dev_tools/*
-!dev_tools/debug/
-dev_tools/debug/*
-!dev_tools/debug/rank-adr.test.cjs
-!dev_tools/debug/rank-turnover.test.cjs
-!dev_tools/debug/rank-turnover-minute.test.cjs
-!dev_tools/debug/rank-refresh.test.cjs
-!dev_tools/debug/rank-independent-layout.test.cjs
-!dev_tools/debug/recover-independent-window.ps1
+# Development outputs and historical one-off tools
+/dev/output/
+/dev/scripts/*
+!/dev/scripts/recover-independent-window.ps1
+
 
 # Test
 move_test
