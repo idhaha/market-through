@@ -45,19 +45,47 @@ free -m
 
 ### 3.2 PM2 로그 순환 (완료)
 
-현재 설정 값(확인됨): 파일당 10MB, 5개 보관, 압축, 매일 자정 순환.
+2026-10-16 사용자가 Oracle에서 실행한 `pm2 conf pm2-logrotate`, `pm2 status`, `du -sh ~/.pm2/logs` 출력으로 확인했다. 앱 `market-through`와 모듈 `pm2-logrotate`가 모두 online이었다.
+
+- 경로: `/home/ubuntu/.pm2/logs/market-through-out.log`(표준 출력), `market-through-error.log`(오류 출력). 모듈 자체 로그도 PM2 로그 폴더에 포함될 수 있다.
+- `max_size=10M`: 각 로그 파일이 약 10MB를 넘으면 순환한다. `workerInterval=30`이므로 30초마다 크기를 확인하며, 순간적으로 기준 크기를 넘을 수 있다.
+- `rotateInterval=0 0 * * *`: 크기가 작아도 매일 자정에 순환한다. PM2 모듈이 사용하는 서버 시간대 기준이며, 앱 일자별 로그의 한국 시간 기준과는 구분한다.
+- `compress=true`: 순환된 과거 로그를 압축한다.
+- `retain=5`: 출력·오류 등 각 로그 파일별로 순환된 과거 파일을 최대 5개 보관한다. 6개가 되면 가장 오래된 파일부터 삭제한다. 현재 기록 중인 파일은 이 과거 5개와 별도다.
+- `dateFormat=YYYY-MM-DD_HH-mm-ss`: 순환 파일 이름에 날짜·시각을 붙인다.
+- `rotateModule=true`: PM2 모듈 로그도 순환 대상으로 포함한다.
+
+예를 들어 `market-through-out.log`에 계속 기록하다가 크기 기준에 걸리거나 자정이 되면, 기존 내용을 날짜가 붙은 압축 파일로 보관하고 현재 파일을 비워 다시 기록한다. 보통 현재 파일 1개와 과거 압축 파일 최대 5개가 남는다. 이 규칙은 `market-through-error.log`에도 따로 적용된다.
+
+**과거 파일 5개는 5일치가 아니다.** 로그가 많으면 하루에도 여러 번 순환하므로 보관 기간은 더 짧아질 수 있다. 또한 **전체 폴더 용량의 고정 상한은 없다.** 당시 관측된 `52M`은 현재 사용량이며 최대 52MB 보관 설정이 아니다. 여러 로그 종류, 압축률, 크기 검사 사이에 증가한 양에 따라 전체 용량이 달라진다. 관리 대상 로그는 오래된 순환 파일이 삭제되지만, 별도로 남긴 파일까지 이 정책이 정리한다는 의미는 아니다.
+
+현재 설정 확인:
+
+```bash
+pm2 conf pm2-logrotate
+pm2 status
+du -sh ~/.pm2/logs
+ls -lh ~/.pm2/logs
+```
+
+설정을 다시 구성할 때의 값:
 
 ```bash
 pm2 install pm2-logrotate
 pm2 set pm2-logrotate:max_size 10M
 pm2 set pm2-logrotate:retain 5
 pm2 set pm2-logrotate:compress true
-pm2 conf pm2-logrotate        # 설정 확인
+pm2 set pm2-logrotate:dateFormat YYYY-MM-DD_HH-mm-ss
+pm2 set pm2-logrotate:workerInterval 30
+pm2 set pm2-logrotate:rotateInterval '0 0 * * *'
+pm2 set pm2-logrotate:rotateModule true
 ```
+
+당시 앱 메모리는 115.4MB, 순환 모듈은 21.0MB로 표시됐다. 이는 해당 시점의 관측값이며 고정 사용량이나 제한값이 아니다.
 
 참고: pm2-logrotate 모듈 자체가 메모리를 사용하며 관측값이 30.7MB → 47.7MB → 56.5MB → 70.7MB로 올라갔다(2026-10-04, 재부팅·앱 재시작 직후 포함). 앱(Node 약 55~100MB)보다 커질 수 있으므로 계속 증가하면(예: 100MB 이상) 모듈을 제거하고 서버 기본 logrotate로 대체하는 것을 검토한다.
 
-애플리케이션 로그는 `retained-logs.js`에서 한국 시간 기준 일자별 파일(`logs/server_debug.YYYY-MM-DD.log`, `logs/puppeteer_debug.YYYY-MM-DD.log`)에 기록한다. 오늘·어제 파일만 보관하고, 서버 시작 시와 한국 시간 자정에 이틀 전 이하 파일을 삭제한다. 자정 타이머가 늦게 실행되어도 날짜 변경 후 첫 기록 시 다시 정리한다. 새 기록에는 UTC ISO 시각을 붙인다. 프로젝트 바로 아래 `logs` 폴더는 서버 시작 시 자동 생성한다. 기존 `dev/output` 또는 `dev_tools/logs`의 로그는 자동 이동·삭제하지 않으며, 새 버전 배포 후 서버를 재시작하면 더 이상 기록하지 않는다. 필요 없으면 재시작 후 수동 삭제할 수 있다. PM2 출력 로그의 순환 설정과는 별개다.
+애플리케이션 로그는 `retained-logs.js`에서 한국 시간 기준 일자별 파일(`logs/server_debug.YYYY-MM-DD.log`, `logs/puppeteer_debug.YYYY-MM-DD.log`)에 기록한다. 오늘·어제 파일만 보관하고, 서버 시작 시와 한국 시간 자정에 이틀 전 이하 파일을 삭제한다. 자정 타이머가 늦게 실행되어도 날짜 변경 후 첫 기록 시 다시 정리한다. 새 기록에는 UTC ISO 시각을 붙인다. 프로젝트 바로 아래 `logs` 폴더는 서버 시작 시 자동 생성한다. 기존 `dev/output` 또는 `dev_tools/logs`의 로그는 자동 이동·삭제하지 않으며, 새 버전 배포 후 서버를 재시작하면 더 이상 기록하지 않는다. 필요 없으면 재시작 후 수동 삭제할 수 있다. PM2 출력 로그의 순환 설정과는 별개다. `update-market_2.sh` 자체에는 로그 삭제나 순환 설정 명령이 없다. 앱 로그 정리는 서버 코드가, PM2 출력 로그 순환은 실행 중인 `pm2-logrotate` 모듈이 각각 수행한다.
 
 ### 3.3 재부팅 후 자동 시작 (등록 및 재부팅 동작 확인 완료)
 

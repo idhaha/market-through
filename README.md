@@ -54,6 +54,7 @@ logs/           # 프로젝트 루트의 운영 로그 폴더
 - 실행 결과물은 `dev/output/`에 둔다. 필요한 스크립트가 폴더를 자동 생성하고, Git에서는 제외한다.
 - 운영 로그는 `dev/output/`에 기록하지 않는다. 프로젝트 루트 `logs/`에 한국 시간 기준 일자별로 기록하며 오늘·어제 파일만 보관한다.
 - 기존 로그 파일은 자동 삭제하지 않고 사용자가 수동 정리한다.
+- PM2 출력·오류 로그는 `~/.pm2/logs/`에 별도로 기록된다. 현재는 파일당 약 10MB 또는 매일 자정에 순환하고, 압축된 과거 파일을 종류별 5개 보관한다. 전체 용량 52MB 제한이나 5일 보관이라는 뜻은 아니다. 실제 설정·확인 명령은 [운영 문서의 PM2 로그 순환](docs/operations/server-runbook.md#32-pm2-로그-순환-완료)을 참고한다.
 
 기존 일회성 스크립트의 Git 제외 정책은 유지한다. 공유가 필요한 도구를 추가할 때는 `.gitignore`의 `dev/scripts/` 예외도 함께 추가한다. 과거 수정·패치 스크립트는 폴더 정리나 검증을 이유로 실행하지 않는다.
 
@@ -110,8 +111,8 @@ sudo npm install -g pm2
 
 ```bash
 # 저장소 클론
-git clone https://github.com/idhaha/kiwoom_realtimerank.git
-cd kiwoom_realtimerank
+git clone https://github.com/idhaha/market-through.git
+cd market-through
 git checkout br_oracle
 
 # 의존성 설치
@@ -131,7 +132,7 @@ KIWOOM_SECRETKEY=your_secret_key_here
 
 ```bash
 # PM2로 서버 시작
-pm2 start server.js --name kiwoom-service
+pm2 start server.js --name market-through
 
 # 부팅 시 자동 시작 설정
 pm2 save
@@ -139,7 +140,7 @@ pm2 startup  # 출력된 명령어 실행
 
 # 상태 확인
 pm2 status
-pm2 logs kiwoom-service
+pm2 logs market-through
 ```
 
 ### 5. 접속
@@ -161,10 +162,8 @@ Oracle 인스턴스에서:
 
 ```bash
 # Oracle Cloud 인스턴스
-cd ~/kiwoom_realtimerank
-git pull origin br_oracle
-npm ci  # 의존성 변경 시
-pm2 restart kiwoom-service
+cd ~/market-through
+./update-market_2.sh
 ```
 
 ## 🔑 키움 API 정보
@@ -194,8 +193,8 @@ pm2 restart kiwoom-service
 
 ### 서버가 실행되지 않음
 ```bash
-pm2 logs kiwoom-service  # 로그 확인
-pm2 restart kiwoom-service  # 재시작
+pm2 logs market-through  # 로그 확인
+pm2 restart market-through  # 재시작
 ```
 
 ### 포트 접근 불가
@@ -230,7 +229,7 @@ npm run dev
 
 - [Oracle Cloud 문서](https://docs.oracle.com/en-us/iaas/Content/home.htm)
 - [키움증권 API 문서](https://apiportal.kiwoom.com/)
-- [GitHub Repository](https://github.com/idhaha/kiwoom_realtimerank)
+- [GitHub Repository](https://github.com/idhaha/market-through)
 
 ---
 

@@ -9,13 +9,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=20261016_v77">
+    <link rel="stylesheet" href="style.css?v=20261016_v87">
     <script src="concentration-chart.js?v=20261016_v57" defer></script>
     <script src="rank-adr-chart.js?v=20261016_v41" defer></script>
     <script src="rank-turnover-chart.js?v=20261016_v27" defer></script>
     <script src="rank-independent-main.js?v=20261015_v10" defer></script>
     <script src="us-links.js?v=20261010_v24" defer></script>
-    <script src="app.js?v=20261016_v37" defer></script>
+    <script src="app.js?v=20261016_v44" defer></script>
     <!-- Quill Editor -->
     <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
     <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
@@ -41,12 +41,13 @@
     </div>
 
     <div id="tabContainer" class="tab-container" style="display: none;">
-        <!-- Scrollable Tabs Area -->
-        <div id="tabsWrapper" class="tabs-wrapper">
-            <!-- Dynamic and Permanent Tab Buttons will be inserted here -->
-        </div>
-
-        <button id="addTabBtn" class="add-tab-btn" title="탭 추가">+</button>
+        <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-controls="tabSidebar" aria-expanded="true" title="탭 사이드바 접기" aria-label="탭 사이드바 접기">☰</button>
+        <span class="service-title">Market Through <span class="service-byline">by Azikanbal</span></span>
+        <aside id="tabSidebar" class="tab-sidebar" aria-label="탭 메뉴">
+            <nav id="tabsWrapper" class="tabs-wrapper" aria-label="탭 선택"></nav>
+            <button id="addTabBtn" class="add-tab-btn" title="탭 추가" aria-label="탭 추가"><span aria-hidden="true">+</span><span class="add-tab-label">탭 추가</span></button>
+            <div id="sidebarResize" class="sidebar-resize" role="separator" aria-label="사이드바 너비" aria-orientation="vertical" tabindex="0" aria-valuemin="72" aria-valuemax="480" aria-valuenow="220"></div>
+        </aside>
 
         <div class="right-controls">
             <button id="bulkUpload" class="btn-icon header-icon server-transfer-icon" title="현재 서버 프로젝트 폴더에서 전체 설정 불러오기" aria-label="서버에서 전체 설정 불러오기">
@@ -141,9 +142,9 @@
                         </div>
                     </div>
                     <div class="status-info">
-                        <span id="lastUpdate">-</span>
+                        <span id="statusText">대기 중</span>
                         <span class="status-separator">|</span>
-                        <span id="statusText">대기 중...</span>
+                        <span id="lastUpdate">-</span>
                     </div>
                 </header>
 

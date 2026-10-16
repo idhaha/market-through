@@ -551,6 +551,59 @@ const tabContainer = document.getElementById("tabContainer");
 const tabsWrapper = document.getElementById("tabsWrapper"); // New wrapper for isolated scroll
 const tabContents = document.getElementById("tabContents");
 const addTabBtn = document.getElementById("addTabBtn");
+// Sidebar preferences travel with the existing settings snapshot and backups.
+let tabSidebarState = { collapsed: false, width: 220 };
+const sidebarToggle = document.getElementById('sidebarToggle');
+const tabSidebar = document.getElementById('tabSidebar');
+const sidebarResize = document.getElementById('sidebarResize');
+function applyTabSidebarSettings(settings) {
+    const width = Number(settings?.width);
+    tabSidebarState = {
+        collapsed: settings?.collapsed === true,
+        width: Number.isFinite(width) ? Math.min(480, Math.max(72, width)) : 220
+    };
+    document.documentElement.style.setProperty('--tab-sidebar-width', `${tabSidebarState.width}px`);
+    document.body.classList.toggle('tab-sidebar-collapsed', tabSidebarState.collapsed);
+    document.body.classList.toggle('tab-sidebar-compact', tabSidebarState.width < 140);
+    tabSidebar.inert = tabSidebarState.collapsed;
+    sidebarToggle.setAttribute('aria-expanded', String(!tabSidebarState.collapsed));
+    sidebarToggle.title = tabSidebarState.collapsed ? '탭 사이드바 펼치기' : '탭 사이드바 접기';
+    sidebarToggle.setAttribute('aria-label', sidebarToggle.title);
+    sidebarResize.setAttribute('aria-valuenow', String(tabSidebarState.width));
+    window.dispatchEvent(new Event('resize'));
+}
+sidebarToggle.addEventListener('click', () => {
+    applyTabSidebarSettings({ ...tabSidebarState, collapsed: !tabSidebarState.collapsed });
+    saveAppData();
+});
+let sidebarDrag = null;
+sidebarResize.addEventListener('pointerdown', event => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    sidebarDrag = { x: event.clientX, width: tabSidebarState.width };
+    sidebarResize.setPointerCapture(event.pointerId);
+    document.body.classList.add('sidebar-resizing');
+});
+sidebarResize.addEventListener('pointermove', event => {
+    if (!sidebarDrag) return;
+    applyTabSidebarSettings({ ...tabSidebarState, width: sidebarDrag.width + event.clientX - sidebarDrag.x });
+});
+function finishSidebarResize() {
+    if (!sidebarDrag) return;
+    sidebarDrag = null;
+    document.body.classList.remove('sidebar-resizing');
+    saveAppData();
+}
+sidebarResize.addEventListener('pointerup', finishSidebarResize);
+sidebarResize.addEventListener('pointercancel', finishSidebarResize);
+sidebarResize.addEventListener('lostpointercapture', finishSidebarResize);
+sidebarResize.addEventListener('keydown', event => {
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const width = event.key === 'Home' ? 72 : event.key === 'End' ? 480 : tabSidebarState.width + (event.key === 'ArrowLeft' ? -10 : 10);
+    applyTabSidebarSettings({ ...tabSidebarState, width });
+    saveAppData();
+});
 const captureAllBtn = document.getElementById("captureAllBtn");
 if (captureAllBtn) {
     captureAllBtn.addEventListener('click', captureAllTabs);
@@ -1381,6 +1434,7 @@ function getSerializedState(sourceData = null) {
         contents: dataToSerialize,
         rankInterval: refreshIntervalSelect ? refreshIntervalSelect.value : "2",
         watchlistGroupId: watchlistGroupId,
+        tabSidebar: { ...tabSidebarState },
         rankChartDisplay: window.getConcentrationDisplaySettings?.() || { debugOpen: false, candleOpen: false, mode: 'day', interval: 1 },
         memoHtml: memoHtml,
         memoDelta: memoDelta,
@@ -1511,6 +1565,7 @@ function removeRetiredAdrState(data) {
 }
 
 function applyData(data) {
+    applyTabSidebarSettings(data?.tabSidebar);
     data = removeRetiredAdrState(data);
     if (!data || !data.tabs) return;
 
@@ -1538,6 +1593,7 @@ function applyData(data) {
                         btn.title = '고정 탭 (증시 캘린더)';
                     } else {
                         btn.textContent = fixedName;
+    btn.title = fixedName;
                     }
                 }
                 return;
@@ -1851,6 +1907,7 @@ function createTabButtonElement(id, name) {
     btn.className = "tab-btn";
     btn.dataset.tab = id;
     btn.textContent = fixedName;
+    btn.title = fixedName;
     btn.draggable = true;
     if (typeof tabData !== 'undefined' && tabData[id] && typeof tabData[id] === 'object' && !Array.isArray(tabData[id])) {
         tabData[id].name = fixedName;
@@ -1914,7 +1971,7 @@ function createChartGrid(tabId) {
         return `<div class="container overseas-container">
             <header><div class="header-single-line"><h1><strong>기준금리</strong></h1>
                 <div class="header-controls"><button id="refreshBaseInterest" class="btn-primary" style="height:38px; padding:0 15px;">새로고침</button></div>
-            </div><div class="status-info"><span id="baseInterestLastUpdate">-</span><span class="status-separator">|</span><span id="baseInterestStatus">대기 중...</span></div></header>
+            </div><div class="status-info"><span id="baseInterestStatus">대기 중</span><span class="status-separator">|</span><span id="baseInterestLastUpdate">-</span></div></header>
             <div class="base-interest-scroll"><div id="baseInterestGrid" class="base-interest-grid">
                 ${BASE_INTEREST_BANKS.map(bank => `<article class="base-interest-card" data-bank-code="${bank.code}"><h2>${bank.code} (${bank.name})</h2><div class="base-interest-chart"><p role="status">화면 로딩 중...</p></div></article>`).join('')}
             </div></div></div>`;
@@ -1940,9 +1997,9 @@ function createChartGrid(tabId) {
                         </div>
                     </div>
                     <div class="status-info">
-                        <span id="earningsLastUpdate_${tabId}">-</span>
+                        <span id="earningsStatusText_${tabId}">대기 중</span>
                         <span class="status-separator">|</span>
-                        <span id="earningsStatusText_${tabId}">대기 중...</span>
+                        <span id="earningsLastUpdate_${tabId}">-</span>
                     </div>
                 </header>
                 <div class="calendar-source-tabs" role="tablist" aria-label="캘린더 종류">
@@ -1985,7 +2042,7 @@ function createChartGrid(tabId) {
                             <div class="divider-title"><span class="title-text">${item.title}</span></div>
                             <div class="divider-line"></div>
                             <div class="divider-controls">
-                                <button class="btn-section-edit" title="섹션 편집">⚙️</button>
+                                <button class="btn-section-edit" type="button" title="제목·색상 편집" aria-label="제목·색상 편집"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9.5 3-.6 2.4-2 .9-2.2-.7-2.5 4.3 1.7 1.7v2.3l-1.7 1.7 2.5 4.3 2.2-.7 2 .9.6 2.4h5l.6-2.4 2-.9 2.2.7 2.5-4.3-1.7-1.7v-2.3l1.7-1.7-2.5-4.3-2.2.7-2-.9L14.5 3z"/><circle cx="12" cy="12.5" r="3"/></svg></button>
                                 <div class="section-edit-popup">
                                     <div class="edit-group">
                                         <label>제목</label>
@@ -2011,16 +2068,18 @@ function createChartGrid(tabId) {
             <div class="container overseas-container">
                 <header>
                     <div class="header-single-line">
-                        <h1><strong>${titleText}</strong></h1>
-                        <div class="status-info tab-heading-status">
-                            <span id="${prefix}LastUpdate">-</span>
-                            <span class="status-separator">|</span>
-                            <span id="${prefix}StatusText">대기 중...</span>
-                            <button class="btn-config status-btn config-trigger" data-tab="${tabId}">종목입력</button>
+                        <div class="tab-title-group">
+                            <h1><strong>${titleText}</strong></h1>
+                            <button class="btn-config config-trigger" data-tab="${tabId}">종목입력</button>
                         </div>
                         <div class="header-controls">
                             <button id="refreshOverlay_${tabId}" class="btn-primary" style="height: 38px; padding: 0 15px;">조회</button>
                         </div>
+                    </div>
+                    <div class="status-info">
+                            <span id="${prefix}StatusText">대기 중</span>
+                            <span class="status-separator">|</span>
+                            <span id="${prefix}LastUpdate">-</span>
                     </div>
                 </header>
                 <div class="overseas-content-scroll" style="flex:1; overflow:auto;">
@@ -2058,7 +2117,7 @@ function createChartGrid(tabId) {
                             <div class="divider-title"><span class="title-text">${item.title}</span></div>
                             <div class="divider-line"></div>
                             <div class="divider-controls">
-                                <button class="btn-section-edit" title="섹션 편집">⚙️</button>
+                                <button class="btn-section-edit" type="button" title="제목·색상 편집" aria-label="제목·색상 편집"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9.5 3-.6 2.4-2 .9-2.2-.7-2.5 4.3 1.7 1.7v2.3l-1.7 1.7 2.5 4.3 2.2-.7 2 .9.6 2.4h5l.6-2.4 2-.9 2.2.7 2.5-4.3-1.7-1.7v-2.3l1.7-1.7-2.5-4.3-2.2.7-2-.9L14.5 3z"/><circle cx="12" cy="12.5" r="3"/></svg></button>
                                 <div class="section-edit-popup">
                                     <div class="edit-group">
                                         <label>제목</label>
@@ -2087,16 +2146,18 @@ function createChartGrid(tabId) {
             <div class="container overseas-container">
                 <header>
                     <div class="header-single-line">
-                        <h1><strong>${titleText}</strong></h1>
-                        <div class="status-info tab-heading-status">
-                            <span id="${prefix}LastUpdate">-</span>
-                            <span class="status-separator">|</span>
-                            <span id="${prefix}StatusText">대기 중...</span>
-                            <button class="btn-config status-btn config-trigger" data-tab="${tabId}">종목입력</button>
+                        <div class="tab-title-group">
+                            <h1><strong>${titleText}</strong></h1>
+                            <button class="btn-config config-trigger" data-tab="${tabId}">종목입력</button>
                         </div>
                         <div class="header-controls">
                             <button id="refreshExchangeRate_${tabId}" class="btn-primary" style="height: 38px; padding: 0 15px;">조회</button>
                         </div>
+                    </div>
+                    <div class="status-info">
+                            <span id="${prefix}StatusText">대기 중</span>
+                            <span class="status-separator">|</span>
+                            <span id="${prefix}LastUpdate">-</span>
                     </div>
                 </header>
                 <div class="overseas-content-scroll" style="flex:1; overflow:auto;">
@@ -2325,6 +2386,7 @@ tabContainer.addEventListener("dblclick", function (e) {
     const finishEditing = () => {
         const newName = input.value.trim() || originalName;
         btn.textContent = newName;
+        btn.title = newName;
         const tabId = btn.dataset.tab;
         if (typeof tabData !== 'undefined' && tabData[tabId] && typeof tabData[tabId] === 'object' && !Array.isArray(tabData[tabId])) {
             tabData[tabId].name = newName;
@@ -2349,7 +2411,7 @@ tabsWrapper.addEventListener('dragover', function (e) {
     const draggableElements = [...tabsWrapper.querySelectorAll('.tab-btn:not(.dragging):not(.add-tab-btn):not([data-perm])')];
     const afterElement = draggableElements.reduce((closest, child) => {
         const box = child.getBoundingClientRect();
-        const offset = e.clientX - box.left - box.width / 2;
+        const offset = e.clientY - box.top - box.height / 2;
         if (offset < 0 && offset > closest.offset) { return { offset: offset, element: child }; } else { return closest; }
     }, { offset: Number.NEGATIVE_INFINITY }).element;
     if (afterElement == null) { tabsWrapper.appendChild(draggedItem); } else { tabsWrapper.insertBefore(draggedItem, afterElement); }
@@ -2358,8 +2420,9 @@ tabsWrapper.addEventListener('dragover', function (e) {
 addTabBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     addTabMenu.style.display = "block";
-    addTabMenu.style.left = e.pageX + "px";
-    addTabMenu.style.top = e.pageY + "px";
+    const rect = addTabBtn.getBoundingClientRect();
+    addTabMenu.style.left = Math.max(0, Math.min(rect.left, window.innerWidth - addTabMenu.offsetWidth)) + window.scrollX + "px";
+    addTabMenu.style.top = Math.max(0, Math.min(rect.bottom, window.innerHeight - addTabMenu.offsetHeight)) + window.scrollY + "px";
 });
 
 // Close menus when clicking elsewhere
@@ -4014,7 +4077,7 @@ async function refreshExchangeRateCharts(tabId) {
     const statusText = document.getElementById(`${prefix}StatusText`);
     const lastUpdate = document.getElementById(`${prefix}LastUpdate`);
 
-    if (statusText) statusText.textContent = '데이터 로딩 중...';
+    if (statusText) statusText.textContent = '로딩 중';
 
     const chartBoxes = content.querySelectorAll('.te-chart-box');
     const multiCanvases = content.querySelectorAll('.multi-chart-canvas');
@@ -4029,7 +4092,7 @@ async function refreshExchangeRateCharts(tabId) {
 
     const checkComplete = () => {
         if (++loadedCount >= totalCount) {
-            if (statusText) statusText.textContent = '데이터 로딩 완료';
+            if (statusText) statusText.textContent = '완료';
             if (lastUpdate) lastUpdate.textContent = formatTime(new Date());
         }
     };
@@ -4595,7 +4658,7 @@ function refreshOverseasCustomCharts(tabId) {
     const statusText = document.getElementById(`${prefix}StatusText`);
     const lastUpdate = document.getElementById(`${prefix}LastUpdate`);
 
-    if (statusText) statusText.textContent = '데이터 로딩 중...';
+    if (statusText) statusText.textContent = '로딩 중';
 
     const images = content.querySelectorAll('.finviz-chart-img');
     const canvases = content.querySelectorAll('.multi-chart-canvas');
@@ -4613,7 +4676,7 @@ function refreshOverseasCustomCharts(tabId) {
 
     const checkComplete = () => {
         if (++loadedCount >= totalCount) { // Use >= for safety
-            if (statusText) statusText.textContent = '데이터 로딩 완료';
+            if (statusText) statusText.textContent = '완료';
             if (lastUpdate) lastUpdate.textContent = formatTime(new Date());
             setupOverseasCursorSync();
         }
@@ -4721,12 +4784,15 @@ function loadCentralBanksFrame(tabId, forceRefresh = false) {
     const isSelected = () => document.getElementById(`iframeEarnings_${tabId}`)?.dataset.calendarSource === 'investing';
     clearTimeout(frame.loadingTimer);
     if (loading) loading.hidden = false;
-    if (isSelected() && status) status.textContent = 'Investing.com 페이지 접속 중…';
+    if (isSelected() && status) status.textContent = '로딩 중';
     frame.onload = () => {
         clearTimeout(frame.loadingTimer);
         if (loading) loading.hidden = true;
         // Cross-origin frames do not expose their HTTP status or page contents.
-        if (isSelected() && status) status.textContent = 'iframe 표시 · 빈 화면이면 원본 사이트에서 확인해 주세요';
+        if (isSelected() && status) {
+            status.textContent = '완료';
+            status.title = '빈 화면이면 원본 사이트에서 확인해 주세요';
+        }
     };
     frame.dataset.loadedDate = today;
     frame.src = 'https://kr.investing.com/central-banks/';
@@ -4752,16 +4818,16 @@ function loadEarningsCalendarFrame(tabId, forceRefresh = false) {
     const status = document.getElementById(`earningsStatusText_${tabId}`);
     const lastUpdate = document.getElementById(`earningsLastUpdate_${tabId}`);
     if (!forceRefresh && frame.dataset.loadedDate === centralBanksToday()) {
-        if (status) status.textContent = '캘린더 표시 중 (당일 페이지 유지)';
+        if (status) status.textContent = '완료';
         if (lastUpdate) lastUpdate.textContent = frame.dataset.requestedAt;
         return;
     }
     frame.dataset.loadedDate = centralBanksToday();
     frame.dataset.requestedAt = formatTime(new Date());
     frame.onload = () => {
-        if (metadata.dataset.calendarSource === sourceId && status) status.textContent = '캘린더 표시 중';
+        if (metadata.dataset.calendarSource === sourceId && status) status.textContent = '완료';
     };
-    if (status) status.textContent = '캘린더 접속 중…';
+    if (status) status.textContent = '로딩 중';
     if (lastUpdate) lastUpdate.textContent = frame.dataset.requestedAt;
     frame.src = selected.url;
 }
@@ -4796,7 +4862,7 @@ function selectEarningsCalendar(tabId, sourceId) {
     if (framePanel) framePanel.hidden = sourceId !== 'investing';
     if (sourceId !== 'investing') {
         const status = document.getElementById(`earningsStatusText_${tabId}`);
-        if (status) status.textContent = '캘린더 표시 중';
+        if (status) status.textContent = '완료';
     }
     iframe.title = `${selected.label} 캘린더`;
     if (iframe.dataset.calendarSource !== sourceId) {
@@ -5042,6 +5108,7 @@ async function restoreServerBackup() {
  * JSON 백업 데이터를 사용하여 전체 애플리케이션 상태 복구
  */
 function applyFullStateBackup(data) {
+    applyTabSidebarSettings(data?.tabSidebar);
     data = removeRetiredAdrState(data);
     window.applyConcentrationDisplaySettings?.(data.rankChartDisplay);
     console.log("🔄 [Restore] Full state restoration started...");
@@ -5875,7 +5942,10 @@ function renderBaseInterestCharts(result) {
     const stages = { waiting: '브라우저 실행 대기 중...', browser: '캡처 브라우저 시작 중...', navigation: 'Investing.com 접속 중...', section: '금리 차트 영역 확인 중...', chart: `${result.bank || ''} 차트 조회 중...`, closing: '캡처 마무리 중...' };
     grid.setAttribute('aria-busy', String(result.status === 'loading'));
     const status = document.getElementById('baseInterestStatus');
-    if (status) status.textContent = result.refreshError || result.error || (result.status === 'loading' ? `${stages[result.stage] || '화면 로딩 중...'} (${count}/12)` : result.status === 'partial' ? `일부 조회 실패 (${count}/12) — 새로고침으로 다시 시도해 주세요.` : '조회 완료 (12/12)');
+    if (status) {
+        status.textContent = result.refreshError || result.error || (result.status === 'loading' ? `로딩 중 (${count}/12)` : result.status === 'partial' ? `일부 조회 실패 (${count}/12) — 새로고침으로 다시 시도해 주세요.` : '완료');
+        status.title = result.status === 'loading' ? (stages[result.stage] || '로딩 중') : '';
+    }
     const updated = document.getElementById('baseInterestLastUpdate');
     if (updated && result.capturedAt) updated.textContent = new Date(result.capturedAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
     BASE_INTEREST_BANKS.forEach(bank => {
