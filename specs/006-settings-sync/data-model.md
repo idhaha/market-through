@@ -22,13 +22,13 @@
 | watchlist_selected_group | 관심종목 그룹 선택 복원용 |
 | user_session | 세션 토큰(스냅샷에 포함 안 됨) |
 
-## ServerSettingsFile (autosaved_user_settings.json)
+## ServerSettingsFile (user_settings_autosaved.json)
 - AppSettingsSnapshot 전체를 JSON으로 저장하는 서버 측 단일 파일.
 - 메모 변경 전 이전의 비어 있지 않은 메모는 `user_settings.memo-backup.json`에 별도 저장한다.
 
 ### Rank 차트 펼침 상태 저장
 
-사용자 설정 스냅샷에 rankChartDisplay={debugOpen:boolean,candleOpen:boolean}를 포함한다. 둘의 기본값은 false이며 필드가 없는 예전 설정도 닫힘으로 복원한다. 버튼 변경은 기존 saveAppData 경로로 로컬 설정과 autosaved_user_settings.json에 저장한다. 전체 설정 다운로드 및 manualsaved_user_settings/full_backup 수동 백업도 같은 스냅샷 필드를 포함한다. 기존 설정 파일·과거 백업을 직접 덮어써서 마이그레이션하지 않는다.
+사용자 설정 스냅샷에 rankChartDisplay={debugOpen:boolean,candleOpen:boolean}를 포함한다. 둘의 기본값은 false이며 필드가 없는 예전 설정도 닫힘으로 복원한다. 버튼 변경은 기존 saveAppData 경로로 로컬 설정과 user_settings_autosaved.json에 저장한다. 전체 설정 다운로드 및 user_settings_manualsaved/full_backup 수동 백업도 같은 스냅샷 필드를 포함한다. 기존 설정 파일·과거 백업을 직접 덮어써서 마이그레이션하지 않는다.
 
 시작 시 서버/로컬 설정 적용과 수동 백업 복원 모두 동일한 상태 적용 함수를 사용한다. 복원 자체는 토글 클릭이나 별도 자동 저장을 발생시키지 않는다. 값은 엄격한 boolean true만 펼침으로 처리한다. 저장 실패 처리는 기존 설정 동기화 정책을 따른다.
 

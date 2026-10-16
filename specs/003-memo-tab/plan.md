@@ -12,7 +12,7 @@
 
 **Primary Dependencies**: FullCalendar, Quill, Google Identity Services(OAuth2 Implicit Flow) — 모두 CDN 로드, 프로젝트 자체 npm 의존성 추가 없음
 
-**Storage**: 브라우저 `localStorage`(`memoContent_html`, `memoContent_delta`) + 서버 `autosaved_user_settings.json`(전체 스냅샷의 일부 필드로 포함)
+**Storage**: 브라우저 `localStorage`(`memoContent_html`, `memoContent_delta`) + 서버 `user_settings_autosaved.json`(전체 스냅샷의 일부 필드로 포함)
 
 **Testing**: 자동화 테스트 없음. quickstart.md로 수동 검증.
 
@@ -31,7 +31,7 @@
 - **I. Spec-First**: PASS
 - **II. External API Resilience**: PASS — Google 토큰 만료(401) 시 자동 재인증, 네트워크 단절 시 로컬 보존으로 유실 방지.
 - **External OAuth Configuration**: Google Cloud `Testing` 상태에서는 OAuth 프로젝트 테스트 사용자만 Calendar scope를 승인받을 수 있다. `authorized_emails.json`은 이 Google Cloud 설정을 변경하지 않는다. 현재 `idhaha@gmail.com`은 Google 테스트 사용자로 추가하지 않기로 결정했으며, 이 계정의 캘린더 사용은 차단된 상태로 기록한다.
-- **III. Secrets Isolation**: PASS — Google OAuth 클라이언트 ID/토큰은 브라우저 세션에서만 처리되며 서버에 저장하지 않음. `user_session` 로컬 키는 `autosaved_user_settings.json`에 포함되지 않음(3.1절 기준).
+- **III. Secrets Isolation**: PASS — Google OAuth 클라이언트 ID/토큰은 브라우저 세션에서만 처리되며 서버에 저장하지 않음. `user_session` 로컬 키는 `user_settings_autosaved.json`에 포함되지 않음(3.1절 기준).
 - **IV. Solo-Maintainer Simplicity**: PASS — 기존 CDN 라이브러리 조합 유지, 새 백엔드 컴포넌트 추가 없음.
 - **V. Agent-Agnostic Workflow**: PASS
 

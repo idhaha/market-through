@@ -29,7 +29,7 @@ items 배열 순서가 표시 순서이다. tabs 목록에는 id=tab_us, name=�
 
 ## Storage
 
-브라우저 MultiChart_State_v1 및 서버 autosaved_user_settings.json에 기존 전체 설정 구조로 저장한다. 자본동향 전용 데이터 파일은 만들지 않는다. 저장 실패 시 로컬/서버 결과를 상태 메시지로 알린다.
+브라우저 MultiChart_State_v1 및 서버 user_settings_autosaved.json에 기존 전체 설정 구조로 저장한다. 자본동향 전용 데이터 파일은 만들지 않는다. 저장 실패 시 로컬/서버 결과를 상태 메시지로 알린다.
 
 ## Optional Description
 

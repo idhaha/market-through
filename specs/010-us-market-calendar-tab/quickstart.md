@@ -27,7 +27,7 @@ git diff --check
 
 ## Operational Persistence Verification (Pending)
 
-로그인된 운영 환경에서 저장·새로저장·삭제·순서 이동 각각의 서버 성공 상태를 확인한다. 서버 autosaved_user_settings.json의 contents.tab_us.items에 ID·제목·URL·순서가 반영되는지, 새로고침과 전체 백업 복원 뒤 같은 목록이 유지되는지 확인한다. 사용자 실데이터 파일은 저장소에 추가하지 않는다.
+로그인된 운영 환경에서 저장·새로저장·삭제·순서 이동 각각의 서버 성공 상태를 확인한다. 서버 user_settings_autosaved.json의 contents.tab_us.items에 ID·제목·URL·순서가 반영되는지, 새로고침과 전체 백업 복원 뒤 같은 목록이 유지되는지 확인한다. 사용자 실데이터 파일은 저장소에 추가하지 않는다.
 
 ## Description Verification
 

@@ -24,7 +24,7 @@
 
 초안은 모듈 메모리에만 둔다. 저장은 기존 항목을 수정하고 새로저장은 crypto.randomUUID()로 새 항목을 추가한다. 중복 판단은 공백 제거 후 제목·URL 문자열의 완전 일치이며 URL 정규화 비교는 하지 않는다. 로드 시 잘못된 항목을 제외하고 누락/중복 ID를 재부여한다.
 
-저장·삭제·이동은 saveAppData를 호출하여 MultiChart_State_v1 로컬 저장 및 POST /api/settings로 autosaved_user_settings.json 저장을 실행한다. 자본동향 탭 내부의 저장 호출은 Promise 큐로 순차 실행하지만 앱 전체의 다른 저장이나 다중 클라이언트까지 직렬화하는 기능은 아니다. 서버의 기존 전체 설정 저장 정책을 유지한다.
+저장·삭제·이동은 saveAppData를 호출하여 MultiChart_State_v1 로컬 저장 및 POST /api/settings로 user_settings_autosaved.json 저장을 실행한다. 자본동향 탭 내부의 저장 호출은 Promise 큐로 순차 실행하지만 앱 전체의 다른 저장이나 다중 클라이언트까지 직렬화하는 기능은 아니다. 서버의 기존 전체 설정 저장 정책을 유지한다.
 
 applyData 및 applyFullStateBackup에서 USLinks.refresh를 호출하여 변경된 tabData를 렌더링하고 초안을 폐기한다. 자본동향 데이터가 없는 오래된 설정도 고정 탭을 생성한다.
 

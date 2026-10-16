@@ -12,6 +12,7 @@ const crypto = require('crypto');
 const { createConcentrationChartService, dailyTurnover } = require('./concentration-chart');
 const { createRankIndependentRelay } = require('./rank-independent');
 const { createRetainedLogs } = require('./retained-logs');
+const { migrateSettingsNames } = require('./settings-filenames');
 
 // 전역 시장구분 캐시 (종목코드: 'K'/'Q') - 429 에러 방지용
 const marketCache = {};
@@ -2493,12 +2494,12 @@ app.get('/api/fred', async (req, res) => {
 /**
  * 사용자 설정 저장 및 불러오기 API
  */
-const SETTINGS_FILE = path.join(__dirname, 'autosaved_user_settings.json');
+const SETTINGS_FILE = migrateSettingsNames(__dirname);
 const MEMO_BACKUP_FILE = path.join(__dirname, 'user_settings.memo-backup.json');
-const BACKUP_NAME_PATTERN = /^(manualsaved_user_settings|full_backup)_\d{8}_\d{6}_\d{3}\.json$/;
+const BACKUP_NAME_PATTERN = /^(user_settings_manualsaved|user_settings_autosaved|manualsaved_user_settings|autosaved_user_settings|full_backup)_\d{8}_\d{6}_\d{3}\.json$/;
 
 function getBackupPath(filename) {
-    if (typeof filename !== 'string' || (filename !== 'autosaved_user_settings.json' && !BACKUP_NAME_PATTERN.test(filename))) return null;
+    if (typeof filename !== 'string' || (!['user_settings_autosaved.json', 'autosaved_user_settings.json'].includes(filename) && !BACKUP_NAME_PATTERN.test(filename))) return null;
     const resolved = path.resolve(__dirname, filename);
     return path.dirname(resolved) === path.resolve(__dirname) ? resolved : null;
 }
@@ -2506,7 +2507,7 @@ function getBackupPath(filename) {
 app.get('/api/settings/backups', (req, res) => {
     try {
         const files = fs.readdirSync(__dirname)
-            .filter(filename => filename === 'autosaved_user_settings.json' || BACKUP_NAME_PATTERN.test(filename))
+            .filter(filename => ['user_settings_autosaved.json', 'autosaved_user_settings.json'].includes(filename) || BACKUP_NAME_PATTERN.test(filename))
             .map(filename => {
                 const stat = fs.statSync(path.join(__dirname, filename));
                 return { filename, bytes: stat.size, updatedAt: stat.mtimeMs };
@@ -2533,7 +2534,7 @@ app.get('/api/settings/backups/:filename', (req, res) => {
 });
 
 app.delete('/api/settings/backups/:filename', (req, res) => {
-    if (req.params.filename === 'autosaved_user_settings.json') {
+    if (['user_settings_autosaved.json', 'autosaved_user_settings.json'].includes(req.params.filename)) {
         return res.status(403).json({ success: false, error: '자동 저장 설정 파일은 삭제할 수 없습니다.' });
     }
     const backupPath = getBackupPath(req.params.filename);
@@ -2560,7 +2561,7 @@ app.post('/api/settings/backups', (req, res) => {
             return res.status(400).json({ success: false, error: '올바른 전체 설정 JSON 백업이 아닙니다.' });
         }
         const stamp = new Date().toISOString().replace(/[-:T]/g, '').replace(/(\d{8})(\d{6})\.(\d{3})Z$/, '$1_$2_$3');
-        const jsonFilename = `manualsaved_user_settings_${stamp}.json`;
+        const jsonFilename = `user_settings_manualsaved_${stamp}.json`;
         const jsonPath = getBackupPath(jsonFilename);
         fs.writeFileSync(jsonPath, JSON.stringify(fullState, null, 2), { encoding: 'utf8', flag: 'wx' });
         res.json({ success: true, filename: jsonFilename });

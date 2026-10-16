@@ -33,7 +33,7 @@
    - 2.4 데이터 로드, 갱신 및 상호작용
    - 2.5 제약 사항 및 예외 처리
 3. **설정 관리 및 동기화 (Settings & Persistence) 상세 사양** *(작성 완료)*
-   - 3.1 로컬 스토리지(`localStorage`) 및 서버 파일(`autosaved_user_settings.json`) 저장 메커니즘
+   - 3.1 로컬 스토리지(`localStorage`) 및 서버 파일(`user_settings_autosaved.json`) 저장 메커니즘
    - 3.2 다중 클라이언트/브라우저 동기화 및 충돌 방지 정책
    - 3.5 설정 내보내기/가져오기 (Bulk Export/Import)
    - 3.6 탭 탐색 및 공통 작업 (추가/이름 변경/정렬/삭제/전체조회/캡처)
@@ -522,7 +522,7 @@ flowchart LR
 | 브라우저 `localStorage` | `memoContent_html`, `memoContent_delta` | 메모 에디터의 HTML 및 Quill Delta 로컬 보존 |
 | 브라우저 `localStorage` | `watchlist_selected_group` | Rank 관심종목 그룹 선택 복원용 값 |
 | 브라우저 `localStorage` | `user_session` | 별도 사용자 세션 토큰 및 기한 값(앱 상태 JSON에 포함되지 않음) |
-| 서버 파일 | `autosaved_user_settings.json` | 서버에서 제공하는 단일 전체 설정 스냅샷 |
+| 서버 파일 | `user_settings_autosaved.json` | 서버에서 제공하는 단일 전체 설정 스냅샷 |
 
 `getSerializedState()`가 다음 필드를 직렬화한다.
 
@@ -546,7 +546,7 @@ flowchart LR
 
 1. `localStorage[MultiChart_State_v1]`에 JSON 문자열로 즉시 기록한다.
 2. 같은 객체를 `POST /api/settings`로 전송한다 (`Content-Type: application/json`).
-3. 서버는 요청 본문 전체를 `autosaved_user_settings.json`에 보기 좋은 JSON으로 덮어쓰고 `{success:true}`를 반환한다.
+3. 서버는 요청 본문 전체를 `user_settings_autosaved.json`에 보기 좋은 JSON으로 덮어쓰고 `{success:true}`를 반환한다.
 
 로컬 쓰기 후 서버 동기화를 진행하므로 서버 통신 실패에도 브라우저 로컬 사본은 남는다. 서버 응답 실패/통신 예외 시 콘솔에 기록하고 사용자 경고창을 띄운다. 서버 저장 성공은 응답 JSON의 `success`가 참인 경우로 판단한다. 이 저장 경로에는 버전 비교, 필드 단위 병합, 잠금, 재시도 큐가 없다.
 
@@ -559,7 +559,7 @@ flowchart LR
 ### 3.2.3 서버 엔드포인트
 
 * `GET /api/settings`: 캐시 금지 헤더를 지정한다. 설정 파일이 있으면 JSON 파싱 후 `{success:true, data:<설정>}`, 없으면 `{success:true, data:null}`을 반환한다. 파일 읽기/JSON 파싱 실패는 HTTP 500과 오류 메시지를 돌려준다.
-* `POST /api/settings`: 본문 전체를 `autosaved_user_settings.json`으로 저장한다. Express JSON 본문 한도는 50 MB이며 저장 실패는 HTTP 500이다. 부분 업데이트나 저장된 `updatedAt` 비교를 하지 않는다.
+* `POST /api/settings`: 본문 전체를 `user_settings_autosaved.json`으로 저장한다. Express JSON 본문 한도는 50 MB이며 저장 실패는 HTTP 500이다. 부분 업데이트나 저장된 `updatedAt` 비교를 하지 않는다.
 * 클라이언트의 GET은 `_t=Date.now()` 쿼리를 덧붙인다. 서버의 응답 헤더와 쿼리 모두 브라우저/중간 캐시가 오래된 설정을 주는 것을 방지한다.
 
 ## 3.3 시작 시 조회 및 복원 순서
@@ -603,7 +603,7 @@ flowchart LR
 
 상단 **프로젝트 폴더에 백업**을 누르면 서버가 `getSerializedState()`의 전체 스냅샷을 들여쓰기한 JSON 한 파일로 현재 프로젝트 루트에 저장한다. 고정 탭 포함 목록, 내용, 활성 탭, 간격, 메모, 관심종목 그룹 등이 포함된다. 사용자 정의 탭이 없어도 백업할 수 있다.
 
-* `manualsaved_user_settings_<timestamp>.json`: 전체 앱 상태를 보관하며 가져오기를 통해 전체 복원할 수 있다. 이전 `full_backup_<timestamp>.json` 백업도 호환을 위해 목록과 복원에서 지원한다.
+* `user_settings_manualsaved_<timestamp>.json`: 전체 앱 상태를 보관하며 가져오기를 통해 전체 복원할 수 있다. 이전 `full_backup_<timestamp>.json` 백업도 호환을 위해 목록과 복원에서 지원한다.
 
 파일명은 UTC 시각에 밀리초를 더한 값으로 생성하며, 같은 이름이 이미 있으면 덮어쓰지 않는다.
 
@@ -648,7 +648,7 @@ flowchart LR
 
 ## 3.7 설정 사양의 제약 및 미정책
 
-1. **서버 단일 파일/사용자 범위**: 서버는 모든 브라우저가 공유하는 `autosaved_user_settings.json` 한 파일에 저장한다. 사용자 계정별 설정 격리나 서버측 인증/권한 검사는 이 엔드포인트에 구현되어 있지 않다.
+1. **서버 단일 파일/사용자 범위**: 서버는 모든 브라우저가 공유하는 `user_settings_autosaved.json` 한 파일에 저장한다. 사용자 계정별 설정 격리나 서버측 인증/권한 검사는 이 엔드포인트에 구현되어 있지 않다.
 2. **충돌 및 원자성**: 버전 검사, 병합, 잠금, 임시 파일 교체, 백업 이력이 없다. 전체 파일 동시 저장/프로세스 중단 시 마지막 전체 쓰기 또는 파일 무결성에 영향을 받을 수 있다.
 3. **로컬과 서버의 비대칭**: `localStorage` 저장 실패(용량 초과/브라우저 정책)는 `saveAppData()`에서 별도로 복구되지 않는다. 반대로 서버 실패는 로컬 기록 후 발생하므로 브라우저 로컬 상태가 서버와 달라질 수 있다.
 4. **복원 검증 제한**: 로컬 JSON은 파싱 가능성과 비어 있지 않은 `tabs`만 검사한다. 서버 JSON은 서버에서 파싱하지만, 탭 ID/콘텐츠 필드 스키마를 검증하지 않는다. 손상·구버전 데이터는 일부 UI 또는 상태의 누락을 일으킬 수 있다.
@@ -656,4 +656,4 @@ flowchart LR
 6. **가져오기 분류 휴리스틱**: TXT 탭 종류는 이름 문자열 포함 여부로 정한다. 파일 형식에 탭 종류 메타데이터가 없어 사용자가 의도한 타입과 달라질 수 있다.
 7. **실시간 시세 데이터**: 설정 스냅샷은 입력·탭 구성과 일부 UI 설정을 저장하며, 원격 시세/캔버스의 전체 데이터나 iframe 내부 세션을 완전 백업하지 않는다.
 
-> **구현 대조 메모 (2026-09-27, 파일명 2026-10-01 갱신)**: 3장은 `public/app.js`, `server.js`, `public/index.html`, `autosaved_user_settings.json`의 실제 저장/복원 흐름을 기준으로 기록했다. Rank 패널 3의 시장구분은 실서버 동작 확인 후 eFriend 시장명 의존을 제거하고 Kiwoom `ka10100`/시장 캐시 경로를 사용하도록 갱신했다.
+> **구현 대조 메모 (2026-09-27, 파일명 2026-10-01 갱신)**: 3장은 `public/app.js`, `server.js`, `public/index.html`, `user_settings_autosaved.json`의 실제 저장/복원 흐름을 기준으로 기록했다. Rank 패널 3의 시장구분은 실서버 동작 확인 후 eFriend 시장명 의존을 제거하고 Kiwoom `ka10100`/시장 캐시 경로를 사용하도록 갱신했다.

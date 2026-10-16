@@ -8,7 +8,7 @@
 
 ## Phase 1: Setup
 
-- [x] T001 `autosaved_user_settings.json` 및 메모 백업/임시 파일이 `.gitignore`에 포함됨을 확인 — `.gitignore`
+- [x] T001 `user_settings_autosaved.json` 및 메모 백업/임시 파일이 `.gitignore`에 포함됨을 확인 — `.gitignore`
 
 ## Phase 2: Foundational
 
@@ -218,12 +218,12 @@ localhost 재시작 후 메모 API 왕복과 `memoUpdatedAt`을 생략한 일반
 ## 2026-10-01 단일 프로젝트 루트 가져오기
 
 - 사용자 요청에 따라 별도 PC 파일 불러오기 버튼을 제거하고, 단일 📂 버튼이 항상 현재 백엔드 프로젝트 루트에서 가져오도록 변경했다. localhost에서는 로컬 프로젝트 루트, Oracle 도메인에서는 Oracle 프로젝트 루트를 가리킨다.
-- 당시 루트 목록에는 `user_settings.json`과 생성된 TXT/JSON 백업만 포함했다. 현재 이름은 `autosaved_user_settings.json`으로 바꾸고 이전 TXT 백업도 계속 읽을 수 있도록 한다.
+- 당시 루트 목록에는 `user_settings.json`과 생성된 TXT/JSON 백업만 포함했다. 현재 이름은 `user_settings_autosaved.json`으로 바꾸고 이전 TXT 백업도 계속 읽을 수 있도록 한다.
 - localhost의 격리된 3100 포트에서 목록과 기존 `user_settings.json` 읽기를 검증했다. 프로젝트 루트의 현재 설정은 23개 탭이며, 구문 검사도 통과했다. Oracle에는 변경을 배포한 뒤 새 파일명/백업명 목록과 복원 흐름을 확인해야 하므로 T020은 미완료다.
 
 ## 2026-10-01 저장 파일명 및 백업 접두어 정리
 
-- 자동 저장 파일명을 `autosaved_user_settings.json`으로 변경했다. 프로젝트 루트의 기존 파일은 사용자가 같은 이름으로 직접 변경하기로 했다. `.gitignore`에는 새 이름과 이전 이름을 모두 유지해 데이터가 실수로 커밋되지 않도록 했다.
+- 자동 저장 파일명을 `user_settings_autosaved.json`으로 변경했다. 프로젝트 루트의 기존 파일은 사용자가 같은 이름으로 직접 변경하기로 했다. `.gitignore`에는 새 이름과 이전 이름을 모두 유지해 데이터가 실수로 커밋되지 않도록 했다.
 - 새 TXT/JSON 백업은 확장자로 용도를 구분하고 접두어는 `full_backup_<timestamp>`로 통일했다. 기존 `bulk_settings_<timestamp>.txt`는 이전 백업 호환을 위해 읽기 허용 목록에 남겼다.
 - 새 자동 저장 파일과 백업 이름은 프로젝트 루트에서 읽고 쓸 수 있지만, 사용자가 파일명을 변경한 뒤 Oracle 재시작/런타임 확인 전까지 T020은 미완료다.
 
@@ -243,7 +243,7 @@ localhost 재시작 후 메모 API 왕복과 `memoUpdatedAt`을 생략한 일반
 
 ## 2026-10-03 설정·백업 파일명 통일
 
-- 영구 설정 파일의 활성 경로는 `autosaved_user_settings.json`으로 통일한다. 사용자가 프로젝트 루트의 기존 파일명을 직접 변경하기로 했다. 과거 검증 로그의 `user_settings.json` 표기는 당시 기록이며 현재 코드 경로를 뜻하지 않는다.
+- 영구 설정 파일의 활성 경로는 `user_settings_autosaved.json`으로 통일한다. 사용자가 프로젝트 루트의 기존 파일명을 직접 변경하기로 했다. 과거 검증 로그의 `user_settings.json` 표기는 당시 기록이며 현재 코드 경로를 뜻하지 않는다.
 - TXT와 JSON 백업은 용도가 확장자로 구분되므로 공통 접두어 `full_backup_<timestamp>`를 사용한다. 새 생성은 이미 이 규칙을 따르고 있었으며, 이번 정리에서 과거 `bulk_settings_<timestamp>.txt`를 API 목록/읽기에서 허용하던 호환 분기를 제거했다.
 - 기존 `bulk_settings_*.txt` 파일은 디스크에서 삭제하지 않으며 새 JSON 백업 흐름에서 제공하지 않는다. `.gitignore`의 구형 TXT 패턴은 과거 파일 보호를 위해 유지한다.
 
@@ -256,7 +256,7 @@ localhost 재시작 후 메모 API 왕복과 `memoUpdatedAt`을 생략한 일반
 
 ## 2026-10-03 백업 파일명 변경
 
-- 새 전체 설정 백업 파일명을 `manualsaved_user_settings_<timestamp>.json`으로 바꿨다. 내용은 `autosaved_user_settings.json`과 동일한 AppSettingsSnapshot 구조이며, 파일명과 스냅샷 시점만 구별된다.
+- 새 전체 설정 백업 파일명을 `user_settings_manualsaved_<timestamp>.json`으로 바꿨다. 내용은 `user_settings_autosaved.json`과 동일한 AppSettingsSnapshot 구조이며, 파일명과 스냅샷 시점만 구별된다.
 - 기존 `full_backup_<timestamp>.json` 파일은 이름을 바꾸거나 삭제하지 않는다. API 목록과 복원에서 계속 읽을 수 있게 두고, 이후 저장부터 새 접두어를 사용한다. `.gitignore`에는 새 이름 패턴을 추가했다.
 
 ## 2026-10-03 백업 선택 모달

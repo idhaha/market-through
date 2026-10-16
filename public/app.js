@@ -4918,7 +4918,7 @@ function chooseServerBackup(files) {
                     }
                 });
                 row.append(item);
-                if (file.filename !== 'autosaved_user_settings.json') row.append(deleteButton);
+                if (!['user_settings_autosaved.json', 'autosaved_user_settings.json'].includes(file.filename)) row.append(deleteButton);
                 list.appendChild(row);
             });
 

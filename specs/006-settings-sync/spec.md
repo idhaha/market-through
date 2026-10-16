@@ -72,7 +72,7 @@
 - **FR-007**: 설정 복원 중에는 자동 저장이 잠겨야 하며, 복원 완료 후에만 다시 활성화되어야 한다.
 - **FR-008**: 사용자는 전체 설정 스냅샷을 단일 JSON 파일로 서버 프로젝트 루트에 백업할 수 있어야 한다.
 - **FR-009**: 사용자는 프로젝트 루트에 있는 JSON 전체 백업 하나를 선택해 전체 설정을 복원할 수 있어야 한다.
-- **FR-010**: 단일 가져오기 버튼은 접속 호스트와 관계없이 현재 서버의 프로젝트 루트 파일(`autosaved_user_settings.json`, JSON 백업) 목록을 불러와야 한다. 전체 설정 복원 전에는 확인 절차를 거쳐야 한다.
+- **FR-010**: 단일 가져오기 버튼은 접속 호스트와 관계없이 현재 서버의 프로젝트 루트 파일(`user_settings_autosaved.json`, JSON 백업) 목록을 불러와야 한다. 전체 설정 복원 전에는 확인 절차를 거쳐야 한다.
 - **FR-011**: 서버는 모든 사용자가 공유하는 단일 설정 파일을 사용해야 하며, 이 저장소는 API 키·토큰 등 민감정보를 포함해서는 안 된다.
 - **FR-012**: 동시 저장 충돌 시 시스템은 마지막으로 처리된 저장을 그대로 반영해야 하며, 별도 병합은 수행하지 않는다(현재 동작으로 문서화, 향후 개선 여지 있음).
 - **FR-013**: 단일 가져오기 버튼의 풍선 도움말은 현재 서버 프로젝트 루트의 JSON 파일에서 전체 설정을 복원한다는 점을 안내해야 한다.
@@ -81,9 +81,9 @@
 ### Key Entities
 
 - **앱 설정 스냅샷(App Settings Snapshot)**: 활성 탭 ID, 탭 목록·순서, 탭별 콘텐츠, Rank 공통 갱신 주기, 관심종목 그룹, 메모(HTML/Delta), 갱신 시각을 가진다.
-- **서버 설정 파일(autosaved_user_settings.json)**: 최신 전체 스냅샷 하나를 보관하며 git에는 포함되지 않는다.
+- **서버 설정 파일(user_settings_autosaved.json)**: 최신 전체 스냅샷 하나를 보관하며 git에는 포함되지 않는다.
 - **로컬 저장 항목**: 전체 스냅샷, 메모 로컬 사본, 관심종목 그룹 선택값, 사용자 세션 토큰을 복구/세션용 브라우저 사본으로 보관한다. 정상 동기화의 영구 저장소는 서버 프로젝트 루트 파일이다.
-- **프로젝트 루트 백업 파일**: `manualsaved_user_settings_<timestamp>.json` 하나에 전체 설정 스냅샷을 담아 서버 프로젝트 루트에 저장하며 git에는 포함하지 않는다.
+- **프로젝트 루트 백업 파일**: `user_settings_manualsaved_<timestamp>.json` 하나에 전체 설정 스냅샷을 담아 서버 프로젝트 루트에 저장하며 git에는 포함하지 않는다.
 
 ## Success Criteria *(mandatory)*
 
@@ -97,7 +97,7 @@
 ## Assumptions
 
 - 현재는 1인 사용자 환경이므로, 다중 사용자 동시 저장 충돌에 대한 필드 단위 병합은 이번 기능 범위에 포함하지 않는다(Constitution 원칙 IV, 향후 개선 과제로 분리).
-- `autosaved_user_settings.json`과 로컬 저장소의 세션 토큰 등 민감정보는 Constitution 원칙 III(Secrets Isolation)에 따라 git에 포함되지 않는다고 가정한다.
+- `user_settings_autosaved.json`과 로컬 저장소의 세션 토큰 등 민감정보는 Constitution 원칙 III(Secrets Isolation)에 따라 git에 포함되지 않는다고 가정한다.
 
 ## 서버 전송 버튼 아이콘 정책 — 2026-10-10
 
@@ -107,4 +107,4 @@
 
 설정 백업 선택 창에서 수동 저장 및 전체 백업 파일의 행 오른쪽 끝에 X 삭제 버튼을 표시한다. 파일명을 포함한 확인을 승인하면 서버 파일을 삭제하고 목록·검색 결과 개수를 즉시 갱신한다. 선택된 파일을 삭제하면 복원 선택을 해제한다. 삭제 실패 시 파일을 목록에 유지하고 오류를 안내한다. 삭제 진행 중 복원 및 중복 삭제를 제한한다.
 
-autosaved_user_settings.json에는 삭제 버튼을 표시하지 않으며 서버에서도 삭제를 차단한다. 삭제 대상은 기존 목록에 허용된 manualsaved_user_settings_YYYYMMDD_HHMMSS_mmm.json 및 full_backup_YYYYMMDD_HHMMSS_mmm.json으로 제한한다. 삭제 버튼의 클릭/Enter는 파일 선택·복원을 실행하지 않는다.
+user_settings_autosaved.json에는 삭제 버튼을 표시하지 않으며 서버에서도 삭제를 차단한다. 삭제 대상은 기존 목록에 허용된 user_settings_manualsaved_YYYYMMDD_HHMMSS_mmm.json 및 full_backup_YYYYMMDD_HHMMSS_mmm.json으로 제한한다. 삭제 버튼의 클릭/Enter는 파일 선택·복원을 실행하지 않는다.

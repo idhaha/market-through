@@ -17,5 +17,5 @@
 | isHoliday | 공휴일 캘린더 출처 여부(읽기 전용 판별용, 파생값) |
 
 ## 저장 위치
-- Memo는 로컬(`memoContent_html`, `memoContent_delta`)과 서버(`autosaved_user_settings.json`의 `memoHtml`, `memoDelta` 필드)에 이중 저장된다.
+- Memo는 로컬(`memoContent_html`, `memoContent_delta`)과 서버(`user_settings_autosaved.json`의 `memoHtml`, `memoDelta` 필드)에 이중 저장된다.
 - CalendarEvent는 Google Calendar가 단일 진실 소스(source of truth)이며, 이 앱은 저장하지 않고 매번 조회한다.

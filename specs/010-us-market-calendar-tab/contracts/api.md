@@ -10,7 +10,7 @@
 
 ## POST /api/settings
 
-기존 전체 설정 스냅샷을 전송하며 자본동향 데이터는 contents.tab_us={name:"자본동향",items:[{id,title,url,description}]}에 포함한다. 서버는 기존 메모 보호 규칙을 적용한 뒤 autosaved_user_settings.json을 원자적으로 쓰고 {success:true}를 반환한다. 쓰기 실패는 500 및 error 메시지이다.
+기존 전체 설정 스냅샷을 전송하며 자본동향 데이터는 contents.tab_us={name:"자본동향",items:[{id,title,url,description}]}에 포함한다. 서버는 기존 메모 보호 규칙을 적용한 뒤 user_settings_autosaved.json을 원자적으로 쓰고 {success:true}를 반환한다. 쓰기 실패는 500 및 error 메시지이다.
 
 검증·중복 차단은 자본동향 화면 모듈에서 수행한다. 이 API가 자본동향 항목 스키마를 별도로 검증한다고 가정하지 않는다. 전체 스냅샷 저장 방식 및 기존 인증 정책을 유지한다.
 

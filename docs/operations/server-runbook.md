@@ -71,11 +71,11 @@ systemctl is-enabled pm2-ubuntu   # enabled 이면 등록된 것
 
 ## 4. 배포 절차
 
-배포는 서버에서 배포 스크립트(`update-market.sh`)로 수행한다. 스크립트가 하는 일: nginx 확인, `git fetch` + `git reset --hard origin/br_oracle`, `npm ci`, `pm2 reload`(없으면 `pm2 start`), `pm2 save`, 상태 출력.
+배포는 서버에서 배포 스크립트(`update-market_2.sh`)로 수행한다. 스크립트가 하는 일: nginx 확인, `git fetch` + `git reset --hard origin/br_oracle`, `npm ci`, `pm2 reload`(없으면 `pm2 start`), `pm2 save`, 상태 출력.
 
 주의:
 - `git reset --hard`는 서버에서 직접 수정한 코드를 지운다. 서버에서 코드를 고치지 않는다.
-- 런타임 데이터 파일(`autosaved_user_settings.json`, `authorized_emails.json`, `user_settings.memo-backup.json`, `data/fred-cache/`, `.env`)은 Git에서 추적되지 않는다(2026-10-04 `git ls-files`로 확인). 새 데이터 파일이 생기면 `.gitignore` 제외 여부를 먼저 확인한다.
+- 런타임 데이터 파일(`user_settings_autosaved.json`, `authorized_emails.json`, `user_settings.memo-backup.json`, `data/fred-cache/`, `.env`)은 Git에서 추적되지 않는다(2026-10-04 `git ls-files`로 확인). 새 데이터 파일이 생기면 `.gitignore` 제외 여부를 먼저 확인한다.
 - `npm ci`는 `node_modules`를 지우고 다시 설치하므로 메모리·디스크 부담이 크다. 의존성(`package-lock.json`)이 바뀌지 않았다면 건너뛰는 것을 권장한다.
 - 배포 직후 `free -m`, `pm2 status`로 메모리와 상태를 확인하고, TE 차트 탭이 하나씩 차례로 로딩되는지 본다.
 
@@ -132,3 +132,5 @@ sudo journalctl -k -b -1 | awk '/invoked oom-killer/{n++} n>=1 && $5=="kernel:" 
 - 서버 메모리 여유(`free -m`의 available, Swap 사용량)를 일정 기간 관찰해 Chrome 동시 수를 늘릴 수 있는지 판단한다.
 
 개발 테스트 실행 파일은 `dev/tests/`, 테스트 결과물은 `dev/output/`에 둔다. 운영 로그는 이 폴더들과 분리해 프로젝트 바로 아래 `logs/`에만 기록한다. 기존 로그 파일은 사용자가 수동 정리하며 배포 코드에서 이동·삭제하지 않는다.
+
+설정 파일명은 자동 저장 `user_settings_autosaved.json`, 수동 저장 `user_settings_manualsaved_YYYYMMDD_HHMMSS_mmm.json`으로 통일한다. 자동 저장은 기존처럼 단일 최신 파일을 덮어쓰며 시각별 파일을 새로 만들지 않는다. 서버 시작 시 기존 `autosaved_user_settings.json` 및 `manualsaved_user_settings_…json`/`autosaved_user_settings_…json`을 새 이름으로 바꾼다. 같은 새 이름의 파일이 이미 있으면 덮어쓰지 않고 양쪽을 유지한다. 구형 파일명과 `full_backup_…json`도 백업 목록·읽기·복원에서 지원한다. 현재 자동 저장 파일은 백업 삭제 대상에서 제외한다. 파일명 변경은 설정 내용이나 수정 시각을 변경하지 않는다.

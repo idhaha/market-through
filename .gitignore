@@ -61,3 +61,8 @@ data/fred-cache/
 # Test
 move_test
 exports
+
+user_settings_autosaved.json
+user_settings_autosaved.json.*.tmp
+user_settings_autosaved_*.json
+user_settings_manualsaved_*.json
