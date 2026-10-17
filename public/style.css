@@ -32,8 +32,8 @@
 .turnover-legend > [data-market] > span { text-align:left; }
 .rank-turnover-panel .turnover-legend output { margin-left:0; }
 .rank-turnover-panel .turnover-legend [data-market="kosdaq"] output { color:#e11d48; }
-.rank-chart-row .rank-adr-controls { padding-right:36px; box-sizing:border-box; }
-.rank-chart-row .concentration-timeframe-row { padding-right:36px; box-sizing:border-box; }
+.rank-chart-row .rank-adr-controls { padding-right:4px; box-sizing:border-box; }
+.rank-chart-row .concentration-timeframe-row { padding-right:4px; box-sizing:border-box; }
 .rank-chart-row .concentration-header-actions { flex:1; }
 .rank-chart-row #concentrationCurrentRate { margin-left:auto; }
 .rank-chart-row .rank-adr-panel output,
@@ -2430,14 +2430,23 @@ body.modal-open {
     }
 }
 
-/* Fixed base interest tab: prescribed two-column bank order. */
-.base-interest-scroll { flex:1; min-height:0; overflow:auto; padding:20px; }
-.base-interest-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; }
-.base-interest-card { min-width:0; background:#fff; border:1px solid var(--border-color); border-radius:8px; overflow:hidden; }
-.base-interest-card h2 { margin:0; padding:14px 16px; color:#222; font-size:16px; font-weight:600; text-align:left; }
-.base-interest-chart { min-height:220px; }
-.base-interest-chart img { display:block; width:100%; height:auto; }
-.base-interest-chart p { display:flex; align-items:center; justify-content:center; min-height:220px; margin:0; padding:16px; color:#555; text-align:center; }
+/* Fixed base interest tab: independent source pages. */
+.base-interest-view-controls { flex-shrink:0; }
+.base-interest-sources { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); flex:1; min-height:0; gap:1px; background:var(--border-color); }
+.base-interest-source { display:flex; flex-direction:column; min-width:0; min-height:0; background:#fff; }
+.base-interest-source-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 14px; border-bottom:1px solid var(--border-color); }
+.base-interest-source-heading h2 { margin:0; font-size:15px; }
+.base-interest-source-heading a { flex-shrink:0; font-size:13px; color:var(--accent-primary); }
+.base-interest-source iframe { display:block; width:100%; flex:1; min-height:0; border:0; background:#fff; }
+.base-interest-sources[data-view="te"], .base-interest-sources[data-view="cbrates"] { grid-template-columns:minmax(0,1fr); }
+.base-interest-sources[data-view="te"] [data-interest-source="cbrates"],
+.base-interest-sources[data-view="cbrates"] [data-interest-source="te"] { display:none; }
+@media (max-width:700px) {
+    .base-interest-view-controls { overflow-x:auto; }
+    .base-interest-view-controls button { white-space:nowrap; }
+    .base-interest-sources[data-view="split"] { grid-template-columns:minmax(0,1fr); }
+    .base-interest-sources[data-view="split"] [data-interest-source="cbrates"] { display:none; }
+}
 
 .central-banks-frame-loading[hidden] {
     display: none !important;
@@ -2644,3 +2653,57 @@ body.modal-open {
 .divider-controls .section-edit-popup { left: 0; right: auto; max-width: calc(100vw - 40px); }
 
 .btn-section-edit { display: inline-flex; align-items: center; justify-content: center; }
+
+/* Keep both market totals on the same right edge as the turnover axis. */
+.rank-turnover-panel .rank-adr-controls { padding-right: 4px; box-sizing: border-box; }
+.rank-turnover-panel .turnover-legend { flex: 0 0 auto; align-items: flex-end; margin-left: auto; }
+.rank-turnover-panel .turnover-legend > [data-market] { grid-template-columns: 70px auto; }
+.rank-turnover-panel .turnover-legend output { text-align: right; white-space: nowrap; }
+
+/* Shared controls-to-plot spacing for concentration, ADR and turnover. */
+.rank-chart-row { --chart-hover-height: 34px; }
+.rank-chart-row .concentration-timeframe-row,
+.rank-chart-row .rank-adr-controls { min-height: 40px; align-items: center; }
+.rank-chart-row .rank-adr-controls { margin: 10px 0 0; }
+.rank-chart-row .chart-hover-info,
+.rank-chart-row #concentrationTooltip.chart-hover-info,
+.rank-chart-row .turnover-hover-info {
+    position: static;
+    display: block;
+    box-sizing: border-box;
+    height: var(--chart-hover-height);
+    min-height: var(--chart-hover-height);
+    flex-shrink: 0;
+    margin: 0;
+    padding: 10px 0 0;
+    line-height: 24px;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    background: transparent;
+    pointer-events: none;
+}
+.rank-chart-row .chart-hover-info[hidden],
+.rank-chart-row #concentrationTooltip.chart-hover-info[hidden],
+.rank-chart-row .turnover-hover-info[hidden] { display: block; visibility: hidden; }
+.rank-chart-row .concentration-charts-column > .concentration-chart-area { height: calc(var(--concentration-chart-height) - var(--chart-hover-height)); }
+
+/* Equal title/control heights keep the three plot origins aligned. */
+.rank-chart-row .concentration-chart-header { align-items: center; }
+.rank-chart-row .concentration-timeframe-row { align-self: stretch; }
+.rank-chart-row .rank-turnover-panel .turnover-legend { line-height: 18px; gap: 2px; }
+
+.calendar-source-heading { flex-shrink:0; background:#fff; }
+
+/* FRED chart links share the base-interest view selector. */
+.base-interest-fred { display:none; min-height:0; overflow:auto; background:#fff; padding:16px; }
+.base-interest-sources[data-view="charts"] { grid-template-columns:minmax(0,1fr); }
+.base-interest-sources[data-view="charts"] .base-interest-source { display:none; }
+.base-interest-sources[data-view="charts"] .base-interest-fred { display:block; }
+.base-interest-fred-table { width:auto; max-width:100%; border-collapse:collapse; font-size:13px; text-align:left; }
+.base-interest-fred-table th, .base-interest-fred-table td { padding:6px 10px; border:1px solid var(--border-color); }
+.base-interest-fred-table thead th { background:var(--bg-secondary); white-space:nowrap; }
+.base-interest-fred-table tbody th { font-weight:500; }
+.base-interest-fred-table th[scope="rowgroup"] { vertical-align:top; background:var(--bg-secondary); }
+.base-interest-fred-table a { color:var(--accent-primary); overflow-wrap:anywhere; }

@@ -14,11 +14,30 @@ const MEMO_TAB_ID = 'tab_memo';
 const EARNINGS_TAB_ID = 'tab_earnings';
 const US_TAB_ID = 'tab_us';
 const BASE_INTEREST_TAB_ID = 'tab_base_interest';
-const BASE_INTEREST_BANKS = [
-    ['FED', '연방준비제도'], ['ECB', '유럽중앙은행'], ['BOE', '영국은행'], ['BOJ', '일본은행'],
-    ['BOK', '한국은행'], ['RBA', '호주 연방준비은행'], ['BOC', '캐나다 은행'], ['SNB', '스위스 국립은행'],
-    ['RBI', '인도 연방준비은행'], ['BCB', '브라질 중앙은행'], ['CBR', '러시아 중앙은행'], ['PBOC', '중국인민은행']
-].map(([code, name]) => ({ code, name }));
+const BASE_INTEREST_SOURCES = [
+    { id: 'cbrates', name: 'CBRates', url: 'https://www.cbrates.com/' },
+    { id: 'te', name: 'Trading Economics', url: 'https://ko.tradingeconomics.com/country-list/interest-rate' }
+];
+const BASE_INTEREST_FRED_GROUPS = [
+    { continent: '미주', countries: [
+        ['미국', 'FEDFUNDS'], ['캐나다', 'INTDSRCAM193N'], ['멕시코', 'INTDSRMXM193N'],
+        ['브라질', 'IRSTCI01BRM156N'], ['칠레', 'INTDSRCLM193N']
+    ] },
+    { continent: '유럽', countries: [
+        ['유로존', 'ECBDFR'], ['영국', 'BOER'], ['스위스', 'INTDSRCHM193N'],
+        ['노르웨이', 'INTDSRNOM193N'], ['덴마크', 'INTDSRDKM193N'],
+        ['스웨덴', 'INTDSRSEM193N'], ['러시아', 'IRSTCB01RUM156N']
+    ] },
+    { continent: '아시아 / 오세아니아', countries: [
+        ['대한민국', 'INTDSRKRM193N'], ['일본', 'IRSTCB01JPM156N'], ['중국', 'INTDSRCNM193N'],
+        ['인도', 'INTDSRINM193N'], ['호주', 'INTDSRAUM193N'], ['뉴질랜드', 'INTDSRNZM193N'],
+        ['인도네시아', 'IRSTCB01IDM156N'], ['말레이시아', 'INTDSRMYM193N'],
+        ['필리핀', 'INTDSRPHM193N'], ['태국', 'INTDSRTHM193N']
+    ] },
+    { continent: '중동 / 아프리카', countries: [
+        ['남아공', 'INTDSRZAM193N'], ['이스라엘', 'INTDSRILM193N'], ['쿠웨이트', 'INTDSRKWM193N']
+    ] }
+];
 let isInitializing = false; // Flag to prevent auto-save during startup
 let isCapturing = false; // Flag to suppress all data-fetching during screenshot capture
 let quillEditor; // Global Quill instance
@@ -1836,6 +1855,16 @@ function initializeTab(tabId) {
     if (!isInitialized) {
         if (tabId === BASE_INTEREST_TAB_ID) {
             document.getElementById('refreshBaseInterest')?.addEventListener('click', () => loadBaseInterestCharts(true));
+            content.querySelectorAll('[data-interest-view]').forEach(button => {
+                button.addEventListener('click', () => {
+                    content.querySelector('.base-interest-sources').dataset.view = button.dataset.interestView;
+                    content.querySelectorAll('[data-interest-view]').forEach(item => {
+                        const selected = item === button;
+                        item.classList.toggle('active', selected);
+                        item.setAttribute('aria-pressed', String(selected));
+                    });
+                });
+            });
         } else if (tabId === EARNINGS_TAB_ID) {
             const refreshBtn = document.getElementById(`refreshEarnings_${tabId}`);
             if (refreshBtn && !refreshBtn.hasAttribute('data-listener-attached')) {
@@ -1971,10 +2000,24 @@ function createChartGrid(tabId) {
         return `<div class="container overseas-container">
             <header><div class="header-single-line"><h1><strong>기준금리</strong></h1>
                 <div class="header-controls"><button id="refreshBaseInterest" class="btn-primary" style="height:38px; padding:0 15px;">새로고침</button></div>
-            </div><div class="status-info"><span id="baseInterestStatus">대기 중</span><span class="status-separator">|</span><span id="baseInterestLastUpdate">-</span></div></header>
-            <div class="base-interest-scroll"><div id="baseInterestGrid" class="base-interest-grid">
-                ${BASE_INTEREST_BANKS.map(bank => `<article class="base-interest-card" data-bank-code="${bank.code}"><h2>${bank.code} (${bank.name})</h2><div class="base-interest-chart"><p role="status">화면 로딩 중...</p></div></article>`).join('')}
-            </div></div></div>`;
+            </div></header>
+            <div class="calendar-source-tabs base-interest-view-controls" role="group" aria-label="기준금리 보기">
+                <button type="button" class="calendar-source-tab active" data-interest-view="split" aria-pressed="true">나란히</button>
+                ${BASE_INTEREST_SOURCES.map(source => `<button type="button" class="calendar-source-tab" data-interest-view="${source.id}" aria-pressed="false">${source.name}</button>`).join('')}
+                <button type="button" class="calendar-source-tab" data-interest-view="charts" aria-pressed="false">차트</button>
+            </div>
+            <div class="base-interest-sources" data-view="split">
+                ${BASE_INTEREST_SOURCES.map(source => `<section class="base-interest-source" data-interest-source="${source.id}" aria-label="${source.name}">
+                    <div class="base-interest-source-heading"><h2>${source.name}</h2><a href="${source.url}" target="_blank" rel="noopener noreferrer">원본 열기 ↗</a></div>
+                    <iframe data-interest-url="${source.url}" title="${source.name} 국가별 기준금리"></iframe>
+                </section>`).join('')}
+                <section class="base-interest-fred" aria-label="FRED 국가별 금리 차트">
+                    <table class="base-interest-fred-table">
+                        <thead><tr><th scope="col">대륙</th><th scope="col">국가/지역</th><th scope="col">URL링크</th></tr></thead>
+                        ${BASE_INTEREST_FRED_GROUPS.map(group => `<tbody>${group.countries.map(([country, symbol], index) => `<tr>${index === 0 ? `<th scope="rowgroup" rowspan="${group.countries.length}">${group.continent}</th>` : ''}<th scope="row">${country}</th><td><a href="https://fred.stlouisfed.org/series/${symbol}" target="_blank" rel="noopener noreferrer">https://fred.stlouisfed.org/series/${symbol} ↗</a></td></tr>`).join('')}</tbody>`).join('')}
+                    </table>
+                </section>
+            </div></div>`;
     }
 
     // 2. Earnings Tab (증시캘린더)
@@ -1982,7 +2025,7 @@ function createChartGrid(tabId) {
         const calendars = [
             { id: 'toss', label: '지표/실적 일정', url: '/calendar', externalUrl: 'https://www.tossinvest.com/calendar' },
             { id: 'seibro', label: '배당 일정', url: 'https://seibro.or.kr/websquare/control.jsp?w2xPath=/IPORTAL/user/company/BIP_CNTS01041V.xml&menuNo=285', externalUrl: 'https://seibro.or.kr/websquare/control.jsp?w2xPath=/IPORTAL/user/company/BIP_CNTS01041V.xml&menuNo=285' },
-            { id: 'investing', label: '각국 금리 일정', url: 'about:blank', externalUrl: 'https://kr.investing.com/central-banks/' }
+            { id: 'investing', label: '각국 금리 일정', url: 'https://www.cbrates.com/meetings.htm', externalUrl: 'https://www.cbrates.com/meetings.htm' }
         ];
         const activeCalendarId = tabData[tabId]?.activeCalendarId || 'toss';
         const selectedCalendar = calendars.find(calendar => calendar.id === activeCalendarId) || calendars[0];
@@ -1992,7 +2035,6 @@ function createChartGrid(tabId) {
                     <div class="header-single-line">
                         <h1><strong>증시캘린더</strong></h1>
                         <div class="header-controls" style="display: flex; gap: 8px;">
-                            <a id="earningsExternalLink_${tabId}" href="${selectedCalendar.externalUrl}" target="_blank" rel="noopener noreferrer" class="btn-secondary" style="height: 38px; padding: 0 15px; display: inline-flex; align-items: center; text-decoration: none; font-weight: 500;">원본 사이트 ↗</a>
                             <button id="refreshEarnings_${tabId}" class="btn-primary" style="height: 38px; padding: 0 15px;">새로고침</button>
                         </div>
                     </div>
@@ -2005,10 +2047,11 @@ function createChartGrid(tabId) {
                 <div class="calendar-source-tabs" role="tablist" aria-label="캘린더 종류">
                     ${calendars.map(calendar => `<button type="button" id="calendarSourceTab_${tabId}_${calendar.id}" class="calendar-source-tab${calendar.id === activeCalendarId ? ' active' : ''}" role="tab" aria-selected="${calendar.id === activeCalendarId}" aria-controls="calendarSourcePanel_${tabId}" data-calendar-source="${calendar.id}">${calendar.label}</button>`).join('')}
                 </div>
+                <div class="base-interest-source-heading calendar-source-heading"><h2 id="earningsSourceTitle_${tabId}">${selectedCalendar.label}</h2><a id="earningsExternalLink_${tabId}" href="${selectedCalendar.externalUrl}" target="_blank" rel="noopener noreferrer">원본 열기 ↗</a></div>
                 <div class="overseas-content-scroll calendar-source-panel" id="calendarSourcePanel_${tabId}" role="tabpanel" aria-labelledby="calendarSourceTab_${tabId}_${activeCalendarId}" style="flex:1; overflow:hidden;">
                     <iframe id="iframeEarnings_${tabId}" ${activeCalendarId !== 'toss' ? 'hidden' : ''} data-calendar-urls="${encodeURIComponent(JSON.stringify(calendars))}" data-calendar-source="${activeCalendarId}" class="embedded-iframe" style="width:100%; height:100%; border:none;" title="${selectedCalendar.label} 캘린더"></iframe>
                     <iframe id="iframeEarningsSeibro_${tabId}" ${activeCalendarId !== 'seibro' ? 'hidden' : ''} class="embedded-iframe" style="width:100%; height:100%; border:none;" title="배당 일정 캘린더"></iframe>
-                    <div id="centralBanksFramePanel_${tabId}" ${activeCalendarId === 'investing' ? '' : 'hidden'} style="height:100%; position:relative; background:white;"><iframe id="centralBanksFrame_${tabId}" class="embedded-iframe" style="width:100%; height:100%; border:none;" title="각국 금리 일정 — Investing.com"></iframe><div id="centralBanksFrameLoading_${tabId}" class="central-banks-frame-loading" role="status" hidden style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:white; color:#333; font-size:18px;">화면 로딩 중...</div></div>
+                    <div id="centralBanksFramePanel_${tabId}" ${activeCalendarId === 'investing' ? '' : 'hidden'} style="height:100%; position:relative; background:white;"><iframe id="centralBanksFrame_${tabId}" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" class="embedded-iframe" style="width:100%; height:100%; border:none;" title="CBRates 중앙은행 회의 일정 · 원문 날짜순"></iframe><div id="centralBanksFrameLoading_${tabId}" class="central-banks-frame-loading" role="status" hidden style="position:absolute; top:12px; right:12px; padding:8px 12px; background:rgba(255,255,255,.9); pointer-events:none;">페이지 연결 중...</div></div>
                 </div>
             </div>`;
     }
@@ -4776,31 +4819,36 @@ function centralBanksToday() {
 function loadCentralBanksFrame(tabId, forceRefresh = false) {
     const frame = document.getElementById(`centralBanksFrame_${tabId}`);
     if (!frame) return;
-    const today = centralBanksToday();
-    if (!forceRefresh && frame.dataset.loadedDate === today) return;
-    const loading = document.getElementById(`centralBanksFrameLoading_${tabId}`);
     const status = document.getElementById(`earningsStatusText_${tabId}`);
     const lastUpdate = document.getElementById(`earningsLastUpdate_${tabId}`);
+    const loading = document.getElementById(`centralBanksFrameLoading_${tabId}`);
     const isSelected = () => document.getElementById(`iframeEarnings_${tabId}`)?.dataset.calendarSource === 'investing';
+    if (!forceRefresh && frame.dataset.loadState === 'loading') return;
+    if (!forceRefresh && frame.dataset.loadedDate === centralBanksToday()) {
+        if (isSelected() && status) status.textContent = 'CBRates · 원문 날짜순 · 시각 미제공';
+        if (isSelected() && lastUpdate) lastUpdate.textContent = frame.dataset.requestedAt;
+        return;
+    }
     clearTimeout(frame.loadingTimer);
+    frame.dataset.loadState = 'loading';
+    frame.dataset.requestedAt = formatTime(new Date());
     if (loading) loading.hidden = false;
-    if (isSelected() && status) status.textContent = '로딩 중';
-    frame.onload = () => {
+    if (isSelected() && status) { status.textContent = 'CBRates 연결 중'; status.title = ''; }
+    const finish = (message, state) => {
         clearTimeout(frame.loadingTimer);
+        frame.dataset.loadState = state;
         if (loading) loading.hidden = true;
-        // Cross-origin frames do not expose their HTTP status or page contents.
-        if (isSelected() && status) {
-            status.textContent = '완료';
-            status.title = '빈 화면이면 원본 사이트에서 확인해 주세요';
-        }
+        if (isSelected() && status) status.textContent = message;
     };
-    frame.dataset.loadedDate = today;
-    frame.src = 'https://kr.investing.com/central-banks/';
-    if (lastUpdate) lastUpdate.textContent = formatTime(new Date());
-    frame.loadingTimer = setTimeout(() => {
-        if (loading) loading.hidden = true;
-        if (isSelected() && status) status.textContent = '응답 대기 중 · 표시되지 않으면 원본 사이트에서 확인해 주세요';
-    }, 20000);
+    frame.onload = () => {
+        frame.dataset.loadedDate = centralBanksToday();
+        finish('CBRates · 원문 날짜순 · 시각 미제공', 'loaded');
+        if (isSelected() && status) status.title = '외부 페이지의 실제 내용은 확인할 수 없습니다. 빈 화면이면 새로고침하거나 원본 사이트에서 확인해 주세요.';
+    };
+    frame.onerror = () => finish('연결 실패 · 새로고침하거나 원본 사이트에서 확인해 주세요', 'error');
+    frame.loadingTimer = setTimeout(() => finish('응답 대기 · 원본 사이트에서 확인해 주세요', 'timeout'), 20000);
+    frame.src = 'https://www.cbrates.com/meetings.htm';
+    if (isSelected() && lastUpdate) lastUpdate.textContent = frame.dataset.requestedAt;
 }
 
 function loadEarningsCalendarFrame(tabId, forceRefresh = false) {
@@ -4855,6 +4903,8 @@ function selectEarningsCalendar(tabId, sourceId) {
     if (panel) panel.setAttribute('aria-labelledby', `calendarSourceTab_${tabId}_${sourceId}`);
     const externalLink = document.getElementById(`earningsExternalLink_${tabId}`);
     if (externalLink) externalLink.href = selected.externalUrl;
+    const sourceTitle = document.getElementById(`earningsSourceTitle_${tabId}`);
+    if (sourceTitle) sourceTitle.textContent = selected.label;
     iframe.hidden = sourceId !== 'toss';
     const seibroFrame = document.getElementById(`iframeEarningsSeibro_${tabId}`);
     if (seibroFrame) seibroFrame.hidden = sourceId !== 'seibro';
@@ -5932,101 +5982,12 @@ setTimeout(injectCaptureButtons, 2000); // defer 로드 fallback
 
 
 
-// Base interest charts are held only in browser memory, never in settings JSON.
-let baseInterestCache = null;
-let baseInterestRequest = null;
-function renderBaseInterestCharts(result) {
-    const grid = document.getElementById('baseInterestGrid');
-    if (!grid) return;
-    const count = result.charts?.filter(chart => chart.image).length || 0;
-    const stages = { waiting: '브라우저 실행 대기 중...', browser: '캡처 브라우저 시작 중...', navigation: 'Investing.com 접속 중...', section: '금리 차트 영역 확인 중...', chart: `${result.bank || ''} 차트 조회 중...`, closing: '캡처 마무리 중...' };
-    grid.setAttribute('aria-busy', String(result.status === 'loading'));
-    const status = document.getElementById('baseInterestStatus');
-    if (status) {
-        status.textContent = result.refreshError || result.error || (result.status === 'loading' ? `로딩 중 (${count}/12)` : result.status === 'partial' ? `일부 조회 실패 (${count}/12) — 새로고침으로 다시 시도해 주세요.` : '완료');
-        status.title = result.status === 'loading' ? (stages[result.stage] || '로딩 중') : '';
-    }
-    const updated = document.getElementById('baseInterestLastUpdate');
-    if (updated && result.capturedAt) updated.textContent = new Date(result.capturedAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
-    BASE_INTEREST_BANKS.forEach(bank => {
-        const chart = result.charts?.find(item => item.code === bank.code);
-        const panel = grid.querySelector(`[data-bank-code="${bank.code}"] .base-interest-chart`);
-        if (!panel) return;
-        if (chart?.image && /^data:image\/png;base64,/.test(chart.image)) {
-            if (panel.dataset.image === chart.image) return;
-            const token = Symbol(); panel.renderToken = token;
-            const image = new Image();
-            image.alt = `${bank.code} (${bank.name}) 기준금리 차트`;
-            image.src = chart.image;
-            image.decode().then(() => {
-                if (panel.isConnected && panel.renderToken === token) { panel.replaceChildren(image); panel.dataset.image = chart.image; }
-            }).catch(() => {
-                if (panel.renderToken !== token) return;
-                panel.replaceChildren(Object.assign(document.createElement('p'), { textContent: '차트 이미지를 표시하지 못했습니다. 새로고침해 주세요.' }));
-            });
-        } else {
-            panel.renderToken = null;
-            delete panel.dataset.image;
-            const message = document.createElement('p');
-            message.setAttribute('role', 'status');
-            message.textContent = chart?.error || result.error || '화면 로딩 중...';
-            panel.replaceChildren(message);
-        }
-    });
-}
-async function loadBaseInterestCharts(forceRefresh = false) {
+// Load each source once when the fixed tab is first activated.
+function loadBaseInterestCharts(forceRefresh = false) {
     if (isCapturing) return;
-    if (baseInterestRequest) return baseInterestRequest;
-    if (!forceRefresh && baseInterestCache?.date === centralBanksToday()) {
-        renderBaseInterestCharts(baseInterestCache); return;
-    }
-    renderBaseInterestCharts({ status: 'loading', charts: [] });
-    let lastProgress = null;
-    baseInterestRequest = (async () => {
-        let force = forceRefresh;
-        let consecutiveFailures = 0;
-        const deadline = Date.now() + 360000;
-        while (Date.now() < deadline) {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), Math.min(45000, Math.max(1, deadline - Date.now())));
-            let response, result;
-            const url = `/api/base-interest/charts${force ? '?force_refresh=true' : ''}`;
-            // A lost response may still have started the job. Subsequent polls must not force a second run.
-            force = false;
-            try {
-                response = await fetch(url, { cache: 'no-store', signal: controller.signal });
-                result = await response.json().catch(error => {
-                    if ([502, 503, 504].includes(response.status)) throw new TypeError('일시적인 서버 응답 오류');
-                    throw error;
-                });
-                consecutiveFailures = 0;
-            } catch (error) {
-                if (controller.signal.aborted || error.name === 'AbortError' || error instanceof TypeError) {
-                    if (++consecutiveFailures <= 3 && Date.now() < deadline) {
-                        const status = document.getElementById('baseInterestStatus');
-                        if (status) status.textContent = `서버 응답이 지연되어 다시 확인 중... (${consecutiveFailures}/3)`;
-                        await new Promise(resolve => setTimeout(resolve, 2000));
-                        continue;
-                    }
-                    throw new Error('서버 응답이 지연되거나 연결이 끊겼습니다. 잠시 후 새로고침해 주세요.');
-                }
-                throw error;
-            } finally { clearTimeout(timeout); }
-            if (![200, 202, 502].includes(response.status) || !Array.isArray(result.charts)) throw new Error(result.error || `기준금리 조회 실패 (HTTP ${response.status})`);
-            lastProgress = result;
-            renderBaseInterestCharts(result);
-            if (result.status !== 'loading') {
-                if (result.status === 'error') throw new Error(result.error || '기준금리 차트 조회에 실패했습니다.');
-                baseInterestCache = result; return;
-            }
-            await new Promise(resolve => setTimeout(resolve, 2000));
-        }
-        throw new Error('기준금리 차트 조회 시간이 초과되었습니다. 새로고침해 주세요.');
-    })().catch(error => {
-        console.error('[Base Interest]', error);
-        if (baseInterestCache?.date === centralBanksToday()) renderBaseInterestCharts({ ...baseInterestCache, refreshError: error.message });
-        else if (lastProgress?.charts?.some(chart => chart.image)) renderBaseInterestCharts({ ...lastProgress, status: 'partial', refreshError: error.message });
-        else renderBaseInterestCharts({ status: 'error', error: error.message, charts: [] });
-    }).finally(() => { baseInterestRequest = null; });
-    return baseInterestRequest;
+    const content = document.getElementById(BASE_INTEREST_TAB_ID);
+    if (!content) return;
+    content.querySelectorAll('iframe[data-interest-url]').forEach(frame => {
+        if (forceRefresh || !frame.hasAttribute('src')) frame.src = frame.dataset.interestUrl;
+    });
 }

@@ -77,7 +77,7 @@
             const right = w - Math.max(58, candleAxisWidth + 12);
             const values = visiblePoints.map(p => p.adr);
             if (closing) values.push(closing.adr);
-            const min = Math.min(60, ...values) - 5, max = Math.max(140, ...values) + 5;
+            const min = Math.floor((Math.min(60, ...values) - 5) / 10) * 10, max = Math.ceil((Math.max(140, ...values) + 5) / 10) * 10;
             const y = v => bottom - (v - min) / (max - min) * (bottom - top);
             const day = chartDay, start = (mode === 'day' || viewCount !== null) && visiblePoints.length ? visiblePoints[0].t : Date.parse(`${day}T09:00:00+09:00`), end = (mode === 'day' || viewCount !== null) && visiblePoints.length ? visiblePoints.at(-1).t : Date.parse(`${day}T15:30:00+09:00`);
             const x = t => {
