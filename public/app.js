@@ -18,25 +18,401 @@ const BASE_INTEREST_SOURCES = [
     { id: 'cbrates', name: 'CBRates', url: 'https://www.cbrates.com/' },
     { id: 'te', name: 'Trading Economics', url: 'https://ko.tradingeconomics.com/country-list/interest-rate' }
 ];
-const BASE_INTEREST_FRED_GROUPS = [
-    { continent: '미주', countries: [
-        ['미국', 'FEDFUNDS'], ['캐나다', 'INTDSRCAM193N'], ['멕시코', 'INTDSRMXM193N'],
-        ['브라질', 'IRSTCI01BRM156N'], ['칠레', 'INTDSRCLM193N']
-    ] },
-    { continent: '유럽', countries: [
-        ['유로존', 'ECBDFR'], ['영국', 'BOER'], ['스위스', 'INTDSRCHM193N'],
-        ['노르웨이', 'INTDSRNOM193N'], ['덴마크', 'INTDSRDKM193N'],
-        ['스웨덴', 'INTDSRSEM193N'], ['러시아', 'IRSTCB01RUM156N']
-    ] },
-    { continent: '아시아 / 오세아니아', countries: [
-        ['대한민국', 'INTDSRKRM193N'], ['일본', 'IRSTCB01JPM156N'], ['중국', 'INTDSRCNM193N'],
-        ['인도', 'INTDSRINM193N'], ['호주', 'INTDSRAUM193N'], ['뉴질랜드', 'INTDSRNZM193N'],
-        ['인도네시아', 'IRSTCB01IDM156N'], ['말레이시아', 'INTDSRMYM193N'],
-        ['필리핀', 'INTDSRPHM193N'], ['태국', 'INTDSRTHM193N']
-    ] },
-    { continent: '중동 / 아프리카', countries: [
-        ['남아공', 'INTDSRZAM193N'], ['이스라엘', 'INTDSRILM193N'], ['쿠웨이트', 'INTDSRKWM193N']
-    ] }
+const BASE_INTEREST_LINKS_VERSION = "csv-2026-10-18";
+const BASE_INTEREST_DEFAULT_LINKS = [
+    {
+        "continent": "미주",
+        "country": "미국",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.US",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.US",
+            "https://www.federalreserve.gov/monetarypolicy/openmarket.htm",
+            "https://fred.stlouisfed.org/series/EFFR",
+            "https://fred.stlouisfed.org/series/FEDFUNDS"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 미국의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 — FOMC가 결정하는 연방기금금리 목표범위",
+            "추가지표 — 실제 거래를 바탕으로 산출되는 실효 연방기금금리",
+            "추가지표 — 실효 연방기금금리의 월평균 시계열"
+        ]
+    },
+    {
+        "continent": "미주",
+        "country": "캐나다",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.CA",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.CA",
+            "https://www.bankofcanada.ca/core-functions/monetary-policy/key-interest-rate/",
+            "https://www.bankofcanada.ca/core-functions/monetary-policy/key-interest-rate/"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 캐나다의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 — 캐나다 중앙은행이 설정하는 익일물 금리 목표",
+            "추가지표 — 은행금리(Bank Rate) 및 익일물 금리 목표 정보"
+        ]
+    },
+    {
+        "continent": "미주",
+        "country": "멕시코",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.MX",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.MX",
+            "https://www.banxico.org.mx/publicaciones-y-prensa/anuncios-de-las-decisiones-de-politica-monetaria/anuncios-politica-monetaria-t.html"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 멕시코의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 — 중앙은행이 결정하는 익일물 은행 간 금리 목표"
+        ]
+    },
+    {
+        "continent": "미주",
+        "country": "브라질",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.BR",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.BR",
+            "https://www.bcb.gov.br/controleinflacao/historicotaxasjuros",
+            "https://www.bcb.gov.br/en/monetarypolicy/interestrates"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 브라질의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 — COPOM이 결정하는 Selic 목표금리의 변경 이력",
+            "추가지표 — Selic 관련 금리 자료. 목표금리와 실효금리를 구분"
+        ]
+    },
+    {
+        "continent": "미주",
+        "country": "칠레",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.CL",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.CL",
+            "https://www.bcentral.cl/"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 칠레의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 — 칠레 중앙은행의 통화정책금리(TPM) 관련 자료"
+        ]
+    },
+    {
+        "continent": "남미",
+        "country": "아르헨티나",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.AR",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.AR",
+            "https://www.bcra.gob.ar/"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 아르헨티나의 장기 정책금리. 최신 관측치 확인 필요",
+            "공식 정책금리 — 아르헨티나 중앙은행의 통화정책 및 금리 관련 자료"
+        ]
+    },
+    {
+        "continent": "유럽",
+        "country": "유로존",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.XM",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.XM",
+            "https://www.ecb.europa.eu/stats/policy_and_exchange_rates/key_ecb_interest_rates/html/index.en.html",
+            "https://www.ecb.europa.eu/stats/policy_and_exchange_rates/key_ecb_interest_rates/html/index.en.html",
+            "https://www.ecb.europa.eu/stats/policy_and_exchange_rates/key_ecb_interest_rates/html/index.en.html"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 유로존의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 — ECB 주요 정책금리의 공식 자료",
+            "추가지표 — 예금제도 금리(DFR). 은행이 ECB에 예치하는 자금에 적용되는 금리",
+            "추가지표 — 주요 재융자금리(MRO)"
+        ]
+    },
+    {
+        "continent": "유럽",
+        "country": "영국",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.GB",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.GB",
+            "https://www.bankofengland.co.uk/monetary-policy/the-interest-rate-bank-rate"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 영국의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 — 영란은행의 Bank Rate"
+        ]
+    },
+    {
+        "continent": "유럽",
+        "country": "스위스",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.CH",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.CH",
+            "https://www.snb.ch/en/the-snb/mandates-goals/monetary-policy"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 스위스의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 — SNB Policy Rate 관련 공식 자료"
+        ]
+    },
+    {
+        "continent": "유럽",
+        "country": "노르웨이",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.NO",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.NO",
+            "https://www.norges-bank.no/en/topics/Monetary-policy/"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 노르웨이의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 — 노르웨이 중앙은행의 정책금리 관련 자료"
+        ]
+    },
+    {
+        "continent": "유럽",
+        "country": "덴마크",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.DK",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.DK",
+            "https://www.nationalbanken.dk/en/what-we-do/stable-prices-monetary-policy-and-the-danish-economy"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 덴마크의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 — 덴마크 중앙은행의 통화정책 운용금리 관련 자료"
+        ]
+    },
+    {
+        "continent": "유럽",
+        "country": "스웨덴",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.SE",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.SE",
+            "https://www.riksbank.se/en-gb/monetary-policy/"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 스웨덴의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 — 스웨덴 중앙은행의 Policy Rate"
+        ]
+    },
+    {
+        "continent": "유럽·유라시아",
+        "country": "러시아",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.RU",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.RU",
+            "https://www.cbr.ru/eng/hd_base/KeyRate/"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 러시아의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 — 러시아 중앙은행 Key Rate 변경 이력"
+        ]
+    },
+    {
+        "continent": "유럽·유라시아",
+        "country": "터키",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.TR",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.TR",
+            "https://www.tcmb.gov.tr/wps/wcm/connect/EN/TCMB+EN/Main+Menu/Core+Functions/Monetary+Policy/Central+Bank+Interest+Rates/",
+            "https://www.tcmb.gov.tr/wps/wcm/connect/EN/TCMB+EN/Main+Menu/Core+Functions/Monetary+Policy/Central+Bank+Interest+Rates/"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 터키의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 — 터키 중앙은행의 정책금리 및 운용금리 자료",
+            "추가지표 — 중앙은행 금리 통로의 익일물 차입금리 및 대출금리"
+        ]
+    },
+    {
+        "continent": "아시아",
+        "country": "대한민국",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.KR",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.KR",
+            "https://www.bok.or.kr/portal/singl/baseRate/list.do?menuNo=200761"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 대한민국의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 — 한국은행 기준금리 변경 이력"
+        ]
+    },
+    {
+        "continent": "아시아",
+        "country": "일본",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.JP",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.JP",
+            "https://www.boj.or.jp/en/mopo/"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 일본의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 — 일본은행의 통화정책 결정 및 정책금리 자료"
+        ]
+    },
+    {
+        "continent": "아시아",
+        "country": "중국",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.CN",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.CN",
+            "https://www.pbc.gov.cn/en/"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 중국의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 — 중국인민은행의 통화정책 및 정책금리 자료"
+        ]
+    },
+    {
+        "continent": "아시아",
+        "country": "인도",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.IN",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.IN",
+            "https://www.rbi.org.in/"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 인도의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 — 인도중앙은행의 정책 레포금리 등 통화정책 자료"
+        ]
+    },
+    {
+        "continent": "오세아니아",
+        "country": "호주",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.AU",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.AU",
+            "https://www.rba.gov.au/statistics/cash-rate/"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 호주의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 — 호주중앙은행의 Cash Rate Target 통계"
+        ]
+    },
+    {
+        "continent": "오세아니아",
+        "country": "뉴질랜드",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.NZ",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.NZ",
+            "https://www.rbnz.govt.nz/monetary-policy"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 뉴질랜드의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 — 뉴질랜드 중앙은행의 Official Cash Rate(OCR) 자료"
+        ]
+    },
+    {
+        "continent": "아시아",
+        "country": "인도네시아",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.ID",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.ID",
+            "https://www.bi.go.id/en/"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 인도네시아의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 — 인도네시아 중앙은행의 BI-Rate 등 통화정책 자료"
+        ]
+    },
+    {
+        "continent": "아시아",
+        "country": "말레이시아",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.MY",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.MY",
+            "https://www.bnm.gov.my/"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 말레이시아의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 — 말레이시아 중앙은행의 Overnight Policy Rate(OPR) 자료"
+        ]
+    },
+    {
+        "continent": "아시아",
+        "country": "필리핀",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.PH",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.PH",
+            "https://www.bsp.gov.ph/"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 필리핀의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 — 필리핀 중앙은행의 통화정책 및 익일물 역레포 정책금리 자료"
+        ]
+    },
+    {
+        "continent": "아시아",
+        "country": "태국",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.TH",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.TH",
+            "https://www.bot.or.th/en/our-roles/monetary-policy.html"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 태국의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 — 태국 중앙은행의 1일물 환매조건부채권 정책금리 자료"
+        ]
+    },
+    {
+        "continent": "아시아",
+        "country": "싱가포르",
+        "url": "https://www.mas.gov.sg/monetary-policy",
+        "urls": [
+            "https://www.mas.gov.sg/monetary-policy",
+            "https://eservices.mas.gov.sg/statistics/dir/DomesticInterestRates.aspx"
+        ],
+        "urlNotes": [
+            "공식 정책금리 — 싱가포르 통화청의 환율 중심 통화정책 운용체계. 단일 정책금리와 구분",
+            "추가지표 — SORA 등 싱가포르 국내 시장금리 통계"
+        ]
+    },
+    {
+        "continent": "아프리카",
+        "country": "남아프리카공화국",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.ZA",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.ZA",
+            "https://www.resbank.co.za/en/home/what-we-do/monetary-policy"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 남아프리카공화국의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 — 남아프리카공화국 중앙은행의 Repo Rate 자료"
+        ]
+    },
+    {
+        "continent": "중동",
+        "country": "이스라엘",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.IL",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.IL",
+            "https://www.boi.org.il/en/economic-roles/monetary-policy/"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 이스라엘의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 — 이스라엘 중앙은행의 정책금리 자료"
+        ]
+    },
+    {
+        "continent": "중동",
+        "country": "쿠웨이트",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.KW",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.KW",
+            "https://www.cbk.gov.kw/en/"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 쿠웨이트의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 — 쿠웨이트 중앙은행의 할인율 등 통화정책 운용금리 자료"
+        ]
+    },
+    {
+        "continent": "중동",
+        "country": "사우디아라비아",
+        "url": "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.SA",
+        "urls": [
+            "https://data.bis.org/topics/CBPOL/BIS%2CWS_CBPOL%2C1.0/M.SA",
+            "https://sama.gov.sa/en-US/MonetaryPolicy/MonetaryPolicyTools/Pages/RepoRate.aspx",
+            "https://sama.gov.sa/en-US/MonetaryPolicy/MonetaryPolicyTools/pages/reversereporate.aspx"
+        ],
+        "urlNotes": [
+            "BIS 장기 시계열 — 사우디아라비아의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 — 사우디 중앙은행의 Repo Rate",
+            "추가지표 — 사우디 중앙은행의 Reverse Repo Rate"
+        ]
+    }
 ];
 let isInitializing = false; // Flag to prevent auto-save during startup
 let isCapturing = false; // Flag to suppress all data-fetching during screenshot capture
@@ -1850,6 +2226,7 @@ function initializeTab(tabId) {
         return tabData[US_TAB_ID];
     }, saveAppData);
     if (tabId === EARNINGS_TAB_ID) loadEarningsCalendarFrame(tabId);
+    if (tabId === BASE_INTEREST_TAB_ID) mountBaseInterestLinks(content);
 
     // 2. Attach specialized listeners (idempotent checks included)
     if (!isInitialized) {
@@ -2002,8 +2379,7 @@ function createChartGrid(tabId) {
                 <div class="header-controls"><button id="refreshBaseInterest" class="btn-primary" style="height:38px; padding:0 15px;">새로고침</button></div>
             </div></header>
             <div class="calendar-source-tabs base-interest-view-controls" role="group" aria-label="기준금리 보기">
-                <button type="button" class="calendar-source-tab active" data-interest-view="split" aria-pressed="true">나란히</button>
-                ${BASE_INTEREST_SOURCES.map(source => `<button type="button" class="calendar-source-tab" data-interest-view="${source.id}" aria-pressed="false">${source.name}</button>`).join('')}
+                <button type="button" class="calendar-source-tab active" data-interest-view="split" aria-pressed="true">CBRates | Trading Economics</button>
                 <button type="button" class="calendar-source-tab" data-interest-view="charts" aria-pressed="false">차트</button>
             </div>
             <div class="base-interest-sources" data-view="split">
@@ -2011,11 +2387,11 @@ function createChartGrid(tabId) {
                     <div class="base-interest-source-heading"><h2>${source.name}</h2><a href="${source.url}" target="_blank" rel="noopener noreferrer">원본 열기 ↗</a></div>
                     <iframe data-interest-url="${source.url}" title="${source.name} 국가별 기준금리"></iframe>
                 </section>`).join('')}
-                <section class="base-interest-fred" aria-label="FRED 국가별 금리 차트">
-                    <table class="base-interest-fred-table">
-                        <thead><tr><th scope="col">대륙</th><th scope="col">국가/지역</th><th scope="col">URL링크</th></tr></thead>
-                        ${BASE_INTEREST_FRED_GROUPS.map(group => `<tbody>${group.countries.map(([country, symbol], index) => `<tr>${index === 0 ? `<th scope="rowgroup" rowspan="${group.countries.length}">${group.continent}</th>` : ''}<th scope="row">${country}</th><td><a href="https://fred.stlouisfed.org/series/${symbol}" target="_blank" rel="noopener noreferrer">https://fred.stlouisfed.org/series/${symbol} ↗</a></td></tr>`).join('')}</tbody>`).join('')}
-                    </table>
+                <section class="base-interest-fred" aria-label="국가별 금리 차트 및 정책금리 자료">
+                    <div class="base-interest-fred-table-wrap"><table class="base-interest-fred-table">
+                        <thead><tr><th scope="col">대륙</th><th scope="col">국가/지역</th><th scope="col">URL링크</th><th scope="col">비고</th></tr></thead>
+
+                    </table></div>
                 </section>
             </div></div>`;
     }
@@ -5989,5 +6365,263 @@ function loadBaseInterestCharts(forceRefresh = false) {
     if (!content) return;
     content.querySelectorAll('iframe[data-interest-url]').forEach(frame => {
         if (forceRefresh || !frame.hasAttribute('src')) frame.src = frame.dataset.interestUrl;
+    });
+}
+
+// Delay opening to distinguish a single click from inline editing, as in USLinks.
+function mountBaseInterestLinks(content) {
+    const table = content.querySelector('.base-interest-fred-table');
+    if (!table || table.querySelector('input')) return;
+    if (!tabData[BASE_INTEREST_TAB_ID]) tabData[BASE_INTEREST_TAB_ID] = { name: '기준금리' };
+    const data = tabData[BASE_INTEREST_TAB_ID];
+    if (!Array.isArray(data.fredLinks) || data.fredLinksVersion !== BASE_INTEREST_LINKS_VERSION) {
+        data.fredLinks = structuredClone(BASE_INTEREST_DEFAULT_LINKS);
+        data.fredLinksVersion = BASE_INTEREST_LINKS_VERSION;
+    }
+    // Keep each continent contiguous and combine repeated countries without
+    // dropping any of their URLs or per-link notes.
+    const continents = new Map();
+    data.fredLinks.forEach(item => {
+        if (!continents.has(item.continent)) continents.set(item.continent, new Map());
+        const countries = continents.get(item.continent);
+        if (!countries.has(item.country)) countries.set(item.country, { ...item, urls: [], urlNotes: [] });
+        const country = countries.get(item.country);
+        const urls = Array.isArray(item.urls) && item.urls.length ? item.urls : [item.url];
+        urls.forEach((url, index) => { country.urls.push(url); country.urlNotes.push(item.urlNotes?.[index] || ''); });
+        country.url = country.urls[0];
+    });
+    data.fredLinks = [...continents.values()].flatMap(countries => [...countries.values()]);
+    mountBaseInterestColumnResize(table);
+    clearTimeout(table.clickTimer);
+    table.editObserver?.disconnect();
+    table.editKeyController?.abort();
+    table.parentElement.querySelector('.base-interest-fred-actions')?.remove();
+    table.parentElement.classList.remove('is-editing');
+    table.querySelectorAll('tbody').forEach(body => body.remove());
+    const body = document.createElement('tbody');
+    const continentCells = [];
+    const seenContinents = new Set();
+    data.fredLinks.forEach(item => {
+        const urls = Array.isArray(item.urls) && item.urls.length ? item.urls : [item.url];
+        const row = document.createElement('tr');
+        const countryRows = [row];
+        const continent = document.createElement('td'); continent.textContent = item.continent;
+        continent.className = 'base-interest-continent-cell';
+        continentCells.push({ row, cell: continent, span: urls.length });
+        if (!seenContinents.has(item.continent)) {
+            continent.rowSpan = [...continents.get(item.continent).values()].reduce((sum, country) => sum + country.urls.length, 0);
+            row.append(continent);
+            seenContinents.add(item.continent);
+        }
+        const country = document.createElement('th'); country.scope = 'row'; country.textContent = item.country;
+        country.rowSpan = urls.length;
+        row.append(country);
+        const cell = document.createElement('td');
+        const notesCell = document.createElement('td'); notesCell.className = 'base-interest-fred-notes';
+        const links = urls.map((url, index) => {
+            const displayRow = index === 0 ? row : document.createElement('tr');
+            if (index > 0) countryRows.push(displayRow);
+            const urlCell = index === 0 ? cell : document.createElement('td');
+            const noteCell = index === 0 ? notesCell : document.createElement('td');
+            noteCell.className = 'base-interest-fred-notes';
+            const link = document.createElement('a'); link.textContent = `${url} ↗`;
+            try { if (['http:', 'https:'].includes(new URL(url).protocol)) link.href = url; } catch {}
+            link.target = '_blank'; link.rel = 'noopener noreferrer';
+            link.dataset.url = url;
+            link.title = '클릭: 새 탭 열기 · 더블클릭 또는 F2: 편집';
+            noteCell.textContent = item.urlNotes?.[index] || '';
+            urlCell.append(link); displayRow.append(urlCell, noteCell); body.append(displayRow);
+            return link;
+        });
+        const open = (url = urls[0]) => {
+            try {
+                if (!['https:', 'http:'].includes(new URL(url).protocol)) throw new Error();
+                window.open(url, '_blank', 'noopener,noreferrer');
+            } catch { alert('URL을 확인한 뒤 편집해 주세요.'); }
+        };
+        const edit = () => {
+            clearTimeout(table.clickTimer);
+            if (table.querySelector('input')) return;
+            continentCells.forEach(({ row, cell, span }) => {
+                cell.rowSpan = span;
+                if (!cell.isConnected) row.prepend(cell);
+            });
+            countryRows.slice(1).forEach(extraRow => extraRow.remove());
+            country.rowSpan = 1;
+            continent.rowSpan = 1;
+            const inputs = {};
+            for (const [field, target, label] of [['continent', continent, '대륙'], ['country', country, '국가/지역']]) {
+                const input = document.createElement('input'); input.value = item[field];
+                input.type = field === 'url' ? 'url' : 'text'; input.setAttribute('aria-label', label);
+                inputs[field] = input; target.replaceChildren(input);
+            }
+            cell.replaceChildren();
+            notesCell.replaceChildren();
+            const urlInputs = [];
+            const updateUrlControls = () => {
+                urlInputs.forEach((input, index) => {
+                    input.setAttribute('aria-label', `URL ${index + 1}`);
+                    input.noteInput.setAttribute('aria-label', `비고 ${index + 1}`);
+                    const remove = input.parentElement.querySelector('button');
+                    remove.setAttribute('aria-label', `URL ${index + 1} 삭제`);
+                    remove.disabled = urlInputs.length === 1;
+                    remove.title = remove.disabled ? 'URL은 하나 이상 있어야 합니다' : '이 URL 삭제';
+                });
+            };
+            const addUrl = (value = '', note = '') => {
+                const entry = document.createElement('div'); entry.className = 'base-interest-fred-url-entry';
+                const input = document.createElement('input'); input.type = 'url'; input.value = value;
+                const noteInput = document.createElement('textarea'); noteInput.value = note;
+                noteInput.rows = 2; input.noteInput = noteInput;
+                const remove = document.createElement('button'); remove.type = 'button';
+                remove.className = 'base-interest-fred-remove-url'; remove.textContent = '−';
+                remove.addEventListener('click', () => {
+                    if (urlInputs.length === 1) return;
+                    const index = urlInputs.indexOf(input);
+                    urlInputs.splice(index, 1); entry.remove(); noteInput.remove(); updateUrlControls();
+                    urlInputs[Math.min(index, urlInputs.length - 1)].focus();
+                });
+                entry.append(input, remove);
+                urlInputs.push(input); cell.insertBefore(entry, cell.querySelector('.base-interest-fred-url-add-row, [role="status"]'));
+                notesCell.append(noteInput);
+                updateUrlControls();
+                return input;
+            };
+            urls.forEach((url, index) => addUrl(url, item.urlNotes?.[index] || ''));
+            const actions = document.createElement('div'); actions.className = 'base-interest-fred-actions';
+            const wrap = table.parentElement;
+            wrap.classList.add('is-editing');
+            wrap.append(actions);
+            const positionActions = () => {
+                actions.style.top = `${row.getBoundingClientRect().top - wrap.getBoundingClientRect().top + row.getBoundingClientRect().height / 2}px`;
+            };
+            const error = document.createElement('span'); error.setAttribute('role', 'status');
+            const cancel = () => { row.querySelectorAll('input').forEach(input => input.remove()); mountBaseInterestLinks(content); };
+            const save = async () => {
+                const values = Object.fromEntries(Object.entries(inputs).map(([key, input]) => [key, input.value.trim()]));
+                try {
+                    const entries = urlInputs.filter(input => input.value.trim());
+                    values.urls = entries.map(input => input.value.trim());
+                    values.urlNotes = entries.map(input => input.noteInput.value.trim());
+                    if (!values.continent || !values.country || !values.urls.length || values.urls.some(url => !['https:', 'http:'].includes(new URL(url).protocol))) throw new Error();
+                    values.url = values.urls[0];
+                } catch { error.textContent = '대륙·국가와 http(s) URL을 확인해 주세요.'; return; }
+                Object.assign(item, values);
+                cancel();
+                try {
+                    const ok = await saveAppData();
+                    if (ok === false) alert('서버 저장에 실패했습니다. 저장 상태를 확인해 주세요.');
+                } catch { alert('저장에 실패했습니다. 다시 시도해 주세요.'); }
+            };
+            const addButton = document.createElement('button'); addButton.type = 'button';
+            addButton.className = 'base-interest-fred-add-url'; addButton.textContent = '+';
+            addButton.setAttribute('aria-label', 'URL 추가'); addButton.title = 'URL 추가';
+            addButton.addEventListener('click', () => { addUrl().focus(); positionActions(); });
+            const addRow = document.createElement('div'); addRow.className = 'base-interest-fred-url-add-row';
+            addRow.append(addButton); cell.append(addRow);
+            for (const [label, action] of [['저장', save], ['취소', cancel]]) {
+                const button = document.createElement('button'); button.type = 'button'; button.textContent = label;
+                button.addEventListener('click', action); actions.append(button);
+            }
+            cell.append(error);
+            table.editObserver = new ResizeObserver(positionActions);
+            table.editObserver.observe(table);
+            positionActions();
+            row.addEventListener('keydown', event => {
+                if (event.isComposing || event.target.tagName !== 'INPUT') return;
+                if (event.key === 'Enter') { event.preventDefault(); save(); }
+                if (event.key === 'Escape') { event.preventDefault(); cancel(); }
+            }, { signal: (table.editKeyController = new AbortController()).signal });
+            urlInputs[0].focus();
+        };
+        countryRows.forEach((displayRow, index) => {
+        displayRow.addEventListener('click', event => {
+            if (table.querySelector('input')) return;
+            if (event.target.closest('a') && (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)) return;
+            event.preventDefault(); clearTimeout(table.clickTimer);
+            if (event.detail >= 2) { edit(); return; }
+            const url = event.target.closest('a')?.dataset.url || urls[index];
+            table.clickTimer = setTimeout(() => open(url), 650);
+        });
+        displayRow.addEventListener('dblclick', event => {
+            if (table.querySelector('input')) return;
+            event.preventDefault(); edit();
+        });
+        });
+        links.forEach(link => link.addEventListener('keydown', event => {
+            if (event.key === 'F2') { event.preventDefault(); edit(); }
+            if (event.key === 'Enter') { event.preventDefault(); clearTimeout(table.clickTimer); open(link.dataset.url); }
+        }));
+    });
+    table.append(body);
+}
+
+function mountBaseInterestColumnResize(table) {
+    const headers = [...table.querySelectorAll('thead th')];
+    const minimums = [64, 80, 160, 160];
+    const apply = widths => {
+        table.classList.add('has-column-widths');
+        table.style.width = `${widths.reduce((sum, width) => sum + width, 0)}px`;
+        [...table.querySelectorAll('col')].forEach((col, index) => { col.style.width = `${widths[index]}px`; });
+    };
+    const saved = tabData[BASE_INTEREST_TAB_ID]?.chartColumnWidths;
+    if (!table.querySelector('colgroup')) {
+        const group = document.createElement('colgroup');
+        headers.forEach(() => group.append(document.createElement('col')));
+        table.prepend(group);
+    }
+    if (Array.isArray(saved) && saved.length === headers.length && saved.every(Number.isFinite)) {
+        apply(saved.map((width, index) => Math.max(minimums[index], width)));
+    }
+    if (table.dataset.resizeMounted) return;
+    table.dataset.resizeMounted = 'true';
+    const persist = widths => {
+        tabData[BASE_INTEREST_TAB_ID].chartColumnWidths = widths;
+        saveAppData().catch(error => console.error('[Base Interest] Column width save failed', error));
+    };
+    headers.forEach((header, index) => {
+        const handle = document.createElement('span');
+        handle.className = 'base-interest-column-resize';
+        handle.tabIndex = 0; handle.setAttribute('role', 'separator');
+        handle.setAttribute('aria-orientation', 'vertical');
+        handle.setAttribute('aria-label', `${header.textContent} 열 너비 조절`);
+        handle.title = '드래그 또는 좌우 방향키로 열 너비 조절';
+        let drag = null;
+        const measure = () => headers.map((item, i) => Math.max(minimums[i], item.getBoundingClientRect().width));
+        handle.addEventListener('pointerdown', event => {
+            if (event.button !== 0) return;
+            event.preventDefault(); event.stopPropagation();
+            clearTimeout(table.clickTimer);
+            drag = { x: event.clientX, original: measure(), widths: measure() };
+            apply(drag.widths);
+            handle.setPointerCapture(event.pointerId);
+            table.classList.add('is-resizing-columns');
+        });
+        handle.addEventListener('pointermove', event => {
+            if (!drag) return;
+            drag.widths[index] = Math.max(minimums[index], drag.original[index] + event.clientX - drag.x);
+            apply(drag.widths);
+            handle.setAttribute('aria-valuenow', String(Math.round(drag.widths[index])));
+        });
+        const finish = event => {
+            if (!drag) return;
+            const current = drag; drag = null;
+            table.classList.remove('is-resizing-columns');
+            if (event.type === 'pointerup') persist(current.widths);
+            else apply(current.original);
+            if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+        };
+        handle.addEventListener('pointerup', finish);
+        handle.addEventListener('pointercancel', finish);
+        handle.addEventListener('lostpointercapture', finish);
+        handle.addEventListener('keydown', event => {
+            if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+            event.preventDefault();
+            const widths = measure();
+            widths[index] = Math.max(minimums[index], widths[index] + (event.key === 'ArrowRight' ? 10 : -10));
+            apply(widths); persist(widths);
+            handle.setAttribute('aria-valuenow', String(Math.round(widths[index])));
+        });
+        header.append(handle);
     });
 }
