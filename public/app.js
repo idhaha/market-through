@@ -6480,7 +6480,7 @@ function mountBaseInterestLinks(content) {
             const urlLine = document.createElement('div'); urlLine.className = 'base-interest-url-line';
             urlLine.append(link);
             const itemLine = document.createElement('div'); itemLine.className = 'base-interest-item-line';
-            const itemText = document.createElement('span'); itemText.textContent = noteCell.textContent;
+            const itemText = link.cloneNode(false); itemText.textContent = noteCell.textContent; itemText.className = 'base-interest-item-link';
             itemLine.append(handle, itemText); noteCell.replaceChildren(itemLine);
             urlCell.append(urlLine); displayRow.append(noteCell, urlCell); body.append(displayRow);
             return link;
@@ -6589,7 +6589,7 @@ function mountBaseInterestLinks(content) {
         countryRows.forEach((displayRow, index) => {
         displayRow.addEventListener('click', event => {
             if (table.querySelector('input')) return;
-            if (!event.target.closest('.base-interest-url-cell')) {
+            if (!event.target.closest('.base-interest-url-cell, .base-interest-fred-notes')) {
                 clearTimeout(table.clickTimer);
                 return;
             }

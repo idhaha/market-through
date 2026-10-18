@@ -2829,3 +2829,9 @@ body { height:100dvh; min-height:0; overflow:hidden; display:flex; flex-directio
 .base-interest-item-line { display:flex; align-items:baseline; gap:8px; min-width:0; }
 .base-interest-item-line > .base-interest-drag-handle { flex:0 0 18px; width:18px; margin-right:0; }
 .base-interest-item-line > span:last-child { flex:1; min-width:0; }
+
+.base-interest-item-line > .base-interest-item-link { flex:1; min-width:0; }
+.base-interest-fred-table thead th { position:sticky; top:0; z-index:12; background:#eef3f8; box-shadow:0 1px 0 var(--border-color); }
+.us-links-container > .tab-scroll-body { display:flex; flex-direction:column; }
+.us-links-container .us-table-scroll { flex:1; min-height:0; overflow:auto; }
+.us-links-table thead th { position:sticky; top:0; z-index:12; background:#f8fafc; box-shadow:0 1px 0 #dce1e7; }
