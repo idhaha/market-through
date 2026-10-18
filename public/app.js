@@ -2385,6 +2385,7 @@ function createChartGrid(tabId) {
                 <button type="button" class="calendar-source-tab active" data-interest-view="split" aria-pressed="true">CBRates | Trading Economics</button>
                 <button type="button" class="calendar-source-tab" data-interest-view="charts" aria-pressed="false">차트</button>
             </div>
+            <p class="base-interest-chart-help">한 번 클릭: URL 열기 / 더블클릭: 편집 / ⠿ 드래그: 순서 이동</p>
             <div class="base-interest-sources" data-view="split">
                 ${BASE_INTEREST_SOURCES.map(source => `<section class="base-interest-source" data-interest-source="${source.id}" aria-label="${source.name}">
                     <div class="base-interest-source-heading"><h2>${source.name}</h2><a href="${source.url}" target="_blank" rel="noopener noreferrer">원본 열기 ↗</a></div>
