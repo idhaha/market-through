@@ -2835,3 +2835,9 @@ body { height:100dvh; min-height:0; overflow:hidden; display:flex; flex-directio
 .us-links-container > .tab-scroll-body { display:flex; flex-direction:column; }
 .us-links-container .us-table-scroll { flex:1; min-height:0; overflow:auto; }
 .us-links-table thead th { position:sticky; top:0; z-index:12; background:#f8fafc; box-shadow:0 1px 0 #dce1e7; }
+/* Pin the complete header row at the scroll viewport edge, without a top gap. */
+.base-interest-fred { padding-top:0; margin-top:0; isolation:isolate; }
+.base-interest-fred-table thead, .us-links-table thead { position:sticky; top:0; z-index:15; background:#eef3f8; }
+.base-interest-fred-table thead th, .us-links-table thead th { position:relative; top:auto; z-index:auto; }
+.us-links-table thead { background:#f8fafc; }
+.us-links-container .us-table-scroll { padding-top:0; isolation:isolate; }
