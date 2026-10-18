@@ -13,6 +13,28 @@
         panel.innerHTML = `<div class="concentration-chart-header"><h2>ADR</h2><div class="rank-market-choice" role="radiogroup" aria-label="ADR 시장 선택"><label><input type="radio" name="rank-adr-market" value="kospi" checked>KOSPI</label><label><input type="radio" name="rank-adr-market" value="kosdaq">KOSDAQ</label></div><output></output></div><div class="rank-adr-area"><canvas role="img" aria-label="당일 ADR 분봉 차트"></canvas><div class="concentration-tooltip" hidden></div></div><p role="status" class="rank-adr-status"></p>`;
         row.append(panel);
         }
+        panel.querySelector('.concentration-chart-header').insertAdjacentHTML('beforeend', `<button type="button" class="chart-info-button volatility-help-trigger" aria-label="ADR 설명" aria-describedby="adrGuide">i</button>
+            <div id="adrGuide" class="volatility-guide adr-guide" role="tooltip">
+                <h3>ADR (Advance Decline Ratio)이란?</h3>
+                <p>20거래일 동안 상승종목 누계를 하락종목 누계로 나눈 백분율로 표시하며, 증권시장 내의 매수세력과 매도세력의 크기를 가늠하는 지표로 쓰이고 있습니다.</p>
+                <p>ADR이 100%인 경우는 상승종목수와 하락종목수가 균형을 이루고 있다는 것을 나타내며 120% 이상이면 과열권, 75% 이하면 바닥권으로 판단합니다.</p>
+                <div class="adr-formula" aria-label="ADR 백분율은 20거래일 일간 상승종목의 합을 일간 하락종목의 합으로 나눈 값 곱하기 100">ADR(%) = <span class="adr-fraction"><span>일간 상승종목의 합</span><span>일간 하락종목의 합</span></span> × 100</div>
+                <p class="adr-formula-period">누계 기간: 20거래일</p>
+            </div>`);
+        const infoButton = panel.querySelector('.chart-info-button'), guide = panel.querySelector('#adrGuide');
+        let guideTimer;
+        const hideGuide = () => guide.classList.remove('is-visible');
+        const showGuide = () => {
+            clearTimeout(guideTimer);
+            guide.style.top = `${infoButton.getBoundingClientRect().bottom - panel.getBoundingClientRect().top + 8}px`;
+            guide.classList.add('is-visible');
+        };
+        infoButton.addEventListener('mouseenter', showGuide); infoButton.addEventListener('focus', showGuide);
+        infoButton.addEventListener('mouseleave', () => { guideTimer = setTimeout(hideGuide, 150); });
+        infoButton.addEventListener('blur', hideGuide);
+        infoButton.addEventListener('keydown', event => { if (event.key === 'Escape') hideGuide(); });
+        guide.addEventListener('mouseenter', () => clearTimeout(guideTimer));
+        guide.addEventListener('mouseleave', hideGuide);
         let selectedMarket = 'kospi';
         const canvas = panel.querySelector('canvas');
         const ctx = canvas.getContext('2d'), status = panel.querySelector('[role="status"]');

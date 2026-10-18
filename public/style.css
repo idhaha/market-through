@@ -2796,3 +2796,11 @@ body { height:100dvh; min-height:0; overflow:hidden; display:flex; flex-directio
 .us-links-container > header.header-single-line { display:flex; }
 .us-links-container > header > .us-info-row { flex-basis:100%; }
 #tab_memo .panel-header { position:sticky; top:0; z-index:5; background:var(--bg-secondary); }
+#rankAdrChartPanel { position:relative; }
+#rankAdrChartPanel .concentration-chart-header { padding-right:30px; }
+.adr-guide p { margin:10px 0; }
+.adr-formula { display:flex; align-items:center; justify-content:center; gap:10px; padding:14px 8px; margin-top:14px; background:#f1f5f9; border-radius:6px; white-space:nowrap; }
+.adr-fraction { display:inline-flex; flex-direction:column; text-align:center; }
+.adr-fraction > span:first-child { border-bottom:1px solid #64748b; padding:0 6px 4px; }
+.adr-fraction > span:last-child { padding:4px 6px 0; }
+.adr-guide .adr-formula-period { text-align:center; font-size:12px; color:#64748b; margin-top:6px; }
