@@ -2392,7 +2392,7 @@ function createChartGrid(tabId) {
                 </section>`).join('')}
                 <section class="base-interest-fred" aria-label="국가별 금리 차트 및 정책금리 자료">
                     <div class="base-interest-fred-table-wrap"><table class="base-interest-fred-table">
-                        <thead><tr><th scope="col">대륙</th><th scope="col">국가/지역</th><th scope="col">URL링크</th><th scope="col">비고</th></tr></thead>
+                        <thead><tr><th scope="col">대륙</th><th scope="col">국가/지역</th><th scope="col">항목</th><th scope="col">URL링크</th></tr></thead>
 
                     </table></div>
                 </section>
@@ -6400,6 +6400,13 @@ function mountBaseInterestLinks(content) {
         country.url = country.urls[0];
     });
     data.fredLinks = [...continents.values()].flatMap(countries => [...countries.values()]);
+    if (data.chartColumnOrder !== 'item-url') {
+        if (Array.isArray(data.chartColumnWidths) && data.chartColumnWidths.length === 4) {
+            [data.chartColumnWidths[2], data.chartColumnWidths[3]] = [data.chartColumnWidths[3], data.chartColumnWidths[2]];
+        }
+        data.chartColumnOrder = 'item-url';
+        saveAppData().catch(error => console.error('[Base Interest] Column order save failed', error));
+    }
     mountBaseInterestColumnResize(table);
     clearTimeout(table.clickTimer);
     table.editObserver?.disconnect();
@@ -6471,8 +6478,11 @@ function mountBaseInterestLinks(content) {
                 catch { alert('저장에 실패했습니다. 다시 시도해 주세요.'); }
             });
             const urlLine = document.createElement('div'); urlLine.className = 'base-interest-url-line';
-            urlLine.append(handle, link);
-            urlCell.append(urlLine); displayRow.append(urlCell, noteCell); body.append(displayRow);
+            urlLine.append(link);
+            const itemLine = document.createElement('div'); itemLine.className = 'base-interest-item-line';
+            const itemText = document.createElement('span'); itemText.textContent = noteCell.textContent;
+            itemLine.append(handle, itemText); noteCell.replaceChildren(itemLine);
+            urlCell.append(urlLine); displayRow.append(noteCell, urlCell); body.append(displayRow);
             return link;
         });
         const open = (url = urls[0]) => {
@@ -6503,7 +6513,7 @@ function mountBaseInterestLinks(content) {
             const updateUrlControls = () => {
                 urlInputs.forEach((input, index) => {
                     input.setAttribute('aria-label', `URL ${index + 1}`);
-                    input.noteInput.setAttribute('aria-label', `비고 ${index + 1}`);
+                    input.noteInput.setAttribute('aria-label', `항목 ${index + 1}`);
                     const remove = input.parentElement.querySelector('button');
                     remove.setAttribute('aria-label', `URL ${index + 1} 삭제`);
                     remove.disabled = urlInputs.length === 1;
