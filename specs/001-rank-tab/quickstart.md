@@ -176,3 +176,22 @@ node dev/tests/rank-refresh.test.cjs
 ### 거래대금 갱신 실패 재확인 (미완료)
 
 Oracle에 이번 변경이 반영된 뒤 두 시장 상태 메시지가 정상으로 돌아오는지 확인한다. 계속 실패하면 서버의 `[MarketIndexCandles] 조회 실패` 로그에서 market/mode/httpStatus/code/message를 확인한다. 이 로그는 API 키·토큰이나 원본 응답 본문을 포함하지 않는다. 로컬 모의 테스트 통과는 실제 실패 원인의 확인이나 운영 해결 증거가 아니다.
+## 2026-10-18 차트 확장 검증
+
+1. 인증 후 트레이딩 첫 줄 3개/다음 줄 3개 패널의 위치를 확인한다.
+2. 변동성·신고가·CNN/HY의 네 기간과 전체 저장 이력, KOSPI 캔들, 등락율, 두 축 색상, VIX 결측 날짜를 확인한다.
+3. 각 메인/캔들에서 마우스 위치 기준 스크롤 줌, 양방향 드래그, 슬라이더와 동일 날짜의 종가 배지를 확인한다.
+4. ADR·변동성 i에서 해설을 열고 CNN/HY는 내부 탭과 스크롤·키보드 전환을 확인한다. 제목/범례 hover로는 해설이 열리지 않아야 한다.
+5. 다른 브라우저에서 ADR 최신 하루가 복원되는지, 서버 재시작 뒤 위험지표 누적 기록이 유지되는지 확인한다.
+6. 20행 세 카드의 상단/하단 정렬과 긴 이름 말줄임, 고정 제목/상태와 하단 스크롤을 확인한다.
+
+로컬 테스트: `node dev/tests/risk-volatility.test.cjs`, `node dev/tests/adr-minute-store.test.cjs`, `node dev/tests/adr-weekend-fallback.test.cjs`, `node dev/tests/rank-volatility.test.cjs`, `node dev/tests/rank-card-layout.test.cjs`, `node dev/tests/tab-scroll-layout.test.cjs`. 브라우저 테스트는 필요 시 TEST_BROWSER_PATH로 설치된 Chrome을 지정한다.
+
+원천 제공 기간 제한과 결측은 정상 상태다. 모의 테스트 성공은 Oracle 배포, 실제 데이터 검산, 여러 PC의 동일 서버 연결 검증을 대신하지 않는다.
+
+
+### 이번 문서 동기화 시 재검증 결과
+
+- 2026-10-18 통과: risk-volatility, adr-minute-store, rank-volatility, rank-card-layout, tab-scroll-layout 테스트. 브라우저 테스트는 Chrome으로 수행했다.
+- adr-weekend-fallback은 이번 실행에서 Edge 브라우저 시작 단계에 실패했다. 기능 검증 실패로 단정하지 않으며 이번 재검증 성공으로도 기록하지 않는다.
+- Oracle 운영 검증은 T116/T117에 미완료로 남긴다.

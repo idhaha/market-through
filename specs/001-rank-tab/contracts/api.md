@@ -139,3 +139,12 @@ POST /api/concentration-chart에 {code:선택종목, mode:"minute", interval:5, 
 당일1분(누적)은 `mode=minute&from=오늘&to=오늘`로 시장별 조회한다. 클라이언트는 `market_turnover_estimate`를 시각순으로 합산해 봉 시각의 누적 추정값을 만든다. 전일 기준은 `mode=day` 응답에서 오늘보다 이른 가장 최근 유효 `market_turnover`를 사용한다. 마우스 정보는 YYYY-MM-DD HH:mm과 각 시장의 `x.xx조원(전일대비 xx.x%)`이며 기준값이 없거나 0이면 괄호를 생략한다. 비율은 해당 분의 누적 추정값 ÷ 전일 실제값 × 100이므로 실제 거래대금의 확정 비율이 아니다.
 
 ADR history 원천의 max/min 필드는 전달될 수 있으나 화면에는 MAX/MIN 글자·극값 표식을 표시하지 않는다. 기준 눈금 80/100/120은 모두 빨간색 글자이며 기준 가로선은 공통 회색 점선이다.
+## 2026-10-18 추가 계약: 위험지표·ADR 서버 기록
+
+- 인증된 `GET /api/risk/volatility?range=1y`: series 키 vix/vkospi.
+- 인증된 `GET /api/risk/breadth?range=1y`: series 키 highs/lows/net. highs는 양수, lows는 음수이며 원천 new-highs-lows에서 파생된다.
+- 인증된 `GET /api/risk/sentiment?range=1y`: series 키 fear-greed/high-yield-spread.
+- range 허용값은 6m/1y/3y/all이며 기본 1y. 응답은 `{range,series:{id:{points:[{date,value}],asOf,archiveFrom,warning?,error?}}}` 형태다. breadth net 점은 원천 유효성 필드를 포함할 수 있다. 부분 실패는 해당 series의 빈 points/error로 전달하며 전체 실패는 502와 오류 메시지를 반환한다. Cache-Control은 no-store다.
+- 서버는 Jusikbot risk-indicators의 최신 날짜를 확인한 뒤 risk-history의 3y/6m 제공 범위를 조회한다. 임의 from/to 증분 요청은 지원 계약이 아니며 날짜별 누락분만 저장한다.
+- `GET /api/adr/today?market=kospi|kosdaq`는 수신 자료와 서버의 최신 하루 기록을 병합한다. 원천 실패 시 기록이 있으면 intraday/intradayDate/sourceError와 함께 제공한다. 저장 이력이 없으면 실패 응답을 유지한다.
+- 기존 `/api/adr/candles?market=kospi&mode=day&from=...&to=...`의 실제 OHLC를 위험지표 아래 캔들에 재사용한다. 위험지표 일별 값에서 OHLC를 생성하지 않는다.

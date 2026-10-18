@@ -3402,20 +3402,21 @@ function drawTradingEconomicsLineChart(canvas, data, title) {
         canvas.hasInteractiveEvents = true;
         installEconomicChartWheelZoom(canvas);
 
-        canvas.addEventListener('mousedown', (e) => {
-            if (!canvas.chartData) return;
+        canvas.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0 || !canvas.chartData) return;
             const rect = canvas.getBoundingClientRect();
             const mouseX = e.clientX - rect.left;
             const { padding, chartW } = canvas.chartData;
             
             if (mouseX >= padding.left && mouseX <= padding.left + chartW) {
+                e.preventDefault(); canvas.setPointerCapture(e.pointerId);
                 canvas.isDragging = true;
                 canvas.dragStartX = mouseX;
                 canvas.dragEndX = mouseX;
             }
         });
 
-        canvas.addEventListener('mousemove', (e) => {
+        canvas.addEventListener('pointermove', (e) => {
             if (!canvas.chartData) return;
             const rect = canvas.getBoundingClientRect();
             let mouseX = e.clientX - rect.left;
@@ -3447,9 +3448,11 @@ function drawTradingEconomicsLineChart(canvas, data, title) {
             syncCursorToOtherCharts(canvas, hoveredDate);
         });
 
-        canvas.addEventListener('mouseup', (e) => {
+        canvas.addEventListener('pointerup', (e) => {
             if (!canvas.isDragging || !canvas.chartData) return;
+            canvas.dragEndX = Math.max(canvas.chartData.padding.left, Math.min(canvas.chartData.padding.left + canvas.chartData.chartW, e.clientX - canvas.getBoundingClientRect().left));
             canvas.isDragging = false;
+            if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
             
             const { padding, chartW, minDate, maxDate, originalData, title } = canvas.chartData;
             
@@ -3482,8 +3485,9 @@ function drawTradingEconomicsLineChart(canvas, data, title) {
             }
         });
 
-        canvas.addEventListener('mouseleave', () => {
-            canvas.isDragging = false; // Cancel drag on leave
+        canvas.addEventListener('pointercancel', () => { canvas.isDragging = false; clearCursorFromOtherCharts(canvas); });
+        canvas.addEventListener('pointerleave', () => {
+            if (canvas.isDragging) return;
             if (canvas.chartData) {
                 // Redraw with the current zoom state using the original full data
                 drawTradingEconomicsLineChart(canvas, canvas.chartData.originalData, canvas.chartData.title);
@@ -3496,6 +3500,40 @@ function drawTradingEconomicsLineChart(canvas, data, title) {
 /**
  * 커서와 툴팁이 포함된 TradingEconomics 차트 그리기
  */
+function drawEconomicHoverSummary(ctx, padding, chartW, values) {
+    if (!values.length) return;
+    const labels = values.map(point => {
+        const date = point.date;
+        return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')} · ${point.label}: ${point.value.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    });
+    ctx.save(); ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    const width = Math.max(1, chartW - 10);
+    ctx.fillStyle = 'rgba(255,255,255,.95)';
+    ctx.fillRect(padding.left, 7, Math.min(chartW, Math.max(...labels.map(label => ctx.measureText(label).width)) + 12), labels.length * 15 + 6);
+    ctx.fillStyle = '#333';
+    labels.forEach((label, index) => ctx.fillText(label, padding.left + 5, 10 + index * 15, width));
+    ctx.restore();
+}
+
+function drawEconomicHoverValue(ctx, canvas, padding, chartW, chartH, x, y, value, color = '#000') {
+    if (!Number.isFinite(value) || !Number.isFinite(y)) return;
+    ctx.save();
+    ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(padding.left, y); ctx.lineTo(padding.left + chartW, y); ctx.stroke();
+    ctx.setLineDash([]); ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+    const label = value.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    ctx.font = '11px sans-serif';
+    const width = ctx.measureText(label).width + 10;
+    const badgeX = canvas.clientWidth - width - 4;
+    const badgeY = Math.max(padding.top + 10, Math.min(padding.top + chartH - 10, y));
+    ctx.fillStyle = color;
+    ctx.fillRect(badgeX, badgeY - 10, width, 20);
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(label, badgeX + width / 2, badgeY);
+    ctx.restore();
+}
+
 function drawTradingEconomicsWithCursor(canvas, mouseX, hoveredValues, isDraggingOverlay = false) {
     if (!canvas.chartData) return;
 
@@ -3590,9 +3628,9 @@ function drawTradingEconomicsWithCursor(canvas, mouseX, hoveredValues, isDraggin
         ctx.lineWidth = 1;
         ctx.strokeRect(startX, padding.top, width, chartH);
     } else {
-        ctx.strokeStyle = '#ff6b6b';
+        ctx.strokeStyle = '#000';
         ctx.lineWidth = 1;
-        ctx.setLineDash([5, 3]);
+        ctx.setLineDash([3, 3]);
         ctx.beginPath();
         ctx.moveTo(mouseX, padding.top);
         ctx.lineTo(mouseX, padding.top + chartH);
@@ -3606,31 +3644,9 @@ function drawTradingEconomicsWithCursor(canvas, mouseX, hoveredValues, isDraggin
         const pointX = padding.left + ((v.date - minDate) / (maxDate - minDate)) * chartW;
         const pointY = padding.top + (1 - (v.value - yMin) / (yMax - yMin)) * chartH;
 
-        // 마커
-        ctx.fillStyle = '#fff';
-        ctx.beginPath(); ctx.arc(pointX, pointY, 5, 0, 2 * Math.PI); ctx.fill();
-        ctx.fillStyle = '#ff6b6b';
-        ctx.beginPath(); ctx.arc(pointX, pointY, 4, 0, 2 * Math.PI); ctx.fill();
+        drawEconomicHoverValue(ctx, canvas, padding, chartW, chartH, pointX, pointY, v.value);
 
-        // 툴팁 박스
-        const tooltipW = 140;
-        const tooltipH = 40;
-        let tx = mouseX + 10;
-        if (tx + tooltipW > w - padding.right) tx = mouseX - tooltipW - 10;
-
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-        ctx.strokeStyle = '#ccc';
-        ctx.lineWidth = 1;
-        ctx.fillRect(tx, padding.top + 10, tooltipW, tooltipH);
-        ctx.strokeRect(tx, padding.top + 10, tooltipW, tooltipH);
-
-        ctx.fillStyle = '#333';
-        ctx.font = 'bold 10px sans-serif';
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-        const dStr = `${v.date.getFullYear()}/${String(v.date.getMonth() + 1).padStart(2, '0')}/${String(v.date.getDate()).padStart(2, '0')}`;
-        ctx.fillText(dStr, tx + 8, padding.top + 15);
-        ctx.fillText(`${title}: ${v.value.toFixed(2)}`, tx + 8, padding.top + 30);
+        drawEconomicHoverSummary(ctx, padding, chartW, [{ ...v, label: title }]);
     }
 
     // Standardized Legend (Single Line top-right) - v16: match idle state
@@ -4128,20 +4144,21 @@ function drawMultiSeriesLineChart(canvas, allSeries, title) {
         canvas.hasInteractiveEvents = true;
         installEconomicChartWheelZoom(canvas);
 
-        canvas.addEventListener('mousedown', (e) => {
-            if (!canvas.chartData) return;
+        canvas.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0 || !canvas.chartData) return;
             const rect = canvas.getBoundingClientRect();
             const mouseX = e.clientX - rect.left;
             const { padding, chartW } = canvas.chartData;
             
             if (mouseX >= padding.left && mouseX <= padding.left + chartW) {
+                e.preventDefault(); canvas.setPointerCapture(e.pointerId);
                 canvas.isDragging = true;
                 canvas.dragStartX = mouseX;
                 canvas.dragEndX = mouseX;
             }
         });
 
-        canvas.addEventListener('mousemove', (e) => {
+        canvas.addEventListener('pointermove', (e) => {
             if (!canvas.chartData) return;
 
             const rect = canvas.getBoundingClientRect();
@@ -4170,12 +4187,12 @@ function drawMultiSeriesLineChart(canvas, allSeries, title) {
             const hoveredDate = new Date(minDate.getTime() + (maxDate - minDate) * ratio);
 
             // 각 시리즈에서 가장 가까운 데이터 포인트 찾기
-            const hoveredValues = allSeries.map(s => {
+            const hoveredValues = allSeries.map((s, seriesIndex) => {
                 if (!s.data || s.data.length === 0) return null;
                 const closest = s.data.reduce((prev, curr) => {
                     return Math.abs(curr.date - hoveredDate) < Math.abs(prev.date - hoveredDate) ? curr : prev;
                 });
-                return { label: s.label, value: closest.value, date: closest.date };
+                return { label: s.label, value: closest.value, date: closest.date, seriesIndex };
             }).filter(v => v !== null);
 
             // 차트 다시 그리기 (수직선 + 툴팁 포함)
@@ -4185,9 +4202,11 @@ function drawMultiSeriesLineChart(canvas, allSeries, title) {
             syncCursorToOtherCharts(canvas, hoveredDate);
         });
 
-        canvas.addEventListener('mouseup', (e) => {
+        canvas.addEventListener('pointerup', (e) => {
             if (!canvas.isDragging || !canvas.chartData) return;
+            canvas.dragEndX = Math.max(canvas.chartData.padding.left, Math.min(canvas.chartData.padding.left + canvas.chartData.chartW, e.clientX - canvas.getBoundingClientRect().left));
             canvas.isDragging = false;
+            if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
             
             const { padding, chartW, minDate, maxDate, allSeries, title } = canvas.chartData;
             
@@ -4219,8 +4238,9 @@ function drawMultiSeriesLineChart(canvas, allSeries, title) {
             }
         });
 
-        canvas.addEventListener('mouseleave', () => {
-            canvas.isDragging = false; // Cancel drag on leave
+        canvas.addEventListener('pointercancel', () => { canvas.isDragging = false; clearCursorFromOtherCharts(canvas); });
+        canvas.addEventListener('pointerleave', () => {
+            if (canvas.isDragging) return;
             // 커서 제거하고 원래 차트 다시 그리기
             if (canvas.chartData) {
                 drawMultiSeriesLineChart(canvas, canvas.chartData.allSeries, canvas.chartData.title);
@@ -4347,9 +4367,9 @@ function drawMultiSeriesWithCursor(canvas, mouseX, hoveredValues, isDraggingOver
         ctx.lineWidth = 1;
         ctx.strokeRect(startX, padding.top, width, chartH);
     } else {
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+        ctx.strokeStyle = '#000';
         ctx.lineWidth = 1;
-        ctx.setLineDash([5, 5]);
+        ctx.setLineDash([3, 3]);
         ctx.beginPath();
         ctx.moveTo(mouseX, padding.top);
         ctx.lineTo(mouseX, padding.top + chartH);
@@ -4359,56 +4379,12 @@ function drawMultiSeriesWithCursor(canvas, mouseX, hoveredValues, isDraggingOver
 
     // 툴팁
     if (hoveredValues && hoveredValues.length > 0) {
-        const tooltipWidth = 150;
-        const tooltipHeight = 20 + hoveredValues.length * 15;
-        let tooltipX = mouseX + 10;
-        const tooltipY = padding.top + 10;
-
-        // 툴팁이 화면 밖으로 나가지 않도록 조정
-        if (tooltipX + tooltipWidth > w - padding.right) {
-            tooltipX = mouseX - tooltipWidth - 10;
-        }
-
-        // 툴팁 배경
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-        ctx.strokeStyle = '#ccc';
-        ctx.lineWidth = 1;
-        ctx.fillRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
-        ctx.strokeRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
-
-        // 날짜
-        ctx.fillStyle = '#333';
-        ctx.font = 'bold 10px sans-serif';
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-        const tDate = hoveredValues[0].date;
-        const dTooltipStr = `${tDate.getFullYear()}/${String(tDate.getMonth() + 1).padStart(2, '0')}/${String(tDate.getDate()).padStart(2, '0')}`;
-        ctx.fillText(dTooltipStr, tooltipX + 5, tooltipY + 5);
-
-        // 각 시리즈 값
-        hoveredValues.forEach((v, i) => {
-            ctx.fillStyle = colors[i % colors.length];
-            ctx.font = '10px sans-serif';
-            ctx.fillText(`${v.label}: ${v.value.toFixed(2)}`, tooltipX + 5, tooltipY + 20 + i * 15);
-        });
-
-        // 호버된 데이터 포인트에 붉은색 원형 마커 표시
-        hoveredValues.forEach((v) => {
+        hoveredValues.forEach((v, index) => {
             const x = padding.left + ((v.date - minDate) / (maxDate - minDate)) * chartW;
             const y = padding.top + (1 - (v.value - yMin) / (yMax - yMin)) * chartH;
-
-            // 외곽선 (흰색)
-            ctx.fillStyle = '#fff';
-            ctx.beginPath();
-            ctx.arc(x, y, 5, 0, 2 * Math.PI);
-            ctx.fill();
-
-            // 내부 원 (붉은색)
-            ctx.fillStyle = '#ff6b6b';
-            ctx.beginPath();
-            ctx.arc(x, y, 4, 0, 2 * Math.PI);
-            ctx.fill();
+            drawEconomicHoverValue(ctx, canvas, padding, chartW, chartH, x, y, v.value, colors[(v.seriesIndex ?? index) % colors.length]);
         });
+        drawEconomicHoverSummary(ctx, padding, chartW, hoveredValues);
     }
 }
 
@@ -4439,12 +4415,12 @@ function syncCursorToOtherCharts(sourceCanvas, hoveredDate) {
         let hoveredValues = [];
         if (chartType === 'multi-series') {
             const { allSeries } = canvas.chartData;
-            hoveredValues = allSeries.map(s => {
+            hoveredValues = allSeries.map((s, seriesIndex) => {
                 if (!s.data || s.data.length === 0) return null;
                 const closest = s.data.reduce((prev, curr) => {
                     return Math.abs(curr.date - hoveredDate) < Math.abs(prev.date - hoveredDate) ? curr : prev;
                 });
-                return { label: s.label, value: closest.value, date: closest.date };
+                return { label: s.label, value: closest.value, date: closest.date, seriesIndex };
             }).filter(v => v !== null);
             drawMultiSeriesWithCursor(canvas, mouseX, hoveredValues);
         } else if (chartType === 'te-single') {
@@ -6434,6 +6410,8 @@ function mountBaseInterestLinks(content) {
     const body = document.createElement('tbody');
     const continentCells = [];
     const seenContinents = new Set();
+    let draggedLink = null;
+    const clearDropTargets = () => body.querySelectorAll('.base-interest-drop-target').forEach(row => row.classList.remove('base-interest-drop-target'));
     data.fredLinks.forEach(item => {
         const urls = Array.isArray(item.urls) && item.urls.length ? item.urls : [item.url];
         const row = document.createElement('tr');
@@ -6464,7 +6442,37 @@ function mountBaseInterestLinks(content) {
             link.title = '클릭: 새 탭 열기 · 더블클릭 또는 F2: 편집';
             noteCell.textContent = item.urlNotes?.[index] || '';
             urlCell.classList.add('base-interest-url-cell');
-            urlCell.append(link); displayRow.append(urlCell, noteCell); body.append(displayRow);
+            const handle = document.createElement('span');
+            handle.textContent = '⠿'; handle.className = 'us-drag-handle base-interest-drag-handle';
+            handle.draggable = urls.length > 1;
+            handle.title = '같은 국가 안에서 드래그하여 URL 순서 이동';
+            handle.setAttribute('aria-label', `${item.country} URL 순서 이동`);
+            handle.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); clearTimeout(table.clickTimer); });
+            handle.addEventListener('dblclick', event => { event.preventDefault(); event.stopPropagation(); });
+            handle.addEventListener('dragstart', event => {
+                if (table.querySelector('input') || urls.length < 2) { event.preventDefault(); return; }
+                clearTimeout(table.clickTimer); draggedLink = { item, index };
+                event.dataTransfer.setData('text/plain', String(index)); event.dataTransfer.effectAllowed = 'move';
+            });
+            handle.addEventListener('dragend', () => { draggedLink = null; clearDropTargets(); });
+            displayRow.addEventListener('dragover', event => {
+                clearDropTargets();
+                if (!draggedLink || draggedLink.item !== item || draggedLink.index === index || table.querySelector('input')) return;
+                event.preventDefault(); event.dataTransfer.dropEffect = 'move'; displayRow.classList.add('base-interest-drop-target');
+            });
+            displayRow.addEventListener('drop', async event => {
+                event.preventDefault(); clearDropTargets();
+                if (!draggedLink || draggedLink.item !== item || draggedLink.index === index || table.querySelector('input')) return;
+                const entries = urls.map((url, i) => ({ url, note: item.urlNotes?.[i] || '' }));
+                entries.splice(index, 0, entries.splice(draggedLink.index, 1)[0]);
+                item.urls = entries.map(entry => entry.url); item.urlNotes = entries.map(entry => entry.note); item.url = item.urls[0];
+                draggedLink = null; mountBaseInterestLinks(content);
+                try { if (await saveAppData() === false) alert('서버 저장에 실패했습니다. 저장 상태를 확인해 주세요.'); }
+                catch { alert('저장에 실패했습니다. 다시 시도해 주세요.'); }
+            });
+            const urlLine = document.createElement('div'); urlLine.className = 'base-interest-url-line';
+            urlLine.append(handle, link);
+            urlCell.append(urlLine); displayRow.append(urlCell, noteCell); body.append(displayRow);
             return link;
         });
         const open = (url = urls[0]) => {

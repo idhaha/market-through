@@ -106,7 +106,7 @@ POST /api/concentration-chart에 {code:선택종목, mode:"minute", interval:5, 
 - **ADRView**: market(kospi/kosdaq), mode(minute 기본/day), range(1y 기본 및 6m/3y/5y), chartDay, 전체 points, viewStart, viewCount(null=전체), hover, drag, refreshPending. 시장/모드/기간 변경은 확대 창을 초기화한다.
 - **LatestByMarket**: 시장별 마지막 정규화 수신 시각 t, 거래일, points, closing. 더 오래된 응답으로 날짜를 되돌리지 않고 빈 응답 후 기존 수신 기록을 유지한다. 서버가 아니라 현재 페이지 메모리에만 존재한다.
 - **IndexCandle**: t, open, high, low, close 및 응답 partial. 확대 창과 시간축은 ADRView를 공유하되 가격 축은 표시되는 고저가로 산출한다.
-- **Browser minute cache**: localStorage `rank-adr:{market}:{YYYY-MM-DD}`에 수신한 당일 분봉 배열을 저장할 수 있다. 서버 기록 저장은 없으며 새 브라우저의 전일 분봉 복원을 보장하지 않는다.
+- **ADR minute persistence**: 브라우저 캐시는 보조 수단이며 최신 거래일 하루의 공유 기록은 서버 AdrMinuteArchive가 제공한다. 아래 2026-10-18 모델을 따른다.
 - 쏠림율의 전일 대비 상승률·OHLC 응답은 유지한다. 마우스 표시만 메인 차트 한 곳으로 제한하며 OHLC를 tooltip에 표시하지 않는다.
 
 퇴역 설정 호환: tab_adr 탭 목록/콘텐츠 및 adrInterval은 복원에서 제외한다. 해당 활성 탭은 tab_rank로 대체한다. 입력 스냅샷의 나머지 필드는 변경하지 않는다.
@@ -120,3 +120,13 @@ POST /api/concentration-chart에 {code:선택종목, mode:"minute", interval:5, 
 - **TurnoverLatest**: 한국시간 오늘과 일치하는 시장별 마지막 유효 market_turnover를 전체 수신 배열에서 찾는다. 일봉은 실제값, 분봉은 추정 누적값이다. 과거 확대 창과 무관하며 오늘 봉이 없으면 —다. 직전 거래일을 오늘 값으로 치환하지 않는다. 분봉 hover 비율은 해당 시각의 누적 추정값 / previous × 100이며 previous가 null/0이면 비율이 없다.
 - **HoverGuide**: 쏠림율 value, ADR adr, 두 시장 market_turnover/1e12, 캔들 종가를 기준으로 수평선과 오른쪽 축 배지를 계산한다. canvas 폭으로 배지 X좌표를 제한한다. 커서 임의 Y좌표의 값은 사용하지 않는다.
 - 제목/버튼/축/선/최종값 배치는 FR-032~036과 FR-046~050을 따른다. ADR MAX/MIN 표시는 없고 세 차트와 캔들 Y축은 오른쪽이다.
+## 2026-10-18 기록·위험지표 모델
+
+이 절은 과거의 ADR “브라우저에만 저장/서버 저장 없음” 설명을 대체한다.
+
+- **AdrMinuteArchive**: 시장별 최신 거래일과 정규화된 `{t, adr}` 1분 배열. 초/밀리초 입력을 밀리초로 통일하고 한국 거래시간 09:00~15:30으로 제한한다. 새로운 거래일 수신 시 하루 전체를 교체한다. 과거 응답은 최신 날짜를 되돌리지 않는다.
+- **RiskArchive**: 지표별 `{points, checkedAt, asOf}`. 일반 지표는 `{date,value}`, breadth 원본은 highs/lows/valid를 추가로 보존한다. 날짜 정렬·중복 제거 후 기존 날짜는 불변이고 새 날짜만 추가한다.
+- **RiskRange**: 6m/1y/3y/all. all은 원천 최대 기간이 아니라 저장된 전체 기록이다.
+- **BreadthView**: 원본 highs는 양수, lows는 음수로 변환한다. 원본 net·유효성은 응답에 유지하며 임의로 누락 날짜를 채우지 않는다.
+- **RiskDisplay**: 기존 rankChartDisplay 안 volatility/breadth/sentiment 각각 range와 candleOpen. 확대 위치와 hover는 페이지 메모리 상태다.
+- **KOSPICandleHover**: 선택 날짜 종가와 직전 거래일 종가 기반 changeRate. 배지는 close, 정보 줄의 비율 이름은 등락율이다. 지표별 휴장일 차이는 서로 독립적인 결측으로 남긴다.
