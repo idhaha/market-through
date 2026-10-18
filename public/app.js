@@ -31,10 +31,10 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://fred.stlouisfed.org/series/FEDFUNDS"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 미국의 장기 정책금리. 국가 간 장기 비교용",
-            "공식 정책금리 — FOMC가 결정하는 연방기금금리 목표범위",
-            "추가지표 — 실제 거래를 바탕으로 산출되는 실효 연방기금금리",
-            "추가지표 — 실효 연방기금금리의 월평균 시계열"
+            "BIS 장기 시계열 - 미국의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 - FOMC가 결정하는 연방기금금리 목표범위",
+            "추가지표 - 실제 거래를 바탕으로 산출되는 실효 연방기금금리",
+            "추가지표 - 실효 연방기금금리의 월평균 시계열"
         ]
     },
     {
@@ -47,9 +47,9 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://www.bankofcanada.ca/core-functions/monetary-policy/key-interest-rate/"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 캐나다의 장기 정책금리. 국가 간 장기 비교용",
-            "공식 정책금리 — 캐나다 중앙은행이 설정하는 익일물 금리 목표",
-            "추가지표 — 은행금리(Bank Rate) 및 익일물 금리 목표 정보"
+            "BIS 장기 시계열 - 캐나다의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 - 캐나다 중앙은행이 설정하는 익일물 금리 목표",
+            "추가지표 - 은행금리(Bank Rate) 및 익일물 금리 목표 정보"
         ]
     },
     {
@@ -61,8 +61,8 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://www.banxico.org.mx/publicaciones-y-prensa/anuncios-de-las-decisiones-de-politica-monetaria/anuncios-politica-monetaria-t.html"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 멕시코의 장기 정책금리. 국가 간 장기 비교용",
-            "공식 정책금리 — 중앙은행이 결정하는 익일물 은행 간 금리 목표"
+            "BIS 장기 시계열 - 멕시코의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 - 중앙은행이 결정하는 익일물 은행 간 금리 목표"
         ]
     },
     {
@@ -75,9 +75,9 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://www.bcb.gov.br/en/monetarypolicy/interestrates"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 브라질의 장기 정책금리. 국가 간 장기 비교용",
-            "공식 정책금리 — COPOM이 결정하는 Selic 목표금리의 변경 이력",
-            "추가지표 — Selic 관련 금리 자료. 목표금리와 실효금리를 구분"
+            "BIS 장기 시계열 - 브라질의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 - COPOM이 결정하는 Selic 목표금리의 변경 이력",
+            "추가지표 - Selic 관련 금리 자료. 목표금리와 실효금리를 구분"
         ]
     },
     {
@@ -89,8 +89,8 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://www.bcentral.cl/"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 칠레의 장기 정책금리. 국가 간 장기 비교용",
-            "공식 정책금리 — 칠레 중앙은행의 통화정책금리(TPM) 관련 자료"
+            "BIS 장기 시계열 - 칠레의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 - 칠레 중앙은행의 통화정책금리(TPM) 관련 자료"
         ]
     },
     {
@@ -102,8 +102,8 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://www.bcra.gob.ar/"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 아르헨티나의 장기 정책금리. 최신 관측치 확인 필요",
-            "공식 정책금리 — 아르헨티나 중앙은행의 통화정책 및 금리 관련 자료"
+            "BIS 장기 시계열 - 아르헨티나의 장기 정책금리. 최신 관측치 확인 필요",
+            "공식 정책금리 - 아르헨티나 중앙은행의 통화정책 및 금리 관련 자료"
         ]
     },
     {
@@ -117,10 +117,10 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://www.ecb.europa.eu/stats/policy_and_exchange_rates/key_ecb_interest_rates/html/index.en.html"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 유로존의 장기 정책금리. 국가 간 장기 비교용",
-            "공식 정책금리 — ECB 주요 정책금리의 공식 자료",
-            "추가지표 — 예금제도 금리(DFR). 은행이 ECB에 예치하는 자금에 적용되는 금리",
-            "추가지표 — 주요 재융자금리(MRO)"
+            "BIS 장기 시계열 - 유로존의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 - ECB 주요 정책금리의 공식 자료",
+            "추가지표 - 예금제도 금리(DFR). 은행이 ECB에 예치하는 자금에 적용되는 금리",
+            "추가지표 - 주요 재융자금리(MRO)"
         ]
     },
     {
@@ -132,8 +132,8 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://www.bankofengland.co.uk/monetary-policy/the-interest-rate-bank-rate"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 영국의 장기 정책금리. 국가 간 장기 비교용",
-            "공식 정책금리 — 영란은행의 Bank Rate"
+            "BIS 장기 시계열 - 영국의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 - 영란은행의 Bank Rate"
         ]
     },
     {
@@ -145,8 +145,8 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://www.snb.ch/en/the-snb/mandates-goals/monetary-policy"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 스위스의 장기 정책금리. 국가 간 장기 비교용",
-            "공식 정책금리 — SNB Policy Rate 관련 공식 자료"
+            "BIS 장기 시계열 - 스위스의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 - SNB Policy Rate 관련 공식 자료"
         ]
     },
     {
@@ -158,8 +158,8 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://www.norges-bank.no/en/topics/Monetary-policy/"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 노르웨이의 장기 정책금리. 국가 간 장기 비교용",
-            "공식 정책금리 — 노르웨이 중앙은행의 정책금리 관련 자료"
+            "BIS 장기 시계열 - 노르웨이의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 - 노르웨이 중앙은행의 정책금리 관련 자료"
         ]
     },
     {
@@ -171,8 +171,8 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://www.nationalbanken.dk/en/what-we-do/stable-prices-monetary-policy-and-the-danish-economy"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 덴마크의 장기 정책금리. 국가 간 장기 비교용",
-            "공식 정책금리 — 덴마크 중앙은행의 통화정책 운용금리 관련 자료"
+            "BIS 장기 시계열 - 덴마크의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 - 덴마크 중앙은행의 통화정책 운용금리 관련 자료"
         ]
     },
     {
@@ -184,8 +184,8 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://www.riksbank.se/en-gb/monetary-policy/"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 스웨덴의 장기 정책금리. 국가 간 장기 비교용",
-            "공식 정책금리 — 스웨덴 중앙은행의 Policy Rate"
+            "BIS 장기 시계열 - 스웨덴의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 - 스웨덴 중앙은행의 Policy Rate"
         ]
     },
     {
@@ -197,8 +197,8 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://www.cbr.ru/eng/hd_base/KeyRate/"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 러시아의 장기 정책금리. 국가 간 장기 비교용",
-            "공식 정책금리 — 러시아 중앙은행 Key Rate 변경 이력"
+            "BIS 장기 시계열 - 러시아의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 - 러시아 중앙은행 Key Rate 변경 이력"
         ]
     },
     {
@@ -211,9 +211,9 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://www.tcmb.gov.tr/wps/wcm/connect/EN/TCMB+EN/Main+Menu/Core+Functions/Monetary+Policy/Central+Bank+Interest+Rates/"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 터키의 장기 정책금리. 국가 간 장기 비교용",
-            "공식 정책금리 — 터키 중앙은행의 정책금리 및 운용금리 자료",
-            "추가지표 — 중앙은행 금리 통로의 익일물 차입금리 및 대출금리"
+            "BIS 장기 시계열 - 터키의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 - 터키 중앙은행의 정책금리 및 운용금리 자료",
+            "추가지표 - 중앙은행 금리 통로의 익일물 차입금리 및 대출금리"
         ]
     },
     {
@@ -225,8 +225,8 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://www.bok.or.kr/portal/singl/baseRate/list.do?menuNo=200761"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 대한민국의 장기 정책금리. 국가 간 장기 비교용",
-            "공식 정책금리 — 한국은행 기준금리 변경 이력"
+            "BIS 장기 시계열 - 대한민국의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 - 한국은행 기준금리 변경 이력"
         ]
     },
     {
@@ -238,8 +238,8 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://www.boj.or.jp/en/mopo/"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 일본의 장기 정책금리. 국가 간 장기 비교용",
-            "공식 정책금리 — 일본은행의 통화정책 결정 및 정책금리 자료"
+            "BIS 장기 시계열 - 일본의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 - 일본은행의 통화정책 결정 및 정책금리 자료"
         ]
     },
     {
@@ -251,8 +251,8 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://www.pbc.gov.cn/en/"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 중국의 장기 정책금리. 국가 간 장기 비교용",
-            "공식 정책금리 — 중국인민은행의 통화정책 및 정책금리 자료"
+            "BIS 장기 시계열 - 중국의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 - 중국인민은행의 통화정책 및 정책금리 자료"
         ]
     },
     {
@@ -264,8 +264,8 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://www.rbi.org.in/"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 인도의 장기 정책금리. 국가 간 장기 비교용",
-            "공식 정책금리 — 인도중앙은행의 정책 레포금리 등 통화정책 자료"
+            "BIS 장기 시계열 - 인도의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 - 인도중앙은행의 정책 레포금리 등 통화정책 자료"
         ]
     },
     {
@@ -277,8 +277,8 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://www.rba.gov.au/statistics/cash-rate/"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 호주의 장기 정책금리. 국가 간 장기 비교용",
-            "공식 정책금리 — 호주중앙은행의 Cash Rate Target 통계"
+            "BIS 장기 시계열 - 호주의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 - 호주중앙은행의 Cash Rate Target 통계"
         ]
     },
     {
@@ -290,8 +290,8 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://www.rbnz.govt.nz/monetary-policy"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 뉴질랜드의 장기 정책금리. 국가 간 장기 비교용",
-            "공식 정책금리 — 뉴질랜드 중앙은행의 Official Cash Rate(OCR) 자료"
+            "BIS 장기 시계열 - 뉴질랜드의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 - 뉴질랜드 중앙은행의 Official Cash Rate(OCR) 자료"
         ]
     },
     {
@@ -303,8 +303,8 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://www.bi.go.id/en/"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 인도네시아의 장기 정책금리. 국가 간 장기 비교용",
-            "공식 정책금리 — 인도네시아 중앙은행의 BI-Rate 등 통화정책 자료"
+            "BIS 장기 시계열 - 인도네시아의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 - 인도네시아 중앙은행의 BI-Rate 등 통화정책 자료"
         ]
     },
     {
@@ -316,8 +316,8 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://www.bnm.gov.my/"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 말레이시아의 장기 정책금리. 국가 간 장기 비교용",
-            "공식 정책금리 — 말레이시아 중앙은행의 Overnight Policy Rate(OPR) 자료"
+            "BIS 장기 시계열 - 말레이시아의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 - 말레이시아 중앙은행의 Overnight Policy Rate(OPR) 자료"
         ]
     },
     {
@@ -329,8 +329,8 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://www.bsp.gov.ph/"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 필리핀의 장기 정책금리. 국가 간 장기 비교용",
-            "공식 정책금리 — 필리핀 중앙은행의 통화정책 및 익일물 역레포 정책금리 자료"
+            "BIS 장기 시계열 - 필리핀의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 - 필리핀 중앙은행의 통화정책 및 익일물 역레포 정책금리 자료"
         ]
     },
     {
@@ -342,8 +342,8 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://www.bot.or.th/en/our-roles/monetary-policy.html"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 태국의 장기 정책금리. 국가 간 장기 비교용",
-            "공식 정책금리 — 태국 중앙은행의 1일물 환매조건부채권 정책금리 자료"
+            "BIS 장기 시계열 - 태국의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 - 태국 중앙은행의 1일물 환매조건부채권 정책금리 자료"
         ]
     },
     {
@@ -355,8 +355,8 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://eservices.mas.gov.sg/statistics/dir/DomesticInterestRates.aspx"
         ],
         "urlNotes": [
-            "공식 정책금리 — 싱가포르 통화청의 환율 중심 통화정책 운용체계. 단일 정책금리와 구분",
-            "추가지표 — SORA 등 싱가포르 국내 시장금리 통계"
+            "공식 정책금리 - 싱가포르 통화청의 환율 중심 통화정책 운용체계. 단일 정책금리와 구분",
+            "추가지표 - SORA 등 싱가포르 국내 시장금리 통계"
         ]
     },
     {
@@ -368,8 +368,8 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://www.resbank.co.za/en/home/what-we-do/monetary-policy"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 남아프리카공화국의 장기 정책금리. 국가 간 장기 비교용",
-            "공식 정책금리 — 남아프리카공화국 중앙은행의 Repo Rate 자료"
+            "BIS 장기 시계열 - 남아프리카공화국의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 - 남아프리카공화국 중앙은행의 Repo Rate 자료"
         ]
     },
     {
@@ -381,8 +381,8 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://www.boi.org.il/en/economic-roles/monetary-policy/"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 이스라엘의 장기 정책금리. 국가 간 장기 비교용",
-            "공식 정책금리 — 이스라엘 중앙은행의 정책금리 자료"
+            "BIS 장기 시계열 - 이스라엘의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 - 이스라엘 중앙은행의 정책금리 자료"
         ]
     },
     {
@@ -394,8 +394,8 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://www.cbk.gov.kw/en/"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 쿠웨이트의 장기 정책금리. 국가 간 장기 비교용",
-            "공식 정책금리 — 쿠웨이트 중앙은행의 할인율 등 통화정책 운용금리 자료"
+            "BIS 장기 시계열 - 쿠웨이트의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 - 쿠웨이트 중앙은행의 할인율 등 통화정책 운용금리 자료"
         ]
     },
     {
@@ -408,9 +408,9 @@ const BASE_INTEREST_DEFAULT_LINKS = [
             "https://sama.gov.sa/en-US/MonetaryPolicy/MonetaryPolicyTools/pages/reversereporate.aspx"
         ],
         "urlNotes": [
-            "BIS 장기 시계열 — 사우디아라비아의 장기 정책금리. 국가 간 장기 비교용",
-            "공식 정책금리 — 사우디 중앙은행의 Repo Rate",
-            "추가지표 — 사우디 중앙은행의 Reverse Repo Rate"
+            "BIS 장기 시계열 - 사우디아라비아의 장기 정책금리. 국가 간 장기 비교용",
+            "공식 정책금리 - 사우디 중앙은행의 Repo Rate",
+            "추가지표 - 사우디 중앙은행의 Reverse Repo Rate"
         ]
     }
 ];
@@ -6387,7 +6387,7 @@ function mountBaseInterestLinks(content) {
         if (!countries.has(item.country)) countries.set(item.country, { ...item, urls: [], urlNotes: [] });
         const country = countries.get(item.country);
         const urls = Array.isArray(item.urls) && item.urls.length ? item.urls : [item.url];
-        urls.forEach((url, index) => { country.urls.push(url); country.urlNotes.push(item.urlNotes?.[index] || ''); });
+        urls.forEach((url, index) => { country.urls.push(url); country.urlNotes.push((item.urlNotes?.[index] || '').replace(/[\u2013\u2014]/g, '-')); });
         country.url = country.urls[0];
     });
     data.fredLinks = [...continents.values()].flatMap(countries => [...countries.values()]);
@@ -6502,7 +6502,7 @@ function mountBaseInterestLinks(content) {
                 try {
                     const entries = urlInputs.filter(input => input.value.trim());
                     values.urls = entries.map(input => input.value.trim());
-                    values.urlNotes = entries.map(input => input.noteInput.value.trim());
+                    values.urlNotes = entries.map(input => input.noteInput.value.trim().replace(/[\u2013\u2014]/g, '-'));
                     if (!values.continent || !values.country || !values.urls.length || values.urls.some(url => !['https:', 'http:'].includes(new URL(url).protocol))) throw new Error();
                     values.url = values.urls[0];
                 } catch { error.textContent = '대륙·국가와 http(s) URL을 확인해 주세요.'; return; }
@@ -6528,8 +6528,8 @@ function mountBaseInterestLinks(content) {
             table.editObserver.observe(table);
             positionActions();
             row.addEventListener('keydown', event => {
-                if (event.isComposing || event.target.tagName !== 'INPUT') return;
-                if (event.key === 'Enter') { event.preventDefault(); save(); }
+                if (event.isComposing || !['INPUT', 'TEXTAREA'].includes(event.target.tagName)) return;
+                if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); save(); }
                 if (event.key === 'Escape') { event.preventDefault(); cancel(); }
             }, { signal: (table.editKeyController = new AbortController()).signal });
             urlInputs[0].focus();
