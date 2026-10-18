@@ -13,6 +13,12 @@ const { createConcentrationChartService, dailyTurnover } = require('./concentrat
 const { createRankIndependentRelay } = require('./rank-independent');
 const { createRetainedLogs } = require('./retained-logs');
 const { migrateSettingsNames } = require('./settings-filenames');
+const { createAdrMinuteStore } = require('./adr-minute-store');
+const { createVolatilityService } = require('./risk-volatility');
+const adrMinuteStore = createAdrMinuteStore({ directory: path.join(__dirname, 'data', 'adr-minutes') });
+const volatilityService = createVolatilityService();
+const breadthService = createVolatilityService({ kind: 'breadth' });
+const sentimentService = createVolatilityService({ kind: 'sentiment' });
 
 // 전역 시장구분 캐시 (종목코드: 'K'/'Q') - 429 에러 방지용
 const marketCache = {};
@@ -1714,6 +1720,19 @@ app.get('/assets/v2/_next/static/chunks/*', async (req, res) => {
 /**
  * ADR 데이터 프록시 API (CORS 방지용)
  */
+app.get('/api/risk/volatility', async (req, res) => {
+    try { res.set('Cache-Control', 'no-store').json(await volatilityService.query(req.query.range || '1y')); }
+    catch (error) { res.status(error.status || 502).json({ error: error.message }); }
+});
+app.get('/api/risk/breadth', async (req, res) => {
+    try { res.set('Cache-Control', 'no-store').json(await breadthService.query(req.query.range || '1y')); }
+    catch (error) { res.status(error.status || 502).json({ error: error.message }); }
+});
+app.get('/api/risk/sentiment', async (req, res) => {
+    try { res.set('Cache-Control', 'no-store').json(await sentimentService.query(req.query.range || '1y')); }
+    catch (error) { res.status(error.status || 502).json({ error: error.message }); }
+});
+
 app.get('/api/adr/history', async (req, res) => {
     const market = req.query.market || 'kospi', range = req.query.range || '1y';
     if (!['kospi', 'kosdaq'].includes(market) || !['6m', '1y', '3y', '5y'].includes(range)) return res.status(400).json({ error: 'Invalid market or range' });
@@ -1771,6 +1790,7 @@ app.get('/api/adr/candles', async (req, res) => {
     }
 });
 
+const adrClosedFallbackCache = new Map();
 app.get('/api/adr/today', async (req, res) => {
     const market = req.query.market || 'kospi';
     if (!['kospi', 'kosdaq'].includes(market)) return res.status(400).json({ error: 'Invalid market' });
@@ -1778,8 +1798,35 @@ app.get('/api/adr/today', async (req, res) => {
         const response = await axios.get('https://jusikbot.com/api/adr/today', {
             params: { market, _: Date.now() }, timeout: 10000
         });
-        res.set('Cache-Control', 'no-store').json(response.data);
+        const data = { ...response.data };
+        // The upstream clears intraday/lastClosed over weekends. A fresh browser
+        // has no prior-session local cache, so recover the dated daily close.
+        if (!data.intraday?.length && !(data.adr != null && data.asOf != null) && !data.lastClosed) {
+            try {
+                const today = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+                let cached = adrClosedFallbackCache.get(market);
+                if (!cached || cached.day !== today || Date.now() - cached.at > 5 * 60000) {
+                    const history = await axios.get('https://jusikbot.com/api/adr/history', { params: { market, range: '6m' }, timeout: 10000 });
+                    const last = (Array.isArray(history.data.series) ? history.data.series : [])
+                        .filter(point => /^\d{4}-\d{2}-\d{2}$/.test(point.date) && point.date <= today && point.adr != null && Number.isFinite(Number(point.adr)))
+                        .sort((a, b) => a.date.localeCompare(b.date)).at(-1);
+                    cached = { day: today, at: Date.now(), last };
+                    adrClosedFallbackCache.set(market, cached);
+                }
+                if (cached.last) data.lastClosed = { date: cached.last.date.replaceAll('-', ''), adr: Number(cached.last.adr) };
+            } catch (error) {
+                console.warn('[ADR] Previous close fallback failed:', error.message);
+            }
+        }
+        const archive = adrMinuteStore.merge(market, data);
+        data.intraday = archive.points;
+        data.intradayDate = archive.day;
+        res.set('Cache-Control', 'no-store').json(data);
     } catch (error) {
+        const archive = adrMinuteStore.read(market);
+        if (archive.points.length) {
+            return res.set('Cache-Control', 'no-store').json({ market, adr: null, asOf: null, intraday: archive.points, intradayDate: archive.day, sourceError: '원본 조회 실패 · 서버에 저장된 기록 표시 중' });
+        }
         res.status(502).json({ error: 'ADR 실시간 데이터를 가져오지 못했습니다.' });
     }
 });
@@ -2830,6 +2877,10 @@ async function getEfriendAccessToken(domain, appKey, secretKey) {
 }
 
 app.listen(PORT, () => {
+    // Keep the daily archive current even when no chart is open.
+    const refreshVolatilityArchive = () => Promise.allSettled([volatilityService.query('all'), breadthService.query('all'), sentimentService.query('all')]).then(results => results.forEach(result => { if (result.status === 'rejected') console.warn('[Risk] Archive refresh failed:', result.reason.message); }));
+    refreshVolatilityArchive();
+    setInterval(refreshVolatilityArchive, 60 * 60 * 1000).unref();
     concentrationChartService.startStockDirectorySchedule();
     console.log("\n" + "=".repeat(50));
     console.log(`🚀 서버 구동 완료! (VERSION: SET EXTREMES)`);

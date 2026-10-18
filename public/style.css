@@ -2736,5 +2736,63 @@ body.modal-open {
 .base-interest-fred-table.has-column-widths th, .base-interest-fred-table.has-column-widths td { min-width:0; max-width:none; overflow-wrap:anywhere; }
 .base-interest-fred-table.has-column-widths input, .base-interest-fred-table.has-column-widths textarea { min-width:0; }
 .base-interest-fred-table-wrap:has(.has-column-widths) { max-width:none; }
+.rank-volatility-panel { grid-column:1; max-width:none; }
+.rank-volatility-panel .volatility-legend { margin-left:auto; display:flex; gap:12px; font-size:12px; font-weight:600; flex-wrap:wrap; }
+.rank-volatility-panel .volatility-legend output { margin-left:4px; min-width:0; color:inherit; font-size:16px; }
+.rank-volatility-panel .rank-adr-area { min-height:200px; }
+.rank-volatility-panel .volatility-candle-label { position:absolute; top:2px; left:16px; font-size:12px; font-weight:600; pointer-events:none; }
+.rank-volatility-panel { position:relative; }
+.rank-breadth-panel { grid-column:1; grid-row:2; }
+.rank-volatility-panel:not(.rank-breadth-panel):not(.rank-sentiment-panel) { grid-column:2; grid-row:2; }
+.rank-sentiment-panel { grid-column:3; }
+@media (max-width:700px) {
+    .rank-breadth-panel, .rank-sentiment-panel,
+    .rank-volatility-panel:not(.rank-breadth-panel):not(.rank-sentiment-panel) { grid-column:1; grid-row:auto; }
+}
+.volatility-help-trigger { cursor:help; }
+.volatility-help-trigger:focus-visible { outline:2px solid var(--accent-primary); outline-offset:3px; border-radius:3px; }
+.volatility-guide { display:none; position:absolute; left:12px; right:12px; z-index:20; box-sizing:border-box; max-height:min(520px,70vh); overflow:auto; padding:16px 18px; background:#fff; color:#334155; border:1px solid #dbe3ed; border-radius:10px; box-shadow:0 8px 28px rgba(15,23,42,.16); font-size:13px; line-height:1.65; text-align:left; font-weight:400; }
+.volatility-guide.is-visible { display:block; }
+.volatility-guide .volatility-guide-level { margin:0 0 12px; padding:9px 11px; border-radius:6px; background:#fff4e6; color:#9a4d0a; }
+.volatility-guide-level strong { margin-right:8px; font-size:16px; }
+.volatility-guide h3 { margin:0 0 8px; font-size:14px; color:#0f172a; }
+.volatility-guide ol { margin:0; padding-left:20px; }
+.volatility-guide li + li { margin-top:10px; }
+.sentiment-guide { font-size:13px; line-height:1.7; }
+.sentiment-guide p { margin:0 0 10px; }
+.sentiment-guide h4 { margin:18px 0 8px; color:#0f172a; font-size:13px; }
+.sentiment-guide li p { margin:4px 0 0; }
+.sentiment-guide .sentiment-guide-intro { color:#475569; }
+.sentiment-guide .sentiment-guide-note { margin:12px 0; padding:10px 12px; background:#f1f5f9; border-radius:6px; }
+.sentiment-guide table { width:100%; table-layout:auto; border-collapse:collapse; margin:10px 0; font-size:12px; line-height:1.6; }
+.sentiment-guide th, .sentiment-guide td { border:1px solid #e2e8f0; padding:7px 8px; vertical-align:top; overflow-wrap:anywhere; }
+.sentiment-guide th { background:#f1f5f9; font-weight:600; color:#334155; }
+.sentiment-guide th:last-child { width:auto; }
+.sentiment-guide th:not(:last-child), .sentiment-guide td:not(:last-child) { width:1%; white-space:nowrap; }
+#cnnGuide table:last-of-type th:nth-child(2), #cnnGuide table:last-of-type td:nth-child(2) { width:38%; white-space:normal; }
 .base-interest-fred-url-add-row { display:flex; justify-content:flex-end; margin-top:6px; }
 .base-interest-fred-add-url { border-radius:50%; width:26px; height:26px; padding:0; font-size:20px; line-height:1; cursor:pointer; }
+
+.rank-volatility-panel .concentration-chart-header { padding-right:30px; }
+.chart-info-button { position:absolute; top:14px; right:14px; width:20px; height:20px; padding:0; border:1px solid #94a3b8; border-radius:50%; background:var(--bg-panel,#fff); color:#64748b; font:600 13px/18px Georgia,serif; text-align:center; z-index:3; }
+.chart-info-button:hover { color:var(--text-primary); border-color:currentColor; }
+.chart-guide-tabs { display:flex; gap:6px; position:sticky; top:-16px; z-index:1; margin:-16px -18px 14px; padding:12px 14px; background:#fff; border-bottom:1px solid #e2e8f0; }
+.chart-guide-tabs button { flex:1; padding:7px 10px; border:1px solid #dbe3ed; border-radius:6px; background:#f8fafc; color:#64748b; font-family:inherit; font-size:12px; font-weight:600; line-height:1.4; cursor:pointer; }
+.chart-guide-tabs button[aria-selected="true"] { background:#eaf2ff; border-color:#93b4ed; color:#1d4ed8; }
+.chart-guide-content[hidden] { display:none; }
+/* Tab headings and load status stay outside the content scroll viewport. */
+body { height:100dvh; min-height:0; overflow:hidden; display:flex; flex-direction:column; }
+.tab-container { flex-shrink:0; }
+.tab-contents { flex:1; min-height:0; overflow:hidden; }
+#tabContents > .tab-content.active { height:100%; min-height:0; overflow:auto; }
+#tabContents > .tab-content > .tab-fixed-heading-layout { display:flex; flex-direction:column; height:100%; min-height:0; overflow:hidden; }
+.tab-fixed-heading-layout > header { flex-shrink:0; }
+.tab-scroll-body { flex:1; min-height:0; min-width:0; overflow:auto; position:relative; }
+.overseas-container > .tab-scroll-body { display:flex; flex-direction:column; }
+.tab-scroll-body > .overseas-content-scroll { min-height:0; }
+#tab_rank > .container.tab-fixed-heading-layout { min-width:0; padding-bottom:0; }
+#tab_rank .tab-scroll-body > .grid-container, #tab_rank .tab-scroll-body > .rank-chart-row { min-width:1750px; }
+.us-links-container > header { display:block; }
+.us-links-container > header.header-single-line { display:flex; }
+.us-links-container > header > .us-info-row { flex-basis:100%; }
+#tab_memo .panel-header { position:sticky; top:0; z-index:5; background:var(--bg-secondary); }

@@ -1197,6 +1197,9 @@ async function loadTransactionRank({ refreshMarketCharts = true, reportStatus = 
     if (refreshMarketCharts) {
         window.refreshRankAdrChart?.();
         window.refreshRankTurnoverChart?.();
+        window.refreshRankVolatilityChart?.();
+        window.refreshRankBreadthChart?.();
+        window.refreshRankSentimentChart?.();
     }
     if (reportStatus) updateStatus('loading', '거래대금 조회 중...');
     const mrktTp = mrktTpSelect.value;
@@ -3151,6 +3154,34 @@ async function loadTradingEconomicsChart(canvas, url, title, duration = '', forc
 /**
  * TradingEconomics 라인 차트 그리기
  */
+function installEconomicChartWheelZoom(canvas) {
+    if (canvas.hasWheelZoom) return;
+    canvas.hasWheelZoom = true;
+    canvas.addEventListener('wheel', event => {
+        const graph = canvas.chartData;
+        if (!graph || canvas.isDragging || !event.deltaY || graph.chartW <= 0) return;
+        const rect = canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left, y = event.clientY - rect.top;
+        if (x < graph.padding.left || x > graph.padding.left + graph.chartW ||
+            y < graph.padding.top || y > canvas.clientHeight - graph.padding.bottom) return;
+        const fullMin = +graph.originalMinDate, fullMax = +graph.originalMaxDate;
+        const min = +graph.minDate, max = +graph.maxDate, fullSpan = fullMax - fullMin;
+        if (!(fullSpan > 0) || !(max > min)) return;
+        event.preventDefault();
+        const ratio = (x - graph.padding.left) / graph.chartW;
+        const anchor = min + ratio * (max - min);
+        const span = Math.min(fullSpan, Math.max(Math.min(fullSpan, 86400000 * 5), (max - min) * (event.deltaY < 0 ? .8 : 1.25)));
+        const nextMin = Math.max(fullMin, Math.min(fullMax - span, anchor - ratio * span));
+        canvas.zoomState = span >= fullSpan ? { active: false } : { active: true, minDate: new Date(nextMin), maxDate: new Date(nextMin + span) };
+        if (canvas.getAttribute('data-chart-type') === 'multi-series') {
+            drawMultiSeriesLineChart(canvas, graph.allSeries, graph.title);
+        } else {
+            drawTradingEconomicsLineChart(canvas, graph.originalData || graph.data, graph.title);
+        }
+        syncZoomToOtherCharts(canvas, canvas.zoomState);
+    }, { passive: false });
+}
+
 function drawTradingEconomicsLineChart(canvas, data, title) {
     const ctx = canvas.getContext('2d');
     const dpr = window.devicePixelRatio || 1;
@@ -3369,6 +3400,7 @@ function drawTradingEconomicsLineChart(canvas, data, title) {
     // Mouse interactive events
     if (!canvas.hasInteractiveEvents) {
         canvas.hasInteractiveEvents = true;
+        installEconomicChartWheelZoom(canvas);
 
         canvas.addEventListener('mousedown', (e) => {
             if (!canvas.chartData) return;
@@ -4094,6 +4126,7 @@ function drawMultiSeriesLineChart(canvas, allSeries, title) {
     // 마우스 이벤트 리스너 추가 (한 번만)
     if (!canvas.hasInteractiveEvents) {
         canvas.hasInteractiveEvents = true;
+        installEconomicChartWheelZoom(canvas);
 
         canvas.addEventListener('mousedown', (e) => {
             if (!canvas.chartData) return;
@@ -6192,7 +6225,7 @@ async function captureTabContent(tabContent, tabName) {
         tabContent;
 
     // 스크롤 영역 확장
-    const scrollSelectors = '.overseas-content-scroll, .table-wrapper, .table-wrapper tbody, .grid-container, .adr-chart-container, #quillEditor, .chart-grid';
+    const scrollSelectors = '.tab-scroll-body, .overseas-content-scroll, .table-wrapper, .table-wrapper tbody, .grid-container, .adr-chart-container, #quillEditor, .chart-grid';
     const scrollTargets = target.querySelectorAll(scrollSelectors);
     const saved = [];
     scrollTargets.forEach(el => {
@@ -6430,6 +6463,7 @@ function mountBaseInterestLinks(content) {
             link.dataset.url = url;
             link.title = '클릭: 새 탭 열기 · 더블클릭 또는 F2: 편집';
             noteCell.textContent = item.urlNotes?.[index] || '';
+            urlCell.classList.add('base-interest-url-cell');
             urlCell.append(link); displayRow.append(urlCell, noteCell); body.append(displayRow);
             return link;
         });
@@ -6537,6 +6571,10 @@ function mountBaseInterestLinks(content) {
         countryRows.forEach((displayRow, index) => {
         displayRow.addEventListener('click', event => {
             if (table.querySelector('input')) return;
+            if (!event.target.closest('.base-interest-url-cell')) {
+                clearTimeout(table.clickTimer);
+                return;
+            }
             if (event.target.closest('a') && (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)) return;
             event.preventDefault(); clearTimeout(table.clickTimer);
             if (event.detail >= 2) { edit(); return; }
@@ -6576,7 +6614,7 @@ function mountBaseInterestColumnResize(table) {
     if (table.dataset.resizeMounted) return;
     table.dataset.resizeMounted = 'true';
     const persist = widths => {
-        tabData[BASE_INTEREST_TAB_ID].chartColumnWidths = widths;
+        tabData[BASE_INTEREST_TAB_ID].chartColumnWidths = [...widths];
         saveAppData().catch(error => console.error('[Base Interest] Column width save failed', error));
     };
     headers.forEach((header, index) => {

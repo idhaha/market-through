@@ -36,6 +36,7 @@
         let viewStart = 0, viewCount = null, drag = null, refreshPending = false;
         let mode = 'minute', range = '1y', hover = null, candles = [], candleController, candleGeometry = null;
         let points = [], controller, geometry, resizeFrame = null, closing = null;
+        let candlePointerY = null;
         const latestByMarket = new Map();
         const dateKey = t => new Date(t + 9 * 3600000).toISOString().slice(0, 10);
         let chartDay = dateKey(Date.now());
@@ -50,12 +51,12 @@
             slider.max = String(Math.max(0,points.length-count)); slider.value = String(viewStart); slider.disabled = count >= points.length;
             zoomIn.disabled = count <= Math.min(10,points.length); zoomOut.disabled = !points.length || count >= points.length;
         }
-        function zoom(factor) {
+        function zoom(factor, anchor = .5) {
             if (!points.length) return;
-            const current = Math.min(points.length,viewCount ?? points.length), center = viewStart+current/2;
+            const current = Math.min(points.length,viewCount ?? points.length);
             const count = Math.min(points.length,Math.max(Math.min(10,points.length),Math.round(current*factor)));
             viewCount = count === points.length ? null : count;
-            viewStart = Math.max(0,Math.min(points.length-count,Math.round(center-count/2))); clearHover();
+            viewStart = Math.max(0,Math.min(points.length-count,Math.round(viewStart + anchor * (current - count)))); clearHover();
         }
         zoomIn.addEventListener('click', () => zoom(.5)); zoomOut.addEventListener('click', () => zoom(2));
         slider.addEventListener('input', () => { viewStart=Number(slider.value); clearHover(); });
@@ -88,7 +89,7 @@
             geometry = { x, y, left, right, top, bottom, start, end, points:visiblePoints };
             ctx.fillStyle = 'rgba(200, 200, 200, 0.2)'; ctx.fillRect(left, y(120), right - left, y(80) - y(120));
             ctx.font = '12px Inter, sans-serif';
-            const gridColor = '#d6dbe1';
+            const gridColor = '#b8c1cc';
             const labelColor = getComputedStyle(panel).getPropertyValue('--text-muted').trim() || '#64748b';
             for (let v = Math.ceil(min / 10) * 10; v <= max; v += 10) {
                 if ([80, 100, 120].includes(v)) continue;
@@ -153,7 +154,7 @@
             context.save(); context.lineWidth = 1; context.strokeStyle = color; context.setLineDash([3,3]);
             context.beginPath(); context.moveTo(graph.left, py); context.lineTo(graph.right, py); context.stroke(); context.setLineDash([]);
             context.font = 'bold 11px Arial'; context.fillStyle = color;
-            const badgeWidth = context.measureText(label).width + 12, badgeX = Math.max(0,Math.min(graph.right,context.canvas.clientWidth-badgeWidth));
+            const badgeWidth = context.measureText(label).width + 12, badgeX = Math.max(0,context.canvas.clientWidth-badgeWidth-4);
             context.fillRect(badgeX, badgeY - 10, badgeWidth, 20);
             context.fillStyle = '#fff'; context.textAlign = 'left'; context.textBaseline = 'middle'; context.fillText(label, badgeX + 6, badgeY); context.restore();
         }
@@ -178,7 +179,7 @@
             const cw = Math.max(1, Math.min(8, (geometry.right - geometry.left) / Math.max(1, mode === 'day' ? geometry.points.length : (geometry.end-geometry.start)/60000) * .7));
             candleGeometry = { ...geometry, top:16, bottom:h-28, y, candleWidth:cw };
             candleCtx.font = '12px Inter, sans-serif'; candleCtx.textAlign = 'left';
-            for (let i=0; i<5; i++) { const v = lo + (hi-lo) * i/4; candleCtx.strokeStyle = '#d6dbe1'; candleCtx.setLineDash([3,5]); candleCtx.beginPath(); candleCtx.moveTo(geometry.left,y(v)); candleCtx.lineTo(geometry.right,y(v)); candleCtx.stroke(); candleCtx.fillStyle='#64748b'; candleCtx.textAlign='right'; candleCtx.fillText(Math.round(v).toLocaleString('ko-KR'),w-4,y(v)+4); }
+            for (let i=0; i<5; i++) { const v = lo + (hi-lo) * i/4; candleCtx.strokeStyle = '#b8c1cc'; candleCtx.setLineDash([3,5]); candleCtx.beginPath(); candleCtx.moveTo(geometry.left,y(v)); candleCtx.lineTo(geometry.right,y(v)); candleCtx.stroke(); candleCtx.fillStyle='#64748b'; candleCtx.textAlign='right'; candleCtx.fillText(Math.round(v).toLocaleString('ko-KR'),w-4,y(v)+4); }
             candleCtx.setLineDash([]);
             visible.forEach(p => {
                 const x = geometry.x(p.t), color = p.close >= p.open ? '#e11d48' : '#2563eb';
@@ -188,7 +189,8 @@
             if (hover) {
                 candleCtx.strokeStyle='#000'; candleCtx.setLineDash([3,3]); candleCtx.beginPath(); candleCtx.moveTo(geometry.x(hover.t),16); candleCtx.lineTo(geometry.x(hover.t),h-28); candleCtx.stroke(); candleCtx.setLineDash([]);
                 const point = visible.find(p => p.t === hover.t);
-                if (point) drawHoverValue(candleCtx, candleGeometry, point.close, Math.round(point.close).toLocaleString('ko-KR'), '#000');
+                const price = point?.close;
+                if (Number.isFinite(price)) drawHoverValue(candleCtx, candleGeometry, price, price.toLocaleString('ko-KR',{minimumFractionDigits:2,maximumFractionDigits:2}), '#000');
                 candleTip.hidden = true;
             } else candleTip.hidden = true;
             drawDrag(candleCtx, candleGeometry);
@@ -259,16 +261,17 @@
                 if (data.adr != null && data.asOf != null) { const p = normalize({ t: data.asOf, adr: data.adr }); if (p) upstream.push(p); }
                 const received = [...(Array.isArray(saved) ? saved : []), ...(latestByMarket.get(market)?.points || []), ...upstream].map(normalize).filter(Boolean);
                 const last = data.lastClosed;
-                const lastDate = /^\d{8}$/.test(last?.date || '') ? `${last.date.slice(0, 4)}-${last.date.slice(4, 6)}-${last.date.slice(6, 8)}` : null;
+                const lastDate = /^\d{8}$/.test(last?.date || '') && last.adr != null && Number.isFinite(Number(last.adr)) ? `${last.date.slice(0, 4)}-${last.date.slice(4, 6)}-${last.date.slice(6, 8)}` : null;
                 closing = null;
                 const previous = latestByMarket.get(market);
                 const lastSample = last?.asOf != null ? normalize({ t: last.asOf, adr: last.adr }) : null;
                 const latest = [...received, ...(lastSample ? [lastSample] : [])].sort((a, b) => a.t - b.t).at(-1);
                 // Keep the last received session until a newer timestamp advances it.
-                if (previous && (!latest || latest.t < previous.t)) {
+                if (previous && (!latest || latest.t < previous.t) && (!lastDate || lastDate <= previous.day)) {
                     points = previous.points; closing = previous.closing; chartDay = previous.day;
                 } else {
-                    chartDay = latest ? dateKey(latest.t) : lastDate && lastDate <= day ? lastDate : previous?.day || day;
+                    const latestDay = latest ? dateKey(latest.t) : null;
+                    chartDay = lastDate && lastDate <= day && (!latestDay || lastDate > latestDay) ? lastDate : latestDay || previous?.day || day;
                     const selected = received.filter(p => dateKey(p.t) === chartDay);
                     if (!selected.length && lastDate === chartDay) {
                         const sample = last.asOf != null ? normalize({ t: last.asOf, adr: last.adr }) : null;
@@ -278,13 +281,21 @@
                     points = [...minutes.values()].sort((a, b) => a.t - b.t);
                     if (latest) latestByMarket.set(market, { t: latest.t, day: chartDay, points, closing });
                 }
-                if (points.length) { try { localStorage.setItem(`rank-adr:${market}:${chartDay}`, JSON.stringify(points)); localStorage.setItem(`rank-adr-session:${market}`, JSON.stringify({ points })); } catch (_) { /* Storage is optional. */ } }
+                if (points.length) {
+                    try {
+                        const sessionKey = `rank-adr:${market}:${chartDay}`;
+                        Object.keys(localStorage).filter(key => key.startsWith(`rank-adr:${market}:`) && key !== sessionKey).forEach(key => localStorage.removeItem(key));
+                        localStorage.setItem(sessionKey, JSON.stringify(points));
+                        localStorage.setItem(`rank-adr-session:${market}`, JSON.stringify({ points }));
+                    } catch (_) { /* Storage is optional; the server retains the session. */ }
+                }
                 output.textContent = points.length ? `${points.at(-1).adr.toFixed(1)}%` : closing ? `${closing.adr.toFixed(1)}%` : '—';
                 const session = chartDay < day ? '직전 거래일 · 당일 데이터 대기' : data.marketStatus === 'open' ? '장중' : '장 마감';
                 panel.querySelector('h2').textContent = 'ADR';
                 canvas.setAttribute('aria-label', `${chartDay} ADR ${closing ? '마감값 · 분봉 기록 없음' : '분봉 차트'}`);
                 tooltip.hidden = true;
                 status.textContent = points.length ? `${chartDay} · ${timeLabel(points.at(-1).t)} 기준 · ${session}` : closing ? `${chartDay} · ${session} · 마감값 · 분봉 기록 없음` : `${day} · 당일 데이터 대기 중`;
+                if (data.sourceError) status.textContent += ` · ${data.sourceError}`;
                 hover = null; draw(); loadCandles();
             } catch (error) { if (error.name !== 'AbortError') status.textContent = 'ADR 조회 실패 · 다음 Rank 갱신 때 재시도'; }
         };
@@ -312,6 +323,7 @@
         function hoverChart(event) {
             if (drag) return;
             if (!geometry) return;
+            candlePointerY = event.currentTarget === candleCanvas ? event.clientY - candleCanvas.getBoundingClientRect().top : null;
             if (closing) {
                 tooltip.textContent = `${chartDay} · 마감 ADR ${closing.adr.toFixed(2)}%${closing.t ? ` · ${timeLabel(closing.t)} 기준` : ''}`;
                 tooltip.hidden = false;
@@ -324,9 +336,15 @@
             hover = p;
             tooltip.textContent = `${dateKey(p.t)}${mode === 'minute' ? ` ${timeLabel(p.t)}` : ''} · ADR ${p.adr.toFixed(2)}%`; tooltip.hidden = false; draw();
         }
-        function clearHover() { hover = null; tooltip.hidden = true; candleTip.hidden = true; draw(); }
+        function clearHover() { hover = null; candlePointerY = null; tooltip.hidden = true; candleTip.hidden = true; draw(); }
         [canvas, candleCanvas].forEach(c => { c.addEventListener('mousemove', hoverChart); c.addEventListener('mouseleave', clearHover); });
         [canvas,candleCanvas].forEach(surface => {
+            surface.addEventListener('wheel', event => {
+                if (!geometry || !points.length || drag || !event.deltaY) return;
+                const px = event.clientX - surface.getBoundingClientRect().left;
+                if (px < geometry.left || px > geometry.right) return;
+                event.preventDefault(); zoom(event.deltaY < 0 ? .8 : 1.25, (px - geometry.left) / (geometry.right - geometry.left));
+            }, { passive: false });
             const offset = event => Math.max(geometry.left,Math.min(geometry.right,event.clientX-surface.getBoundingClientRect().left));
             surface.addEventListener('pointerdown', event => {
                 const graph=surface===canvas?geometry:candleGeometry;

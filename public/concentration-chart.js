@@ -42,11 +42,15 @@
         let geometry = null;
         let sharedRevision = 0;
         let candleGeometry = null;
+        let candlePointerY = null;
 
         window.getConcentrationDisplaySettings = () => ({
             candleOpen: !candleArea.hidden, mode: state.mode, interval: state.interval,
             ...(window.getRankAdrCandleOpen ? { adrCandleOpen: window.getRankAdrCandleOpen() } : {}),
-            ...(window.getRankTurnoverCandleOpen ? { turnoverCandleOpen: window.getRankTurnoverCandleOpen() } : {})
+            ...(window.getRankTurnoverCandleOpen ? { turnoverCandleOpen: window.getRankTurnoverCandleOpen() } : {}),
+            ...(window.getRankVolatilityDisplaySettings ? { volatility: window.getRankVolatilityDisplaySettings() } : {}),
+            ...(window.getRankBreadthDisplaySettings ? { breadth: window.getRankBreadthDisplaySettings() } : {}),
+            ...(window.getRankSentimentDisplaySettings ? { sentiment: window.getRankSentimentDisplaySettings() } : {})
         });
         window.applyConcentrationDisplaySettings = settings => {
             const nextCandleOpen = settings?.candleOpen === true;
@@ -61,6 +65,9 @@
             candleToggle.setAttribute('aria-label', candleArea.hidden ? '캔들차트 펼치기' : '캔들차트 접기');
             if (settings && 'adrCandleOpen' in settings) window.applyRankAdrCandleOpen?.(settings.adrCandleOpen === true);
             if (settings && 'turnoverCandleOpen' in settings) window.applyRankTurnoverCandleOpen?.(settings.turnoverCandleOpen === true);
+            if (settings && 'volatility' in settings) window.applyRankVolatilityDisplaySettings?.(settings.volatility);
+            if (settings && 'breadth' in settings) window.applyRankBreadthDisplaySettings?.(settings.breadth);
+            if (settings && 'sentiment' in settings) window.applyRankSentimentDisplaySettings?.(settings.sentiment);
             state.hover = null; tooltip.hidden = true; candleTooltip.hidden = true;
             draw();
             if (changed && state.selection) load();
@@ -115,7 +122,7 @@
             context.save();context.lineWidth=1;context.strokeStyle='#000';context.setLineDash([3,3]);
             context.beginPath();context.moveTo(plot.left,py);context.lineTo(plot.right,py);context.stroke();context.setLineDash([]);
             context.font='bold 11px Arial';context.fillStyle='#000';
-            const badgeWidth=context.measureText(label).width+12,badgeX=Math.max(0,Math.min(plot.right,context.canvas.clientWidth-badgeWidth));
+            const badgeWidth=context.measureText(label).width+12,badgeX=Math.max(0,context.canvas.clientWidth-badgeWidth-4);
             context.fillRect(badgeX,badgeY-10,badgeWidth,20);
             context.fillStyle='#fff';context.textAlign='left';context.textBaseline='middle';context.fillText(label,badgeX+6,badgeY);context.restore();
         }
@@ -141,7 +148,7 @@
             candleCtx.font = '12px Inter, sans-serif'; candleCtx.textBaseline = 'middle';
             for (let tick = 0; tick <= 4; tick++) {
                 const price = minimum + (maximum - minimum) * tick / 4;
-                candleCtx.beginPath(); candleCtx.setLineDash([3,5]); candleCtx.strokeStyle = '#d6dbe1';
+                candleCtx.beginPath(); candleCtx.setLineDash([3,5]); candleCtx.strokeStyle = '#b8c1cc';
                 candleCtx.moveTo(plot.left, y(price)); candleCtx.lineTo(plot.right, y(price)); candleCtx.stroke();
                 candleCtx.fillStyle = '#64748b'; candleCtx.textAlign = 'right';
                 candleCtx.fillText(Math.round(price).toLocaleString('ko-KR'), width - 4, y(price));
@@ -165,7 +172,8 @@
                 candleCtx.beginPath(); candleCtx.setLineDash([3,3]); candleCtx.strokeStyle = '#000';
                 candleCtx.moveTo(x(state.hover), top); candleCtx.lineTo(x(state.hover), bottom); candleCtx.stroke(); candleCtx.setLineDash([]);
                 const point=points[state.hover];
-                if(validCandle(point))drawHoverValue(candleCtx,{...plot,top,bottom},y,point.stock_price,Math.round(point.stock_price).toLocaleString('ko-KR'));
+                const price = point.stock_price;
+                if(validCandle(point))drawHoverValue(candleCtx,{...plot,top,bottom},y,price,Math.round(price).toLocaleString('ko-KR'));
             }
             if (state.drag) {
                 const left = Math.min(state.drag.startX, state.drag.endX);
@@ -223,7 +231,7 @@
             ctx.fillStyle = '#64748b';
             for (let tick = 0; tick <= tickCount; tick++) {
                 const percent = tick * tickStep;
-                ctx.beginPath(); ctx.setLineDash([3, 5]); ctx.strokeStyle = '#d6dbe1';
+                ctx.beginPath(); ctx.setLineDash([3, 5]); ctx.strokeStyle = '#b8c1cc';
                 ctx.moveTo(plot.left, y(percent)); ctx.lineTo(plot.right, y(percent)); ctx.stroke();
                 ctx.textAlign = 'right'; ctx.fillText(`${percent.toLocaleString()}%`, width - 4, y(percent));
             }
@@ -528,11 +536,11 @@
             state.interval = interval; updateControls(); saveDisplaySettings(); load();
         }));
         more.addEventListener('click', () => load(true));
-        function zoom(factor) {
+        function zoom(factor, anchor = .5) {
             if (!state.points.length) return;
-            const center = state.start + state.visible / 2;
+            const previousCount = state.visible;
             state.visible = Math.min(state.points.length, Math.max(Math.min(10, state.points.length), Math.round(state.visible * factor)));
-            state.start = Math.max(0, Math.min(state.points.length - state.visible, Math.round(center - state.visible / 2)));
+            state.start = Math.max(0, Math.min(state.points.length - state.visible, Math.round(state.start + anchor * (previousCount - state.visible))));
             state.hover = null; tooltip.hidden = true; draw(); flushRefresh();
         }
         zoomIn.addEventListener('click', () => zoom(0.5));
@@ -541,6 +549,13 @@
         const dragX = event => Math.max(geometry.plot.left, Math.min(geometry.plot.right - 24,
             event.clientX - event.currentTarget.getBoundingClientRect().left));
         [canvas, candleCanvas].forEach(surface => {
+        surface.addEventListener('wheel', event => {
+            if (!geometry?.points.length || state.drag || state.busy || !event.deltaY) return;
+            const px = event.clientX - surface.getBoundingClientRect().left;
+            const left = geometry.plot.left, right = geometry.plot.right - 24;
+            if (px < left || px > right) return;
+            event.preventDefault(); zoom(event.deltaY < 0 ? .8 : 1.25, (px - left) / (right - left));
+        }, { passive: false });
         surface.addEventListener('pointerdown', event => {
             if (event.button !== 0 || state.busy || !geometry?.points.length) return;
             if (state.drag) return;
@@ -589,6 +604,7 @@
         });
         function hoverChart(event) {
             if (state.busy || state.drag || !geometry?.points.length) return;
+            candlePointerY = event.currentTarget === candleCanvas ? event.clientY - candleCanvas.getBoundingClientRect().top : null;
             const { plot, points, x, width } = geometry;
             const offset = event.clientX - event.currentTarget.getBoundingClientRect().left;
             if (offset < plot.left || offset > plot.right) { clearHover(); return; }
@@ -602,7 +618,7 @@
             candleTooltip.hidden = true;
             draw();
         }
-        function clearHover() { state.hover = null; tooltip.hidden = true; candleTooltip.hidden = true; draw(); }
+        function clearHover() { state.hover = null; candlePointerY = null; tooltip.hidden = true; candleTooltip.hidden = true; draw(); }
         [canvas, candleCanvas].forEach(surface => {
             surface.addEventListener('mousemove', hoverChart);
             surface.addEventListener('mouseleave', clearHover);

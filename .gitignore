@@ -51,6 +51,8 @@ manualsaved_user_settings_*.json
 authorized_emails.json
 authorized_emails.json.*.tmp
 data/fred-cache/
+data/adr-minutes/
+data/volatility/
 
 # Development outputs and historical one-off tools
 /dev/output/

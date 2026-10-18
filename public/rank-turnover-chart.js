@@ -16,6 +16,7 @@
         const colors = {kospi:'#339af0',kosdaq:'#e11d48'}, names = {kospi:'KOSPI',kosdaq:'KOSDAQ'};
         let data = {kospi:[],kosdaq:[]}, dailyData = {kospi:[],kosdaq:[]}, minuteData = {kospi:[],kosdaq:[]}, previous = {kospi:null,kosdaq:null};
         let mode = 'day', dates = [], range = '1y', start = 0, count = null, controller, hover = null, geometry, drag = null, refreshPending = false;
+        let candlePointerY = null;
         const dateKey = t => new Date(t + 9 * 3600000).toISOString().slice(0,10);
         function surface(c, context) {
             const w = c.clientWidth, h = c.clientHeight, dpr = window.devicePixelRatio || 1;
@@ -38,7 +39,7 @@
             const values = Object.values(rows).flat().filter(p => Number.isFinite(p.market_turnover)).map(p => p.market_turnover/1e12);
             const benchmarks = mode === 'minute' ? Object.values(previous).filter(Number.isFinite).map(v=>v/1e12) : [];
             const max = Math.max(10,Math.ceil(Math.max(0,...values,...benchmarks)/10)*10), y = v => bottom-v/max*(bottom-top);
-            const style = getComputedStyle(panel), muted = style.getPropertyValue('--text-muted').trim(), border = '#d6dbe1';
+            const style = getComputedStyle(panel), muted = style.getPropertyValue('--text-muted').trim(), border = '#b8c1cc';
             ctx.textAlign = 'left'; ctx.fillStyle = muted;
             for (let v=0;v<=max;v+=10) { ctx.strokeStyle=border; ctx.setLineDash([3,5]); ctx.beginPath(); ctx.moveTo(left,y(v)); ctx.lineTo(right,y(v)); ctx.stroke(); ctx.textAlign='right'; ctx.fillText(`${v}조`,w-4,y(v)+4); }
             ctx.setLineDash([]);
@@ -94,7 +95,8 @@
             selected.forEach(p=>{cc.fillStyle=cc.strokeStyle=p.close>=p.open?'#e11d48':'#2563eb';cc.beginPath();cc.moveTo(x(p.t),cy(p.high));cc.lineTo(x(p.t),cy(p.low));cc.stroke();cc.fillRect(x(p.t)-cw/2,Math.min(cy(p.open),cy(p.close)),cw,Math.max(1,Math.abs(cy(p.open)-cy(p.close))));});
             if(hover&&indices.has(hover)){cc.strokeStyle='#000';cc.setLineDash([3,3]);cc.beginPath();cc.moveTo(x(hover),16);cc.lineTo(x(hover),size.h-28);cc.stroke();cc.setLineDash([]);}
             const hovered=selected.find(p=>p.t===hover);
-            if(hovered)drawHoverValue(cc,{left,right,top:16,bottom:size.h-28,y:cy},hovered.close,Math.round(hovered.close).toLocaleString('ko-KR'),colors[selectedMarket]);
+            const price=hovered?.close;
+            if(hover&&Number.isFinite(price))drawHoverValue(cc,{left,right,top:16,bottom:size.h-28,y:cy},price,price.toLocaleString('ko-KR',{minimumFractionDigits:2,maximumFractionDigits:2}),'#000');
             drawDrag(cc,16,size.h-28);
         }
         function drawHoverValue(context,graph,value,label,color) {
@@ -102,7 +104,7 @@
             context.save();context.lineWidth=1;context.strokeStyle=color;context.setLineDash([3,3]);
             context.beginPath();context.moveTo(graph.left,py);context.lineTo(graph.right,py);context.stroke();context.setLineDash([]);
             context.font='bold 11px Arial';context.fillStyle=color;
-            const badgeWidth=context.measureText(label).width+12,badgeX=Math.max(0,Math.min(graph.right,context.canvas.clientWidth-badgeWidth));
+            const badgeWidth=context.measureText(label).width+12,badgeX=Math.max(0,context.canvas.clientWidth-badgeWidth-4);
             context.fillRect(badgeX,badgeY-10,badgeWidth,20);
             context.fillStyle='#fff';context.textAlign='left';context.textBaseline='middle';context.fillText(label,badgeX+6,badgeY);context.restore();
         }
@@ -233,9 +235,10 @@
             window.applyRankTurnoverCandleOpen(candleArea.hidden);
             if (typeof saveAppData === 'function') saveAppData();
         });
-        function zoom(factor){const n=Math.min(dates.length,count??dates.length),center=start+n/2;count=Math.min(dates.length,Math.max(Math.min(10,dates.length),Math.round(n*factor)));start=Math.round(center-count/2);draw();}
+        function zoom(factor,anchor=.5){if(!dates.length)return;const n=Math.min(dates.length,count??dates.length);count=Math.min(dates.length,Math.max(Math.min(10,dates.length),Math.round(n*factor)));start=Math.max(0,Math.min(dates.length-count,Math.round(start+anchor*(n-count))));hover=null;tip.hidden=true;draw();}
         into.addEventListener('click',()=>zoom(.5));out.addEventListener('click',()=>zoom(2));slider.addEventListener('input',()=>{start=Number(slider.value);draw();});
         [canvas,candle].forEach(c=>{
+            c.addEventListener('wheel',event=>{if(!geometry?.visible.length||drag||!event.deltaY)return;const px=event.clientX-c.getBoundingClientRect().left;if(px<geometry.left||px>geometry.right)return;event.preventDefault();zoom(event.deltaY<0?.8:1.25,(px-geometry.left)/(geometry.right-geometry.left));},{passive:false});
             const offset=event=>Math.max(geometry.left,Math.min(geometry.right,event.clientX-c.getBoundingClientRect().left));
             c.addEventListener('pointerdown',event=>{
                 if(event.button!==0 || drag || !geometry?.visible.length)return;
@@ -262,12 +265,14 @@
             const cancel=()=>{if(drag?.surface===c){drag=null;draw();if(refreshPending)window.refreshRankTurnoverChart();}};
             c.addEventListener('pointercancel',cancel);c.addEventListener('lostpointercapture',cancel);
         });
-        [canvas,candle].forEach(c=>{c.addEventListener('mousemove',event=>{if(drag || !geometry?.visible.length)return;const px=event.clientX-c.getBoundingClientRect().left;if(px<geometry.left||px>geometry.right)return;hover=geometry.visible.reduce((a,b)=>Math.abs(geometry.x(a)-px)<Math.abs(geometry.x(b)-px)?a:b);tip.textContent=dateKey(hover)+(mode==='minute'?' '+new Date(hover+9*3600000).toISOString().slice(11,16):'')+' · '+['kospi','kosdaq'].map(m=>{
+        [canvas,candle].forEach(c=>{
+            c.addEventListener('mousemove',event=>{if(drag || !geometry?.visible.length)return;candlePointerY=c===candle?event.clientY-candle.getBoundingClientRect().top:null;const px=event.clientX-c.getBoundingClientRect().left;if(px<geometry.left||px>geometry.right)return;hover=geometry.visible.reduce((a,b)=>Math.abs(geometry.x(a)-px)<Math.abs(geometry.x(b)-px)?a:b);tip.replaceChildren(document.createTextNode(dateKey(hover)+(mode==='minute'?' '+new Date(hover+9*3600000).toISOString().slice(11,16):'')));
+        ['kospi','kosdaq'].forEach(m=>{
             const p=data[m].find(p=>p.t===hover), amount=p?.market_turnover;
-            if(!Number.isFinite(amount))return `${names[m]} —`;
+            const label=document.createElement('span');label.textContent=names[m];label.style.color=colors[m];
             const ratio=mode==='minute'&&Number.isFinite(previous[m])&&previous[m]>0 ? `(전일대비 ${(amount/previous[m]*100).toFixed(1)}%)` : '';
-            return `${names[m]} ${(amount/1e12).toFixed(2)}조원${ratio}`;
-        }).join(' · ');tip.hidden=false;draw();});c.addEventListener('mouseleave',()=>{hover=null;tip.hidden=true;draw();});});
+            tip.append(' · ',label,Number.isFinite(amount)?` ${(amount/1e12).toFixed(2)}조원${ratio}`:' —');
+        });tip.hidden=false;draw();});c.addEventListener('mouseleave',()=>{hover=null;candlePointerY=null;tip.hidden=true;draw();});});
         function resize(){const base=Number.parseFloat(adr.style.getPropertyValue('--rank-adr-base-height')) || 450;panel.style.height=`${base+(candleArea.hidden?0:280)}px`;draw();}
         new ResizeObserver(resize).observe(adr);new ResizeObserver(draw).observe(canvas.parentElement);resize();window.refreshRankTurnoverChart();
     }
