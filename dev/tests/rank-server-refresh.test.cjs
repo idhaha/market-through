@@ -1,0 +1,35 @@
+const assert = require('node:assert/strict');
+const {createRankIndependentRelay} = require('../../rank-independent');
+(async () => {
+ let clock=1000000, tick, calls=0, fail=false;
+ const routes=new Map(), app={use(){},post(p,f){routes.set('POST '+p,f)},delete(p,f){routes.set('DELETE '+p,f)}};
+ createRankIndependentRelay({now:()=>clock,schedule:fn=>{tick=fn;return {unref(){}}},refresh:async snapshot=>{calls++;if(fail)throw Error('offline');return {items:[{stk_cd:'005930'}],chart:snapshot.chart}},request:async()=>({success:true})}).mount(app);
+ function call(path,ticket={},body={}) {let result,status=200;routes.get('POST '+path)({params:{id:ticket.id},body,authUser:{email:'test'},get:n=>n==='X-Rank-Owner'?ticket.ownerKey:'Bearer '+ticket.token},{status(v){status=v;return this},json(v){result=v;return this}});return {result,status}}
+ const t=call('/api/rank-independent').result;
+ const owner=body=>call('/api/rank-independent/:id/owner',t,body).result;
+ const peer=body=>call('/api/rank-independent/peer/:id',t,body).result;
+ const flush=()=>new Promise(resolve=>setImmediate(resolve));
+ owner({snapshot:{conditions:{refreshInterval:'5',mrktTp:'000',stexTp:'3'}}});peer({});tick();await flush();
+ assert.equal(calls,1);const first=peer({}).serverRefresh.data.at;
+ clock+=30001;peer({});tick();await flush();assert.equal(calls,2,'Server refreshes without owner heartbeat');
+ const command={id:require('crypto').randomUUID(),type:'conditions',values:{refreshInterval:'1'}};
+ peer({command});assert.equal(peer({}).serverRefresh.interval,60000);
+ let commands=owner({snapshot:{conditions:{refreshInterval:'5',mrktTp:'000',stexTp:'3'}}}).commands;
+ assert.ok(commands.some(c=>c.id===command.id),'Interval still reaches main');assert.equal(peer({}).snapshot.conditions.refreshInterval,'1','Sleeping main cannot overwrite pending interval');
+ tick();await flush();const before=calls;
+ clock+=30001;peer({});tick();await flush();assert.equal(calls,before,'New interval governs schedule');
+ const refresh={id:require('crypto').randomUUID(),type:'refresh'};peer({command:refresh});tick();await flush();assert.equal(calls,before+1);assert.ok(owner({}).commands.some(c=>c.id===refresh.id),'Manual refresh also reaches main');
+ fail=true;clock+=60001;peer({});tick();await flush();let info=peer({}).serverRefresh;assert.ok(info.error);assert.ok(info.data.at>first,'Failure preserves last successful data');
+ fail=false;clock+=60001;peer({});tick();await flush();assert.equal(peer({}).serverRefresh.error,false);
+ const fs=require('node:fs'), vm=require('node:vm');
+ const source=fs.readFileSync('public/rank-independent-client.js','utf8');
+ const start=source.indexOf('        function paintFreshness()');
+ const paint=source.slice(start,source.indexOf('        function applyServerRefresh',start));
+ const label={textContent:''}, status={textContent:''};
+ const context=vm.createContext({serverRefresh:{data:{at:1000},interval:30000,error:false},serverAge:0,receivedAt:clock,transportFailed:false,Date:{now:()=>clock},document:{getElementById:()=>label},status});
+ vm.runInContext(paint,context);context.paintFreshness();assert.equal(label.textContent,'데이터 로딩 완료');
+ clock+=120001;context.paintFreshness();assert.equal(label.textContent,'갱신 지연','A quiet connection cannot hide stale data');
+ context.serverAge=0;context.receivedAt=clock;context.transportFailed=true;context.paintFreshness();assert.equal(label.textContent,'갱신 지연');
+ context.transportFailed=false;context.paintFreshness();assert.equal(label.textContent,'데이터 로딩 완료');
+ console.log('PASS server refresh survives owner suspension, interval and manual commands reach main, failures retain data and recover');
+})().catch(error=>{console.error(error);process.exitCode=1});

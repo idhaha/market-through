@@ -14,7 +14,7 @@ fs.writeFileSync(path.join(root, 'public/rank-independent.html'), `<!doctype htm
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>[독립창]</title><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"><link rel="stylesheet" href="style.css?v=20261013_v72">
 <link rel="stylesheet" href="rank-independent.css?v=18">
-<script src="rank-independent-client.js?v=17" defer></script>
+<script src="rank-independent-client.js?v=18" defer></script>
 <script src="concentration-chart.js?v=20261014_v48" defer></script></head>
 <body class="rank-independent"><div class="independent-toolbar">
 <label><input id="rankStockPinned" type="checkbox"> 트레이딩 탭 종목동기화 해제</label>

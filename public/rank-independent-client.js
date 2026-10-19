@@ -4,7 +4,7 @@
     const rawFetch = window.fetch.bind(window), params = new URLSearchParams(location.hash.slice(1));
     const id = params.get('id'), token = params.get('token');
     history.replaceState(null, '', location.pathname);
-    let version = -1, lastSnapshot, closed = false;
+    let version = -1, lastSnapshot, closed = false, serverRefresh = null, receivedAt = 0, serverAge = 0, transportFailed = false;
     const pending = new Map(), outgoing = [], acknowledgements = [];
     const enqueue = value => { const id = crypto.randomUUID(); outgoing.push({ id, ...value }); return id; };
     let candleOpen = false;
@@ -234,11 +234,39 @@
             enqueue({ type: 'refresh' }); if (pin.checked) window.refreshConcentrationChart?.();
         });
         for (const key of ['mrktTp', 'stexTp', 'refreshInterval']) document.getElementById(key).addEventListener('change', event => { enqueue({ type: 'conditions', values: { [key]: event.target.value } }); });
+        function paintFreshness() {
+            if (!serverRefresh) return;
+            const age = serverAge + Date.now() - receivedAt;
+            const delayed = transportFailed || serverRefresh.error || !serverRefresh.data || age > serverRefresh.interval + 90000;
+            document.getElementById('independentStatusText').textContent = delayed ? '갱신 지연' : '데이터 로딩 완료';
+            if (delayed) status.textContent = '갱신 지연 · 마지막 데이터를 표시하고 있습니다.';
+        }
+        function applyServerRefresh(info) {
+            transportFailed = false; serverRefresh = info; receivedAt = Date.now();
+            serverAge = info.data ? Math.max(0, info.serverNow - info.data.at) : 0;
+            if (info.data && lastSnapshot) {
+                const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+                const rows = (info.data.items || []).slice(0, 20).map((stock, index) => {
+                    const code = String(stock.stk_cd || '').replace(/_(AL|NX)$/i, '');
+                    const name = stock.stk_nm || stock.isu_nm || code;
+                    const rate = Number(stock.fluc_rt || stock.base_comp_chgr || 0);
+                    const amount = parseInt(String(stock.trde_amt || stock.acml_tr_pbmn || 0).replace(/[^0-9]/g, '')) || 0;
+                    const attributes = /^[0-9A-Za-z]{6}$/.test(code) ? `data-chart-code="${code}" data-chart-name="${encodeURIComponent(name)}" data-chart-market="${escape(stock.mkt_type)}" tabindex="0" role="button"` : '';
+                    return `<tr ${attributes}><td class="align-right">${escape(stock.rank || index + 1)}</td><td class="market-type">${escape(stock.mkt_type || '-')}</td><td>${escape(name)}</td><td class="align-right num-cell ${rate > 0 ? 'price-up' : rate < 0 ? 'price-down' : ''}">${Number.isFinite(rate) ? rate.toFixed(2) + '%' : '-'}</td><td class="align-right num-cell">${(amount > 100000000 ? Math.round(amount / 1000000) : amount).toLocaleString()}</td><td class="align-right num-cell">${stock.concentration_rate != null && Number.isFinite(Number(stock.concentration_rate)) ? Number(stock.concentration_rate) + '%' : '-'}</td></tr>`;
+                }).join('') || '<tr><td colspan="6">데이터가 없습니다.</td></tr>';
+                apply({ ...lastSnapshot, rows, chart: info.data.chart || lastSnapshot.chart,
+                    tableConnection: { ok: !info.error, at: Date.now() - serverAge }, chartConnection: { ok: !info.error, at: Date.now() - serverAge },
+                    refreshStatus: { time: new Date(info.data.at).toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul' }), text: '데이터 로딩 완료' } });
+            }
+            if (pin.checked && info.data?.peerChart && !pending.size && window.getRankChartState?.()?.selection?.code === info.data.peerChart.selection?.code) window.applyRankChartState?.(info.data.peerChart);
+            paintFreshness();
+        }
+        setInterval(paintFreshness, 1000);
         async function tick() {
             if (closed) return;
             const nextCommand = outgoing.shift(), acks = acknowledgements.splice(0);
             try {
-                const response = await peer({ version, command: nextCommand, acks });
+                const response = await peer({ version, command: nextCommand, acks, pinned: pin.checked });
                 if ([401, 404].includes(response.status)) {
                     document.querySelectorAll('#tab_rank .panel').forEach(panel => window.setRankCardConnection?.(panel, false));
                     closed = true; status.textContent = '메인 페이지 연결이 종료되었습니다. 메인 페이지에서 다시 실행하세요.';
@@ -251,7 +279,8 @@
                 for (const reply of result.replies || []) { pending.get(reply.id)?.resolve(reply); pending.delete(reply.id); acknowledgements.push(reply.id); }
                 if (result.snapshot) { version = result.version; apply(result.snapshot); }
                 status.textContent = '';
-            } catch (error) { document.querySelectorAll('#tab_rank .panel').forEach(panel => window.setRankCardConnection?.(panel, false)); if (nextCommand) outgoing.unshift(nextCommand); acknowledgements.unshift(...acks); status.textContent = '메인 페이지 연결 재시도 중'; }
+                if (result.serverRefresh) applyServerRefresh(result.serverRefresh);
+            } catch (error) { transportFailed = true; document.querySelectorAll('#tab_rank .panel').forEach(panel => window.setRankCardConnection?.(panel, false)); if (nextCommand) outgoing.unshift(nextCommand); acknowledgements.unshift(...acks); status.textContent = '서버 연결 재시도 중 · 갱신 지연'; document.getElementById('independentStatusText').textContent = '갱신 지연'; }
             finally { if (!closed) setTimeout(tick, outgoing.length ? 50 : 500); }
         }
         if (!/^[a-f0-9]{32}$/.test(id || '') || !/^[a-f0-9]{64}$/.test(token || '')) { status.textContent = '메인 페이지의 독립창 버튼으로 실행하세요.'; closed = true; return; }
@@ -260,7 +289,7 @@
         // Pinned selections use the shared query owner on the same refresh schedule.
         let refresh = Date.now();
         setInterval(() => { const interval = Number(document.getElementById('refreshInterval').selectedOptions[0]?.dataset.interval);
-            if (pin.checked && interval > 0 && Date.now() - refresh >= interval) { refresh = Date.now(); window.refreshConcentrationChart?.(); }
+            if (!serverRefresh && pin.checked && interval > 0 && Date.now() - refresh >= interval) { refresh = Date.now(); window.refreshConcentrationChart?.(); }
         }, 1000);
     });
 })();

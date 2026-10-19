@@ -12,6 +12,7 @@ try { ./RankUninstallTest.exe; if ($LASTEXITCODE -ne 0) { throw '제거 기능 �
 finally { Pop-Location }
 Push-Location $root
 try {
+    node dev/tests/rank-server-refresh.test.cjs; if ($LASTEXITCODE -ne 0) { throw 'Rank 서버 갱신 테스트 실패' }
     node dev/tests/rank-refresh.test.cjs; if ($LASTEXITCODE -ne 0) { throw 'Rank 갱신 테스트 실패' }
     node dev/tests/rank-independent.test.cjs; if ($LASTEXITCODE -ne 0) { throw 'Rank 독립창 테스트 실패' }
 }

@@ -2215,6 +2215,16 @@ function activateTab(tabId) {
     }
 }
 
+function syncTabHeading(tabId, name) {
+    const content = document.getElementById(tabId);
+    const heading = content?.querySelector('header h1');
+    if (!heading) return;
+    const button = [...document.querySelectorAll('.tab-btn')].find(btn => btn.dataset.tab === tabId);
+    const title = name ?? button?.textContent;
+    if (title == null) return;
+    (heading.querySelector('strong') || heading).textContent = title;
+}
+
 function initializeTab(tabId) {
     const content = document.getElementById(tabId);
     if (!content) return false;
@@ -2226,6 +2236,7 @@ function initializeTab(tabId) {
         console.log(`🏗️ [InitTab] Rendering initial layout for ${tabId}`);
         content.innerHTML = createChartGrid(tabId);
     }
+    syncTabHeading(tabId);
 
     if (tabId === US_TAB_ID) window.USLinks.mount(content, () => {
         if (!tabData[US_TAB_ID]) tabData[US_TAB_ID] = { name: '자본동향', items: [] };
@@ -2814,6 +2825,7 @@ tabContainer.addEventListener("dblclick", function (e) {
         btn.textContent = newName;
         btn.title = newName;
         const tabId = btn.dataset.tab;
+        syncTabHeading(tabId, newName);
         if (typeof tabData !== 'undefined' && tabData[tabId] && typeof tabData[tabId] === 'object' && !Array.isArray(tabData[tabId])) {
             tabData[tabId].name = newName;
         }

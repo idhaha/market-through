@@ -64,6 +64,7 @@
         }
         async function execute(command) {
             try {
+                if (command.type === 'server-chart') { window.applyRankChartState?.(command.chart); dirty = true; return; }
                 if (command.type === 'conditions') {
                     for (const [id, value] of Object.entries(command.values || {})) {
                         if (!['mrktTp', 'stexTp', 'refreshInterval'].includes(id)) continue;

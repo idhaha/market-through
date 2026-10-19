@@ -133,7 +133,36 @@ app.use('/api', (req, res, next) => {
     next();
 });
 
-createRankIndependentRelay().mount(app);
+createRankIndependentRelay({
+    refresh: async (snapshot, email) => {
+        const data = await new Promise((resolve, reject) => {
+            transactionRankHandler({ query: { mrkt_tp: snapshot.conditions?.mrktTp, stex_tp: snapshot.conditions?.stexTp } },
+                { status() { return this; }, json: resolve }).catch(reject);
+        });
+        if (!data.success) throw new Error(data.error || '거래대금 조회 실패');
+        let chart = snapshot.chart;
+        if (chart?.selection?.code) {
+            const result = await concentrationChartService.query({ code: chart.selection.code, mode: chart.mode, interval: chart.interval }, email);
+            if (!result.success) throw new Error(result.error || '차트 조회 실패');
+            chart = { ...chart, points: result.points, cursor: result.cursor, hasMore: result.has_more, busy: false, status: '조회 완료', revision: Date.now() };
+        }
+        let peerChart = null;
+        if (snapshot.peerChart?.selection?.code) {
+            const selection = snapshot.peerChart;
+            const result = await concentrationChartService.query({ code: selection.selection.code, mode: selection.mode, interval: selection.interval }, email);
+            if (!result.success) throw new Error(result.error || '독립창 차트 조회 실패');
+            peerChart = { ...selection, points: result.points, cursor: result.cursor, hasMore: result.has_more, busy: false, status: '조회 완료' };
+        }
+        return { items: data.items, chart, peerChart };
+    },
+    request: async (command, email) => {
+        const url = new URL(command.path, 'http://localhost');
+        if (url.pathname === '/api/concentration-chart') return concentrationChartService.query(command.body || {}, email);
+        if (url.pathname === '/api/concentration-stock') return { success: true, stock: await concentrationChartService.resolveStock(url.searchParams.get('q')) };
+        if (url.pathname === '/api/concentration-stocks') return { success: true, stocks: concentrationChartService.searchStocks(url.searchParams.get('q')) };
+        throw new Error('지원하지 않는 요청입니다.');
+    }
+}).mount(app);
 const concentrationChartService = createConcentrationChartService({ axios, getAccessToken, marketCache });
 app.get('/api/concentration-stocks', (req, res) => {
     try { res.json({ success: true, stocks: concentrationChartService.searchStocks(req.query.q) }); }
@@ -644,7 +673,7 @@ app.get('/api/stock', async (req, res) => {
 /**
  * 전일동시간대비 거래대금상위(ka10032) API 엔드포인트
  */
-app.get('/api/transaction_rank', async (req, res) => {
+async function transactionRankHandler(req, res) {
     console.log("🚀 [API START] /api/transaction_rank 요청 처리 시작");
 
     const appKey = (process.env.KIWOOM_APPKEY || "").trim();
@@ -678,6 +707,10 @@ app.get('/api/transaction_rank', async (req, res) => {
                 timeout: 5000
             }
         );
+
+        if (response.data.return_code != null && Number(response.data.return_code) !== 0) {
+            throw new Error(response.data.return_msg || '거래대금 조회 실패');
+        }
 
         // 상세 로그 추가: 응답 본문 전체 확인
         console.log("DEBUG: ka10032 Full Response Data:", JSON.stringify(response.data, null, 2));
@@ -789,7 +822,8 @@ app.get('/api/transaction_rank', async (req, res) => {
             details: error.response?.data || null
         });
     }
-});
+}
+app.get('/api/transaction_rank', transactionRankHandler);
 
 /**
  * 관심종목 그룹 리스트(ka01300) API 엔드포인트
