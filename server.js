@@ -15,6 +15,9 @@ const { createRetainedLogs } = require('./retained-logs');
 const { migrateSettingsNames } = require('./settings-filenames');
 const { createAdrMinuteStore } = require('./adr-minute-store');
 const { createVolatilityService } = require('./risk-volatility');
+const { createLendableService, createLendableViewCache } = require('./lendable-stocks');
+const getLendableView = createLendableViewCache();
+const lendableService = createLendableService({ http: axios, log: message => fileLog(message) });
 const adrMinuteStore = createAdrMinuteStore({ directory: path.join(__dirname, 'data', 'adr-minutes') });
 const volatilityService = createVolatilityService();
 const breadthService = createVolatilityService({ kind: 'breadth' });
@@ -225,6 +228,11 @@ app.get('/ping', (req, res) => {
 /**
  * 실시간 종목 순위 API 엔드포인트
  */
+app.get('/api/lendable-status', (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json({ success: true, scan: lendableService.getStatus() });
+});
+
 app.get('/api/stock', async (req, res) => {
     console.log("🚀 [API START] /api/stock 요청 처리 시작");
 
@@ -292,6 +300,7 @@ app.get('/api/stock', async (req, res) => {
 
         let totalResp = null;
         let efriendStocks = [];
+        let efriendScanStatus = null;
         const dataPromises = [];
 
         dataPromises.push(
@@ -318,154 +327,134 @@ app.get('/api/stock', async (req, res) => {
         );
 
         if (efriendToken) {
-            fileLog("[eFriend] CTSC2702R 대주가능 종목 페이징 조회 시작...");
-            const fetchAllLendable = async () => {
-                const MAX_PAGES = 50;
-                let allItems = [];
-                let fk200 = "";
-                let nk100 = "";
-                let pageCount = 0;
-
-                while (pageCount < MAX_PAGES) {
-                    try {
-                        const response = await axios.get(
-                            `${efriendDomain}/uapi/domestic-stock/v1/quotations/lendable-by-company`,
-                            {
-                                headers: {
-                                    "content-type": "application/json; charset=utf-8",
-                                    "authorization": `Bearer ${efriendToken}`,
-                                    "appkey": efriendAppKey,
-                                    "appsecret": efriendSecretKey,
-                                    "tr_id": "CTSC2702R",
-                                    "custtype": "P",
-                                    // KIS 표준: 첫 조회 공백, 이후 Y(또는 N) — "N"을 첫 요청에 쓰면 0건 응답 발생
-                                    "tr_cont": pageCount === 0 ? "" : "Y"
-                                },
-                                params: {
-                                    "EXCG_DVSN_CD": "00",
-                                    "PDNO": "",
-                                    "THCO_STLN_PSBL_YN": "Y",
-                                    "INQR_DVSN_1": "0",
-                                    "CTX_AREA_FK200": fk200,
-                                    "CTX_AREA_NK100": nk100
-                                },
-                                timeout: 10000
-                            }
-                        );
-
-                        const data = response.data;
-                        if (pageCount === 0) {
-                            fileLog(`[eFriend] API response: rt_cd=${data.rt_cd}, msg_cd=${data.msg_cd}, msg1=${(data.msg1 || '').trim()}`);
-                        }
-
-                        if (data.rt_cd && data.rt_cd !== "0") {
-                            fileLog(`[eFriend] API error: rt_cd=${data.rt_cd}, msg1=${(data.msg1 || '').trim()}`);
-                            break;
-                        }
-
-                        const pageItems = Array.isArray(data.output1)
-                            ? data.output1
-                            : (Array.isArray(data.output) ? data.output : []);
-                        allItems = allItems.concat(pageItems);
-                        pageCount++;
-
-                        const h_tr_cont = (response.headers['tr_cont'] || response.headers['TR_CONT'] || '').toUpperCase();
-                        const fk200Preview = (data.ctx_area_fk200 || "").substring(0, 30);
-                        fileLog(`[eFriend] Page ${pageCount}: ${pageItems.length} items (total: ${allItems.length}), tr_cont=${h_tr_cont || 'N'}, fk200=${fk200Preview}...`);
-
-                        fk200 = data.ctx_area_fk200 || "";
-                        nk100 = data.ctx_area_nk100 || "";
-
-                        // Y(사용자 명세) 또는 M(KIS 표준)이면 다음 페이지 존재
-                        const hasMore = (h_tr_cont === 'Y' || h_tr_cont === 'M');
-                        if (!hasMore || pageItems.length === 0) {
-                            break;
-                        }
-
-                        await new Promise(r => setTimeout(r, 200));
-                    } catch (e) {
-                        const errBody = e.response?.data ? JSON.stringify(e.response.data).substring(0, 300) : '';
-                        fileLog(`[eFriend] Pagination error at page ${pageCount + 1}: ${e.message} (collected: ${allItems.length} items) ${errBody}`);
-                        break;
-                    }
-                }
-
-                if (pageCount >= MAX_PAGES) {
-                    fileLog(`[eFriend] Warning: reached max page limit (${MAX_PAGES}), collected ${allItems.length} items`);
-                }
-
-                return allItems;
-            };
-
-            dataPromises.push(
-                fetchAllLendable().then(items => {
-                    efriendStocks = items;
-                    fileLog(`[eFriend] Final: ${efriendStocks.length} lendable stocks collected`);
-                })
-            );
+            dataPromises.push(lendableService.getStocks({
+                domain: efriendDomain, appkey: efriendAppKey, appsecret: efriendSecretKey,
+                getToken: () => getEfriendAccessToken(efriendDomain, efriendAppKey, efriendSecretKey)
+            }, { refresh: req.query.efriend_refresh !== '0' }).then(items => {
+                efriendStocks = items;
+                efriendScanStatus = lendableService.getStatus();
+            }));
         }
 
         await Promise.all(dataPromises);
 
-        // --- 2.5 eFriend 현재가(등락률) 일괄 조회 ---
-        if (efriendToken && efriendStocks.length > 0) {
-            console.log(`Step 2.5: eFriend ${efriendStocks.length}개 종목 현재가(등락률) 조회 시작...`);
-            const efriendChunkSize = 10; // 10개씩 병렬 처리하여 429 에러 방지
+        if (efriendToken) {
+            efriendStocks = await getLendableView({
+                key: JSON.stringify([efriendDomain, efriendAppKey, efriendSecretKey]),
+                stocks: efriendStocks, scan: efriendScanStatus,
+                enrich: async (efriendStocks) => {
+                    // --- 2.5 eFriend 현재가(등락률) 일괄 조회 ---
+                    if (efriendToken && efriendStocks.length > 0) {
+                        console.log(`Step 2.5: eFriend ${efriendStocks.length}개 종목 현재가(등락률) 조회 시작...`);
+                        const efriendChunkSize = 10; // 10개씩 병렬 처리하여 429 에러 방지
 
-            for (let i = 0; i < efriendStocks.length; i += efriendChunkSize) {
-                const chunk = efriendStocks.slice(i, i + efriendChunkSize);
-                const pricePromises = chunk.map(async (stock) => {
-                    if (!stock.pdno) return;
+                        for (let i = 0; i < efriendStocks.length; i += efriendChunkSize) {
+                            const chunk = efriendStocks.slice(i, i + efriendChunkSize);
+                            const pricePromises = chunk.map(async (stock) => {
+                                if (!stock.pdno) return;
 
-                    // J:KRX, NX:NXT 등 시장구분이 필요한데 기본값 J(KRX)로 처리
-                    let iscd = stock.pdno.trim();
-                    if (iscd.length === 6 && (iscd.startsWith('5') || iscd.startsWith('7'))) {
-                        iscd = "Q" + iscd; // ETN 예외처리 (CSV 명세서 권장사항)
-                    }
+                                // J:KRX, NX:NXT 등 시장구분이 필요한데 기본값 J(KRX)로 처리
+                                let iscd = stock.pdno.trim();
+                                if (iscd.length === 6 && (iscd.startsWith('5') || iscd.startsWith('7'))) {
+                                    iscd = "Q" + iscd; // ETN 예외처리 (CSV 명세서 권장사항)
+                                }
 
-                    try {
-                        const priceRes = await axios.get(
-                            `${efriendDomain}/uapi/domestic-stock/v1/quotations/inquire-price`,
-                            {
-                                headers: {
-                                    "content-type": "application/json; charset=utf-8",
-                                    "authorization": `Bearer ${efriendToken}`,
-                                    "appkey": efriendAppKey,
-                                    "appsecret": efriendSecretKey,
-                                    "tr_id": "FHKST01010100", // 현재가 시세 TR ID
-                                    "custtype": "P"
-                                },
-                                params: {
-                                    "FID_COND_MRKT_DIV_CODE": "J",
-                                    "FID_INPUT_ISCD": iscd
-                                },
-                                timeout: 3000
-                            }
-                        );
+                                try {
+                                    const priceRes = await axios.get(
+                                        `${efriendDomain}/uapi/domestic-stock/v1/quotations/inquire-price`,
+                                        {
+                                            headers: {
+                                                "content-type": "application/json; charset=utf-8",
+                                                "authorization": `Bearer ${efriendToken}`,
+                                                "appkey": efriendAppKey,
+                                                "appsecret": efriendSecretKey,
+                                                "tr_id": "FHKST01010100", // 현재가 시세 TR ID
+                                                "custtype": "P"
+                                            },
+                                            params: {
+                                                "FID_COND_MRKT_DIV_CODE": "J",
+                                                "FID_INPUT_ISCD": iscd
+                                            },
+                                            timeout: 3000
+                                        }
+                                    );
 
-                        if (priceRes.data && priceRes.data.output) {
-                            stock.prdy_ctrt = priceRes.data.output.prdy_ctrt; // 전일 대비율 (등락률)
-                            stock.stck_prpr = priceRes.data.output.stck_prpr; // 현재가
-                            stock.rprs_mrkt_kor_name = priceRes.data.output.rprs_mrkt_kor_name; // 시장 정보 (KOSPI/KOSDAQ)
-                            // log original response field to understand what is coming from API
-                            console.log(`[Server] INQ PRICE for ${stock.pdno}: rprs_mrkt_kor_name = "${priceRes.data.output.rprs_mrkt_kor_name}", tr_mkt_name = "${priceRes.data.output.tr_mkt_name}", mrkt_div_code = "${priceRes.data.output.mrkt_div_code}", mkt_nm = "${priceRes.data.output.mkt_nm}"`);
-                        } else {
-                            stock.prdy_ctrt = "0.00";
-                            stock.stck_prpr = stock.bfdy_clpr;
-                            stock.rprs_mrkt_kor_name = "";
+                                    if (priceRes.data && priceRes.data.output) {
+                                        stock.prdy_ctrt = priceRes.data.output.prdy_ctrt; // 전일 대비율 (등락률)
+                                        stock.stck_prpr = priceRes.data.output.stck_prpr; // 현재가
+                                        stock.rprs_mrkt_kor_name = priceRes.data.output.rprs_mrkt_kor_name; // 시장 정보 (KOSPI/KOSDAQ)
+                                        // log original response field to understand what is coming from API
+                                        console.log(`[Server] INQ PRICE for ${stock.pdno}: rprs_mrkt_kor_name = "${priceRes.data.output.rprs_mrkt_kor_name}", tr_mkt_name = "${priceRes.data.output.tr_mkt_name}", mrkt_div_code = "${priceRes.data.output.mrkt_div_code}", mkt_nm = "${priceRes.data.output.mkt_nm}"`);
+                                    } else {
+                                        stock.prdy_ctrt = "0.00";
+                                        stock.stck_prpr = stock.bfdy_clpr;
+                                        stock.rprs_mrkt_kor_name = "";
+                                    }
+                                } catch (err) {
+                                    // 에러 로그는 생략 (과부하 방지)
+                                    stock.prdy_ctrt = "0.00";
+                                    stock.stck_prpr = stock.bfdy_clpr;
+                                }
+                            });
+
+                            await Promise.all(pricePromises);
+                            // API 부하 조절을 위한 대기 시간 (50ms)
+                            await new Promise(resolve => setTimeout(resolve, 50));
                         }
-                    } catch (err) {
-                        // 에러 로그는 생략 (과부하 방지)
-                        stock.prdy_ctrt = "0.00";
-                        stock.stck_prpr = stock.bfdy_clpr;
+                        console.log("Step 2.5: eFriend 현재가 조회 완료. 등락률, 현재가 병합됨.");
                     }
-                });
 
-                await Promise.all(pricePromises);
-                // API 부하 조절을 위한 대기 시간 (50ms)
-                await new Promise(resolve => setTimeout(resolve, 50));
-            }
-            console.log("Step 2.5: eFriend 현재가 조회 완료. 등락률, 현재가 병합됨.");
+                    // 대주가능 목록의 종목 데이터는 eFriend에서 유지하고, 시장구분은
+                    // 거래대금 상위와 동일하게 Kiwoom ka10100 정보만 사용한다.
+                    let marketLookupCount = 0;
+                    for (const stock of efriendStocks) {
+                        const stockCode = String(stock.pdno || '').trim().replace(/[^0-9a-zA-Z]/g, '').replace(/_AL$/i, '');
+                        if (!stockCode) continue;
+
+                        const cachedMarket = marketCache[stockCode] || marketCache[`${stockCode}_AL`];
+                        if (cachedMarket && cachedMarket.code != null && ['0', '10'].includes(String(cachedMarket.code))) {
+                            stock.mkt_type = ['K', 'Q'].includes(cachedMarket.type)
+                                ? cachedMarket.type
+                                : resolveKiwoomMarketType(cachedMarket, String(cachedMarket.code) === '0' ? 'K' : 'Q');
+                            continue;
+                        }
+
+                        try {
+                            const basicInfoResponse = await axios.post(
+                                'https://api.kiwoom.com/api/dostk/stkinfo',
+                                { stk_cd: stockCode },
+                                {
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'Authorization': `Bearer ${accessToken}`,
+                                        'api-id': 'ka10100'
+                                    },
+                                    timeout: 3000
+                                }
+                            );
+                            const basicInfo = basicInfoResponse.data || {};
+                            const marketCode = String(basicInfo.marketCode || basicInfo.mkt_cd || '');
+                            if (['0', '10'].includes(marketCode)) {
+                                const marketType = resolveKiwoomMarketType(basicInfo, marketCode === '0' ? 'K' : 'Q');
+                                stock.mkt_type = marketType;
+                                marketCache[stockCode] = {
+                                    ...(marketCache[stockCode] || {}),
+                                    type: marketType,
+                                    code: marketCode
+                                };
+                                marketLookupCount++;
+                            }
+                        } catch (err) {
+                            fileLog(`[Warning] eFriend ka10100 failed for ${stockCode}: ${err.message}`);
+                        }
+
+                        // 종목 수가 많을 때 Kiwoom API 요청이 몰리지 않도록 간격을 둔다.
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    }
+                    console.log(`Step 4.5: eFriend 시장구분 조회 완료 (${marketLookupCount}개 ka10100 조회, KIS 시장명 미사용)`);
+
+                }
+            });
         }
 
         // 상세 로그 추가: 응답 본문 전체 확인
@@ -597,54 +586,6 @@ app.get('/api/stock', async (req, res) => {
 
         const { items: watchStocksWithConcentration } = await addConcentrationRates(enrichedStocks, accessToken, 'trde_amt');
 
-        // 대주가능 목록의 종목 데이터는 eFriend에서 유지하고, 시장구분은
-        // 거래대금 상위와 동일하게 Kiwoom ka10100 정보만 사용한다.
-        let marketLookupCount = 0;
-        for (const stock of efriendStocks) {
-            const stockCode = String(stock.pdno || '').trim().replace(/[^0-9a-zA-Z]/g, '').replace(/_AL$/i, '');
-            if (!stockCode) continue;
-
-            const cachedMarket = marketCache[stockCode] || marketCache[`${stockCode}_AL`];
-            if (cachedMarket && cachedMarket.code != null && ['0', '10'].includes(String(cachedMarket.code))) {
-                stock.mkt_type = ['K', 'Q'].includes(cachedMarket.type)
-                    ? cachedMarket.type
-                    : resolveKiwoomMarketType(cachedMarket, String(cachedMarket.code) === '0' ? 'K' : 'Q');
-                continue;
-            }
-
-            try {
-                const basicInfoResponse = await axios.post(
-                    'https://api.kiwoom.com/api/dostk/stkinfo',
-                    { stk_cd: stockCode },
-                    {
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${accessToken}`,
-                            'api-id': 'ka10100'
-                        },
-                        timeout: 3000
-                    }
-                );
-                const basicInfo = basicInfoResponse.data || {};
-                const marketCode = String(basicInfo.marketCode || basicInfo.mkt_cd || '');
-                if (['0', '10'].includes(marketCode)) {
-                    const marketType = resolveKiwoomMarketType(basicInfo, marketCode === '0' ? 'K' : 'Q');
-                    stock.mkt_type = marketType;
-                    marketCache[stockCode] = {
-                        ...(marketCache[stockCode] || {}),
-                        type: marketType,
-                        code: marketCode
-                    };
-                    marketLookupCount++;
-                }
-            } catch (err) {
-                fileLog(`[Warning] eFriend ka10100 failed for ${stockCode}: ${err.message}`);
-            }
-
-            // 종목 수가 많을 때 Kiwoom API 요청이 몰리지 않도록 간격을 둔다.
-            await new Promise(resolve => setTimeout(resolve, 100));
-        }
-        console.log(`Step 4.5: eFriend 시장구분 조회 완료 (${marketLookupCount}개 ka10100 조회, KIS 시장명 미사용)`);
 
         console.log("Step 5: 데이터 보정 및 병합 완료");
         fileLog(`[Rank] /api/stock response counts: kiwoom=${enrichedStocks.length}, efriend=${efriendStocks.length}`);
@@ -652,7 +593,8 @@ app.get('/api/stock', async (req, res) => {
             success: true,
             data: {
                 kiwoom: watchStocksWithConcentration,
-                efriend: efriendStocks
+                efriend: efriendStocks,
+                efriend_scan: efriendScanStatus
             },
             server_time: new Date().toISOString(),
             start_time: SERVER_START_TIME

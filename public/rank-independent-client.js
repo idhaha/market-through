@@ -234,11 +234,18 @@
             enqueue({ type: 'refresh' }); if (pin.checked) window.refreshConcentrationChart?.();
         });
         for (const key of ['mrktTp', 'stexTp', 'refreshInterval']) document.getElementById(key).addEventListener('change', event => { enqueue({ type: 'conditions', values: { [key]: event.target.value } }); });
+        function formatServerRefreshTime(timestamp) {
+            const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+                timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+            }).formatToParts(new Date(timestamp)).map(part => [part.type, part.value]));
+            return `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
+        }
         function paintFreshness() {
             if (!serverRefresh) return;
             const age = serverAge + Date.now() - receivedAt;
             const delayed = transportFailed || serverRefresh.error || !serverRefresh.data || age > serverRefresh.interval + 90000;
-            document.getElementById('independentStatusText').textContent = delayed ? '갱신 지연' : '데이터 로딩 완료';
+            document.getElementById('independentStatusText').textContent = delayed ? '갱신 지연' : '완료';
             if (delayed) status.textContent = '갱신 지연 · 마지막 데이터를 표시하고 있습니다.';
         }
         function applyServerRefresh(info) {
@@ -256,7 +263,7 @@
                 }).join('') || '<tr><td colspan="6">데이터가 없습니다.</td></tr>';
                 apply({ ...lastSnapshot, rows, chart: info.data.chart || lastSnapshot.chart,
                     tableConnection: { ok: !info.error, at: Date.now() - serverAge }, chartConnection: { ok: !info.error, at: Date.now() - serverAge },
-                    refreshStatus: { time: new Date(info.data.at).toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul' }), text: '데이터 로딩 완료' } });
+                    refreshStatus: { time: formatServerRefreshTime(info.data.at), text: '완료' } });
             }
             if (pin.checked && info.data?.peerChart && !pending.size && window.getRankChartState?.()?.selection?.code === info.data.peerChart.selection?.code) window.applyRankChartState?.(info.data.peerChart);
             paintFreshness();

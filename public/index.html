@@ -227,9 +227,14 @@
 
                     <div class="panel">
                         <div class="panel-header">
-                            <h2>대주가능 종목 [한투]</h2>
+                            <h2>대주가능 종목 [한투] <small id="efriendStockCount"></small></h2>
+                            <small id="efriendScanStatus" role="status"></small>
                         </div>
                         <div id="efriendDataContainer" style="display: none;">
+                            <div class="efriend-loading-overlay" aria-hidden="true">
+                                <span class="efriend-loading-spinner"></span>
+                                <span>로딩 중…</span>
+                            </div>
                             <div class="table-wrapper">
                                 <table id="efriendStockTable">
                                     <thead>

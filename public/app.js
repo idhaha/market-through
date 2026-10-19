@@ -1140,6 +1140,8 @@ function renderTable(data) {
 function renderEfriendTable(stocks) {
     const efriendTableBody = document.getElementById('efriendTableBody');
     if (!efriendTableBody) return;
+    const countLabel = document.getElementById('efriendStockCount');
+    if (countLabel) countLabel.textContent = `(${Array.isArray(stocks) ? stocks.length.toLocaleString() : 0}개)`;
 
     if (!Array.isArray(stocks) || stocks.length === 0) {
         efriendTableBody.innerHTML = `
@@ -1434,9 +1436,55 @@ async function loadWatchlistRank() {
 /**
  * 데이터 로드
  */
-async function loadData() {
+let efriendProgressTimer = null;
+let efriendDisplayedCompletion = 0;
+
+function setEfriendLoading(loading) {
+    const container = document.getElementById('efriendDataContainer');
+    if (!container) return;
+    const blockTable = loading && !efriendDisplayedCompletion;
+    container.classList.toggle('efriend-loading', blockTable);
+    container.setAttribute('aria-busy', String(loading));
+    container.inert = blockTable;
+}
+
+function paintEfriendProgress(scan) {
+    setEfriendLoading(Boolean(scan && (scan.running || scan.errors || !scan.completedAt)));
+    const label = document.getElementById('efriendScanStatus');
+    if (!label) return;
+    label.textContent = !scan ? '' : scan.running
+        ? `${efriendDisplayedCompletion ? '갱신 중…' : '로딩 중…'} (${scan.checked.toLocaleString()}/${scan.total.toLocaleString()})`
+        : scan.errors || !scan.completedAt ? `${efriendDisplayedCompletion ? '갱신 중…' : '로딩 중…'} (조회 지연 · 재시도 예정)`
+        : `${scan.count.toLocaleString()}종목 · 전체 조회 완료`;
+}
+
+function followEfriendProgress(scan) {
+    clearTimeout(efriendProgressTimer);
+    paintEfriendProgress(scan);
+    if (!scan || (!scan.running && !scan.errors && scan.completedAt)) return;
+    efriendProgressTimer = setTimeout(async () => {
+        try {
+            const response = await fetch('/api/lendable-status', { cache: 'no-store' });
+            if (!response.ok) return;
+            const result = await response.json();
+            if (!result.success) return;
+            const latest = result.scan;
+            // The table must load its new snapshot before showing completion.
+            if (!latest.running && latest.completedAt && latest.completedAt !== efriendDisplayedCompletion) {
+                await loadData({ refreshLendable: false });
+                return;
+            }
+            followEfriendProgress(latest);
+        } catch (_) {
+            followEfriendProgress(scan);
+        }
+    }, 2000);
+}
+
+async function loadData({ refreshLendable = true } = {}) {
     console.log('[TEST] loadData() 시작');    //Andrew
     if (isCapturing) { console.log('[Capture] loadData() skipped (isCapturing)'); return; }
+    if (refreshLendable) setEfriendLoading(true);
 
     try {
         const activeTab = document.querySelector('.tab-content.active');
@@ -1450,7 +1498,7 @@ async function loadData() {
 
 console.log('[TEST] /api/stock 호출 직전:', `${API_URL}?qry_tp=${qryTp}`); //Andrew
 
-        const response = await fetch(`${API_URL}?qry_tp=${qryTp}`, {
+        const response = await fetch(`${API_URL}?qry_tp=${qryTp}${refreshLendable ? '' : '&efriend_refresh=0'}`, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
@@ -1484,6 +1532,9 @@ console.log('[TEST] /api/stock 응답 완료:', response.status); //Andrew
         if (result.data && typeof result.data === 'object' && result.data.kiwoom) {
             renderTable(result.data.kiwoom);
             renderEfriendTable(result.data.efriend || []);
+            const scan = result.data.efriend_scan;
+            efriendDisplayedCompletion = scan?.completedAt || 0;
+            followEfriendProgress(scan);
         } else {
             // Fallback for older format just in case
             renderTable(result.data);
