@@ -158,7 +158,7 @@
         rowSizing.observe(rows);
         const chart = document.getElementById('concentrationChartPanel');
         const chartBody = document.createElement('div'); chartBody.id = 'independentChartContent';
-        chartBody.append(...chart.childNodes); chart.append(chartBody);
+        chartBody.append(...[...chart.childNodes].filter(node => !node.classList?.contains('rank-connection-dot'))); chart.append(chartBody);
         const chartHeading = document.createElement('div'); chartHeading.className = 'independent-chart-heading';
         const chartTitle = document.getElementById('concentrationChartTitle');
         chartHeading.append(chartTitle, chart.querySelector('.concentration-stock-picker'), document.getElementById('concentrationMarket')); chart.prepend(chartHeading);
@@ -166,6 +166,16 @@
         chartHeading.append(pin.closest('label'));
         function apply(snapshot) {
             if (!snapshot) return;
+            const applyConnection = (target, record, flag, fallback) => {
+                if (record && typeof record.ok === 'boolean' && Number.isFinite(record.at)) window.setRankCardConnection?.(target, record.ok, record.at);
+                else window.setRankCardConnection?.(target, typeof flag === 'boolean' ? flag : fallback);
+            };
+            applyConnection('#transactionTable', snapshot.tableConnection, snapshot.tableConnected, !!snapshot.rows);
+            const ownSelection = window.getRankChartState?.()?.selection?.code;
+            if (!pin.checked || ownSelection === snapshot.chart?.selection?.code) {
+                const legacyHealthy = !!snapshot.chart?.points?.length && !/실패|오류|만료|연결.*종료/.test(snapshot.chart?.status || '');
+                applyConnection('#concentrationChartPanel', snapshot.chartConnection, snapshot.chartConnected, legacyHealthy);
+            }
             lastSnapshot = snapshot;
             if (snapshot.refreshStatus) {
                 document.getElementById('independentLastUpdate').textContent = snapshot.refreshStatus.time;
@@ -230,16 +240,18 @@
             try {
                 const response = await peer({ version, command: nextCommand, acks });
                 if ([401, 404].includes(response.status)) {
+                    document.querySelectorAll('#tab_rank .panel').forEach(panel => window.setRankCardConnection?.(panel, false));
                     closed = true; status.textContent = '메인 페이지 연결이 종료되었습니다. 메인 페이지에서 다시 실행하세요.';
                     pending.forEach(request => request.reject(new Error(status.textContent))); pending.clear();
-                    window.chrome?.webview?.postMessage('connection-ended'); return;
+                    // Keep the last displayed chart open even when the relay expires.
+                    return;
                 }
                 if (!response.ok) throw new Error('연결 실패');
                 const result = await response.json();
                 for (const reply of result.replies || []) { pending.get(reply.id)?.resolve(reply); pending.delete(reply.id); acknowledgements.push(reply.id); }
                 if (result.snapshot) { version = result.version; apply(result.snapshot); }
                 status.textContent = '';
-            } catch (error) { if (nextCommand) outgoing.unshift(nextCommand); acknowledgements.unshift(...acks); status.textContent = '메인 페이지 연결 재시도 중'; }
+            } catch (error) { document.querySelectorAll('#tab_rank .panel').forEach(panel => window.setRankCardConnection?.(panel, false)); if (nextCommand) outgoing.unshift(nextCommand); acknowledgements.unshift(...acks); status.textContent = '메인 페이지 연결 재시도 중'; }
             finally { if (!closed) setTimeout(tick, outgoing.length ? 50 : 500); }
         }
         if (!/^[a-f0-9]{32}$/.test(id || '') || !/^[a-f0-9]{64}$/.test(token || '')) { status.textContent = '메인 페이지의 독립창 버튼으로 실행하세요.'; closed = true; return; }

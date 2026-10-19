@@ -2163,6 +2163,9 @@ function activateTab(tabId) {
     const btn = document.querySelector(`.tab-btn[data-tab="${tabId}"]`);
     const content = document.getElementById(tabId);
     if (!btn || !content) return;
+    if (!isInitializing && !isCapturing) {
+        try { sessionStorage.setItem('marketthrough-active-tab', tabId); } catch {}
+    }
 
     // Background refresh allowed: Do NOT stop refreshes here
 
@@ -5670,6 +5673,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         // index.html starts with Rank active; clear that default so applyData can
         // restore the snapshot's activeTabId during the initial load.
         document.querySelectorAll('.tab-content.active').forEach(tab => tab.classList.remove('active'));
+        // A reload should restore this window's view rather than another
+        // window's or an older server settings snapshot's active tab.
+        let reloadTab;
+        try { reloadTab = sessionStorage.getItem('marketthrough-active-tab'); } catch {}
+        const fixedTabs = [PERM_TAB_ID, MEMO_TAB_ID, EARNINGS_TAB_ID, BASE_INTEREST_TAB_ID, US_TAB_ID];
+        if (reloadTab && (fixedTabs.includes(reloadTab) || finalData.tabs?.some(tab => tab.id === reloadTab))) {
+            finalData = { ...finalData, activeTabId: reloadTab };
+        }
         applyData(finalData);
         // 서버 데이터를 성공적으로 적용한 경우 로컬스토리지에도 보관 (서버로 역전송 방지)
         localStorage.setItem(STORAGE_KEY, JSON.stringify(finalData));

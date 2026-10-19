@@ -296,9 +296,10 @@
                 dates = [...new Set(ids.flatMap(id => data[id].map(point => point.date)))].sort();
                 ids.forEach(id => { const legend = panel.querySelector(`[data-volatility="${id}"]`); legend.style.color = colors[id]; legend.querySelector('output').textContent = data[id].length ? formatValue(data[id].at(-1).value, id) : '—'; });
                 const errors = ids.flatMap(id => [result.series?.[id]?.error, result.series?.[id]?.warning]).filter(Boolean);
+                window.setRankCardConnection?.(panel, errors.length === 0);
                 status.textContent = [dates.length ? `${dates[0]} ~ ${dates.at(-1)}` : '일봉 데이터 없음', ...errors, '출처: Jusikbot'].join(' · ');
                 draw(); loadCandles();
-            } catch (error) { if (error.name !== 'AbortError' && current === controller) status.textContent = error.message; }
+            } catch (error) { if (error.name !== 'AbortError' && current === controller) { window.setRankCardConnection?.(panel, false); status.textContent = error.message; } }
         };
         panel.querySelectorAll('[data-volatility-range]').forEach(button => button.addEventListener('click', () => {
             range = button.dataset.volatilityRange; start = 0; count = null; hover = null; tip.hidden = true;

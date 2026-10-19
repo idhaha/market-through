@@ -7,7 +7,7 @@ function createRankIndependentRelay({ now = Date.now } = {}) {
     const ttl = 120000;
     const hash = value => crypto.createHash('sha256').update(String(value || '')).digest('hex');
     function prune() {
-        for (const [id, channel] of channels) if (now() - channel.ownerSeen > ttl) channels.delete(id);
+        for (const [id, channel] of channels) if (now() - Math.max(channel.ownerSeen, channel.peerSeen) > ttl) channels.delete(id);
     }
     function owner(req, res) {
         prune();

@@ -34,6 +34,7 @@
         let channel, timer, running = false, connected = false, started = 0, peerLastSeen = 0, displayCommandId = null;
         let dirty = true, chartKey = '', replies = [], acknowledgements = [];
         const handled = new Set();
+        window.addEventListener('rank-connection-change', () => { dirty = true; });
         function reset(text = '') {
             clearTimeout(timer);
             if (channel) rawFetch(`/api/rank-independent/${channel.id}/owner`, { method: 'DELETE', headers: { 'X-Rank-Owner': channel.ownerKey } }).catch(() => {});
@@ -54,7 +55,7 @@
         function snapshot() {
             const cell = document.querySelector('#transactionBody tr[data-chart-code] td');
             const style = cell && getComputedStyle(cell);
-            return { rows: document.getElementById('transactionBody').innerHTML, chart: window.getRankChartState?.(), display: window.getConcentrationDisplaySettings?.(),
+            return { tableConnection: window.getRankCardConnectionState?.('#transactionTable'), chartConnection: window.getRankCardConnectionState?.('#concentrationChartPanel'), tableConnected: window.getRankCardConnection?.('#transactionTable') === true, chartConnected: window.getRankCardConnection?.('#concentrationChartPanel') === true, rows: document.getElementById('transactionBody').innerHTML, chart: window.getRankChartState?.(), display: window.getConcentrationDisplaySettings?.(),
                 displayCommandId,
                 refreshStatus: { time: document.getElementById('lastUpdate')?.textContent || '-', text: document.getElementById('statusText')?.textContent || '대기 중' },
                 typography: { rootFontSize: getComputedStyle(document.documentElement).fontSize, family: getComputedStyle(document.body).fontFamily,
@@ -100,10 +101,12 @@
                 const payload = { replies: pending, acks };
                 if (dirty) { payload.snapshot = snapshot(); dirty = false; }
                 const response = await rawFetch(`/api/rank-independent/${channel.id}/owner`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rank-Owner': channel.ownerKey }, body: JSON.stringify(payload) });
-                if (!response.ok) { reset('독립창 연결이 종료되었습니다.'); return; }
+                if (response.status === 404) { reset('독립창 연결이 종료되었습니다.'); return; }
+                if (!response.ok) throw new Error('독립창 연결 재시도');
                 const result = await response.json();
                 if (result.connected) { connected = true; peerLastSeen = Date.now(); message.textContent = ''; }
-                if (result.closed || (connected && Date.now() - peerLastSeen > 120000)) { reset(); return; }
+                if (result.closed) { reset(); return; }
+                if (connected && Date.now() - peerLastSeen > 120000) message.textContent = '독립창 연결 재시도 중';
                 if (!connected && Date.now() - started > 20000) {
                     await downloadInstaller(); return;
                 }

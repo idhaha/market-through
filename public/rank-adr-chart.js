@@ -254,6 +254,7 @@
                     panel.querySelector('h2').textContent = 'ADR';
                     output.textContent = points.length ? `${points.at(-1).adr.toFixed(1)}%` : '—';
                     canvas.setAttribute('aria-label', `${market.toUpperCase()} ADR 일별 ${range.toUpperCase()} 차트`);
+                    window.setRankCardConnection?.(panel, true);
                     status.textContent = points.length ? `${dateKey(points[0].t)} ~ ${dateKey(points.at(-1).t)}` : '일별 데이터 없음';
                     draw(); loadCandles(); return;
                 }
@@ -317,9 +318,10 @@
                 canvas.setAttribute('aria-label', `${chartDay} ADR ${closing ? '마감값 · 분봉 기록 없음' : '분봉 차트'}`);
                 tooltip.hidden = true;
                 status.textContent = points.length ? `${chartDay} · ${timeLabel(points.at(-1).t)} 기준 · ${session}` : closing ? `${chartDay} · ${session} · 마감값 · 분봉 기록 없음` : `${day} · 당일 데이터 대기 중`;
+                window.setRankCardConnection?.(panel, !data.sourceError);
                 if (data.sourceError) status.textContent += ` · ${data.sourceError}`;
                 hover = null; draw(); loadCandles();
-            } catch (error) { if (error.name !== 'AbortError') status.textContent = 'ADR 조회 실패 · 다음 Rank 갱신 때 재시도'; }
+            } catch (error) { if (error.name !== 'AbortError') { window.setRankCardConnection?.(panel, false); status.textContent = 'ADR 조회 실패 · 다음 Rank 갱신 때 재시도'; } }
         };
         function changeView() { controller?.abort(); candleController?.abort(); viewStart=0; viewCount=null; drag=null; points = []; closing = null; hover = null; candles = []; tooltip.hidden = true; candleTip.hidden = true; output.textContent = '—'; draw(); window.refreshRankAdrChart(); }
         panel.querySelector('.rank-market-choice').addEventListener('change', event => { selectedMarket = event.target.value; chartDay = dateKey(Date.now()); changeView(); });

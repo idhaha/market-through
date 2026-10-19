@@ -175,6 +175,7 @@
                     const amount=data[m].at(-1)?.market_turnover, base=previous[m];
                     return Number.isFinite(amount)&&Number.isFinite(base)&&base>0?`${names[m]} 전일 대비 ${(amount/base*100).toFixed(1)}%`:null;
                 }).filter(Boolean);
+                window.setRankCardConnection?.(panel, !messages.some(message=>/실패/.test(message)));
                 status.textContent=['1분 누적 거래대금은 지수×거래량 기반 추정값',...ratios,...messages].join(' · ');draw();return;
             }
             const today=dateKey(Date.now()), fromDate=new Date(`${today}T00:00:00Z`);
@@ -209,6 +210,7 @@
                 }else messages.push(data[m].length ? `${names[m]} 갱신 실패 · 이전 데이터 표시 · 다음 갱신 때 재시도` : `${names[m]} 조회 실패 · 다음 갱신 때 재시도`);
             });
             dailyData=data;dates=[...new Set(Object.values(data).flat().map(p=>p.t))].sort((a,b)=>a-b);hover=null;tip.hidden=true;
+            window.setRankCardConnection?.(panel, !messages.some(message=>/실패/.test(message)));
             status.textContent=messages.join(' · ') || (dates.length?`${dateKey(dates[0])} ~ ${dateKey(dates.at(-1))} · 당일 거래대금은 누적값`:'일별 데이터 없음');draw();
         };
         panel.querySelectorAll('[data-mode]').forEach(button=>button.addEventListener('click',()=>{

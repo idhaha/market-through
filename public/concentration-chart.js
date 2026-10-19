@@ -384,12 +384,14 @@
                         : Math.max(0, Math.min(state.points.length - state.visible, anchoredStart < 0 ? previous.start : anchoredStart));
                 }
                 market.textContent = result.market === 'K' ? '코스피' : '코스닥';
+                window.setRankCardConnection?.('#concentrationChartPanel', true);
                 const valid = state.points.filter(point => point.value != null).length;
                 status.textContent = result.history_pending ? '시장 과거 데이터가 더 필요합니다. 추가 조회 버튼을 눌러 주세요.'
                     : !state.points.length ? '표시할 데이터가 없습니다.' : !valid ? '같은 날짜·시간의 시장 거래대금이 없어 계산할 수 없습니다.'
                     : '';
             } catch (error) {
                 if (request !== state.request || error.name === 'AbortError') return;
+                window.setRankCardConnection?.('#concentrationChartPanel', false);
                 if (!append && !refresh) { state.points = []; state.start = 0; state.visible = 0; }
                 status.textContent = `${error.message} · ${refresh ? '다음 갱신 주기에 다시 조회합니다.' : append ? '추가 조회 버튼으로 다시 시도하세요.' : '일/분 버튼으로 다시 시도하세요.'}`;
                 if (error.message.includes('만료')) { state.cursor = null; state.hasMore = false; }

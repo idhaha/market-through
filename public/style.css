@@ -2844,3 +2844,6 @@ body { height:100dvh; min-height:0; overflow:hidden; display:flex; flex-directio
 
 .base-interest-chart-help { display:none; flex-shrink:0; margin:0; padding:10px 16px; background:#fff; color:#64748b; font-size:13px; line-height:20px; }
 :has(> .base-interest-sources[data-view="charts"]) > .base-interest-chart-help { display:block; }
+#tab_rank .grid-container > .panel, #tab_rank .rank-chart-row > .panel, #tab_rank > .panel { position:relative; }
+.rank-connection-dot { position:absolute; left:7px; top:7px; width:7px; height:7px; border-radius:50%; background:#dc2626; z-index:4; pointer-events:auto; }
+.rank-connection-dot.is-connected { background:#16a34a; }
