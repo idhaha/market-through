@@ -47,6 +47,7 @@ internal sealed class IndependentForm : Form {
     string current;
     string allowed;
     bool ready, exiting;
+    readonly System.Windows.Forms.Timer boundsRecovery = new System.Windows.Forms.Timer { Interval = 2000 };
     NamedPipeServerStream serverPipe;
     readonly JavaScriptSerializer json = new JavaScriptSerializer();
     internal IndependentForm(string url) : this(url, null) { }
@@ -57,8 +58,13 @@ internal sealed class IndependentForm : Form {
         MinimumSize = new Size(320, 160); Size = new Size(1250, 800); StartPosition = FormStartPosition.Manual;
         Directory.CreateDirectory(folder); RestoreBoundsFromDisk();
         web.Dock = DockStyle.Fill; Controls.Add(web);
-        Activated += delegate { EnsureVisibleBounds(); };
+        Activated += delegate { QueueBoundsRecovery(); };
+        ResizeEnd += delegate { EnsureVisibleBounds(); };
+        Microsoft.Win32.SystemEvents.DisplaySettingsChanged += DisplaySettingsChanged;
+        boundsRecovery.Tick += delegate { if (Visible && Control.MouseButtons == MouseButtons.None && !Capture) EnsureVisibleBounds(); };
+        Disposed += delegate { boundsRecovery.Dispose(); Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= DisplaySettingsChanged; };
         Shown += async delegate {
+            EnsureVisibleBounds(); boundsRecovery.Start();
             try {
                 var env = await CoreWebView2Environment.CreateAsync(null, Path.Combine(folder, "WebView2"));
                 await web.EnsureCoreWebView2Async(env);
@@ -92,6 +98,7 @@ internal sealed class IndependentForm : Form {
                     else if (message.StartsWith("resize-window:")) {
                         var values = message.Substring(14).Split(','); int dw, dh, vw, vh;
                         if (values.Length != 4 || !int.TryParse(values[0], out dw) || !int.TryParse(values[1], out dh) || !int.TryParse(values[2], out vw) || !int.TryParse(values[3], out vh) || vw < 1 || vh < 1 || Math.Abs((long)dw) > 10000 || Math.Abs((long)dh) > 10000) return;
+                        if (WindowState == FormWindowState.Minimized) return;
                         WindowState = FormWindowState.Normal;
                         var area = Screen.FromRectangle(Bounds).WorkingArea;
                         Width = Math.Max(MinimumSize.Width, Math.Min(area.Width, Width + (int)Math.Round(dw * (double)web.ClientSize.Width / vw)));
@@ -104,6 +111,7 @@ internal sealed class IndependentForm : Form {
             } catch (Exception error) { MessageBox.Show("WebView2를 초기화할 수 없습니다. 독립창 앱을 다시 설치하세요.\n" + error.Message, "독립창"); Close(); }
         };
         FormClosing += delegate {
+            boundsRecovery.Stop();
             NotifyClose();
             exiting = true; if (serverPipe != null) serverPipe.Dispose();
             try {
@@ -156,12 +164,19 @@ internal sealed class IndependentForm : Form {
         if (WindowState != FormWindowState.Normal) return;
         var bounds = Bounds;
         var area = Screen.FromRectangle(bounds).WorkingArea;
-        var visible = Rectangle.Intersect(bounds, area);
-        if (visible.Width >= Math.Min(160, bounds.Width) && visible.Height >= Math.Min(80, bounds.Height)) return;
+        var caption = new Rectangle(bounds.Left, bounds.Top, bounds.Width, SystemInformation.CaptionHeight + SystemInformation.FrameBorderSize.Height);
+        var visible = Rectangle.Intersect(caption, area);
+        if (visible.Width >= Math.Min(160, bounds.Width) && visible.Height == caption.Height) return;
         bounds.Width = Math.Min(bounds.Width, area.Width);
         bounds.Height = Math.Min(bounds.Height, area.Height);
         bounds.X = Math.Max(area.Left, Math.Min(bounds.X, area.Right - bounds.Width));
         bounds.Y = Math.Max(area.Top, Math.Min(bounds.Y, area.Bottom - bounds.Height));
         Bounds = bounds;
     }
+    void QueueBoundsRecovery() {
+        if (exiting || IsDisposed || !IsHandleCreated) return;
+        try { BeginInvoke(new Action(delegate { if (!IsDisposed && !exiting) EnsureVisibleBounds(); })); }
+        catch (InvalidOperationException) { }
+    }
+    void DisplaySettingsChanged(object sender, EventArgs e) { QueueBoundsRecovery(); }
 }

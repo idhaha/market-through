@@ -41,6 +41,14 @@ class RankNativeSmoke {
                     form.Bounds = new Rectangle(999999, 999999, 900, 600);
                     recover.Invoke(form, null);
                     Check(Screen.FromRectangle(form.Bounds).WorkingArea.Contains(form.Bounds), "Running offscreen window recovery");
+                    var area = Screen.FromRectangle(form.Bounds).WorkingArea;
+                    form.Bounds = new Rectangle(area.Left + 20, area.Top - 200, 900, 600);
+                    recover.Invoke(form, null);
+                    Check(form.Top >= area.Top && area.Contains(form.Bounds), "Recover inaccessible title bar even when most of the window remains visible");
+                    form.WindowState = FormWindowState.Minimized;
+                    recover.Invoke(form, null);
+                    Check(form.WindowState == FormWindowState.Minimized, "Periodic bounds recovery must preserve intentional minimization");
+                    form.WindowState = FormWindowState.Normal;
                     Check(form.Controls.Count == 1 && form.Controls[0] is WebView2, "Web page fills the native client area");
                     form.TopMost = true; Check(form.TopMost, "TopMost enabled"); form.TopMost = false; Check(!form.TopMost, "TopMost disabled");
                     Check(form.FormBorderStyle == FormBorderStyle.Sizable && form.ControlBox && form.MinimizeBox && form.MaximizeBox, "Standard Windows frame");
