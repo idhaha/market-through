@@ -10,10 +10,10 @@
 **실패 시**: 키움 키 누락 → HTTP 500. 시장 미확인 또는 시장 전체 거래대금 조회 실패·0·유효하지 않은 값이면 `concentration_rate`는 JSON `null`이며 UI에서 `-`로 표시한다.
 
 ## GET /api/stock
-**Query**: `qry_tp` (1~5)
+**Query**: `qry_tp` (1~5), `efriend_refresh=0` (완료 목록 반영 전용: 새 대주 수집을 시작하지 않음; 기본은 새 수집 요청)
 **Response 200**:
 ```json
-{ "data": { "kiwoom": [ /* WatchRankEntry[] */ ], "efriend": [ /* LendableStockEntry[] */ ] } }
+{ "data": { "kiwoom": [ /* WatchRankEntry[] */ ], "efriend": [ /* LendableStockEntry[] */ ], "efriend_scan": { /* LendableScanStatus */ } } }
 ```
 **실패 시**: 한투 키 누락 → `data.efriend`는 빈 배열(`[]`), 서버 오류 없음.
 
@@ -148,3 +148,10 @@ ADR history 원천의 max/min 필드는 전달될 수 있으나 화면에는 MAX
 - 서버는 Jusikbot risk-indicators의 최신 날짜를 확인한 뒤 risk-history의 3y/6m 제공 범위를 조회한다. 임의 from/to 증분 요청은 지원 계약이 아니며 날짜별 누락분만 저장한다.
 - `GET /api/adr/today?market=kospi|kosdaq`는 수신 자료와 서버의 최신 하루 기록을 병합한다. 원천 실패 시 기록이 있으면 intraday/intradayDate/sourceError와 함께 제공한다. 저장 이력이 없으면 실패 응답을 유지한다.
 - 기존 `/api/adr/candles?market=kospi&mode=day&from=...&to=...`의 실제 OHLC를 위험지표 아래 캔들에 재사용한다. 위험지표 일별 값에서 OHLC를 생성하지 않는다.
+
+
+## GET /api/lendable-status (2026-10-20)
+
+기존 API 인증을 적용한다. 응답은 Cache-Control: no-store, { success: true, scan: LendableScanStatus }이다. 메모리 상태만 읽고 마스터 다운로드나 외부 대주 요청을 시작하지 않는다.
+
+GET /api/stock의 data.efriend_scan은 반환 목록을 얻은 시점의 상태 스냅샷이다. 한투 설정/토큰이 없으면 null이다. data.efriend는 수집 중 기존 공개 목록(최초에는 이번 전체 응답)을 반환하고 정상 완료 후 전체 병합 목록을 반환한다. 상태의 total/checked/count/running/errors/completedAt 의미는 data-model.md를 따른다. 반환 배열에 100개 상한을 두지 않는다.

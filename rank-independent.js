@@ -33,7 +33,7 @@ function createRankIndependentRelay({ now = Date.now, refresh, request, schedule
         channel.refreshing = true;
         const generation = channel.generation;
         try {
-            const data = await refresh({ ...channel.snapshot, peerChart: channel.peerChart }, channel.owner);
+            const data = await refresh({ ...channel.snapshot, peerChart: channel.peerChart, peerSupply: channel.peerSupply }, channel.owner);
             if (generation === channel.generation) {
                 channel.data = { ...data, at: now() }; channel.error = false; channel.version++;
             }
@@ -51,6 +51,11 @@ function createRankIndependentRelay({ now = Date.now, refresh, request, schedule
         channel.requests = (channel.requests || 0) + 1;
         try {
             const result = await request(command, channel.owner);
+            if (command.path === '/api/supply/watchlist' && command.method === 'PUT' && result.success) {
+                if (channel.snapshot?.supply) channel.snapshot.supply.config = result;
+                channel.generation++; channel.nextRefresh = 0; channel.data = null; channel.version++;
+                channel.commands.push({ id: crypto.randomUUID(), type: 'supply-watchlist' });
+            }
             if (command.path === '/api/concentration-chart' && !command.body?.cursor && !command.body?.debug_five && result.success && channel.snapshot) {
                 const chart = { ...channel.snapshot.chart, selection: command.pinned ? channel.snapshot.chart?.selection : command.selection,
                     mode: command.body.mode, interval: command.body.interval };
@@ -64,7 +69,7 @@ function createRankIndependentRelay({ now = Date.now, refresh, request, schedule
                 }
             }
             channel.replies[command.id] = { id: command.id, status: 200, body: JSON.stringify(result) };
-        } catch (error) { channel.replies[command.id] = { id: command.id, status: 502, body: JSON.stringify({ success: false, error: error.message }) }; }
+        } catch (error) { channel.replies[command.id] = { id: command.id, status: error.status || 502, body: JSON.stringify({ success: false, error: error.message }) }; }
         finally {
             channel.requests--;
             while (Object.keys(channel.replies).length > 32 || Buffer.byteLength(JSON.stringify(channel.replies)) > 4000000) delete channel.replies[Object.keys(channel.replies)[0]];
@@ -89,6 +94,11 @@ function createRankIndependentRelay({ now = Date.now, refresh, request, schedule
             if (req.body.snapshot) {
                 if (Buffer.byteLength(JSON.stringify(req.body.snapshot)) > 2000000) return res.status(413).json({ error: '데이터가 너무 큽니다.' });
                 const incoming = req.body.snapshot;
+                if (channel.pendingSupply) {
+                    const key = value => JSON.stringify([value?.selected, value?.mode, value?.showCandles, value?.visibleSeries]);
+                    if (key(incoming.supply) === key(channel.pendingSupply)) channel.pendingSupply = null;
+                    else incoming.supply = channel.pendingSupply;
+                }
                 if (channel.pendingChart) {
                     const key = chart => JSON.stringify([chart?.selection?.code, chart?.mode, chart?.interval]);
                     if (key(incoming.chart) === key(channel.pendingChart)) channel.pendingChart = null;
@@ -96,7 +106,8 @@ function createRankIndependentRelay({ now = Date.now, refresh, request, schedule
                 }
                 for (const [key, value] of Object.entries(channel.overrides)) if (incoming.conditions?.[key] === value) delete channel.overrides[key];
                 incoming.conditions = { ...incoming.conditions, ...channel.overrides };
-                const key = value => JSON.stringify([value?.conditions, value?.chart?.selection?.code, value?.chart?.mode, value?.chart?.interval]);
+                if (channel.peerSupply && incoming.supply) channel.peerSupply = { ...channel.peerSupply, mode: incoming.supply.mode, showCandles: incoming.supply.showCandles, visibleSeries: incoming.supply.visibleSeries };
+                const key = value => JSON.stringify([value?.conditions, value?.chart?.selection?.code, value?.chart?.mode, value?.chart?.interval, value?.supply?.selected, value?.supply?.mode, value?.supply?.showCandles, value?.supply?.visibleSeries, value?.supply?.config?.revision]);
                 if (key(incoming) !== key(channel.snapshot)) { channel.generation++; channel.nextRefresh = 0; channel.data = null; }
                 channel.snapshot = incoming; channel.version++;
             }
@@ -122,6 +133,16 @@ function createRankIndependentRelay({ now = Date.now, refresh, request, schedule
                 if (channel.commands.length >= 32 || (channel.requests || 0) >= 4 || Buffer.byteLength(JSON.stringify(req.body.command)) > 8192) return res.status(429).json({ error: '요청이 너무 많습니다.' });
                 if (!channel.commandIds.has(id)) {
                     const command = req.body.command;
+                    if (command.type === 'supply-display' && channel.snapshot?.supply && ['day', 'minute'].includes(command.settings?.mode)) {
+                        const settings = command.settings;
+                        const old = channel.snapshot.supply;
+                        const selected = command.pinned ? old.selected : settings.selected;
+                        const changed = selected !== old.selected || settings.mode !== old.mode;
+                        channel.snapshot.supply = { ...old, ...settings, selected, ...(changed ? { points: [], candles: [], cursor: null, hasMore: false, priceCursor: null, minuteDays: [], priceHistory: [] } : {}) };
+                        channel.peerSupply = command.pinned ? settings : null;
+                        channel.pendingSupply = channel.snapshot.supply;
+                        channel.generation++; channel.nextRefresh = 0; channel.data = null; channel.version++;
+                    }
                     if (command.type === 'request' && command.path === '/api/concentration-chart' && command.pinned && !command.body?.cursor && !command.body?.debug_five) {
                         channel.peerChart = { selection: command.selection, mode: command.body?.mode, interval: command.body?.interval };
                     }
@@ -134,7 +155,7 @@ function createRankIndependentRelay({ now = Date.now, refresh, request, schedule
                         channel.generation++; channel.nextRefresh = 0; channel.version++;
                     }
                     if (command.type === 'refresh') { channel.generation++; channel.nextRefresh = 0; }
-                    if (command.type === 'request' && request && /^\/api\/concentration-(chart|stock|stocks)(\?|$)/.test(command.path || '')) executeRequest(channel, command);
+                    if (command.type === 'request' && request && /^\/api\/(?:concentration-(chart|stock|stocks)|supply\/(watchlist|chart|candles))(\?|$)/.test(command.path || '')) executeRequest(channel, command);
                     else channel.commands.push(command);
                     channel.commandIds.add(id);
                     while (channel.commandIds.size > 128) channel.commandIds.delete(channel.commandIds.values().next().value);

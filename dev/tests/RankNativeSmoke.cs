@@ -76,10 +76,10 @@ class RankNativeSmoke {
                         bool resized = false;
                         for (int attempt = 0; attempt < 20; attempt++) {
                             await Task.Delay(100);
-                            var result = await core.ExecuteScriptAsync("document.querySelector('#transactionBody tr').getBoundingClientRect().height < window.__rowBefore && getComputedStyle(document.querySelector('#transactionBody td')).fontSize === window.__fontBefore");
+                            var result = await core.ExecuteScriptAsync("document.querySelector('#transactionBody tr').getBoundingClientRect().height <= window.__rowBefore && getComputedStyle(document.querySelector('#transactionBody td')).fontSize === window.__fontBefore && document.querySelectorAll('#tab_rank > .panel').length === 3 && document.getElementById('rankSupplyChartPanel').offsetTop > document.getElementById('concentrationChartPanel').offsetTop");
                             if (result == "true") { resized = true; break; }
                         }
-                        Check(resized, "Real WebView2 table rows must resize while font size stays fixed");
+                        Check(resized, "Real WebView2 must keep three vertical cards and fixed table typography at its minimum card height");
                         Console.WriteLine("PASS real native WebView2 page and capability relay shared snapshot");
                     }
                 } catch (Exception error) { Console.Error.WriteLine(error); failure = error; }

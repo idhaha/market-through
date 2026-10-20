@@ -590,6 +590,8 @@ function unlockApp(user = null) {
     if (tabContainer) tabContainer.style.display = 'flex';
     if (tabContents) tabContents.style.display = 'block';
     console.log("🚀 App Unlocked & Ready");
+    window.refreshServerStorage?.();
+    window.refreshRankSupplyChart?.();
 }
 
 function setCalendarSyncStatus(message, isError = false) {
@@ -1202,6 +1204,8 @@ async function loadTransactionRank({ refreshMarketCharts = true, reportStatus = 
         window.refreshRankVolatilityChart?.();
         window.refreshRankBreadthChart?.();
         window.refreshRankSentimentChart?.();
+        window.refreshRankSupplyChart?.();
+        window.refreshServerStorage?.();
     }
     if (reportStatus) updateStatus('loading', '거래대금 조회 중...');
     const mrktTp = mrktTpSelect.value;

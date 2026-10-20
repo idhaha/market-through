@@ -53,6 +53,7 @@ authorized_emails.json.*.tmp
 data/fred-cache/
 data/adr-minutes/
 data/volatility/
+data/supply/
 
 # Development outputs and historical one-off tools
 /dev/output/

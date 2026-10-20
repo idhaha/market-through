@@ -28,8 +28,8 @@
         });
     }
     window.fetch = async (input, options = {}) => {
-        if (typeof input !== 'string' || !/^\/api\/concentration-(chart|stock|stocks)(\?|$)/.test(input)) return rawFetch(input, options);
-        const result = await command({ type: 'request', path: input, body: options.body ? JSON.parse(options.body) : null,
+        if (typeof input !== 'string' || !/^\/api\/(?:concentration-(chart|stock|stocks)|supply\/(watchlist|chart|candles))(\?|$)/.test(input)) return rawFetch(input, options);
+        const result = await command({ type: 'request', path: input, method: options.method || 'GET', body: options.body ? JSON.parse(options.body) : null,
             selection: window.getRankChartState?.()?.selection, pinned: document.getElementById('rankStockPinned').checked }, options.signal);
         return new Response(result.body, { status: result.status, headers: { 'Content-Type': 'application/json' } });
     };
@@ -39,6 +39,31 @@
             window.chrome?.webview?.postMessage(`topmost:${event.target.checked}`);
         });
         const layout = document.getElementById('tab_rank');
+        let supplyPinned, supplyKey = '', supplySettingsPending = null;
+        function mountSupply() {
+            const supply = document.getElementById('rankSupplyChartPanel'), header = supply.querySelector('.concentration-chart-header');
+            const content = document.createElement('div'); content.id = 'independentSupplyContent';
+            content.append(...[...supply.children].filter(node => node !== header && !node.classList.contains('rank-connection-dot'))); supply.append(content);
+            const label = document.createElement('label'); label.className = 'independent-supply-pin';
+            supplyPinned = document.createElement('input'); supplyPinned.type = 'checkbox'; supplyPinned.id = 'rankSupplyPinned';
+            label.append(supplyPinned, ' 종목동기화 해제'); header.append(label);
+            collapseControl(supply, header.querySelector('h2'), [content]);
+            supplyPinned.addEventListener('change', () => {
+                if (!supplyPinned.checked && lastSnapshot?.supply) window.applyRankSupplyState?.(lastSnapshot.supply);
+                sendSupplySettings();
+            });
+            if (lastSnapshot?.supply) window.applyRankSupplyState?.(lastSnapshot.supply);
+        }
+        if (document.getElementById('rankSupplyChartPanel')) mountSupply();
+        else document.addEventListener('rank-supply-ready', mountSupply, { once: true });
+        function sendSupplySettings() {
+            const value = window.getRankSupplyState?.(); if (!value) return;
+            const settings = { selected: value.selected, mode: value.mode, showCandles: value.showCandles, visibleSeries: value.visibleSeries };
+            const key = JSON.stringify([settings, !!supplyPinned?.checked]);
+            if (key === supplyKey) return;
+            supplyKey = key; supplySettingsPending = enqueue({ type: 'supply-display', settings, pinned: !!supplyPinned?.checked });
+        }
+        document.addEventListener('rank-supply-state', sendSupplySettings);
         function collapsedSize(panel) {
             const heading = panel.querySelector('.independent-panel-title');
             const style = getComputedStyle(panel);
@@ -48,21 +73,23 @@
         }
         let foldLayout = null;
         let candleResizeHeight = null;
-        let candleWindowBase = null;
+        const candleWindowBases = new Map();
         const candleHeight = 190;
         let restoringInitialDisplay = false;
         let initialDisplayApplied = false;
         document.addEventListener('rank-candle-display', event => {
-            const chart = document.getElementById('concentrationChartPanel');
+            const chart = document.getElementById(event.detail.panel || 'concentrationChartPanel');
             const before = layout.getBoundingClientRect();
-            layout.classList.toggle('independent-candle-open', event.detail.open);
+            layout.classList.toggle('independent-candle-open', !!layout.querySelector('.concentration-candle-area:not([hidden]), .rank-adr-candle-area:not([hidden])'));
             // The initial server snapshot describes the current state; only a user toggle changes window size.
             if (restoringInitialDisplay) return;
             const delta = event.detail.open ? candleHeight : -candleHeight;
-            if (foldLayout) foldLayout.sizes[1].height = Math.max(300, foldLayout.sizes[1].height + delta);
-            if (chart.classList.contains('independent-collapsed')) { candleWindowBase = null; return; }
+            let candleWindowBase = candleWindowBases.get(chart.id);
+            if (foldLayout) { const index = [...layout.children].indexOf(chart); foldLayout.sizes[index].height = Math.max(300, foldLayout.sizes[index].height + delta); }
+            if (chart.classList.contains('independent-collapsed')) { candleWindowBases.delete(chart.id); return; }
             if (event.detail.open) {
                 candleWindowBase = { layoutHeight: before.height, viewportHeight: innerHeight };
+                candleWindowBases.set(chart.id, candleWindowBase);
             }
             candleResizeHeight = Math.max(300, !event.detail.open && candleWindowBase ? candleWindowBase.layoutHeight : before.height + delta);
             layout.style.minHeight = candleResizeHeight + 'px';
@@ -72,9 +99,10 @@
                     ? [...layout.children].map((item, index) => item.classList.contains('independent-collapsed') ? (item.querySelector('.independent-panel-title').offsetHeight + 40) + 'px' : foldLayout.sizes[index].height + 'px').join(' ')
                     : candleResizeHeight + 'px';
             }
-            const viewportDelta = !event.detail.open && candleWindowBase ? candleWindowBase.viewportHeight - innerHeight : delta;
+            const viewportDelta = !event.detail.open && candleWindowBase ? Math.min(0, candleWindowBase.viewportHeight - innerHeight) : delta;
+            for (const [key, value] of candleWindowBases) if (key !== chart.id) { value.layoutHeight += delta; value.viewportHeight += viewportDelta; }
             window.chrome?.webview?.postMessage(`resize-window:0,${Math.round(viewportDelta)},${innerWidth},${innerHeight}`);
-            if (!event.detail.open) candleWindowBase = null;
+            if (!event.detail.open) candleWindowBases.delete(chart.id);
         });
         window.addEventListener('resize', () => {
             if (candleResizeHeight !== null && layout.clientHeight >= candleResizeHeight && innerHeight >= candleResizeHeight + document.querySelector('.independent-toolbar').offsetHeight + 16) {
@@ -86,16 +114,16 @@
             // Keep manual resizing available after the native fold resize completes.
             layout.style.flex = '1'; layout.style.width = '100%'; layout.style.height = 'auto';
             if (foldLayout.stacked) {
-                layout.style.gridTemplateRows = panels.map(item => item.classList.contains('independent-collapsed') ? collapsedSize(item).height + 'px' : 'minmax(300px, 1fr)').join(' ');
+                layout.style.gridTemplateRows = panels.map(item => item.classList.contains('independent-collapsed') ? collapsedSize(item).height + 'px' : 'minmax(500px, 1fr)').join(' ');
             } else {
                 layout.style.gridTemplateColumns = panels.map(item => item.classList.contains('independent-collapsed') ? collapsedSize(item).width + 'px' : 'minmax(0, 1fr)').join(' ');
                 layout.style.gridTemplateRows = 'minmax(300px, 1fr)';
             }
         });
         function resizeForFold(panel, toggle) {
-            layout.style.minHeight = ''; candleResizeHeight = null; candleWindowBase = null;
+            layout.style.minHeight = ''; candleResizeHeight = null; candleWindowBases.clear();
             const panels = [...layout.children];
-            if (!foldLayout) foldLayout = { stacked: panels[1].offsetTop > panels[0].offsetTop + 20,
+            if (!foldLayout) foldLayout = { stacked: true,
                 sizes: panels.map(item => ({ width: item.offsetWidth, height: item.offsetHeight })) };
             const index = panels.indexOf(panel);
             if (!panel.classList.contains('independent-collapsed')) foldLayout.sizes[index] = { width: panel.offsetWidth, height: panel.offsetHeight };
@@ -104,21 +132,18 @@
                 if (!item.classList.contains('independent-collapsed')) return foldLayout.sizes[i];
                 return collapsedSize(item);
             });
-            const width = foldLayout.stacked ? Math.max(...sizes.map(item => item.width)) : sizes[0].width + sizes[1].width + 14;
-            const height = foldLayout.stacked ? sizes[0].height + sizes[1].height + 14 : Math.max(...sizes.map(item => item.height));
+            const height = foldLayout.stacked ? sizes.reduce((sum, item) => sum + item.height, 0) + 14 * (sizes.length - 1) : Math.max(...sizes.map(item => item.height));
             layout.style.gridTemplateColumns = foldLayout.stacked ? 'minmax(0, 1fr)' : sizes.map(item => item.width + 'px').join(' ');
             layout.style.gridTemplateRows = foldLayout.stacked ? sizes.map(item => item.height + 'px').join(' ') : height + 'px';
-            layout.style.flex = 'none'; layout.style.width = width + 'px'; layout.style.height = height + 'px';
+            layout.style.flex = 'none'; layout.style.width = '100%'; layout.style.height = height + 'px';
             layout.scrollTop = 0; document.scrollingElement.scrollTop = 0;
             const bodyStyle = getComputedStyle(document.body);
             const toolbar = document.querySelector('.independent-toolbar');
             const toolbarStyle = getComputedStyle(toolbar);
-            const toolbarWidth = [...toolbar.children].reduce((sum, child) => sum + child.offsetWidth, 0) + (parseFloat(toolbarStyle.columnGap) || 0) * Math.max(0, toolbar.children.length - 1);
-            const viewportWidth = Math.ceil(Math.max(width, toolbarWidth) + parseFloat(bodyStyle.paddingLeft) + parseFloat(bodyStyle.paddingRight));
             const viewportHeight = Math.ceil(height + toolbar.offsetHeight + parseFloat(toolbarStyle.marginTop) + parseFloat(toolbarStyle.marginBottom) + parseFloat(bodyStyle.paddingTop) + parseFloat(bodyStyle.paddingBottom));
             // A candle may overflow the monitor: size from the actual viewport,
             // never subtract an offscreen content height from the native window.
-            window.chrome?.webview?.postMessage(`resize-window:${viewportWidth - innerWidth},${viewportHeight - innerHeight},${innerWidth},${innerHeight}`);
+            window.chrome?.webview?.postMessage(`resize-window:0,${viewportHeight - innerHeight},${innerWidth},${innerHeight}`);
             if (!panels.some(item => item.classList.contains('independent-collapsed'))) {
                 // Resume responsive sizing after the native window restores its full size.
                 setTimeout(() => { layout.removeAttribute('style'); foldLayout = null; }, 100);
@@ -177,6 +202,14 @@
                 applyConnection('#concentrationChartPanel', snapshot.chartConnection, snapshot.chartConnected, legacyHealthy);
             }
             lastSnapshot = snapshot;
+            if (snapshot.supply && !pending.size && !supplySettingsPending) {
+                const own = window.getRankSupplyState?.();
+                const value = supplyPinned?.checked && own && own.selected !== snapshot.supply.selected ? { ...snapshot.supply, selected: own.selected, points: own.mode === snapshot.supply.mode ? own.points : [], candles: own.mode === snapshot.supply.mode ? own.candles : [], cursor: own.cursor, hasMore: own.hasMore, priceCursor: own.priceCursor, minuteDays: own.minuteDays, priceHistory: own.priceHistory } : snapshot.supply;
+                restoringInitialDisplay = !initialDisplayApplied;
+                window.applyRankSupplyState?.(value); restoringInitialDisplay = false;
+                const current = window.getRankSupplyState?.();
+                if (current) supplyKey = JSON.stringify([{ selected: current.selected, mode: current.mode, showCandles: current.showCandles, visibleSeries: current.visibleSeries }, !!supplyPinned?.checked]);
+            }
             if (snapshot.refreshStatus) {
                 document.getElementById('independentLastUpdate').textContent = snapshot.refreshStatus.time;
                 document.getElementById('independentStatusText').textContent = snapshot.refreshStatus.text;
@@ -232,6 +265,7 @@
         pin.addEventListener('change', () => { if (!pin.checked) window.applyRankChartState?.(lastSnapshot?.chart); });
         document.getElementById('rankIndependentRefresh').addEventListener('click', () => {
             enqueue({ type: 'refresh' }); if (pin.checked) window.refreshConcentrationChart?.();
+            window.refreshRankSupplyChart?.();
         });
         for (const key of ['mrktTp', 'stexTp', 'refreshInterval']) document.getElementById(key).addEventListener('change', event => { enqueue({ type: 'conditions', values: { [key]: event.target.value } }); });
         function formatServerRefreshTime(timestamp) {
@@ -262,6 +296,7 @@
                     return `<tr ${attributes}><td class="align-right">${escape(stock.rank || index + 1)}</td><td class="market-type">${escape(stock.mkt_type || '-')}</td><td>${escape(name)}</td><td class="align-right num-cell ${rate > 0 ? 'price-up' : rate < 0 ? 'price-down' : ''}">${Number.isFinite(rate) ? rate.toFixed(2) + '%' : '-'}</td><td class="align-right num-cell">${(amount > 100000000 ? Math.round(amount / 1000000) : amount).toLocaleString()}</td><td class="align-right num-cell">${stock.concentration_rate != null && Number.isFinite(Number(stock.concentration_rate)) ? Number(stock.concentration_rate) + '%' : '-'}</td></tr>`;
                 }).join('') || '<tr><td colspan="6">데이터가 없습니다.</td></tr>';
                 apply({ ...lastSnapshot, rows, chart: info.data.chart || lastSnapshot.chart,
+                    supply: info.data.peerSupply || info.data.supply || lastSnapshot.supply,
                     tableConnection: { ok: !info.error, at: Date.now() - serverAge }, chartConnection: { ok: !info.error, at: Date.now() - serverAge },
                     refreshStatus: { time: formatServerRefreshTime(info.data.at), text: '완료' } });
             }
@@ -283,6 +318,7 @@
                 }
                 if (!response.ok) throw new Error('연결 실패');
                 const result = await response.json();
+                if (nextCommand?.id === supplySettingsPending) supplySettingsPending = null;
                 for (const reply of result.replies || []) { pending.get(reply.id)?.resolve(reply); pending.delete(reply.id); acknowledgements.push(reply.id); }
                 if (result.snapshot) { version = result.version; apply(result.snapshot); }
                 status.textContent = '';

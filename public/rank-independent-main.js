@@ -6,7 +6,7 @@
     if (mobile || !/Win/i.test(platform)) return;
     const rawFetch = window.fetch.bind(window);
     const inflight = new Map(), recent = new Map();
-    const allowed = path => /^\/api\/concentration-(chart|stock|stocks)(\?|$)/.test(path);
+    const allowed = path => /^\/api\/(?:concentration-(chart|stock|stocks)|supply\/(watchlist|chart|candles))(\?|$)/.test(path);
     // One query owner, including requests made on behalf of the native view.
     window.fetch = async (input, options = {}) => {
         if (typeof input !== 'string' || !allowed(input)) return rawFetch(input, options);
@@ -56,7 +56,7 @@
             const cell = document.querySelector('#transactionBody tr[data-chart-code] td');
             const style = cell && getComputedStyle(cell);
             return { tableConnection: window.getRankCardConnectionState?.('#transactionTable'), chartConnection: window.getRankCardConnectionState?.('#concentrationChartPanel'), tableConnected: window.getRankCardConnection?.('#transactionTable') === true, chartConnected: window.getRankCardConnection?.('#concentrationChartPanel') === true, rows: document.getElementById('transactionBody').innerHTML, chart: window.getRankChartState?.(), display: window.getConcentrationDisplaySettings?.(),
-                displayCommandId,
+                displayCommandId, supply: window.getRankSupplyState?.(),
                 refreshStatus: { time: document.getElementById('lastUpdate')?.textContent || '-', text: document.getElementById('statusText')?.textContent || '대기 중' },
                 typography: { rootFontSize: getComputedStyle(document.documentElement).fontSize, family: getComputedStyle(document.body).fontFamily,
                     pixelRatio: devicePixelRatio, cellFont: style?.fontSize, cellPadding: style && parseFloat(style.paddingTop), rowHeight: cell?.parentElement.getBoundingClientRect().height },
@@ -64,6 +64,11 @@
         }
         async function execute(command) {
             try {
+                if (command.type === 'supply-watchlist') { await window.refreshRankSupplyChart?.(); dirty = true; return; }
+                if (command.type === 'supply-display') {
+                    const settings = command.pinned ? { ...command.settings, selected: window.getRankSupplyState?.().selected || '' } : command.settings;
+                    window.applyRankSupplySettings?.(settings); dirty = true; return;
+                }
                 if (command.type === 'server-chart') { window.applyRankChartState?.(command.chart); dirty = true; return; }
                 if (command.type === 'conditions') {
                     for (const [id, value] of Object.entries(command.values || {})) {
@@ -88,7 +93,7 @@
                 const cached = recent.get(key);
                 let result = cached && Date.now() - cached.time < 5000 ? cached : null;
                 if (!result) {
-                    const response = await window.fetch(command.path, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body } : {});
+                    const response = await window.fetch(command.path, body ? { method: command.method === 'PUT' ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body } : {});
                     result = { body: await response.text(), status: response.status };
                 }
                 replies.push({ id: command.id, ...result });
@@ -146,6 +151,7 @@
             const key = JSON.stringify([chart.selection, chart.mode, chart.interval, chart.cursor, chart.busy, chart.status, chart.revision, window.getConcentrationDisplaySettings?.()]);
             if (key !== chartKey) { chartKey = key; dirty = true; }
         });
+        document.addEventListener('rank-supply-state', () => { dirty = true; });
         for (const id of ['mrktTp', 'stexTp', 'refreshInterval']) document.getElementById(id)?.addEventListener('change', () => { dirty = true; });
         window.addEventListener('resize', () => { dirty = true; });
         window.addEventListener('pagehide', () => { if (channel) rawFetch(`/api/rank-independent/${channel.id}/owner`, { method: 'DELETE', headers: { 'X-Rank-Owner': channel.ownerKey }, keepalive: true }); });

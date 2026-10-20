@@ -25,9 +25,9 @@ Rank 탭은 거래대금 상위(키움), 실시간 조회 순위(키움), 대주
 **Project Type**: 웹 서비스 — 단일 Express 서버가 API와 정적 프론트엔드(`public/`)를 함께 서빙
 **Cross-feature UI ownership**: 전역 `전체조회` 및 작은 화면 `더 보기` 작업 메뉴는 공통 UI 동작의 Source of Truth를 이 feature의 spec에서 관리하며, 구현은 기존 `public/app.js`/`index.html`의 전역 컨트롤을 기준으로 한다.
 
-**Performance Goals**: 초기 로드 5초 이내(SC-001), 자동 갱신 주기 오차 ±5초 이내(SC-002)
+**Performance Goals**: 대주 패널을 제외한 초기 로드 5초 이내(SC-001; 대주는 최초 로딩 안내 후 완료 결과 표시), 자동 갱신 주기 오차 ±5초 이내(SC-002)
 
-**Constraints**: 키움증권 REST API 초당 요청 제한(약 5회) 준수를 위해 종목별 상세 조회는 순차 처리 + 100ms 지연 적용. 각 패널 표시는 최대 20개 항목으로 제한.
+**Constraints**: 키움증권 REST API 초당 요청 제한(약 5회) 준수를 위해 종목별 상세 조회는 순차 처리 + 100ms 지연 적용. 거래대금/실시간 조회 순위 패널 표시는 최대 20개 항목으로 제한하며 대주 패널은 확보한 전체 종목을 표시한다.
 
 **Scale/Scope**: 1인 운영자 기준 소규모 트래픽(동시 접속 수 명 이내로 가정). 대규모 동시 사용자 대응은 범위 밖.
 
@@ -212,3 +212,24 @@ POST /api/concentration-chart에 {code:선택종목, mode:"minute", interval:5, 
 - ADR·변동성 원형 i 및 CNN/HY 탭 설명은 hover/focus/Escape를 지원한다. 기본 그리드는 #b8c1cc.
 - 순위 카드: 헤더 38px, 간격 10px, 본문 560px/행 28px, 긴 종목명 말줄임. `public/tab-scroll-layout.js`가 고정 헤더와 콘텐츠 스크롤 영역을 분리한다.
 - 관련 모의 검증은 tasks/quickstart에 기록하고 Oracle 운영 확인은 미완료로 남긴다. 기존 FR-037의 서버 저장 금지 설명은 FR-057로 대체한다.
+
+
+## 대주 조회 구현 정합성 (2026-10-20)
+
+FR-069~075/US9의 구현은 lendable-stocks.js에서 관리한다. 기존 단일 Express 서버와 정적 프론트엔드를 유지한다.
+
+- 마스터 ZIP은 공식 kospi_code.mst.zip/kosdaq_code.mst.zip을 새 수집마다 캐시 방지 쿼리/헤더로 다운로드한다. 종목코드와 마지막 대주가능 표시를 읽는다. 시장별 후보가 하나도 없으면 해당 시장 전체 코드로 폴백한다.
+- 새 수집의 CTSC2702R 전체 조회 결과를 batchSeed에 보관한다. 마스터 후보·직전 공개 목록·batchSeed 합집합에서 batchSeed에 있는 코드만 제외하고 200ms 간격으로 개별 조회한다. 다음조회 커서는 사용하지 않는다.
+- 공개 items와 수집 draft를 분리한다. 전체 정상 완료 시 한 번에 교체하며 실패한 코드/pending만 재개한다. 종목별 재시도는 2/4/6초 대기 후 최대 3회, 최종 실패 20건에서 일시 중단한다. 실패 후 1분이 지나 다음 요청에서 재개한다.
+- 수집 중 대주 현재가/시장정보 보강은 생략한다. 완료 후 보강은 동시 요청을 공유하고 30초 캐시하며 수집과 별개로 관리한다.
+- GET /api/lendable-status는 메모리 상태만 읽으며 약 2초 폴링한다. 완료 감지 후 GET /api/stock의 efriend_refresh=0으로 완료 목록을 반영해 재수집 루프를 막는다.
+- public/app.js의 efriendDisplayedCompletion으로 페이지의 완료 목록 표시 이력을 관리한다. 최초 로딩 때만 style.css의 블러/스피너와 inert를 적용하고 이후 갱신에는 상단 진행 안내만 표시한다.
+
+기존 Technical Context의 각 패널 최대 20개 설명은 대주 전체 렌더링의 상한으로 적용하지 않는다. 마스터 후보 조회는 종전 3,945종목 전수 조회를 대체한다. 시간·종목 수의 실측은 research.md에 기록하며 성능 SLA로 간주하지 않는다.
+## 2026-10-20 카드 상태점 구현 기록
+
+- `public/rank-connection-status.js`가 카드별 `{ok,at}` 상태를 관리하고 절대 위치 7px 점을 표시한다. 녹색 #16a34a, 빨강 #dc2626이며 카드 크기를 변경하지 않는다.
+- 최근 성공의 유효 기간은 선택 갱신 간격×2+90초 미만이다. 5초마다 상태를 재평가하고 online/offline 이벤트도 반영한다. 데이터 날짜가 아니라 수신·갱신 시각으로 판단한다.
+- 순위 요청은 응답 결과를, 차트는 각 로더의 성공·실패 및 저장 자료 fallback 경고를 반영한다.
+- 메인→독립창 snapshot에 tableConnection/chartConnection과 마지막 시각을 전달한다. 구형 snapshot 호환, 독립 선택 종목의 상태 보존, 카드 내부로 이동한 중복 점 정리를 포함한다.
+- 검증: rank-connection-status.test.cjs, rank-connection-sync.test.cjs, rank-independent-connection-ui.test.cjs.

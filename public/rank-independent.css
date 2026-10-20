@@ -1,5 +1,5 @@
 .rank-independent { margin: 0; padding: 8px; overflow: auto; min-width: 0; height: 100dvh; display: flex; flex-direction: column; }
-.rank-independent #tab_rank { display: grid; grid-template-columns: minmax(340px, 1fr) minmax(420px, 1.45fr); grid-template-rows: minmax(300px, 1fr); gap: 14px; align-items: stretch; flex: 1; min-height: 0; overflow: auto; }
+.rank-independent #tab_rank { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(3, minmax(500px, 1fr)); gap: 14px; align-items: stretch; flex: 1; min-height: 0; overflow: auto; }
 .rank-independent #tab_rank > .panel { display: flex; flex-direction: column; min-height: 0; }
 .rank-independent .panel-header, .independent-chart-heading, .independent-toolbar { flex-shrink: 0; }
 .rank-independent #independentTransactionContent { flex: 1; min-height: 0; }
@@ -43,10 +43,17 @@
 .independent-collapsed .independent-chart-heading > label { display: none; }
 .independent-collapsed .panel-header, .independent-collapsed .independent-chart-heading { margin-bottom: 0; padding-bottom: 0; }
 @media(max-width: 950px) {
-    .rank-independent #tab_rank { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(2, minmax(300px, 1fr)); }
-    .rank-independent #tab_rank.independent-candle-open { grid-template-rows: minmax(300px, 1fr) minmax(525px, 1fr); }
+    .rank-independent #tab_rank { grid-template-columns: minmax(0, 1fr); }
 }
 
 .independent-collapsed .independent-chart-heading > .concentration-stock-picker, .independent-collapsed .independent-chart-heading > .concentration-market { display: none; }
 
 .independent-chart-heading, .independent-chart-heading .independent-panel-title { align-items: baseline; }
+.rank-independent .rank-supply-panel { grid-column:1; grid-row:auto; margin:0; width:100%; max-width:none; }
+.rank-independent #independentSupplyContent { display:flex; flex-direction:column; flex:1; min-height:0; }
+.rank-independent .rank-supply-panel .rank-adr-area { flex:1 1 0; min-height:120px; }
+.rank-independent .rank-supply-panel .rank-adr-candle-area { flex:1 1 0; height:auto; min-height:120px; }
+.rank-independent .chart-hover-info { height:20px; min-height:20px; line-height:18px; padding:1px 0; box-sizing:border-box; }
+.rank-independent #concentrationTooltip.chart-hover-info { height:20px; min-height:20px; line-height:18px; padding:1px 0; box-sizing:border-box; }
+.rank-independent .chart-hover-info[hidden] { display:block !important; visibility:hidden; }
+.rank-independent .independent-collapsed > .concentration-chart-header > :not(.independent-panel-title) { display:none; }

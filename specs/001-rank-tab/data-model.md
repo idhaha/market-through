@@ -130,3 +130,23 @@ POST /api/concentration-chart에 {code:선택종목, mode:"minute", interval:5, 
 - **BreadthView**: 원본 highs는 양수, lows는 음수로 변환한다. 원본 net·유효성은 응답에 유지하며 임의로 누락 날짜를 채우지 않는다.
 - **RiskDisplay**: 기존 rankChartDisplay 안 volatility/breadth/sentiment 각각 range와 candleOpen. 확대 위치와 hover는 페이지 메모리 상태다.
 - **KOSPICandleHover**: 선택 날짜 종가와 직전 거래일 종가 기반 changeRate. 배지는 close, 정보 줄의 비율 이름은 등락율이다. 지표별 휴장일 차이는 서로 독립적인 결측으로 남긴다.
+
+
+## 대주 수집 상태 확장 (2026-10-20)
+
+LendableStockEntry는 stck_prpr(현재가), bfdy_clpr(전일 종가)을 보유한다. 수량 trad_psbl_qty2는 이번 전체 또는 개별 대주 API 응답에서 가져온다. 가격 보강 실패 시 전일 종가를 사용한다.
+
+LendableScanStatus:
+- total: 이번 후보 합집합의 중복 제거 종목 수.
+- checked: 이번 전체 응답과 성공한 개별 조회로 확인한 종목 수. 수집 중 요청으로 초기화하지 않는다.
+- count: 공개 완료 목록의 종목 수. 수집 중인 draft의 종목 수가 아니다.
+- running: 현재 수집 작업 유무.
+- errors: 이번 수집 단계의 최종 실패 코드 수. 재시도에서 복구된 오류는 포함하지 않는다.
+- completedAt: 마지막 정상 완료 시각(Unix 밀리초), 완료 전에는 0.
+
+서버 메모리 상태는 공개 items, 이번 전체 응답 batchSeed, 비공개 draft, pending 코드, 공유 task로 구성한다. 브라우저의 efriendDisplayedCompletion은 실제 표시한 완료 목록의 시각이며 페이지 새로고침 시 0으로 초기화된다. 날짜 자체와 연결하지 않으며 사용자 설정으로 저장하지 않는다.
+## 2026-10-20 CardConnection
+
+- 카드별 `{ok:boolean,at:number}`는 마지막 조회 결과와 수신 시각이며 페이지 메모리 상태다. 사용자 설정이나 역사 시계열로 저장하지 않는다.
+- 현재 브라우저 온라인 여부와 조회 주기별 허용 지연을 합쳐 녹색/빨간색을 계산한다. 최초 상태는 미수신이다.
+- 독립창 snapshot의 tableConnection/chartConnection은 원래 수신 시각을 보존한다. snapshot을 받았다는 이유로 원래 데이터의 수신 시각을 새로 갱신하지 않는다.

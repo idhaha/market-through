@@ -22,6 +22,8 @@ const adrMinuteStore = createAdrMinuteStore({ directory: path.join(__dirname, 'd
 const volatilityService = createVolatilityService();
 const breadthService = createVolatilityService({ kind: 'breadth' });
 const sentimentService = createVolatilityService({ kind: 'sentiment' });
+const { diskSpace } = require('./server-storage');
+const { createSupplyService } = require('./supply-service');
 
 // 전역 시장구분 캐시 (종목코드: 'K'/'Q') - 429 에러 방지용
 const marketCache = {};
@@ -136,6 +138,11 @@ app.use('/api', (req, res, next) => {
     next();
 });
 
+app.get('/api/server/storage', async (req, res) => {
+    try { res.set('Cache-Control', 'no-store').json(await diskSpace(path.join(__dirname, 'data'))); }
+    catch { res.status(503).json({ success: false, error: '서버 디스크 용량을 확인할 수 없습니다.' }); }
+});
+
 createRankIndependentRelay({
     refresh: async (snapshot, email) => {
         const data = await new Promise((resolve, reject) => {
@@ -156,17 +163,53 @@ createRankIndependentRelay({
             if (!result.success) throw new Error(result.error || '독립창 차트 조회 실패');
             peerChart = { ...selection, points: result.points, cursor: result.cursor, hasMore: result.has_more, busy: false, status: '조회 완료' };
         }
-        return { items: data.items, chart, peerChart };
+        const refreshSupply = async state => {
+            if (!state) return null;
+            const config = supplyService.summary();
+            const selected = config.archive.some(stock => stock.code === state.selected) ? state.selected : config.stocks[0]?.code || '';
+            if (!selected) return { ...state, config, selected, points: [], candles: [] };
+            const result = await supplyService.query({ code: selected, mode: state.mode });
+            const prices = state.mode === 'day' ? { points: result.candles || [] } : await supplyService.candles({ code: selected, mode: state.mode });
+            return { ...state, config, selected, points: result.points, candles: prices.points, cursor: result.cursor, hasMore: result.has_more,
+                priceCursor: prices.cursor, minuteDays: prices.date ? [prices.date] : [], priceHistory: prices.date ? [[prices.date, prices.cursor || null]] : [], chartMessage: result.warnings?.join(' · ') || '', connection: { ok: !result.warnings?.some(text => /실패|오류/.test(text)), at: Date.now() } };
+        };
+        const supply = await refreshSupply(snapshot.supply), peerSupply = await refreshSupply(snapshot.peerSupply);
+        return { items: data.items, chart, peerChart, supply, peerSupply };
     },
     request: async (command, email) => {
         const url = new URL(command.path, 'http://localhost');
         if (url.pathname === '/api/concentration-chart') return concentrationChartService.query(command.body || {}, email);
         if (url.pathname === '/api/concentration-stock') return { success: true, stock: await concentrationChartService.resolveStock(url.searchParams.get('q')) };
         if (url.pathname === '/api/concentration-stocks') return { success: true, stocks: concentrationChartService.searchStocks(url.searchParams.get('q')) };
+        if (url.pathname === '/api/supply/watchlist') return command.method === 'PUT'
+            ? supplyService.configure(command.body?.codes, command.body?.revision) : supplyService.summary();
+        if (url.pathname === '/api/supply/chart') return supplyService.query(Object.fromEntries(url.searchParams));
+        if (url.pathname === '/api/supply/candles') return supplyService.candles(Object.fromEntries(url.searchParams));
         throw new Error('지원하지 않는 요청입니다.');
     }
 }).mount(app);
 const concentrationChartService = createConcentrationChartService({ axios, getAccessToken, marketCache });
+const supplyService = createSupplyService({
+    directory: path.join(__dirname, 'data', 'supply'), http: axios,
+    getToken: () => getAccessToken(process.env.KIWOOM_APPKEY, process.env.KIWOOM_SECRETKEY),
+    resolveStock: code => concentrationChartService.resolveStock(code)
+});
+app.get('/api/supply/watchlist', (req, res) => {
+    try { res.set('Cache-Control', 'no-store').json(supplyService.summary()); }
+    catch (error) { res.status(error.status || 500).json({ success: false, error: error.message }); }
+});
+app.put('/api/supply/watchlist', async (req, res) => {
+    try { res.json(await supplyService.configure(req.body.codes, req.body.revision)); }
+    catch (error) { res.status(error.status || 502).json({ success: false, error: error.message }); }
+});
+app.get('/api/supply/chart', async (req, res) => {
+    try { res.set('Cache-Control', 'no-store').json(await supplyService.query(req.query)); }
+    catch (error) { res.status(error.status || 502).json({ success: false, error: error.message }); }
+});
+app.get('/api/supply/candles', async (req, res) => {
+    try { res.set('Cache-Control', 'no-store').json(await supplyService.candles(req.query)); }
+    catch (error) { res.status(error.status || 502).json({ success: false, error: error.message }); }
+});
 app.get('/api/concentration-stocks', (req, res) => {
     try { res.json({ success: true, stocks: concentrationChartService.searchStocks(req.query.q) }); }
     catch (error) { res.status(error.status || 503).json({ success: false, error: error.message }); }
@@ -2853,6 +2896,7 @@ async function getEfriendAccessToken(domain, appKey, secretKey) {
 }
 
 app.listen(PORT, () => {
+    supplyService.start();
     // Keep the daily archive current even when no chart is open.
     const refreshVolatilityArchive = () => Promise.allSettled([volatilityService.query('all'), breadthService.query('all'), sentimentService.query('all')]).then(results => results.forEach(result => { if (result.status === 'rejected') console.warn('[Risk] Archive refresh failed:', result.reason.message); }));
     refreshVolatilityArchive();

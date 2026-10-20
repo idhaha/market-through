@@ -1,4 +1,5 @@
 :root {
+    --chart-candle-gap: 10px;
     --bg-primary: #f8fafc;
     --bg-secondary: #ffffff;
     --bg-card: #ffffff;
@@ -23,6 +24,42 @@
     --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
+
+.server-storage { color: var(--text-secondary); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rank-supply-panel { position:relative; }
+.rank-supply-panel button { cursor:pointer; border:1px solid var(--border-color); border-radius:4px; padding:5px 8px; color:var(--text-primary); background:var(--bg-secondary); font:inherit; font-size:12px; }
+.rank-supply-panel button.active { background:var(--accent-primary); color:var(--bg-secondary); }
+.rank-supply-panel button:disabled { opacity:.4; cursor:default; }
+.rank-supply-panel .supply-legend { display:grid; grid-template-columns:repeat(2,max-content); gap:2px 12px; margin:0 0 0 auto; }
+.rank-supply-panel .supply-legend button { display:flex; align-items:center; gap:4px; border:0; padding:0; background:transparent; font-size:12px; line-height:18px; }
+.rank-chart-row .rank-supply-panel .supply-legend output { margin-left:auto; color:inherit; font-size:13px; font-variant-numeric:tabular-nums; }
+.supply-legend button[aria-pressed="false"] { opacity:.3; }
+.rank-supply-panel .rank-adr-controls { flex-wrap:nowrap; }
+.rank-supply-panel .supply-stock-select { width:110px; min-width:70px; flex:0 1 110px; }
+.rank-supply-panel .rank-adr-controls button { flex-shrink:0; white-space:nowrap; }
+.supply-stock-dialog { width:min(540px,calc(100vw - 36px)); max-height:80vh; overflow:auto; box-sizing:border-box; padding:24px; border:1px solid var(--border-color); border-radius:10px; background:var(--bg-secondary); color:var(--text-primary); }
+.supply-stock-dialog[hidden] { display:none; }
+.supply-stock-dialog::backdrop { background:#0005; }
+.supply-stock-dialog h2 { font-size:18px; margin:0 0 12px; }
+.supply-stock-dialog p { font-size:12px; margin:8px 0; }
+.supply-stock-dialog button { cursor:pointer; padding:5px 8px; border:1px solid var(--border-color); border-radius:4px; background:var(--bg-secondary); color:var(--text-primary); }
+.supply-stock-dialog button:disabled { opacity:.4; cursor:default; }
+.supply-picker-stocks { padding-left:20px; font-size:13px; }
+.supply-picker-stocks li { margin:8px 0; }
+.supply-archive-menu { margin-top:8px; font-size:12px; }
+.supply-archive-menu summary { cursor:pointer; }
+.supply-archive-menu div { display:flex; flex-wrap:wrap; gap:5px; margin-top:5px; }
+.rank-supply-panel select { max-width:230px; padding:4px; border:1px solid var(--border-color); background:var(--bg-secondary); color:var(--text-primary); }
+.rank-supply-panel .rank-adr-status { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.rank-supply-panel .rank-adr-controls [data-action="more"] { padding:0; border:0; border-radius:0; background:transparent; }
+.rank-supply-panel [data-action="more"][hidden] { display:none; }
+.rank-supply-panel.rank-adr-panel .rank-adr-area { min-height:0; }
+.supply-search { display:flex; gap:8px; align-items:end; }
+.supply-search label { display:flex; flex:1; flex-direction:column; gap:5px; font-size:13px; }
+.supply-search input { width:100%; box-sizing:border-box; padding:7px; border:1px solid var(--border-color); }
+.supply-suggestions { display:flex; flex-direction:column; align-items:start; gap:4px; max-height:180px; overflow:auto; margin-top:8px; }
+.supply-suggestions[hidden] { display:none; }
+.supply-suggestions [aria-selected="true"] { background:#e0f2fe; border-color:#339af0; }
 
 .rank-chart-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: start; }
 .rank-chart-row > .panel { width: 100%; min-width: 0; max-width: none; box-sizing: border-box; }
@@ -50,6 +87,7 @@
 .rank-adr-area { flex: 1; min-height: 280px; position: relative; }
 .rank-adr-panel .rank-adr-area { min-height: 200px; }
 .rank-adr-controls { display:flex; flex-wrap:wrap; align-items:center; gap:5px; margin:8px 0; }
+.rank-adr-controls .concentration-candle-toggle { margin-inline-start:calc(var(--chart-candle-gap) - 5px); }
 .rank-adr-panel > .concentration-chart-header, .rank-adr-controls, .rank-adr-status { flex-shrink:0; }
 .rank-adr-controls button { padding:5px 9px; border:1px solid var(--border-color); border-radius:4px; background:var(--bg-primary); color:var(--text-secondary); cursor:pointer; }
 .rank-adr-controls button.active { background:var(--accent-primary); color:var(--bg-secondary); }
@@ -2527,7 +2565,7 @@ body.modal-open {
 
 .concentration-timeframe-row .concentration-controls { gap: 2px; }
 .concentration-timeframe-row .concentration-controls button { min-width: 28px; padding: 0 5px; }
-.concentration-timeframe-row .concentration-header-actions { gap: 10px; }
+.concentration-timeframe-row .concentration-header-actions { gap: var(--chart-candle-gap); }
 .concentration-timeframe-row .concentration-candle-toggle { white-space: nowrap; }
 
 .concentration-stock-picker { position: relative; }
@@ -2705,7 +2743,7 @@ body.modal-open {
 .rank-turnover-panel .turnover-legend output { text-align: right; white-space: nowrap; }
 
 /* Shared controls-to-plot spacing for concentration, ADR and turnover. */
-.rank-chart-row { --chart-hover-height: 34px; }
+.rank-chart-row { --chart-hover-height: 20px; --chart-plot-height: 260px; }
 .rank-chart-row .concentration-timeframe-row,
 .rank-chart-row .rank-adr-controls { min-height: 40px; align-items: center; }
 .rank-chart-row .rank-adr-controls { margin: 10px 0 0; }
@@ -2719,8 +2757,8 @@ body.modal-open {
     min-height: var(--chart-hover-height);
     flex-shrink: 0;
     margin: 0;
-    padding: 10px 0 0;
-    line-height: 24px;
+    padding: 1px 0;
+    line-height: 18px;
     font-size: 12px;
     white-space: nowrap;
     overflow: hidden;
@@ -2731,10 +2769,17 @@ body.modal-open {
 .rank-chart-row .chart-hover-info[hidden],
 .rank-chart-row #concentrationTooltip.chart-hover-info[hidden],
 .rank-chart-row .turnover-hover-info[hidden] { display: block; visibility: hidden; }
-.rank-chart-row .concentration-charts-column > .concentration-chart-area { height: calc(var(--concentration-chart-height) - var(--chart-hover-height)); }
+.rank-chart-row .concentration-charts-column > .concentration-chart-area,
+.rank-chart-row .rank-adr-area {
+    height: var(--chart-plot-height);
+    min-height: var(--chart-plot-height);
+    flex: 0 0 var(--chart-plot-height);
+}
 
 /* Equal title/control heights keep the three plot origins aligned. */
 .rank-chart-row .concentration-chart-header { align-items: center; }
+.rank-chart-row .rank-adr-panel > .concentration-chart-header { height:36px; min-height:36px; flex-wrap:nowrap; }
+.rank-chart-row #concentrationChartTitle { height:36px; line-height:36px; }
 .rank-chart-row .concentration-timeframe-row { align-self: stretch; }
 .rank-chart-row .rank-turnover-panel .turnover-legend { line-height: 18px; gap: 2px; }
 
@@ -2787,10 +2832,12 @@ body.modal-open {
 .rank-volatility-panel .volatility-candle-label { position:absolute; top:2px; left:16px; font-size:12px; font-weight:600; pointer-events:none; }
 .rank-volatility-panel { position:relative; }
 .rank-breadth-panel { grid-column:1; grid-row:2; }
+.rank-supply-panel { grid-column:2; grid-row:1; }
+#rankAdrChartPanel { grid-column:1; grid-row:3; }
 .rank-volatility-panel:not(.rank-breadth-panel):not(.rank-sentiment-panel) { grid-column:2; grid-row:2; }
 .rank-sentiment-panel { grid-column:3; }
 @media (max-width:700px) {
-    .rank-breadth-panel, .rank-sentiment-panel,
+    #rankAdrChartPanel, .rank-breadth-panel, .rank-sentiment-panel, .rank-supply-panel,
     .rank-volatility-panel:not(.rank-breadth-panel):not(.rank-sentiment-panel) { grid-column:1; grid-row:auto; }
 }
 .volatility-help-trigger { cursor:help; }

@@ -162,3 +162,28 @@ sudo journalctl -k -b -1 | awk '/invoked oom-killer/{n++} n>=1 && $5=="kernel:" 
 개발 테스트 실행 파일은 `dev/tests/`, 테스트 결과물은 `dev/output/`에 둔다. 운영 로그는 이 폴더들과 분리해 프로젝트 바로 아래 `logs/`에만 기록한다. 기존 로그 파일은 사용자가 수동 정리하며 배포 코드에서 이동·삭제하지 않는다.
 
 설정 파일명은 자동 저장 `user_settings_autosaved.json`, 수동 저장 `user_settings_manualsaved_YYYYMMDD_HHMMSS_mmm.json`으로 통일한다. 자동 저장은 기존처럼 단일 최신 파일을 덮어쓰며 시각별 파일을 새로 만들지 않는다. 서버 시작 시 기존 `autosaved_user_settings.json` 및 `manualsaved_user_settings_…json`/`autosaved_user_settings_…json`을 새 이름으로 바꾼다. 같은 새 이름의 파일이 이미 있으면 덮어쓰지 않고 양쪽을 유지한다. 구형 파일명과 `full_backup_…json`도 백업 목록·읽기·복원에서 지원한다. 현재 자동 저장 파일은 백업 삭제 대상에서 제외한다. 파일명 변경은 설정 내용이나 수정 시각을 변경하지 않는다.
+
+## 8. HTTPS 및 무료 인증서 자동 갱신
+
+2026-10-20 대화 내용을 반영했다. 서버 설정을 변경하거나 인증서를 새로 발급한 작업은 아니다. 요구사항과 검증 작업은 [인증·접근 명세](../../specs/008-google-account-access/spec.md#https-운영-확인-기록) 및 [작업 목록](../../specs/008-google-account-access/tasks.md#https-운영-확인-2026-10-20-반영)을 따른다.
+
+### 확인된 상태
+
+- 2026-10-19 외부 점검에서 운영 HTTPS 인증서 신뢰 검증과 HTTP 200 응답, HTTP → HTTPS 301 이동을 확인했다.
+- 무료 Let's Encrypt 인증서이며 발급 기관은 `YR2`다. 당시 만료 시각은 한국 시간 2027-01-14 11:20:13이었다. 갱신으로 바뀔 수 있으므로 현재 만료일은 다시 조회한다.
+- 사용자 제공 서버 출력에서 `certbot.timer`가 `certbot.service`를 실행하도록 예약되어 있었다. 최근 실행은 2026-10-19 04:00:28 UTC, 당시 다음 실행은 2026-10-19 21:20:28 UTC였다. 한국 시간은 각각 10월 19일 13:00:28, 10월 20일 06:20:28이다.
+- 타이머 출력은 예약 증거다. 실제 서비스 성공 여부, 모의 갱신 성공 및 갱신 후 Nginx 적용까지 확인한 것은 아니다.
+
+### 서버 점검
+
+```bash
+sudo certbot certificates
+systemctl list-timers --all | grep -i certbot
+sudo systemctl status certbot.timer --no-pager
+sudo journalctl -u certbot.service --since '7 days ago' --no-pager
+sudo certbot renew --dry-run
+```
+
+NEXT와 실제 설치된 유닛 이름을 확인한다. snap 설치일 경우 해당 타이머·서비스 이름으로 조회한다. 모의 갱신에서 모든 대상 인증서의 성공 문구를 확인하고, 실패하면 오류 원인을 해소한 뒤 다시 점검한다. 갱신 대상이 없어 종료한 서비스는 실제 갱신에 성공한 것과 구분한다.
+
+자동 갱신 후 웹서버 적용은 Nginx installer 또는 deploy hook 등 실제 갱신 설정과 실행 로그로 확인한다. 이번 대화에는 해당 설정이나 모의 갱신 결과가 제공되지 않았다. 상세 판정 기준은 [수동 검증 절차](../../specs/008-google-account-access/quickstart.md#https-및-인증서-갱신-점검)를 참고한다. 개인키와 계정 자격 증명은 출력·공유하거나 저장소에 추가하지 않는다.
