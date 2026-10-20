@@ -8,6 +8,10 @@
 .rank-independent #transactionBody { flex: 1; min-height: 0; max-height: none; overflow-y: auto; }
 .rank-independent #transactionBody tr { height: var(--rank-row-height, auto); }
 .rank-independent #transactionBody td { padding-block: var(--rank-row-padding, 0.15rem); font-size: var(--rank-row-font, 0.85rem); vertical-align: middle; }
+.rank-independent #transactionBody[data-row-limit="5"] > tr:nth-child(n+6),
+.rank-independent #transactionBody[data-row-limit="10"] > tr:nth-child(n+11) { display:none; }
+.independent-row-limit { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; width:24px; height:24px; padding:0; border:0; border-radius:4px; background:transparent; color:var(--text-secondary); font-size:20px; line-height:1; cursor:pointer; }
+.independent-row-limit:hover { background:var(--bg-panel); }
 .rank-independent #independentChartContent { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .rank-independent .concentration-chart-header, .rank-independent .concentration-chart-footer { flex-shrink: 0; }
 .rank-independent .concentration-chart-layout { flex: 1; min-height: 0; }

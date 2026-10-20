@@ -31,7 +31,7 @@
         const button = document.createElement('button'); button.type = 'button'; button.textContent = '독립창'; button.className = 'btn-secondary';
         const message = document.createElement('span'); message.setAttribute('role', 'status');
         controls.append(button, message);
-        let channel, timer, running = false, connected = false, started = 0, peerLastSeen = 0, displayCommandId = null;
+        let channel, timer, running = false, connected = false, started = 0, peerLastSeen = 0;
         let dirty = true, chartKey = '', replies = [], acknowledgements = [];
         const handled = new Set();
         window.addEventListener('rank-connection-change', () => { dirty = true; });
@@ -56,7 +56,7 @@
             const cell = document.querySelector('#transactionBody tr[data-chart-code] td');
             const style = cell && getComputedStyle(cell);
             return { tableConnection: window.getRankCardConnectionState?.('#transactionTable'), chartConnection: window.getRankCardConnectionState?.('#concentrationChartPanel'), tableConnected: window.getRankCardConnection?.('#transactionTable') === true, chartConnected: window.getRankCardConnection?.('#concentrationChartPanel') === true, rows: document.getElementById('transactionBody').innerHTML, chart: window.getRankChartState?.(), display: window.getConcentrationDisplaySettings?.(),
-                displayCommandId, supply: window.getRankSupplyState?.(),
+                supply: window.getRankSupplyState?.(),
                 refreshStatus: { time: document.getElementById('lastUpdate')?.textContent || '-', text: document.getElementById('statusText')?.textContent || '대기 중' },
                 typography: { rootFontSize: getComputedStyle(document.documentElement).fontSize, family: getComputedStyle(document.body).fontFamily,
                     pixelRatio: devicePixelRatio, cellFont: style?.fontSize, cellPadding: style && parseFloat(style.paddingTop), rowHeight: cell?.parentElement.getBoundingClientRect().height },
@@ -66,7 +66,10 @@
             try {
                 if (command.type === 'supply-watchlist') { await window.refreshRankSupplyChart?.(); dirty = true; return; }
                 if (command.type === 'supply-display') {
-                    const settings = command.pinned ? { ...command.settings, selected: window.getRankSupplyState?.().selected || '' } : command.settings;
+                    const current = window.getRankSupplyState?.() || {};
+                    const fields = ['selected', 'mode', 'visibleSeries'];
+                    const changes = Object.fromEntries((Array.isArray(command.changed) ? command.changed : Object.keys(command.settings || {})).filter(key => fields.includes(key)).map(key => [key, command.settings[key]]));
+                    const settings = { ...current, ...changes, ...(command.pinned ? { selected: current.selected || '' } : {}) };
                     window.applyRankSupplySettings?.(settings); dirty = true; return;
                 }
                 if (command.type === 'server-chart') { window.applyRankChartState?.(command.chart); dirty = true; return; }
@@ -79,11 +82,6 @@
                     dirty = true; return;
                 }
                 if (command.type === 'refresh') { if (window.loadTransactionRank) await window.loadTransactionRank({ refreshMarketCharts: false, reportStatus: true }); else window.refreshConcentrationChart?.(); return; }
-                if (command.type === 'display') {
-                    window.applyConcentrationDisplaySettings?.({ ...window.getConcentrationDisplaySettings(), candleOpen: command.candleOpen === true });
-                    displayCommandId = command.id;
-                    window.saveAppData?.(); dirty = true; return;
-                }
                 if (command.type !== 'request' || !allowed(command.path) || command.path.length > 300) throw new Error('지원하지 않는 요청입니다.');
                 if (command.path === '/api/concentration-chart' && !command.body?.debug_five) {
                     window.setRankChartQuery?.(command.selection, command.body.mode, command.body.interval, !command.pinned);

@@ -99,11 +99,13 @@ internal sealed class IndependentForm : Form {
                         var values = message.Substring(14).Split(','); int dw, dh, vw, vh;
                         if (values.Length != 4 || !int.TryParse(values[0], out dw) || !int.TryParse(values[1], out dh) || !int.TryParse(values[2], out vw) || !int.TryParse(values[3], out vh) || vw < 1 || vh < 1 || Math.Abs((long)dw) > 10000 || Math.Abs((long)dh) > 10000) return;
                         if (WindowState == FormWindowState.Minimized) return;
+                        var previousSize = Size; var previousClientSize = web.ClientSize;
                         WindowState = FormWindowState.Normal;
                         var area = Screen.FromRectangle(Bounds).WorkingArea;
-                        Width = Math.Max(MinimumSize.Width, Math.Min(area.Width, Width + (int)Math.Round(dw * (double)web.ClientSize.Width / vw)));
-                        Height = Math.Max(MinimumSize.Height, Math.Min(area.Height, Height + (int)Math.Round(dh * (double)web.ClientSize.Height / vh)));
+                        Width = Math.Max(MinimumSize.Width, Math.Min(area.Width, previousSize.Width + (int)Math.Round(dw * (double)previousClientSize.Width / vw)));
+                        Height = Math.Max(MinimumSize.Height, Math.Min(area.Height, previousSize.Height + (int)Math.Round(dh * (double)previousClientSize.Height / vh)));
                         Left = Math.Max(area.Left, Math.Min(Left, area.Right - Width)); Top = Math.Max(area.Top, Math.Min(Top, area.Bottom - Height));
+                        web.CoreWebView2.ExecuteScriptAsync("window.dispatchEvent(new Event('rank-native-resize-complete'))");
                     }
                 };
                 ready = true; web.CoreWebView2.Navigate(initial);

@@ -54,13 +54,50 @@ const { createRankIndependentRelay } = require('../../rank-independent');
         const positions = await child.locator('#tab_rank > .panel').evaluateAll(es => es.map(e => ({ title: e.querySelector('h2').textContent, top: e.offsetTop, left: e.offsetLeft })));
         assert.equal(positions.length, 3); assert.deepEqual(positions.map(p => p.title), ['거래대금 상위 [키움]', '쏠림율', '수급']);
         assert.ok(positions[0].top < positions[1].top && positions[1].top < positions[2].top); assert.ok(positions.every(p => p.left === positions[0].left));
+        await child.setViewportSize({ width: 1100, height: 1800 });
+        await child.exposeFunction('resizeNativeWindow', async message => {
+            if (!message.startsWith('resize-window:')) return;
+            const delta = Number(message.split(':')[1].split(',')[1]), size = child.viewportSize();
+            await child.setViewportSize({ width: size.width, height: Math.min(2400, size.height + delta) });
+            await child.evaluate(() => { window.dispatchEvent(new Event('rank-native-resize-complete')); window.nativeResizeFinished++; });
+        });
+        await child.evaluate(() => { window.nativeResizeFinished = 0; window.chrome ||= {}; window.chrome.webview = { postMessage: message => window.resizeNativeWindow(message) }; });
+        const plotHeights = () => child.evaluate(() => ['concentrationChartPanel', 'rankSupplyChartPanel'].map(id => {
+            const panel = document.getElementById(id); return { plot: panel.querySelector('.concentration-chart-area, .rank-adr-area').clientHeight, card: panel.offsetHeight };
+        }));
+        for (const id of ['rankSupplyChartPanel', 'concentrationChartPanel', 'rankSupplyChartPanel', 'concentrationChartPanel']) {
+            const before = await plotHeights(), done = await child.evaluate(() => window.nativeResizeFinished);
+            await child.locator(`#${id} .concentration-candle-toggle`).click();
+            await child.waitForFunction(count => window.nativeResizeFinished > count, done);
+            const after = await plotHeights();
+            assert.ok(after.every((value, i) => Math.abs(value.plot - before[i].plot) <= 1), 'Opening/closing either candle preserves both main plot heights');
+            const other = id === 'rankSupplyChartPanel' ? 0 : 1;
+            assert.ok(Math.abs(after[other].card - before[other].card) <= 1, 'Only the toggled card changes its height');
+            assert.equal(await main.evaluate(() => getConcentrationDisplaySettings().candleOpen || getRankSupplyState().showCandles), false, 'Independent candle toggles do not change the main window');
+        }
+        assert.equal(child.viewportSize().height, 1800, 'Closing both candles restores the manually resized window even if opening hits the monitor height limit');
+        for (const id of ['concentrationChartPanel', 'rankSupplyChartPanel']) {
+            const before = await plotHeights();
+            await main.locator(`#${id} .concentration-candle-toggle`).click();
+            await new Promise(resolve => setTimeout(resolve, 700));
+            assert.equal(await child.evaluate(() => getConcentrationDisplaySettings().candleOpen || getRankSupplyState().showCandles), false, 'Main candle toggles do not open independent candles');
+            assert.deepEqual(await plotHeights(), before, 'Main candle toggles do not resize independent charts');
+            let done = await child.evaluate(() => window.nativeResizeFinished);
+            await child.locator(`#${id} .concentration-candle-toggle`).click();
+            await child.waitForFunction(count => window.nativeResizeFinished > count, done);
+            await main.locator(`#${id} .concentration-candle-toggle`).click();
+            await new Promise(resolve => setTimeout(resolve, 700));
+            assert.equal(await child.locator(`#${id} .concentration-candle-toggle`).getAttribute('aria-expanded'), 'true', 'Main closing its candle does not close the independent candle');
+            done = await child.evaluate(() => window.nativeResizeFinished);
+            await child.locator(`#${id} .concentration-candle-toggle`).click();
+            await child.waitForFunction(count => window.nativeResizeFinished > count, done);
+        }
         await child.locator('.supply-stock-select').selectOption('000660');
         await main.waitForFunction(() => getRankSupplyState().selected === '000660');
-        await child.locator('#rankSupplyPinned').check();
+        assert.equal(await child.locator('#rankSupplyPinned, #rankStockPinned').count(), 0, 'Stock synchronization cannot be disabled');
         await child.locator('.supply-stock-select').selectOption('005930');
         await child.waitForFunction(() => getRankSupplyState().selected === '005930' && getRankSupplyState().points.length === 20);
-        await new Promise(resolve => setTimeout(resolve, 1300));
-        assert.equal(await main.evaluate(() => getRankSupplyState().selected), '000660');
+        await main.waitForFunction(() => getRankSupplyState().selected === '005930');
         await child.locator('#rankSupplyChartPanel [data-mode="minute"]').click();
         await main.waitForFunction(() => getRankSupplyState().mode === 'minute');
         await child.waitForFunction(() => !document.querySelector('#rankSupplyChartPanel [data-action="more"]').disabled);
@@ -92,8 +129,11 @@ const { createRankIndependentRelay } = require('../../rank-independent');
             }
         }
         assert.ok(await child.evaluate(() => window.foldSizes.filter(s => s.startsWith('resize-window:')).every(s => s.split(':')[1].split(',')[0] === '0')), 'Every fold/expand preserves native window width after manual resizing');
-        await child.locator('#rankSupplyPinned').uncheck();
-        await child.waitForFunction(() => getRankSupplyState().selected === '000660');
+        await main.locator('.supply-stock-select').selectOption('000660');
+        await child.waitForFunction(() => getRankSupplyState().selected === '000660').catch(async error => {
+            console.error('Reverse sync:', await main.evaluate(() => ({ selected: getRankSupplyState().selected, mode: getRankSupplyState().mode, status: document.querySelector('#rankSupplyChartPanel [role="status"]').textContent })), await child.evaluate(() => ({ selected: getRankSupplyState().selected, mode: getRankSupplyState().mode, status: document.querySelector('#rankSupplyChartPanel [role="status"]').textContent, connection: document.getElementById('rankConnectionStatus').textContent, debug: window.getRankIndependentDebug?.() })));
+            throw error;
+        });
         const saved = await child.evaluate(async () => (await fetch('/api/supply/watchlist', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ codes: ['005930'], revision: 1 }) })).json());
         assert.equal(saved.revision, 2);
         await main.waitForFunction(() => getRankSupplyState().config.revision === 2);
@@ -102,7 +142,7 @@ const { createRankIndependentRelay } = require('../../rank-independent');
         pump();
         await child.waitForFunction(() => getRankSupplyState().points.some(p => p.foreign === 999));
         assert.deepEqual(errors, []);
-        console.log('PASS independent supply: vertical order, bidirectional selection, pin, mode sync, minute history, fold, relay and server refresh while owner is suspended.');
+        console.log('PASS independent supply: vertical order, bidirectional selection without an opt-out, mode sync, minute history, fold, relay and server refresh while owner is suspended.');
     } catch (error) { console.error(error); throw error; }
     finally { await browser.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

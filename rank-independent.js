@@ -91,11 +91,12 @@ function createRankIndependentRelay({ now = Date.now, refresh, request, schedule
             const channel = owner(req, res); if (!channel) return;
             const acknowledgements = new Set((req.body.acks || []).slice(0, 32));
             channel.commands = channel.commands.filter(command => !acknowledgements.has(command.id));
+            if (acknowledgements.has(channel.pendingSupplyCommandId)) { channel.pendingSupply = null; channel.pendingSupplyCommandId = null; }
             if (req.body.snapshot) {
                 if (Buffer.byteLength(JSON.stringify(req.body.snapshot)) > 2000000) return res.status(413).json({ error: '데이터가 너무 큽니다.' });
                 const incoming = req.body.snapshot;
                 if (channel.pendingSupply) {
-                    const key = value => JSON.stringify([value?.selected, value?.mode, value?.showCandles, value?.visibleSeries]);
+                    const key = value => JSON.stringify([value?.selected, value?.mode, value?.visibleSeries]);
                     if (key(incoming.supply) === key(channel.pendingSupply)) channel.pendingSupply = null;
                     else incoming.supply = channel.pendingSupply;
                 }
@@ -134,13 +135,16 @@ function createRankIndependentRelay({ now = Date.now, refresh, request, schedule
                 if (!channel.commandIds.has(id)) {
                     const command = req.body.command;
                     if (command.type === 'supply-display' && channel.snapshot?.supply && ['day', 'minute'].includes(command.settings?.mode)) {
-                        const settings = command.settings;
                         const old = channel.snapshot.supply;
+                        const fields = ['selected', 'mode', 'visibleSeries'];
+                        const changes = Object.fromEntries((Array.isArray(command.changed) ? command.changed : Object.keys(command.settings || {})).filter(key => fields.includes(key)).map(key => [key, command.settings[key]]));
+                        const settings = { ...old, ...changes };
                         const selected = command.pinned ? old.selected : settings.selected;
                         const changed = selected !== old.selected || settings.mode !== old.mode;
                         channel.snapshot.supply = { ...old, ...settings, selected, ...(changed ? { points: [], candles: [], cursor: null, hasMore: false, priceCursor: null, minuteDays: [], priceHistory: [] } : {}) };
                         channel.peerSupply = command.pinned ? settings : null;
                         channel.pendingSupply = channel.snapshot.supply;
+                        channel.pendingSupplyCommandId = command.id;
                         channel.generation++; channel.nextRefresh = 0; channel.data = null; channel.version++;
                     }
                     if (command.type === 'request' && command.path === '/api/concentration-chart' && command.pinned && !command.body?.cursor && !command.body?.debug_five) {

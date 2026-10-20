@@ -10,3 +10,15 @@ assert.equal(call('/api/rank-independent/:id/owner',ticket).status,200,'Owner re
 clock+=120001;assert.equal(call('/api/rank-independent/peer/:id',ticket).status,401,'Both idle peers still expire');
 const client=fs.readFileSync('public/rank-independent-client.js','utf8');assert.ok(!client.includes("postMessage('connection-ended')"),'Expired relay must not close native window');
 console.log('PASS suspended owner survives active peer, abandoned relay expires, expired connection leaves native window open');
+const synced = call('/api/rank-independent').result;
+call('/api/rank-independent/:id/owner', { ...synced, body: { snapshot: { supply: { selected: '005930', mode: 'day' } } } });
+const supplyCommand = { id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', type: 'supply-display', pinned: false, settings: { selected: '000660', mode: 'day' } };
+call('/api/rank-independent/peer/:id', { ...synced, body: { command: supplyCommand } });
+call('/api/rank-independent/:id/owner', { ...synced, body: { acks: [supplyCommand.id], snapshot: { supply: { selected: '035420', mode: 'day' } } } });
+assert.equal(call('/api/rank-independent/peer/:id', synced).result.snapshot.supply.selected, '035420', 'Acknowledged older supply selection cannot overwrite the next owner selection');
+console.log('PASS newer main-window supply selection survives acknowledgement of the previous independent command');
+call('/api/rank-independent/peer/:id', { ...synced, body: { command: { id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', type: 'supply-display', settings: { selected: '005930', mode: 'day', showCandles: true }, changed: ['showCandles'], pinned: false } } });
+const changedSupply = call('/api/rank-independent/peer/:id', synced).result.snapshot.supply;
+assert.equal(changedSupply.selected, '035420', 'Delayed candle setting cannot overwrite a newer stock selection');
+assert.equal(changedSupply.showCandles, undefined, 'Candle visibility is local to each window');
+console.log('PASS supply setting updates only the fields changed by the independent window');

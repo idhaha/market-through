@@ -13,13 +13,12 @@ if (start < 0 || chartStart < 0 || tableEnd < 0) throw new Error('Rank template 
 fs.writeFileSync(path.join(root, 'public/rank-independent.html'), `<!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>[독립창]</title><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"><link rel="stylesheet" href="style.css?v=20261020_supply14">
-<link rel="stylesheet" href="rank-independent.css?v=21">
+<link rel="stylesheet" href="rank-independent.css?v=22">
 <script src="rank-connection-status.js?v=20261019_v5" defer></script>
-<script src="rank-independent-client.js?v=20261021_v2" defer></script>
+<script src="rank-independent-client.js?v=20261021_v6" defer></script>
 <script src="concentration-chart.js?v=20261019_v2" defer></script>
 <script src="rank-supply-chart.js?v=20261021_v2" defer></script></head>
 <body class="rank-independent"><div class="independent-toolbar">
-<label><input id="rankStockPinned" type="checkbox"> 트레이딩 탭 종목동기화 해제</label>
 <span id="rankConnectionStatus" role="status">메인 페이지 연결 중</span>
 <span id="rankRefreshStatus" role="status"><span id="independentStatusText">대기 중</span> | <span id="independentLastUpdate">-</span></span>
 <div class="independent-refresh-controls">
