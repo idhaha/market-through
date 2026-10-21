@@ -1341,7 +1341,7 @@ app.get(['/api/toss_calendar', '/calendar'], async (req, res) => {
                         try {
                             const url = new URL(value, document.baseURI);
                             const isTossHost = /(^|\\.)tossinvest\\.com$/i.test(url.hostname) || /(^|\\.)toss\\.im$/i.test(url.hostname);
-                            if (isTossHost && /^\\/assets\\/v2\\/_next\\/static\\/chunks\\/.+\\.js$/i.test(url.pathname)) {
+                            if (isTossHost && /^\\/assets\\/v\\d+\\/_next\\/static\\/chunks\\/.+\\.js$/i.test(url.pathname)) {
                                 return window.location.origin + url.pathname + url.search + url.hash;
                             }
                         } catch (_) {}
@@ -1513,7 +1513,7 @@ app.get(['/api/toss_calendar', '/calendar'], async (req, res) => {
             const forwardedHost = req.get('x-forwarded-host') || req.get('host');
             const publicOrigin = forwardedProto + '://' + forwardedHost;
             html = html.replace(
-                /(src=["'])(\/assets\/v2\/_next\/static\/chunks\/[^"']+\.js)(["'])/gi,
+                /(src=["'])(\/assets\/v\d+\/_next\/static\/chunks\/[^"']+\.js)(["'])/gi,
                 (_match, prefix, chunkPath, suffix) => prefix + publicOrigin + chunkPath + suffix
             );
         }
@@ -1612,10 +1612,10 @@ app.all('/api/toss_calendar_proxy', async (req, res) => {
 
 // Toss's SharedWorker imports sibling webpack chunks by absolute /assets path.
 // The worker runs under the dashboard origin, so relay only those JS chunks here.
-app.get('/assets/v2/_next/static/chunks/*', async (req, res) => {
+app.get(/^\/assets\/v\d+\/_next\/static\/chunks\/.+\.js$/, async (req, res) => {
     try {
         const targetUrl = new URL(req.originalUrl, 'https://www.tossinvest.com');
-        if (!/^\/assets\/v2\/_next\/static\/chunks\/[a-z0-9._%/-]+\.js$/i.test(targetUrl.pathname)) {
+        if (!/^\/assets\/v\d+\/_next\/static\/chunks\/[a-z0-9._%/-]+\.js$/i.test(targetUrl.pathname)) {
             return res.status(404).send('Toss calendar asset not found.');
         }
 
@@ -1669,8 +1669,18 @@ app.get('/assets/v2/_next/static/chunks/*', async (req, res) => {
             const hookMarker = 'ei=()=>{let{category';
             const queryMarker = 'queryFn:()=>X.FH.post(`${J.Q.CERT}${er(t,n)}`),refetchOnWindowFocus';
             const queryStatusMarker = 'i=(0,j.E)({queries:r}),s=i.map(e=>e.data);';
-            const aiSummaryQueryMarker = 'queryFn:()=>X.FH.get(`${J.Q.CERT}${nD}`),...nk.us});nw.getKey';
-            const countryFilterMarker = 'onValueChange:e=>{r(e),requestAnimationFrame(()=>{d(s)})},children:Object.entries(Q.TP)';
+            const aiSummaryQueryMarker = /queryFn:\(\)=>X\.FH\.get\(`\$\{J\.Q\.CERT\}\$\{(\w+)\}`\),\.\.\.nk\.us\}\);(\w+)\.getKey/;
+            // Handle country clicks at the group before nested controlled radio handlers.
+            // Keep onValueChange for keyboard navigation; do not synthesize a second click.
+            const countryFilterMarker = /onValueChange:e=>\{(\w+)\(e\),requestAnimationFrame\(\(\)=>\{(\w+)\((\w+)\)\}\)\},children:Object\.entries\(Q\.TP\)/;
+            if (countryFilterMarker.test(script)) {
+                script = script.replace(countryFilterMarker, (original, setCountry, scrollToDate, yearMonth) =>
+                    'customProps:{root:{onClickCapture:event=>{const button=event.target.closest?.("button[role=radio]");if(!button||!event.currentTarget.contains(button)||button.disabled||button.getAttribute("aria-checked")==="true"||!["all","kr","us"].includes(button.value))return;event.preventDefault();event.stopPropagation();' + setCountry + '(button.value);requestAnimationFrame(()=>{' + scrollToDate + '(' + yearMonth + ')})}}},' + original);
+                responseBody = script;
+                res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+            } else {
+                console.warn('[TossCalendar] country click handler not found; Toss may have changed its bundle');
+            }
             if (script.includes(hookMarker) && script.includes(queryMarker) && script.includes(queryStatusMarker)) {
                 script = script
                     .replace(hookMarker, 'ei=()=>{console.info("[TossCalendarTrace] monthly hook invoked");let{category')
@@ -1681,22 +1691,11 @@ app.get('/assets/v2/_next/static/chunks/*', async (req, res) => {
                     .replace(
                         queryStatusMarker,
                         'i=(0,j.E)({queries:r}),s=(console.info("[TossCalendarTrace] monthly query states",i.map(query=>({status:query.status,fetchStatus:query.fetchStatus,error:query.error?.message}))),i.map(e=>e.data));'
-                    )
-                    .replace(
-                        countryFilterMarker,
-                        'onValueChange:e=>{const clickId=window.__tossCalendarClickId=(window.__tossCalendarClickId||0)+1;window.__tossCalendarPendingCountryClick={id:clickId,value:e};setTimeout(()=>{if(window.__tossCalendarPendingCountryClick?.id===clickId)window.__tossCalendarPendingCountryClick=null},1000);const getCountrySelection=()=>[...document.querySelectorAll(\'button[role="radio"][value="all"],button[role="radio"][value="kr"],button[role="radio"][value="us"]\')].filter(button=>button.getAttribute("aria-checked")==="true").map(button=>button.value);console.info("[TossCalendarTrace] country click",{clickId,value:e});try{r(e)}catch(error){console.error("[TossCalendarTrace] country click callback threw",{clickId,value:e,message:error?.message});throw error}requestAnimationFrame(()=>{console.info("[TossCalendarTrace] country click next frame",{clickId,value:e,selected:getCountrySelection()});d(s)});setTimeout(()=>console.info("[TossCalendarTrace] country click after 350ms",{clickId,value:e,selected:getCountrySelection()}),350)},children:Object.entries(Q.TP)'
-                    )
-                    .replace(
-                        'size:"small",value:t,onValueChange:e=>{const getCountrySelection',
-                        'size:"small",value:(window.__tossCalendarRadioTrace!==t&&(window.__tossCalendarRadioTrace=t,console.info("[TossCalendarTrace] country radio render",{value:t})),t),onValueChange:e=>{const getCountrySelection'
                     );
-                if (!script.includes('[TossCalendarTrace] country click')) {
-                    console.warn('[TossCalendarTrace] country filter marker not found; Toss may have changed its bundle');
-                }
-                if (script.includes(aiSummaryQueryMarker)) {
+                if (aiSummaryQueryMarker.test(script)) {
                     script = script.replace(
                         aiSummaryQueryMarker,
-                        'queryFn:()=>{const targetUrl=`${J.Q.CERT}${nD}`;const proxyUrl=`${window.location.origin}/api/toss_calendar_proxy?url=${encodeURIComponent(targetUrl)}`;console.info("[TossCalendarTrace] weekly AI summary request",{targetUrl});let status;const request=window.fetch(proxyUrl).then(async response=>{status=response.status;if(!response.ok)throw new Error(`Calendar proxy HTTP ${response.status}`);const payload=await response.json();return payload?.result??payload});request.then(data=>console.info("[TossCalendarTrace] weekly AI summary resolved",{status,title:data?.title}),error=>console.error("[TossCalendarTrace] weekly AI summary rejected",{status,message:error?.message}));return request},...nk.us});nw.getKey'
+                        (_match, endpoint, hook) => 'queryFn:()=>{const targetUrl=`${J.Q.CERT}${' + endpoint + '}`;const proxyUrl=`${window.location.origin}/api/toss_calendar_proxy?url=${encodeURIComponent(targetUrl)}`;console.info("[TossCalendarTrace] weekly AI summary request",{targetUrl});let status;const request=window.fetch(proxyUrl).then(async response=>{status=response.status;if(!response.ok)throw new Error(`Calendar proxy HTTP ${response.status}`);const payload=await response.json();return payload?.result??payload});request.then(data=>console.info("[TossCalendarTrace] weekly AI summary resolved",{status,title:data?.title}),error=>console.error("[TossCalendarTrace] weekly AI summary rejected",{status,message:error?.message}));return request},...nk.us});' + hook + '.getKey'
                     );
                 } else {
                     console.warn('[TossCalendarTrace] AI summary query marker not found; Toss may have changed its bundle');

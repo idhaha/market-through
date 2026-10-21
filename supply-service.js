@@ -21,6 +21,30 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
     const store = createSupplyStore({ directory, now });
     const statuses = new Map(), verifiedDay = new Map(), cache = new Map();
     let queue = Promise.resolve(), running = null, timer;
+    let market = store.marketDay(), lastMarketAttempt = null;
+    function marketConfirmed() { return market?.day === dayKey(now()); }
+    async function confirmMarket() {
+        if (marketConfirmed()) return true;
+        const at = now(), minute = Math.floor(at / 60000);
+        const clock = new Date(at + 9 * 3600000);
+        if (clock.getUTCHours() * 60 + clock.getUTCMinutes() > 630 || lastMarketAttempt === minute) return false;
+        lastMarketAttempt = minute;
+        try {
+            const response = await post('ka10080', { stk_cd: '005930_AL', tic_scope: '1', upd_stkpc_tp: '0' });
+            const rows = response.data.stk_min_pole_chart_qry;
+            if (!Array.isArray(rows)) throw new Error('개장 확인 분봉 응답 형식 오류');
+            const day = dayKey(at), date = day.replaceAll('-', '');
+            const traded = rows.some(row => {
+                const time = String(row.cntr_tm || '');
+                const t = timestamp(time.slice(0, 8), time.slice(8));
+                return time.length === 14 && time.startsWith(date) && Number.isFinite(t) && t <= now() && quantity(row.trde_qty) > 0;
+            });
+            if (!traded || dayKey(now()) !== day) return false;
+            store.confirmMarketDay(day, now());
+            market = { day, confirmed_at: now() };
+            return true;
+        } catch (error) { log('[Supply market] ' + error.message); return false; }
+    }
     function post(api, body, next = '') {
         const task = queue.then(async () => {
             try {
@@ -39,7 +63,7 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
     }
     function summary() {
         const config = store.config();
-        return { success: true, ...config, collecting: collectingAt(now()),
+        return { success: true, ...config, collecting: collectingAt(now()) && marketConfirmed(), market_confirmed: marketConfirmed(),
             statuses: Object.fromEntries(config.stocks.map(stock => [stock.code, statuses.get(stock.code) || null])) };
     }
     async function configure(codes, revision) {
@@ -61,6 +85,7 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
         if (!collectingAt(now())) return Promise.resolve();
         running = (async () => {
             const stocks = store.config().stocks;
+            if (!stocks.length || !await confirmMarket() || !collectingAt(now())) return;
             for (const stock of stocks) {
                 if (!active(stock)) continue;
                 const startDay = dayKey(now()), date = startDay.replaceAll('-', ''), errors = [];
@@ -103,19 +128,29 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
         return running;
     }
     async function history(api, body, field, from, to) {
-        const rows = new Map(); let next = '', partial = false;
+        const rows = new Map(); let next = '', partial = false, error = '';
         for (let page = 0; page < 80; page++) {
-            const response = await post(api, body, next), list = response.data[field];
-            if (!Array.isArray(list)) throw new Error(`${api} 수급 응답 형식 오류`);
-            for (const row of list) if (/^\d{8}$/.test(String(row.dt)) && row.dt >= from && row.dt <= to) rows.set(row.dt, row);
-            const dates = list.map(row => String(row.dt || '')).filter(date => /^\d{8}$/.test(date));
-            if (response.headers?.['cont-yn'] !== 'Y' || dates.some(date => date <= from)) break;
-            const key = String(response.headers?.['next-key'] || '');
-            if (!key || key === next) throw new Error(`${api} 연속조회 키 오류`);
-            next = key;
-            if (page === 79) partial = true;
+            try {
+                let response;
+                for (let attempt = 0; attempt < 2; attempt++) {
+                    try { response = await post(api, body, next); break; }
+                    catch (cause) { if (attempt) throw cause; await pause(600); }
+                }
+                const list = response.data[field];
+                if (!Array.isArray(list)) throw new Error(`${api} 수급 응답 형식 오류`);
+                for (const row of list) if (/^\d{8}$/.test(String(row.dt)) && row.dt >= from && row.dt <= to) rows.set(row.dt, row);
+                const dates = list.map(row => String(row.dt || '')).filter(date => /^\d{8}$/.test(date));
+                if (response.headers?.['cont-yn'] !== 'Y' || dates.some(date => date <= from)) break;
+                const key = String(response.headers?.['next-key'] || '');
+                if (!key || key === next) throw new Error(`${api} 연속조회 키 오류`);
+                next = key;
+                if (page === 79) partial = true;
+            } catch (cause) {
+                if (!rows.size) throw new Error(`${api} 수급 조회 실패: ${cause.message}`);
+                partial = true; error = `${api} 과거 조회 실패 · 수신한 구간 표시: ${cause.message}`; break;
+            }
         }
-        return { rows: [...rows.values()], partial };
+        return { rows: [...rows.values()], partial, error };
     }
     async function daily(code, cursor) {
         const date = cursor || dayKey(now()).replaceAll('-', '');
@@ -133,7 +168,8 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
         const points = new Map(dates.map(day => [timestamp(day), { t: timestamp(day) }])), warnings = [];
         results.forEach((result, i) => {
             if (result.status === 'rejected') { warnings.push(result.reason.message); return; }
-            if (result.value.partial) warnings.push('일부 과거 구간 조회 한도 도달');
+            if (result.value.error) warnings.push(result.value.error);
+            else if (result.value.partial) warnings.push('일부 과거 구간 조회 한도 도달');
             for (const row of result.value.rows) {
                 const t = timestamp(row.dt); if (!Number.isFinite(t)) continue;
                 const point = points.get(t); if (!point) continue;
@@ -168,6 +204,7 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
             return { success: true, mode, date, available_dates: dates, points: store.points(code, date),
                 has_more: hasMore, cursor: hasMore ? dates[index - 1].replaceAll('-', '') : null,
                 status: statuses.get(code) || null, collecting: collectingAt(now()),
+                investor_api: 'ka10060', individual_supported: true,
                 warnings: ['1분마다 관측한 당일 누적 순매수수량 · 수집 이전/누락 구간은 제공되지 않습니다.'] };
         }
         const key = `${code}:${cursor}`, previous = cache.get(key);

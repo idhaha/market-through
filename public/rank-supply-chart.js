@@ -6,6 +6,15 @@
     const dayKey = t => new Date(t + 9 * 3600000).toISOString().slice(0, 10);
     const clock = t => new Date(t + 9 * 3600000).toISOString().slice(11, 16);
     const format = n => Number.isFinite(n) ? `${n > 0 ? '+' : ''}${n.toLocaleString('ko-KR')}주` : '미제공';
+    function mergeFlow(previous, incoming) {
+        const points = new Map(previous.map(point => [point.t, point]));
+        for (const point of incoming) {
+            const old = points.get(point.t), merged = { ...old, ...point };
+            for (const field of series) if (!Number.isFinite(point[field]) && Number.isFinite(old?.[field])) merged[field] = old[field];
+            points.set(point.t, merged);
+        }
+        return [...points.values()].sort((a,b) => a.t - b.t);
+    }
     async function request(url, options) {
         const response = await fetch(url, options), data = await response.json();
         if (!response.ok || !data.success) throw Object.assign(new Error(data.error || '수급 조회 실패'), { status: response.status });
@@ -64,7 +73,7 @@
             if (!value?.config || !Array.isArray(value.points)) return;
             const same = value.selected === selected && value.mode === mode;
             config = value.config; window.applyRankSupplySettings(value, false);
-            points = [...new Map([...(same ? points : []), ...value.points].map(p => [p.t, p])).values()].sort((a,b) => a.t - b.t);
+            points = mergeFlow(same ? points : [], value.points);
             candles = [...new Map([...(same ? candles : []), ...(value.candles || [])].map(p => [p.t, p])).values()].sort((a,b) => a.t - b.t);
             if (!historyLoaded) { cursor = value.cursor; hasMore = !!value.hasMore; priceCursor = value.priceCursor; }
             historyLoaded = true;
@@ -129,8 +138,9 @@
             }
             timeAxis(ctx, h);
             series.forEach(s => {
-                const button = panel.querySelector(`[data-series="${s}"]`), last = points.at(-1);
-                button.querySelector('output').textContent = last ? format(last[s]) : '—';
+                const button = panel.querySelector(`[data-series="${s}"]`), last = points.findLast(point => Number.isFinite(point[s]));
+                button.querySelector('output').textContent = last ? format(last[s]) : points.length ? '미제공' : '—';
+                button.querySelector('output').title = last ? `${dayKey(last.t)} ${clock(last.t)} 기준` : '관측값 없음';
                 button.querySelector('output').style.color = colors[s];
                 if (!visibleSeries.has(s)) return;
                 ctx.strokeStyle = colors[s]; ctx.lineWidth = 2; ctx.beginPath(); let previous;
@@ -266,7 +276,7 @@
                 if (id !== revision) return;
                 const followLatest = start + Math.min(points.length, count ?? points.length) >= points.length, oldAnchor = points[start]?.t;
                 const fresh = (result.points || []).filter(p => Number.isFinite(p.t));
-                points = [...new Map([...points, ...fresh].map(p => [p.t, p])).values()].sort((a, b) => a.t - b.t);
+                points = mergeFlow(points, fresh);
                 if (mode === 'day') {
                     candles = [...new Map([...candles, ...(result.candles || [])].map(p => [p.t, p])).values()].sort((a,b) => a.t - b.t);
                 }

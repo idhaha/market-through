@@ -104,6 +104,8 @@ function createSupplyStore({ directory, now = Date.now }) {
         }
         return count;
     }
-    return { config, configure, dates, points, merge, archiveCompleted };
+    function marketDay() { return read(path.join(directory, 'market-day.json'), null); }
+    function confirmMarketDay(day, confirmedAt) { atomic(path.join(directory, 'market-day.json'), { day, confirmed_at: confirmedAt }); }
+    return { config, configure, dates, points, merge, archiveCompleted, marketDay, confirmMarketDay };
 }
 module.exports = { createSupplyStore, dayKey, validCode, fields, failure };

@@ -150,3 +150,7 @@ LendableScanStatus:
 - 카드별 `{ok:boolean,at:number}`는 마지막 조회 결과와 수신 시각이며 페이지 메모리 상태다. 사용자 설정이나 역사 시계열로 저장하지 않는다.
 - 현재 브라우저 온라인 여부와 조회 주기별 허용 지연을 합쳐 녹색/빨간색을 계산한다. 최초 상태는 미수신이다.
 - 독립창 snapshot의 tableConnection/chartConnection은 원래 수신 시각을 보존한다. snapshot을 받았다는 이유로 원래 데이터의 수신 시각을 새로 갱신하지 않는다.
+
+## 수급 개장 확인 파일
+
+data/supply/market-day.json: {day: YYYY-MM-DD, confirmed_at: epoch milliseconds}. 오늘 날짜와 일치할 때만 유효한 개장 확정으로 사용한다. 최대 한 날짜 기록만 유지하며 다음 확정 시 교체한다. 미확인 API 실패를 휴장 확정 파일로 기록하지 않는다.

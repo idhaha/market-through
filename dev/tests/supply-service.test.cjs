@@ -7,7 +7,7 @@ const { createSupplyStore } = require('../../supply-store');
 
 const today = '20261020';
 const investorRow = (overrides = {}) => ({ dt: today, ind_invsr: '+10', frgnr_invsr: '--20', orgn: '+30', ...overrides });
-function fixture(t, handler) {
+function fixture(t, handler, marketHandler) {
     const output = path.resolve(__dirname, '../output'); fs.mkdirSync(output, { recursive: true });
     const directory = fs.mkdtempSync(path.join(output, 'market-supply-test-'));
     let time = timestamp(today, '101500');
@@ -16,6 +16,7 @@ function fixture(t, handler) {
         resolveStock: async code => ({ code, name: `종목${code}` }), log: () => {},
         http: { post: async (url, body, options) => {
             calls.push({ url, body, headers: options.headers });
+            if (options.headers['api-id'] === 'ka10080' && collectingAt(time)) return marketHandler ? marketHandler(body) : { data: { stk_min_pole_chart_qry: [{ cntr_tm: new Date(time + 9 * 3600000).toISOString().replace(/[-:T]/g, '').slice(0,14), trde_qty: '1' }] } };
             return handler(options.headers['api-id'], body, options.headers, calls);
         } }
     });
@@ -85,6 +86,34 @@ test('daily pagination and cache never persist daily source data', async t => {
     assert.ok(f.calls.every(call => (call.headers['api-id'] === 'ka10081' || call.body.amt_qty_tp === '2') && call.body.stk_cd === '005930_AL'));
     assert.ok(f.calls.filter(call => call.headers['api-id'] === 'ka10060').every(call => call.body.unit_tp === '1' && call.body.trde_tp === '0'));
 });
+
+test('program history retains received dates when an older page fails', async t => {
+    const f = fixture(t, (api, body, headers) => {
+        if (api === 'ka10081') return { data: { stk_dt_pole_chart_qry: ['20261020','20261019'].map(dt => ({ dt, open_pric: '100', high_pric: '120', low_pric: '90', cur_prc: '110' })) }, headers: {} };
+        if (api === 'ka90013') {
+            if (headers['next-key']) throw Error('temporary source failure');
+            return { data: { stk_daly_prm_trde_trnsn: [{ dt: today, prm_netprps_qty: '-40' }] }, headers: { 'cont-yn': 'Y', 'next-key': 'older' } };
+        }
+        return normal(api, body);
+    });
+    f.service.store.configure([{ code: '005930', name: '삼성전자' }], 0);
+    const result = await f.service.query({ code: '005930' });
+    assert.equal(result.points.at(-1).program, -40);
+    assert.equal(result.points[0].program, undefined);
+    assert.ok(result.warnings.some(message => message.includes('ka90013') && message.includes('수신한 구간 표시')));
+    assert.equal(f.calls.filter(call => call.headers['api-id'] === 'ka90013').length, 3);
+});
+
+test('a transient program history failure is retried before discarding the source', async t => {
+    let failed = false;
+    const f = fixture(t, (api, body) => {
+        if (api === 'ka90013' && !failed) { failed = true; throw Error('temporary source failure'); }
+        return normal(api, body);
+    });
+    f.service.store.configure([{ code: '005930', name: '삼성전자' }], 0);
+    const result = await f.service.query({ code: '005930' });
+    assert.equal(result.points.at(-1).program, -40); assert.deepEqual(result.warnings, []);
+});
 test('daily count and dates match one stock candle page, with older pages loaded by cursor', async t => {
     const f = fixture(t, (api, body) => {
         const dates = body.base_dt === '20261018' || body.dt === '20261018' || body.date === '20261018'
@@ -109,21 +138,35 @@ test('daily count and dates match one stock candle page, with older pages loaded
 });
 test('missing source values stay missing, and stale trading dates do not become today', async t => {
     let stale = false;
-    const f = fixture(t, api => api === 'ka10060'
+    const f = fixture(t, (api, body) => api === 'ka10060'
         ? { data: { stk_invsr_orgn_chart: [investorRow({ dt: stale ? '20261019' : today, ind_invsr: '', orgn: '0' })] }, headers: {} }
-        : normal(api));
+        : normal(api, body));
     await f.service.configure(['005930'], 0); await f.service.collect();
     const point = (await f.service.query({ code: '005930', mode: 'minute' })).points[0];
-    assert.equal(point.individual, undefined); assert.equal(point.institution, 0); assert.equal(point.program, -40);
-    assert.match(f.service.summary().statuses['005930'].error, /部分|일부/);
+    assert.equal(point.individual, undefined); assert.equal(point.foreign, -20); assert.equal(point.institution, 0); assert.equal(point.program, -40);
+    assert.match(f.service.summary().statuses['005930'].error, /일부 투자자/);
     stale = true; f.setTime(timestamp('20261021', '101500')); await f.service.collect();
     assert.deepEqual(f.service.store.dates('005930'), ['2026-10-20']);
 });
+test('intraday collects all three actual ka10060 values and no ka10063 requests', async t => {
+    let latest = { ind_invsr: '111', frgnr_invsr: '--222', orgn: '+333' };
+    const f = fixture(t, (api, body) => api === 'ka10060' ? { data: { stk_invsr_orgn_chart: [investorRow(latest)] }, headers: {} } : normal(api, body));
+    f.service.store.configure([{ code: '005930', name: '삼성전자' }], 0);
+    await f.service.collect();
+    latest = { ind_invsr: '121', frgnr_invsr: '--232', orgn: '+343' };
+    f.setTime(timestamp(today, '101600')); await f.service.collect();
+    const result = await f.service.query({ code: '005930', mode: 'minute' });
+    assert.deepEqual(result.points.map(p => [p.individual, p.foreign, p.institution]), [[111,-222,333],[121,-232,343]]);
+    assert.equal(result.investor_api, 'ka10060'); assert.equal(result.individual_supported, true);
+    assert.ok(!f.calls.some(call => call.headers['api-id'] === 'ka10063'));
+    assert.ok(!result.warnings.some(message => message.includes('개인 장중 미지원')));
+});
+
 test('one failed source or stock does not stop collection of the others', async t => {
     let failProgram = false;
     const f = fixture(t, (api, body) => {
         if (body.stk_cd === '000660_AL' || failProgram && api === 'ka90008') throw new Error('source unavailable');
-        return normal(api);
+        return normal(api, body);
     });
     await f.service.configure(['005930','000660'], 0); await f.service.collect();
     failProgram = true; f.setTime(timestamp(today, '101600')); await f.service.collect();
@@ -134,7 +177,7 @@ test('one failed source or stock does not stop collection of the others', async 
 });
 test('removing a stock during an in-flight request prevents later writes', async t => {
     let release;
-    const f = fixture(t, api => api === 'ka10060' ? new Promise(resolve => { release = () => resolve(normal(api)); }) : normal(api));
+    const f = fixture(t, (api, body) => api === 'ka10060' ? new Promise(resolve => { release = () => resolve(normal(api, body)); }) : normal(api, body));
     await f.service.configure(['005930'], 0);
     // Wait for the token promise and request queue to reach the deferred HTTP call.
     while (!release) await new Promise(resolve => setImmediate(resolve));
@@ -223,4 +266,41 @@ test('price history advertises previous trading dates even without stored minute
     const third = await f.service.candles({ code: '005930', mode: 'minute', date: '2026-10-16' });
     assert.equal(third.has_more, false); assert.equal(third.points.length, 1);
     assert.deepEqual(fs.readdirSync(f.directory), ['watchlist.json']);
+});
+
+test('market probe waits through delayed opening, throttles, persists and survives trading pauses', async t => {
+    let rows = [{ cntr_tm: '20261019080000', trde_qty: '10' }];
+    const f = fixture(t, normal, () => ({ data: { stk_min_pole_chart_qry: rows } }));
+    f.setTime(timestamp(today, '080000'));
+    await f.service.configure(['005930'], 0); await f.service.collect();
+    assert.equal(f.calls.length, 1); assert.deepEqual(f.service.store.dates('005930'), []);
+    await f.service.collect(); assert.equal(f.calls.length, 1);
+    f.setTime(timestamp(today, '090100')); rows = [{ cntr_tm: today+'090100', trde_qty: '0' }];
+    await f.service.collect(); assert.equal(f.calls.length, 2);
+    f.setTime(timestamp(today, '100000')); rows = [{ cntr_tm: today+'100000', trde_qty: '1' }];
+    await f.service.collect(); assert.equal(f.service.summary().market_confirmed, true);
+    const probes = f.calls.filter(c => c.headers['api-id'] === 'ka10080').length;
+    f.setTime(timestamp(today, '110000')); rows = [];
+    await f.service.collect();
+    assert.equal(f.calls.filter(c => c.headers['api-id'] === 'ka10080').length, probes);
+    assert.equal(f.service.store.points('005930', '2026-10-20').length, 2);
+    const restarted = createSupplyService({ directory: f.directory, now: () => timestamp(today,'120000'), getToken: async () => 'test', pause: async () => {}, http: { post: async (url, body, options) => { assert.notEqual(options.headers['api-id'],'ka10080'); return normal(options.headers['api-id'],body); } } });
+    await restarted.collect(); assert.equal(restarted.summary().market_confirmed, true);
+    f.setTime(timestamp('20261021','080000')); await f.service.collect();
+    assert.equal(f.service.summary().market_confirmed, false);
+});
+test('market probe retries errors until 10:30 and does not collect after unconfirmed cutoff', async t => {
+    let fail = true;
+    const f = fixture(t, normal, () => { if (fail) throw Error('network'); return { data: { stk_min_pole_chart_qry: [] } }; });
+    f.setTime(timestamp(today,'102900')); await f.service.configure(['005930'],0); await f.service.collect();
+    assert.equal(f.calls.length,1); fail = false;
+    f.setTime(timestamp(today,'103000')); await f.service.collect(); assert.equal(f.calls.length,2);
+    f.setTime(timestamp(today,'103100')); await f.service.collect(); assert.equal(f.calls.length,2);
+    assert.deepEqual(f.service.store.dates('005930'), []);
+});
+test('10:30 final probe can confirm opening and start collection immediately', async t => {
+    const f = fixture(t, normal); f.setTime(timestamp(today,'103000'));
+    await f.service.configure(['005930'],0); await f.service.collect();
+    assert.equal(f.service.summary().market_confirmed,true);
+    assert.equal(f.service.store.points('005930','2026-10-20').length,1);
 });
