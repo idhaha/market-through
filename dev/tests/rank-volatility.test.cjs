@@ -15,12 +15,19 @@ const { chromium } = require('playwright');
         await page.route('http://volatility.test/**', route => {
             const url = new URL(route.request().url()); requests.push(url.pathname + url.search);
             if (url.pathname === '/api/risk/sentiment') return route.fulfill({ json: { series: { 'fear-greed': { points: dates.slice(-120).map((date, i) => ({ date, value: 20 + i % 60 })) }, 'high-yield-spread': { points: dates.map((date, i) => ({ date, value: 2 + (i % 5) / 10 })) } } } });
-            if (url.pathname === '/api/risk/breadth') return route.fulfill({ json: { series: { highs: { points: dates.map((date, i) => ({ date, value: 10 + i % 30 })) }, lows: { points: dates.map((date, i) => ({ date, value: -(i % 15) })) } } } });
+            if (url.pathname === '/api/risk/breadth') {
+                const minute = url.searchParams.get('mode') === 'minute';
+                const selected = minute ? dates.slice(-10).map(date => `${date} 08:01`) : dates;
+                return route.fulfill({ json: { dates: selected, notice: '2026-10-20까지 KOSPI · 2026-10-21부터 KOSPI+KOSDAQ(KRX+NXT 통합)',
+                    cursor: url.searchParams.get('cursor') ? null : 'older-page', has_more: !url.searchParams.get('cursor'),
+                    candles: selected.map((date, i) => ({ date, t: Date.parse(`${date.slice(0,10)}T08:01:00+09:00`), open: 100+i, high: 120+i, low: 90+i, close: 110+i })),
+                    series: { highs: { points: selected.map((date, i) => ({ date, value: i === 0 ? null : 10 + i % 30 })) }, lows: { points: selected.map((date, i) => ({ date, value: i === 0 ? null : -(i % 15) })) } } } });
+            }
             if (url.pathname === '/api/risk/volatility') {
                 const range = url.searchParams.get('range'), selected = dates.slice(-({ '6m': 60, '1y': 120, '3y': 200, all: dates.length }[range]));
                 return route.fulfill({ json: { series: { vix: { points: selected.filter((_, i) => i % 7 !== 0).map((date, i) => ({ date, value: 15 + i % 10 })) }, vkospi: { points: selected.map((date, i) => ({ date, value: 30 + i % 15 })) } } } });
             }
-            if (url.pathname === '/api/adr/candles') return route.fulfill({ json: { points: dates.map((date, i) => ({ t: Date.parse(`${date}T09:00:00+09:00`), open: 3000 + i, high: 3020 + i, low: 2990 + i, close: 3010 + i })) } });
+            if (url.pathname === '/api/adr/candles') return route.fulfill({ json: { points: dates.map((date, i) => ({ t: Date.parse(`${date}T${url.searchParams.get('mode') === 'minute' ? '08:01:00' : '09:00:00'}+09:00`), open: 3000 + i, high: 3020 + i, low: 2990 + i, close: 3010 + i })) } });
             return route.fulfill({ contentType: 'text/html', body: html });
         });
         await page.goto('http://volatility.test/');
@@ -31,6 +38,9 @@ const { chromium } = require('playwright');
         const breadth = page.locator('#rankBreadthChartPanel');
         const sentiment = page.locator('#rankSentimentChartPanel');
         await page.waitForFunction(() => document.querySelector('#rankSentimentChartPanel .rank-adr-status').textContent.includes('Jusikbot'));
+        const heights = await page.locator('#concentrationCanvas, .rank-volatility-panel .rank-adr-area canvas').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().height));
+        assert.ok(heights.length === 4 && heights.every(height => height === heights[0] && height === 260), `Equal main canvas heights: ${heights}`);
+        assert.deepEqual(await sentiment.locator('.risk-series-date').allTextContents(), [dates.slice(-120).at(-1), dates.at(-1)]);
         await sentiment.locator('h2').hover();
         assert.equal(await page.locator('#sentimentGuide').isVisible(), false);
         await sentiment.locator('.chart-info-button').hover();
@@ -54,7 +64,7 @@ const { chromium } = require('playwright');
         await page.evaluate(() => refreshRankSentimentChart());
         assert.ok(await page.evaluate(() => sentimentAxis.some(point => point.label === '100' && point.color === '#d97706' && point.x < 60)), 'CNN has its own orange left 0-100 axis');
         assert.ok(await page.evaluate(() => sentimentAxis.some(point => point.label === '2.50' && point.color === '#8b5cf6' && point.x > 300)), 'HY has its own purple right axis');
-        assert.ok((await sentiment.boundingBox()).x > (await breadth.boundingBox()).x, 'Combined chart is right of breadth');
+        assert.ok((await sentiment.boundingBox()).y > (await breadth.boundingBox()).y, 'Sentiment is below breadth in the right column');
         await sentiment.getByRole('button', { name: '캔들차트', exact: true }).click();
         await page.waitForFunction(() => document.querySelector('#sentimentCandleArea [role="status"]').textContent === '');
         const sentimentBox = await sentiment.locator('.rank-adr-area canvas').boundingBox();
@@ -75,6 +85,7 @@ const { chromium } = require('playwright');
             const target = page.locator(`#${id}`);
             if (await target.locator('.rank-adr-candle-area').isHidden()) await target.getByRole('button', { name: '캔들차트', exact: true }).click();
             await page.waitForFunction(id => document.querySelector(`#${id} .rank-adr-candle-status`).textContent === '', id);
+            await target.locator('.rank-adr-candle-area canvas').scrollIntoViewIfNeeded();
             const box = await target.locator('.rank-adr-candle-area canvas').boundingBox();
             const heights = [];
             for (const y of [70, 150]) {
@@ -86,6 +97,7 @@ const { chromium } = require('playwright');
             }
             assert.equal(heights[0], heights[1], 'Same candle close is selected regardless of pointer height');
             for (const selector of ['.rank-adr-area canvas', '.rank-adr-candle-area canvas']) {
+                await target.locator(selector).scrollIntoViewIfNeeded();
                 const chartBox = await target.locator(selector).boundingBox();
                 const slider = target.locator('input[type="range"]');
                 const before = await slider.evaluate(el => ({ start: +el.value, max: +el.max }));
@@ -104,17 +116,22 @@ const { chromium } = require('playwright');
         await panel.getByRole('button', { name: '캔들차트', exact: true }).click();
         await breadth.getByRole('button', { name: '캔들차트', exact: true }).click();
         await page.waitForFunction(() => document.querySelector('#rankVolatilityChartPanel .rank-adr-status').textContent.includes('Jusikbot'));
-        await page.waitForFunction(() => document.querySelector('#rankBreadthChartPanel .rank-adr-status').textContent.includes('Jusikbot'));
+        await page.waitForFunction(() => document.querySelector('#rankBreadthChartPanel .rank-adr-status').textContent.includes('키움'));
         assert.match(await breadth.locator('h2').textContent(), /신고가-신저가/);
-        assert.equal(await breadth.locator('[data-volatility-range]').count(), 4);
+        assert.equal(await breadth.locator('[data-volatility-range]').count(), 0);
+        assert.equal(await breadth.locator('[data-breadth-mode]').count(), 2);
         assert.equal(await breadth.locator('.volatility-guide').count(), 0, 'Volatility-specific guide must not appear on breadth');
-        await breadth.getByRole('button', { name: '6M', exact: true }).click();
+        await breadth.getByRole('button', { name: '1분봉', exact: true }).click();
+        await page.waitForFunction(() => document.querySelector('#rankBreadthChartPanel .rank-adr-status').textContent.includes('키움'));
+        await breadth.getByRole('button', { name: '신고가·신저가 과거 추가조회', exact: true }).click();
+        await page.waitForFunction(() => document.querySelector('#rankBreadthChartPanel .rank-adr-status').textContent.includes('키움'));
         await breadth.getByRole('button', { name: '캔들차트', exact: true }).click();
         await page.waitForFunction(() => document.querySelector('#breadthCandleArea [role="status"]').textContent === '');
+        await breadth.locator('.rank-adr-area canvas').scrollIntoViewIfNeeded();
         const breadthBox = await breadth.locator('.rank-adr-area canvas').boundingBox();
         await page.mouse.move(breadthBox.x + breadthBox.width / 2, breadthBox.y + 50);
         assert.match(await breadth.locator('.chart-hover-info').textContent(), /신고가 .*개.*신저가 .*개.*등락율/);
-        assert.equal(await page.evaluate(() => getRankBreadthDisplaySettings().range), '6m');
+        assert.equal(await page.evaluate(() => getRankBreadthDisplaySettings().mode), 'minute');
         assert.equal(await breadth.locator('#breadthCandleArea').isVisible(), true);
         assert.equal(await panel.locator('[data-volatility-range]').count(), 4);
         assert.ok(await page.evaluate(() => lineColors.includes('#339af0') && lineColors.includes('#e11d48')));

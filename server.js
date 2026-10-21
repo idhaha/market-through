@@ -20,7 +20,7 @@ const getLendableView = createLendableViewCache();
 const lendableService = createLendableService({ http: axios, log: message => fileLog(message) });
 const adrMinuteStore = createAdrMinuteStore({ directory: path.join(__dirname, 'data', 'adr-minutes') });
 const volatilityService = createVolatilityService();
-const breadthService = createVolatilityService({ kind: 'breadth' });
+const { createBreadthService } = require('./breadth-service');
 const sentimentService = createVolatilityService({ kind: 'sentiment' });
 const { diskSpace } = require('./server-storage');
 const { createSupplyService } = require('./supply-service');
@@ -193,6 +193,11 @@ const supplyService = createSupplyService({
     directory: path.join(__dirname, 'data', 'supply'), http: axios,
     getToken: () => getAccessToken(process.env.KIWOOM_APPKEY, process.env.KIWOOM_SECRETKEY),
     resolveStock: code => concentrationChartService.resolveStock(code)
+});
+const breadthService = createBreadthService({
+    directory: path.join(__dirname, 'data', 'breadth'),
+    legacyFile: path.join(__dirname, 'data', 'volatility', 'new-highs-lows.json'),
+    http: axios, getToken: () => getAccessToken(process.env.KIWOOM_APPKEY, process.env.KIWOOM_SECRETKEY), supply: supplyService
 });
 app.get('/api/supply/watchlist', (req, res) => {
     try { res.set('Cache-Control', 'no-store').json(supplyService.summary()); }
@@ -1743,7 +1748,7 @@ app.get('/api/risk/volatility', async (req, res) => {
     catch (error) { res.status(error.status || 502).json({ error: error.message }); }
 });
 app.get('/api/risk/breadth', async (req, res) => {
-    try { res.set('Cache-Control', 'no-store').json(await breadthService.query(req.query.range || '1y')); }
+    try { res.set('Cache-Control', 'no-store').json(await breadthService.query(req.query)); }
     catch (error) { res.status(error.status || 502).json({ error: error.message }); }
 });
 app.get('/api/risk/sentiment', async (req, res) => {
@@ -2896,8 +2901,9 @@ async function getEfriendAccessToken(domain, appKey, secretKey) {
 
 app.listen(PORT, () => {
     supplyService.start();
+    breadthService.start();
     // Keep the daily archive current even when no chart is open.
-    const refreshVolatilityArchive = () => Promise.allSettled([volatilityService.query('all'), breadthService.query('all'), sentimentService.query('all')]).then(results => results.forEach(result => { if (result.status === 'rejected') console.warn('[Risk] Archive refresh failed:', result.reason.message); }));
+    const refreshVolatilityArchive = () => Promise.allSettled([volatilityService.query('all'), sentimentService.query('all')]).then(results => results.forEach(result => { if (result.status === 'rejected') console.warn('[Risk] Archive refresh failed:', result.reason.message); }));
     refreshVolatilityArchive();
     setInterval(refreshVolatilityArchive, 60 * 60 * 1000).unref();
     concentrationChartService.startStockDirectorySchedule();

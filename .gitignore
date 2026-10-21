@@ -54,6 +54,7 @@ data/fred-cache/
 data/adr-minutes/
 data/volatility/
 data/supply/
+data/breadth/
 
 # Development outputs and historical one-off tools
 /dev/output/

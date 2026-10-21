@@ -118,7 +118,7 @@
             if (panels.every(item => item.classList.contains('independent-collapsed'))) return;
             for (const panel of panels) panel.querySelectorAll('.concentration-chart-area, .rank-adr-area, .concentration-candle-area, .rank-adr-candle-area').forEach(area => { area.style.flex = ''; area.style.height = ''; });
             layout.style.flex = '1'; layout.style.width = '100%'; layout.style.height = 'auto';
-            layout.style.gridTemplateRows = panels.map(item => item.classList.contains('independent-collapsed') ? collapsedSize(item).height + 'px' : item === table && rowLimit ? limitedTableHeight + 'px' : 'minmax(500px, 1fr)').join(' ');
+            layout.style.gridTemplateRows = panels.map(item => item.classList.contains('independent-collapsed') ? collapsedSize(item).height + 'px' : item === table && rowLimit ? limitedTableHeight + 'px' : 'max-content').join(' ');
             requestAnimationFrame(() => {
                 if (!foldLayout) return;
                 panels.forEach((panel, index) => {
@@ -183,7 +183,7 @@
         let rowBaseline = null, resetRowBaseline = false;
         let rowLimit = 0, defaultTableHeight = null, limitedTableHeight = 0;
         const rowLimitButton = document.createElement('button');
-        rowLimitButton.type = 'button'; rowLimitButton.className = 'independent-row-limit'; rowLimitButton.textContent = '⇅';
+        rowLimitButton.type = 'button'; rowLimitButton.className = 'independent-row-limit'; rowLimitButton.innerHTML = '<svg width="18" height="20" viewBox="0 0 18 20" aria-hidden="true" focusable="false"><path d="M9 2v16M4 7l5-5 5 5M4 13l5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
         table.querySelector('h2').after(rowLimitButton);
         function fitTableRows() {
             if (table.classList.contains('independent-collapsed')) return;

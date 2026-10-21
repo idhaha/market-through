@@ -23,6 +23,16 @@ const { chromium } = require('playwright');
         const heights = () => page.locator('#tab_rank > .panel').evaluateAll(es => es.map(el => el.getBoundingClientRect().height));
         const button = page.locator('.independent-row-limit'), initial = await heights();
         assert.equal(await page.locator('#transactionBody > tr:visible').count(), 20);
+        const viewport = page.viewportSize();
+        await page.setViewportSize({ width: viewport.width, height: 3200 });
+        await page.waitForTimeout(150);
+        assert.deepEqual(await heights(), initial, 'Increasing window height must not stretch the cards');
+        const plots = await page.locator('.concentration-chart-area, .rank-supply-panel .rank-adr-area').evaluateAll(es => es.map(el => el.getBoundingClientRect().height));
+        assert.ok(plots.length >= 2 && plots.every(h => h === 260), 'Both main plots retain the main-window 260px height');
+        assert.equal(await button.locator('svg path').count(), 1, 'Row control is a single double-headed arrow');
+        await page.setViewportSize(viewport);
+        await page.waitForTimeout(150);
+
         await button.click();
         assert.equal(await page.locator('#transactionBody > tr:visible').count(), 5);
         const five = await heights();

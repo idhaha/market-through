@@ -45,6 +45,10 @@
         controls.innerHTML = `<button type="button" data-adr-mode="day">일</button><button type="button" data-adr-mode="minute" class="active">당일 1분</button><span class="rank-adr-ranges" hidden>${['6m','1y','3y','5y'].map(r => `<button type="button" data-adr-range="${r}" class="${r === '1y' ? 'active' : ''}">${r.toUpperCase()}</button>`).join('')}</span><button type="button" class="concentration-candle-toggle" aria-expanded="false">캔들차트</button>`;
         panel.querySelector('.concentration-chart-header').after(controls);
         controls.append(output);
+        const valueWithDate = document.createElement('span'); valueWithDate.className = 'chart-value-with-date';
+        output.before(valueWithDate); valueWithDate.append(output);
+        const currentDate = document.createElement('span'); currentDate.className = 'chart-value-date'; currentDate.textContent = '—';
+        valueWithDate.prepend(currentDate);
         const candleArea = document.createElement('div'); candleArea.className = 'rank-adr-candle-area'; candleArea.hidden = true;
         candleArea.innerHTML = '<canvas role="img" aria-label="시장 지수 캔들차트"></canvas><div class="concentration-tooltip" hidden></div><p class="rank-adr-candle-status" role="status"></p>';
         status.before(candleArea);
@@ -83,6 +87,8 @@
         zoomIn.addEventListener('click', () => zoom(.5)); zoomOut.addEventListener('click', () => zoom(2));
         slider.addEventListener('input', () => { viewStart=Number(slider.value); clearHover(); });
         function draw() {
+            const latest = points.at(-1);
+            currentDate.textContent = latest ? dateKey(latest.t) : closing ? chartDay : '—';
             const visiblePoints = viewportPoints();
             updateZoomControls();
             const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -93,7 +99,7 @@
             ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
             ctx.clearRect(0, 0, w, h);
             ctx.lineWidth = 1;
-            const left = 16, top = 10, bottom = h - 30;
+            const left = 16, top = 10, bottom = h - 34;
             ctx.font = '12px Inter, sans-serif';
             const highestCandle = candles.reduce((highest, point) => Math.max(highest, Number(point.high) || 0), 0);
             const candleAxisWidth = candleArea.hidden || !candles.length ? 0 : ctx.measureText(Math.round(highestCandle).toLocaleString('ko-KR')).width;
@@ -108,7 +114,15 @@
                 const index = visiblePoints.findIndex(p => p.t >= t);
                 return left + Math.max(0, index < 0 ? visiblePoints.length - 1 : index) / Math.max(1, visiblePoints.length - 1) * (right - left);
             };
-            geometry = { x, y, left, right, top, bottom, start, end, points:visiblePoints };
+            const boundaryXs = [];
+            visiblePoints.forEach((point,i) => {
+                const length = mode === 'minute' ? 10 : 7;
+                if (i && dateKey(point.t).slice(0,length) !== dateKey(visiblePoints[i-1].t).slice(0,length)
+                    && (!boundaryXs.length || x(point.t) - boundaryXs.at(-1) >= 32)) boundaryXs.push(x(point.t));
+            });
+            geometry = { x, y, left, right, top, bottom, start, end, points:visiblePoints, boundaryXs };
+            drawBoundaries(ctx,top,bottom);
+
             ctx.fillStyle = 'rgba(200, 200, 200, 0.2)'; ctx.fillRect(left, y(120), right - left, y(80) - y(120));
             ctx.font = '12px Inter, sans-serif';
             const gridColor = '#b8c1cc';
@@ -184,6 +198,10 @@
             context.font = '12px Inter, sans-serif'; context.fillStyle = getComputedStyle(panel).getPropertyValue('--text-muted').trim() || '#64748b';
             for (const tick of geometry.ticks) { context.textAlign = tick.align || 'center'; context.fillText(tick.label, tick.x, height - 8); }
         }
+        function drawBoundaries(context, upper, lower) {
+            context.save(); context.strokeStyle = '#b8c1cc'; context.lineWidth = 1; context.setLineDash([3,5]);
+            (geometry?.boundaryXs || []).forEach(px => { context.beginPath(); context.moveTo(px,upper); context.lineTo(px,lower); context.stroke(); }); context.restore();
+        }
         function drawCandles() {
             candleGeometry = null;
             if (candleArea.hidden || !geometry) return;
@@ -203,6 +221,7 @@
             candleCtx.font = '12px Inter, sans-serif'; candleCtx.textAlign = 'left';
             for (let i=0; i<5; i++) { const v = lo + (hi-lo) * i/4; candleCtx.strokeStyle = '#b8c1cc'; candleCtx.setLineDash([3,5]); candleCtx.beginPath(); candleCtx.moveTo(geometry.left,y(v)); candleCtx.lineTo(geometry.right,y(v)); candleCtx.stroke(); candleCtx.fillStyle='#64748b'; candleCtx.textAlign='right'; candleCtx.fillText(Math.round(v).toLocaleString('ko-KR'),w-4,y(v)+4); }
             candleCtx.setLineDash([]);
+            drawBoundaries(candleCtx,16,h-28);
             visible.forEach(p => {
                 const x = geometry.x(p.t), color = p.close >= p.open ? '#e11d48' : '#2563eb';
                 candleCtx.strokeStyle = color; candleCtx.fillStyle = color; candleCtx.beginPath(); candleCtx.moveTo(x,y(p.high)); candleCtx.lineTo(x,y(p.low)); candleCtx.stroke();
@@ -342,7 +361,7 @@
         };
         candleButton.addEventListener('click', () => {
             window.applyRankAdrCandleOpen(candleArea.hidden);
-            if (typeof saveAppData === 'function') saveAppData();
+            if (!window.rankCandleSyncing && typeof saveAppData === 'function') saveAppData();
         });
         function hoverChart(event) {
             if (drag) return;

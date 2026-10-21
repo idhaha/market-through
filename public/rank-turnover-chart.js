@@ -8,6 +8,9 @@
         panel.innerHTML = `<div class="concentration-chart-header"><h2>거래대금</h2><div class="rank-market-choice" role="radiogroup" aria-label="거래대금 시장 선택"><label><input type="radio" name="rank-turnover-market" value="kospi" checked>KOSPI</label><label><input type="radio" name="rank-turnover-market" value="kosdaq">KOSDAQ</label></div><div class="turnover-legend"><span data-market="kospi"><span>● KOSPI</span><output data-latest="kospi">—</output></span><span data-market="kosdaq"><span>● KOSDAQ</span><output data-latest="kosdaq">—</output></span></div></div><div class="rank-adr-controls"><button type="button" data-mode="day" class="active">일</button><button type="button" data-mode="minute">당일1분(누적)</button><span class="rank-adr-ranges">${['6m','1y','3y','5y'].map(r => `<button type="button" data-range="${r}" class="${r === '1y' ? 'active' : ''}">${r.toUpperCase()}</button>`).join('')}</span><button type="button" class="concentration-candle-toggle" aria-expanded="false">캔들차트</button></div><div class="turnover-hover-info" aria-live="off"></div><div class="rank-adr-area"><canvas role="img" aria-label="코스피 코스닥 거래대금 차트"></canvas><div class="concentration-tooltip" hidden></div></div><div class="rank-adr-candle-area" hidden><canvas role="img" aria-label="선택 시장 지수 캔들차트"></canvas></div><div class="concentration-chart-footer rank-adr-zoom"><input type="range" min="0" max="0" value="0" aria-label="거래대금 과거 구간 이동" disabled><div class="concentration-controls"><button type="button" aria-label="거래대금 차트 축소">−</button><button type="button" aria-label="거래대금 차트 확대">+</button></div></div><p role="status" class="rank-adr-status"></p>`;
         adr.after(panel);
         panel.querySelector('.rank-adr-controls').append(panel.querySelector('.turnover-legend'));
+        const latestDate = document.createElement('span');
+        latestDate.className = 'turnover-latest-date'; latestDate.textContent = '—';
+        panel.querySelector('.turnover-legend').prepend(latestDate);
         let selectedMarket = 'kospi';
         const canvas = panel.querySelector('.rank-adr-area canvas'), ctx = canvas.getContext('2d');
         const candleArea = panel.querySelector('.rank-adr-candle-area'), candle = candleArea.querySelector('canvas'), cc = candle.getContext('2d');
@@ -28,12 +31,12 @@
             const visible = dates.slice(start,start+n), indices = new Map(visible.map((t,i) => [t,i]));
             slider.max = String(dates.length-n); slider.value = String(start); slider.disabled = n >= dates.length;
             into.disabled = n <= 10; out.disabled = n >= dates.length;
-            const {w,h} = surface(canvas,ctx), left = 16, top = 10, bottom = h-30;
+            const {w,h} = surface(canvas,ctx), left = 16, top = 10, bottom = h-34;
             const rows = Object.fromEntries(Object.keys(data).map(m => [m,data[m].filter(p => indices.has(p.t))]));
             const selected = rows[selectedMarket];
             const highestCandle = selected.reduce((highest, point) => Math.max(highest, Number(point.high) || 0), 0);
             const candleAxisWidth = candleArea.hidden || !selected.length ? 0 : ctx.measureText(Math.round(highestCandle).toLocaleString('ko-KR')).width;
-            const right = w - Math.max(58, candleAxisWidth + 12);
+            const right = w - Math.max(58, candleAxisWidth + 18);
             if (right <= left || bottom <= top) return;
             const x = t => left + indices.get(t)/Math.max(1,n-1)*(right-left);
             const values = Object.values(rows).flat().filter(p => Number.isFinite(p.market_turnover)).map(p => p.market_turnover/1e12);
@@ -56,6 +59,17 @@
             }
             const ticks = visible.filter((_,i) => i % Math.max(1,Math.ceil(n/Math.max(1,Math.floor((right-left)/90)))) === 0);
             function axis(context,height) { context.font='12px Inter, sans-serif'; context.fillStyle=muted; context.textAlign='center'; ticks.forEach(t => context.fillText(mode==='minute' ? new Date(t+9*3600000).toISOString().slice(11,16) : dateKey(t).slice(2),x(t),height-8)); }
+            const boundaryXs = [];
+            visible.forEach((t,i) => {
+                const length = mode === 'minute' ? 10 : 7;
+                if (i && dateKey(t).slice(0,length) !== dateKey(visible[i-1]).slice(0,length)
+                    && (!boundaryXs.length || x(t) - boundaryXs.at(-1) >= 32)) boundaryXs.push(x(t));
+            });
+            function boundaries(context, upper, lower) {
+                context.save(); context.strokeStyle='#b8c1cc'; context.lineWidth=1; context.setLineDash([3,5]);
+                boundaryXs.forEach(px => {context.beginPath();context.moveTo(px,upper);context.lineTo(px,lower);context.stroke();});context.restore();
+            }
+            boundaries(ctx,top,bottom);
             axis(ctx,h);
             for (const m of [selectedMarket === 'kospi' ? 'kosdaq' : 'kospi',selectedMarket]) {
                 ctx.globalAlpha = m === selectedMarket ? 1 : .22; ctx.strokeStyle=colors[m]; ctx.lineWidth=m === selectedMarket ? 2 : 1.5; ctx.beginPath();
@@ -84,6 +98,13 @@
                 const point=data[el.dataset.latest].filter(p=>Number.isFinite(p.market_turnover)).at(-1);
                 el.textContent=point?`${(point.market_turnover/1e12).toFixed(1)}조원`:'—';
             });
+            const latestDates = ['kospi','kosdaq'].map(m => {
+                const point = data[m].filter(p => Number.isFinite(p.market_turnover)).at(-1);
+                return point ? dateKey(point.t) : null;
+            });
+            const availableDates = [...new Set(latestDates.filter(Boolean))];
+            latestDate.textContent = availableDates.length <= 1 ? availableDates[0] || '—'
+                : latestDates.map((date, i) => `${names[['kospi','kosdaq'][i]]} ${date || '—'}`).join(' · ');
             if (candleArea.hidden) return;
             const size=surface(candle,cc); axis(cc,size.h);
             if (!selected.length) return;
@@ -92,6 +113,7 @@
             cc.textAlign='left';
             for(let i=0;i<5;i++){const v=lo+(hi-lo)*i/4;cc.fillStyle=muted;cc.textAlign='right';cc.fillText(Math.round(v).toLocaleString('ko-KR'),size.w-4,cy(v)+4);cc.strokeStyle=border;cc.setLineDash([3,5]);cc.beginPath();cc.moveTo(left,cy(v));cc.lineTo(right,cy(v));cc.stroke();}
             cc.setLineDash([]);
+            boundaries(cc,16,size.h-28);
             selected.forEach(p=>{cc.fillStyle=cc.strokeStyle=p.close>=p.open?'#e11d48':'#2563eb';cc.beginPath();cc.moveTo(x(p.t),cy(p.high));cc.lineTo(x(p.t),cy(p.low));cc.stroke();cc.fillRect(x(p.t)-cw/2,Math.min(cy(p.open),cy(p.close)),cw,Math.max(1,Math.abs(cy(p.open)-cy(p.close))));});
             if(hover&&indices.has(hover)){cc.strokeStyle='#000';cc.setLineDash([3,3]);cc.beginPath();cc.moveTo(x(hover),16);cc.lineTo(x(hover),size.h-28);cc.stroke();cc.setLineDash([]);}
             const hovered=selected.find(p=>p.t===hover);
@@ -235,7 +257,7 @@
         };
         candleButton.addEventListener('click', () => {
             window.applyRankTurnoverCandleOpen(candleArea.hidden);
-            if (typeof saveAppData === 'function') saveAppData();
+            if (!window.rankCandleSyncing && typeof saveAppData === 'function') saveAppData();
         });
         function zoom(factor,anchor=.5){if(!dates.length)return;const n=Math.min(dates.length,count??dates.length);count=Math.min(dates.length,Math.max(Math.min(10,dates.length),Math.round(n*factor)));start=Math.max(0,Math.min(dates.length-count,Math.round(start+anchor*(n-count))));hover=null;tip.hidden=true;draw();}
         into.addEventListener('click',()=>zoom(.5));out.addEventListener('click',()=>zoom(2));slider.addEventListener('input',()=>{start=Number(slider.value);draw();});

@@ -64,7 +64,7 @@
         if (!concentration || document.getElementById(panelId)) return;
         const panel = document.createElement('section');
         panel.id = panelId; panel.className = 'panel rank-adr-panel rank-volatility-panel';
-        panel.setAttribute('aria-label', sentiment ? 'CNN Fear & Greed 및 하이일드 스프레드 차트' : breadth ? '신고가-신저가 (KOSPI) 차트' : 'VKOSPI 및 VIX 일봉 차트');
+        panel.setAttribute('aria-label', sentiment ? 'CNN Fear & Greed 및 하이일드 스프레드 차트' : breadth ? '신고가-신저가 (KOSPI+KOSDAQ 통합시장) 차트' : 'VKOSPI 및 VIX 일봉 차트');
         if (breadth) panel.classList.add('rank-breadth-panel');
         if (sentiment) panel.classList.add('rank-sentiment-panel');
         panel.innerHTML = `<div class="concentration-chart-header"><h2 tabindex="0" class="volatility-help-trigger" aria-describedby="volatilityGuide">VKOSPI · VIX</h2><div id="volatilityGuide" class="volatility-guide" role="tooltip"><p class="volatility-guide-definition">옵션 가격에 반영된 향후 기대 변동성</p><p class="volatility-guide-level"><strong>30+</strong> 높은 변동성 · 시장 스트레스 가능성</p><h3>분석 지침</h3><ol><li><strong>수치보다 변화 속도를 관찰하세요.</strong> VIX가 15에서 22로 빠르게 상승하면, 25에서 26으로 완만하게 상승할 때보다 위험 회피 심리가 급격히 확대되는 신호일 수 있습니다.</li><li><strong>높은 변동성을 곧바로 반등 신호로 보지 마세요.</strong> 지수 급락 시 변동성 지수가 급등하는 경향이 있지만, 높은 수준은 며칠 또는 몇 주간 지속될 수 있습니다.</li><li><strong>지수와 변동성이 함께 오르면 상승장 내부를 살펴보세요.</strong> 지수 급락 가능성을 염두에 두고 불안이나 헤지 수요가 커지는지 확인하세요. 다만 변동성 지수의 고점이 높다는 이유만으로 주가 바닥이라고 판단해서는 안 됩니다.</li></ol></div></div>
@@ -74,12 +74,20 @@
             <div class="concentration-chart-footer rank-adr-zoom"><input type="range" min="0" max="0" value="0" aria-label="변동성 차트 과거 구간 이동" disabled><div class="concentration-controls"><button type="button" aria-label="변동성 차트 축소">−</button><button type="button" aria-label="변동성 차트 확대">+</button></div></div>
             <p class="rank-adr-status" role="status"></p>`;
         if (breadth) {
-            panel.querySelector('h2').textContent = '신고가-신저가 (KOSPI)';
+            panel.querySelector('h2').textContent = '신고가-신저가 (KOSPI+KOSDAQ)';
             panel.querySelector('h2').removeAttribute('aria-describedby');
             panel.querySelector('h2').removeAttribute('tabindex');
             panel.querySelector('h2').classList.remove('volatility-help-trigger');
             panel.querySelector('.volatility-guide').remove();
-            panel.innerHTML = panel.innerHTML.replaceAll('volatilityCandleArea', 'breadthCandleArea').replaceAll('data-volatility="vkospi"', 'data-volatility="highs"').replaceAll('data-volatility="vix"', 'data-volatility="lows"').replaceAll('● VKOSPI', '● 신고가').replaceAll('● VIX', '● 신저가').replaceAll('변동성 차트', '신고가·신저가 차트').replaceAll('VKOSPI 및 VIX 일별 변동성 지수', 'KOSPI 신고가 및 신저가 종목 수');
+            panel.innerHTML = panel.innerHTML.replaceAll('volatilityCandleArea', 'breadthCandleArea').replaceAll('data-volatility="vkospi"', 'data-volatility="highs"').replaceAll('data-volatility="vix"', 'data-volatility="lows"').replaceAll('● VKOSPI', '● 신고가').replaceAll('● VIX', '● 신저가').replaceAll('변동성 차트', '신고가·신저가 차트').replaceAll('VKOSPI 및 VIX 일별 변동성 지수', 'KOSPI+KOSDAQ 통합시장 신고가 및 신저가 종목 수');
+            panel.querySelector('.rank-adr-ranges').innerHTML = '<button type="button" data-breadth-mode="day" class="active" aria-pressed="true">일</button><button type="button" data-breadth-mode="minute" aria-pressed="false">1분봉</button><button type="button" data-breadth-more aria-label="신고가·신저가 과거 추가조회" disabled>▥+</button>';
+            const more = panel.querySelector('[data-breadth-more]');
+            more.classList.add('concentration-icon-button');
+            const icon = document.querySelector('#concentrationMore svg');
+            if (icon) more.replaceChildren(icon.cloneNode(true));
+            panel.querySelector('.concentration-chart-header').insertAdjacentHTML('beforeend', '<span class="breadth-notice"></span>');
+            panel.querySelector('.volatility-candle-label').textContent = 'KOSPI';
+            panel.querySelector('.rank-adr-candle-area canvas').setAttribute('aria-label', 'KOSPI 캔들차트');
         } else panel.querySelector('h2').textContent = '변동성';
         if (sentiment) {
             const title = panel.querySelector('h2'); title.textContent = 'CNN Fear & Greed · 하이일드 스프레드 (ICE BofA US HY OAS)';
@@ -169,10 +177,37 @@
         const slider = panel.querySelector('input[type="range"]'), [out, into] = panel.querySelectorAll('.concentration-controls button');
         const ids = sentiment ? ['fear-greed', 'high-yield-spread'] : breadth ? ['highs', 'lows'] : ['vkospi', 'vix'], colors = sentiment ? { 'fear-greed': '#d97706', 'high-yield-spread': '#8b5cf6' } : breadth ? { highs: '#e11d48', lows: '#2563eb' } : { vkospi: '#339af0', vix: '#e11d48' };
         const names = sentiment ? { 'fear-greed': 'CNN F&G', 'high-yield-spread': 'HY OAS' } : breadth ? { highs: '신고가', lows: '신저가' } : { vkospi: 'VKOSPI', vix: 'VIX' };
+        const latestDate = document.createElement('span');
+        latestDate.className = 'risk-latest-date'; latestDate.textContent = '—';
+        if (!sentiment) panel.querySelector('.volatility-legend').prepend(latestDate);
+        ids.forEach(id => {
+            const legend = panel.querySelector(`[data-volatility="${id}"]`);
+            legend.style.color = colors[id];
+            const label = document.createElement('span'); label.textContent = legend.firstChild.textContent.trim();
+            legend.firstChild.replaceWith(label);
+            if (sentiment) {
+                const date = document.createElement('span'); date.className = 'risk-series-date'; date.textContent = '—';
+                legend.prepend(date);
+            }
+        });
+        function updateLatestDate() {
+            const labels = ids.map(id => {
+                const point = breadth ? data[id].find(p => p.date === dates.at(-1)) : data[id].at(-1);
+                return point?.value == null ? null : point.date.slice(0,10);
+            });
+            const unique = [...new Set(labels.filter(Boolean))];
+            if (sentiment) ids.forEach((id, i) => {
+                panel.querySelector(`[data-volatility="${id}"] .risk-series-date`).textContent = labels[i] || '—';
+            });
+            latestDate.textContent = unique.length <= 1 ? unique[0] || '—'
+                : labels.map((date, i) => `${names[ids[i]]} ${date || '—'}`).join(' · ');
+        }
         const formatValue = (value, id) => breadth ? `${Math.abs(value).toLocaleString('ko-KR')}개` : `${value.toFixed(2)}${sentiment && id === 'high-yield-spread' ? '%p' : ''}`;
         let range = '1y', data = Object.fromEntries(ids.map(id => [id, []])), dates = [], candles = [], candleKey = '', candleRequest = 0;
         let start = 0, count = null, hover = null, geometry = null, candleGeometry = null, drag = null, controller, candleController;
         let pendingRefresh = false, resizeFrame;
+        let breadthMode = 'day', breadthCursor = null, breadthLoading = false, pendingBreadthMode = null;
+        const breadthPages = new Map();
         let candlePointerY = null;
         const dateKey = t => new Date(t + 9 * 3600000).toISOString().slice(0, 10);
         function surface(target, context) {
@@ -187,10 +222,10 @@
             const visible = dates.slice(start, start + n), indices = new Map(visible.map((date, index) => [date, index]));
             slider.max = String(dates.length - n); slider.value = String(start); slider.disabled = n >= dates.length;
             into.disabled = n <= Math.min(10, dates.length); out.disabled = n >= dates.length;
-            const { w, h } = surface(canvas, ctx), left = sentiment ? 54 : 16, right = w - (sentiment ? 64 : 58), top = sentiment ? 26 : 12, bottom = h - 30;
+            const { w, h } = surface(canvas, ctx), left = sentiment ? 54 : 16, right = w - (sentiment ? 64 : 58), top = 10, bottom = h - 34;
             if (right <= left || bottom <= top) return;
             const x = date => n === 1 ? (left + right) / 2 : left + indices.get(date) / Math.max(1, n - 1) * (right - left);
-            const rows = Object.fromEntries(ids.map(id => [id, data[id].filter(point => indices.has(point.date))]));
+            const rows = Object.fromEntries(ids.map(id => [id, data[id].filter(point => indices.has(point.date) && point.value != null)]));
             const max = sentiment ? 100 : Math.max(10, Math.ceil(Math.max(0, ...Object.values(rows).flat().map(point => Math.abs(point.value))) / 10) * 10);
             const hyMax = sentiment ? Math.max(1, Math.ceil(Math.max(0, ...rows['high-yield-spread'].map(point => point.value)) * 2) / 2) : 1;
             const min = breadth ? -max : 0;
@@ -207,12 +242,22 @@
             }
             ctx.setLineDash([]);
             if (sentiment) {
-                ctx.fillStyle = colors['fear-greed']; ctx.textAlign = 'left'; ctx.fillText('CNN', left, 12);
-                ctx.fillStyle = colors['high-yield-spread']; ctx.textAlign = 'right'; ctx.fillText('HY OAS (%p)', right, 12);
                 for (const [id, axisX] of [['fear-greed', left], ['high-yield-spread', right]]) { ctx.strokeStyle = colors[id]; ctx.beginPath(); ctx.moveTo(axisX, top); ctx.lineTo(axisX, bottom); ctx.stroke(); }
             }
-            const ticks = visible.filter((_, index) => index % Math.max(1, Math.ceil(n / Math.max(1, (right - left) / 90))) === 0);
-            const axis = (context, height) => { context.fillStyle = muted; context.textAlign = 'center'; ticks.forEach(date => { const label = date.slice(2), half = context.measureText(label).width / 2; context.fillText(label, Math.max(left + half, Math.min(right - half, x(date))), height - 8); }); };
+            const hours = breadth && breadthMode === 'minute' && (n <= 120 || visible[0]?.slice(0,10) === visible.at(-1)?.slice(0,10));
+            const candidates = hours ? visible.filter((date, i) => !i || date.slice(11,13) !== visible[i-1].slice(11,13)) : visible;
+            const ticks = candidates.filter((_, index) => index % Math.max(1, Math.ceil(candidates.length / Math.max(1, (right - left) / 70))) === 0);
+            const axis = (context, height) => { context.fillStyle = muted; context.textAlign = 'center'; ticks.forEach(date => { const label = breadth ? hours ? date.slice(11,13) : date.slice(5,10).replace('-', '/') : date.slice(2), half = context.measureText(label).width / 2; context.fillText(label, Math.max(left + half, Math.min(right - half, x(date))), height - 8); }); };
+            const separators = [];
+            visible.forEach((date, i) => {
+                const length = breadthMode === 'minute' ? 10 : 7;
+                if (i && date.slice(0,length) !== visible[i-1].slice(0,length) && (!separators.length || x(date) - x(separators.at(-1)) >= 32)) separators.push(date);
+            });
+            const boundaries = (context, upper, lower) => {
+                context.save(); context.strokeStyle = '#b8c1cc'; context.setLineDash([3,5]);
+                separators.forEach(date => { context.beginPath(); context.moveTo(x(date), upper); context.lineTo(x(date), lower); context.stroke(); }); context.restore();
+            };
+            boundaries(ctx, top, bottom);
             axis(ctx, h);
             for (const id of ids) {
                 const seriesY = sentiment && id === 'high-yield-spread' ? hyY : y;
@@ -235,7 +280,7 @@
             ctx.lineWidth = 1; geometry = { visible, left, right, top, bottom, x };
             if (hover && indices.has(hover)) { ctx.strokeStyle = '#000'; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(x(hover), top); ctx.lineTo(x(hover), bottom); ctx.stroke(); ctx.setLineDash([]); }
             if (drag) { ctx.fillStyle = 'rgba(51,154,240,.15)'; ctx.fillRect(Math.min(drag.from, drag.to), top, Math.abs(drag.to - drag.from), bottom - top); }
-            if (!candleArea.hidden) drawCandles({ visible, indices, x, left, right, axis });
+            if (!candleArea.hidden) drawCandles({ visible, indices, x, left, right, axis, boundaries });
         }
         function drawHoverValue(context, graph, value, label, color, leftAxis = false) {
             const py = graph.y(value), badgeY = Math.max(graph.top + 10, Math.min(graph.bottom - 10, py));
@@ -247,7 +292,7 @@
             context.fillRect(badgeX, badgeY - 10, width, 20);
             context.fillStyle = '#fff'; context.textAlign = 'left'; context.textBaseline = 'middle'; context.fillText(label, badgeX + 6, badgeY); context.restore();
         }
-        function drawCandles({ visible, indices, x, left, right, axis }) {
+        function drawCandles({ visible, indices, x, left, right, axis, boundaries }) {
             const { w, h } = surface(candle, cc), top = 24, bottom = h - 30;
             const rows = candles.filter(point => indices.has(point.date));
             candleGeometry = null;
@@ -257,6 +302,7 @@
             const y = value => bottom - (value - min) / (max - min) * (bottom - top);
             cc.textAlign = 'right'; cc.fillStyle = '#64748b'; cc.strokeStyle = '#b8c1cc';
             for (let i = 0; i <= 4; i++) { const value = min + (max - min) * i / 4; cc.setLineDash([3, 5]); cc.beginPath(); cc.moveTo(left, y(value)); cc.lineTo(right, y(value)); cc.stroke(); cc.fillText(Math.round(value).toLocaleString('ko-KR'), w - 4, y(value) + 4); } cc.setLineDash([]);
+            boundaries(cc, top, bottom);
             const width = Math.max(1, Math.min(12, (right - left) / Math.max(1, visible.length) * .65));
             rows.forEach(point => { cc.strokeStyle = cc.fillStyle = point.close >= point.open ? '#e11d48' : '#2563eb'; cc.beginPath(); cc.moveTo(x(point.date), y(point.high)); cc.lineTo(x(point.date), y(point.low)); cc.stroke(); cc.fillRect(x(point.date) - width / 2, Math.min(y(point.open), y(point.close)), width, Math.max(1, Math.abs(y(point.open) - y(point.close)))); });
             axis(cc, h); candleGeometry = { top, bottom };
@@ -268,16 +314,17 @@
         }
         async function loadCandles() {
             if (candleArea.hidden || !dates.length) return;
-            const key = `${dates[0]}:${dates.at(-1)}`;
+            const key = `${breadth ? breadthMode : 'day'}:${dates[0]}:${dates.at(-1)}`;
             if (key === candleKey && candles.length) { draw(); return; }
             candleController?.abort(); candleController = new AbortController(); const request = ++candleRequest;
             candleStatus.textContent = 'KOSPI 일봉 조회 중…';
             try {
-                const from = new Date(Date.parse(`${dates[0]}T00:00:00Z`) - 35 * 86400000).toISOString().slice(0, 10).replaceAll('-', '');
-                const response = await fetch(`/api/adr/candles?market=kospi&mode=day&from=${from}&to=${dates.at(-1).replaceAll('-', '')}`, { signal: candleController.signal });
+                const minute = breadth && breadthMode === 'minute';
+                const from = new Date(Date.parse(`${dates[0].slice(0,10)}T00:00:00Z`) - (minute ? 0 : 35 * 86400000)).toISOString().slice(0, 10).replaceAll('-', '');
+                const response = await fetch(`/api/adr/candles?market=kospi&mode=${minute ? 'minute' : 'day'}&from=${from}&to=${dates.at(-1).slice(0,10).replaceAll('-', '')}`, { signal: candleController.signal });
                 const result = await response.json(); if (!response.ok) throw new Error(result.error || 'KOSPI 캔들 조회 실패');
                 if (request !== candleRequest) return;
-                candles = (Array.isArray(result.points) ? result.points : []).filter(point => ['t', 'open', 'high', 'low', 'close'].every(key => point[key] != null && Number.isFinite(Number(point[key])))).map(point => ({ ...point, date: dateKey(Number(point.t)) })).sort((a, b) => a.t - b.t);
+                candles = (Array.isArray(result.points) ? result.points : []).filter(point => ['t', 'open', 'high', 'low', 'close'].every(key => point[key] != null && Number.isFinite(Number(point[key])))).map(point => ({ ...point, date: minute ? new Date(Number(point.t) + 9 * 3600000).toISOString().slice(0,16).replace('T', ' ') : dateKey(Number(point.t)) })).sort((a, b) => a.t - b.t);
                 candles.forEach((point, index) => {
                     const previous = index > 0 ? Number(candles[index - 1].close) : null;
                     point.changeRate = previous > 0 ? (Number(point.close) / previous - 1) * 100 : null;
@@ -285,8 +332,56 @@
                 candleKey = key; candleStatus.textContent = candles.length ? result.partial ? 'KOSPI · 일부 구간만 조회되었습니다.' : '' : 'KOSPI 캔들 데이터 없음'; draw();
             } catch (error) { if (error.name !== 'AbortError' && request === candleRequest) candleStatus.textContent = error.message; }
         }
+        async function refreshBreadth(more = false) {
+            if (breadthLoading) return;
+            breadthLoading = true;
+            canvas.classList.add('is-loading'); candle.classList.add('is-loading');
+            canvas.parentElement.setAttribute('aria-busy', 'true');
+            const button = panel.querySelector('[data-breadth-more]'); button.disabled = true;
+            status.textContent = '신고가·신저가 조회 중…';
+            try {
+                const cursors = more ? [breadthCursor] : [...new Set(['', ...breadthPages.keys()])];
+                for (const cursor of cursors) {
+                    const response = await fetch(`/api/risk/breadth?mode=${breadthMode}&cursor=${encodeURIComponent(cursor || '')}`);
+                    const result = await response.json(); if (!response.ok) throw new Error(result.error || '신고저가 조회 실패');
+                    breadthPages.set(cursor || '', result);
+                }
+                const pages = [...breadthPages.values()];
+                dates = [...new Set(pages.flatMap(p => p.dates || []))].sort();
+                for (const id of ids) data[id] = [...new Map(pages.flatMap(p => p.series?.[id]?.points || []).map(p => [p.date, p])).values()].sort((a,b) => a.date.localeCompare(b.date));
+                const last = pages.at(-1); breadthCursor = last?.has_more ? last.cursor : null;
+                ids.forEach(id => { const latest = data[id].find(p => p.date === dates.at(-1)); panel.querySelector(`[data-volatility="${id}"] output`).textContent = latest?.value == null ? '—' : formatValue(latest.value,id); });
+                updateLatestDate();
+                panel.querySelector('.breadth-notice').textContent = (pages[0]?.notice || '').replace(' · ', '\n');
+                panel.querySelector('.breadth-notice').title = pages[0]?.notice || '';
+                status.textContent = [dates.length ? `${dates[0]} ~ ${dates.at(-1)}` : '기준 봉 없음', pages[0]?.warning, '키움 · 250일 고저 기준 · 누락 —'].filter(Boolean).join(' · ');
+                window.setRankCardConnection?.(panel, !pages[0]?.warning);
+                if (more) { start = 0; count = null; }
+                candleKey = ''; draw(); void loadCandles();
+            } catch (error) { status.textContent = error.message; window.setRankCardConnection?.(panel, false); }
+            finally {
+                breadthLoading = false; button.disabled = !breadthCursor;
+                canvas.classList.remove('is-loading'); candle.classList.remove('is-loading');
+                canvas.parentElement.setAttribute('aria-busy', 'false');
+                if (pendingBreadthMode) {
+                    const mode = pendingBreadthMode; pendingBreadthMode = null;
+                    panel.querySelector(`[data-breadth-mode="${mode}"]`).click();
+                }
+            }
+        }
+        panel.querySelector('[data-breadth-more]')?.addEventListener('click', () => refreshBreadth(true));
+        panel.querySelectorAll('[data-breadth-mode]').forEach(button => button.addEventListener('click', () => {
+            if (breadthLoading) { pendingBreadthMode = button.dataset.breadthMode; return; }
+            if (breadthMode === button.dataset.breadthMode) return;
+            breadthMode = button.dataset.breadthMode; breadthCursor = null; breadthPages.clear();
+            candleController?.abort(); candleRequest++; candleKey = '';
+            start = 0; count = null; hover = null; tip.hidden = true; data = Object.fromEntries(ids.map(id => [id, []])); dates = []; candles = [];
+            panel.querySelectorAll('[data-breadth-mode]').forEach(item => { const active = item === button; item.classList.toggle('active',active); item.setAttribute('aria-pressed',String(active)); });
+            void refreshBreadth(); save();
+        }));
         window[refreshName] = async () => {
             if (drag) { pendingRefresh = true; return; } pendingRefresh = false;
+            if (breadth) return refreshBreadth();
             controller?.abort(); const current = controller = new AbortController(); status.textContent = sentiment ? 'CNN·하이일드 조회 중…' : breadth ? '신고가·신저가 조회 중…' : 'VIX·VKOSPI 조회 중…';
             try {
                 const response = await fetch(`/api/risk/${sentiment ? 'sentiment' : breadth ? 'breadth' : 'volatility'}?range=${range}`, { signal: current.signal });
@@ -295,6 +390,7 @@
                 data = Object.fromEntries(ids.map(id => [id, result.series?.[id]?.points || []]));
                 dates = [...new Set(ids.flatMap(id => data[id].map(point => point.date)))].sort();
                 ids.forEach(id => { const legend = panel.querySelector(`[data-volatility="${id}"]`); legend.style.color = colors[id]; legend.querySelector('output').textContent = data[id].length ? formatValue(data[id].at(-1).value, id) : '—'; });
+                updateLatestDate();
                 const errors = ids.flatMap(id => [result.series?.[id]?.error, result.series?.[id]?.warning]).filter(Boolean);
                 window.setRankCardConnection?.(panel, errors.length === 0);
                 status.textContent = [dates.length ? `${dates[0]} ~ ${dates.at(-1)}` : '일봉 데이터 없음', ...errors, '출처: Jusikbot'].join(' · ');
@@ -307,9 +403,14 @@
             panel.querySelectorAll('[data-volatility-range]').forEach(item => { const selected = item === button; item.classList.toggle('active', selected); item.setAttribute('aria-pressed', String(selected)); });
             window[refreshName](); save();
         }));
-        const save = () => { if (typeof saveAppData === 'function') saveAppData(); };
-        window[`get${displayName}`] = () => ({ range, candleOpen: !candleArea.hidden });
+        const save = () => { if (!window.rankCandleSyncing && typeof saveAppData === 'function') saveAppData(); };
+        window[`get${displayName}`] = () => ({ range, ...(breadth ? { mode: breadthMode } : {}), candleOpen: !candleArea.hidden });
         window[`apply${displayName}`] = settings => {
+            if (breadth) {
+                const mode = settings?.mode === 'minute' ? 'minute' : 'day';
+                if (mode !== breadthMode) panel.querySelector(`[data-breadth-mode="${mode}"]`).click();
+                candleArea.hidden = !settings?.candleOpen; toggle.setAttribute('aria-expanded', String(!candleArea.hidden)); resize(); return;
+            }
             const next = ['6m', '1y', '3y', 'all'].includes(settings?.range) ? settings.range : '1y', changed = next !== range;
             if (changed) { candleController?.abort(); candleRequest++; candles = []; candleKey = ''; hover = null; tip.hidden = true; }
             range = next; candleArea.hidden = !settings?.candleOpen; toggle.setAttribute('aria-expanded', String(!candleArea.hidden));
@@ -341,7 +442,7 @@
                 ids.forEach(id => {
                     const label = document.createElement('span'); label.textContent = names[id]; label.style.color = colors[id];
                     const selected = data[id].find(point => point.date === hover);
-                    tip.append(' · ', label, ` ${selected ? formatValue(selected.value, id) : '—'}`);
+                    tip.append(' · ', label, ` ${selected?.value != null ? formatValue(selected.value, id) : '—'}`);
                 });
                 const point = !candleArea.hidden && candles.find(point => point.date === hover);
                 if (point) tip.append(` · 등락율 ${point.changeRate == null ? '—' : `${point.changeRate > 0 ? '+' : ''}${point.changeRate.toFixed(2)}%`}`);

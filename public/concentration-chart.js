@@ -20,6 +20,21 @@
         }
         const panel = document.getElementById('concentrationChartPanel');
         if (!panel) return;
+        document.addEventListener('click', event => {
+            if (window.rankIndependentClient || window.rankCandleSyncing) return;
+            const button = event.target.closest?.('.rank-chart-row .concentration-candle-toggle');
+            if (!button || button.disabled) return;
+            const open = button.getAttribute('aria-expanded') !== 'true';
+            event.preventDefault(); event.stopImmediatePropagation();
+            window.rankCandleSyncing = true;
+            try {
+                // Reuse each chart's own loading, rendering and accessibility logic.
+                for (const target of document.querySelectorAll('.rank-chart-row .concentration-candle-toggle')) {
+                    if (!target.disabled && (target.getAttribute('aria-expanded') === 'true') !== open) target.click();
+                }
+            } finally { window.rankCandleSyncing = false; }
+            if (typeof saveAppData === 'function') saveAppData();
+        }, true);
         const canvas = document.getElementById('concentrationCanvas');
         const status = document.getElementById('concentrationStatus');
         const name = document.getElementById('concentrationStockName');
@@ -30,6 +45,16 @@
         const zoomOut = document.getElementById('concentrationZoomOut');
         const tooltip = document.getElementById('concentrationTooltip');
         const currentRate = document.getElementById('concentrationCurrentRate');
+        const valueWithDate = document.createElement('span'); valueWithDate.className = 'chart-value-with-date';
+        currentRate.before(valueWithDate); valueWithDate.append(currentRate);
+        const currentDate = document.createElement('span'); currentDate.className = 'chart-value-date concentration-value-date'; currentDate.textContent = '—';
+        panel.append(currentDate);
+        function positionCurrentDate() {
+            const box = panel.getBoundingClientRect(), value = currentRate.getBoundingClientRect();
+            currentDate.style.right = `${box.right - panel.clientLeft - value.right}px`;
+            currentDate.style.top = `${value.top - box.top - panel.clientTop - 15}px`;
+        }
+        currentRate.closest('.concentration-timeframe-row')?.addEventListener('scroll', positionCurrentDate);
         const chartArea = canvas.parentElement;
         tooltip.className = 'chart-hover-info';
         chartArea.before(tooltip);
@@ -73,7 +98,7 @@
             if (changed && state.selection) load();
         };
         function saveDisplaySettings() {
-            if (typeof saveAppData === 'function') saveAppData();
+            if (!window.rankCandleSyncing && typeof saveAppData === 'function') saveAppData();
         }
         function updateControls() {
             canvas.classList.toggle('is-loading', state.busy);
@@ -155,7 +180,7 @@
             }
             candleCtx.setLineDash([]);
             boundaries.forEach(boundaryX => {
-                candleCtx.beginPath(); candleCtx.setLineDash([3, 5]); candleCtx.strokeStyle = '#d6dbe1';
+                candleCtx.beginPath(); candleCtx.setLineDash([3, 5]); candleCtx.strokeStyle = '#b8c1cc';
                 candleCtx.moveTo(boundaryX, top); candleCtx.lineTo(boundaryX, bottom); candleCtx.stroke();
             });
             candleCtx.setLineDash([]);
@@ -235,15 +260,16 @@
                 ctx.moveTo(plot.left, y(percent)); ctx.lineTo(plot.right, y(percent)); ctx.stroke();
                 ctx.textAlign = 'right'; ctx.fillText(`${percent.toLocaleString()}%`, width - 4, y(percent));
             }
-            // Only minute charts need a vertical guide at each new trading day.
-            if (state.mode === 'minute') {
-                let lastDay = points[0]?.time.slice(0, 8);
+            // Daily charts mark month boundaries; minute charts mark trading days.
+            {
+                const boundaryLength = state.mode === 'minute' ? 8 : 6;
+                let lastDay = points[0]?.time.slice(0, boundaryLength);
                 let lastBoundaryX = -Infinity;
                 for (let i = 1; i < points.length; i++) {
-                    const day = points[i].time.slice(0, 8);
+                    const day = points[i].time.slice(0, boundaryLength);
                     if (day !== lastDay) {
                         if (x(i) - lastBoundaryX >= 32) {
-                            ctx.beginPath(); ctx.setLineDash([3, 5]); ctx.strokeStyle = '#d6dbe1';
+                            ctx.beginPath(); ctx.setLineDash([3, 5]); ctx.strokeStyle = '#b8c1cc';
                             ctx.moveTo(x(i), plot.top); ctx.lineTo(x(i), plot.bottom); ctx.stroke();
                             lastBoundaryX = x(i);
                             boundaries.push(lastBoundaryX);
@@ -337,6 +363,9 @@
             const current = state.points.at(-1);
             currentRate.textContent = Number.isFinite(current?.value)
                 ? `${current.value.toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%` : '-';
+            currentDate.textContent = Number.isFinite(current?.value) && /^\d{8}/.test(current.time)
+                ? `${current.time.slice(0,4)}-${current.time.slice(4,6)}-${current.time.slice(6,8)}` : '—';
+            positionCurrentDate();
             const first = points[0], last = points.at(-1);
             const periodDate = time => `${time.slice(0,4)}-${time.slice(4,6)}-${time.slice(6,8)}`;
             document.getElementById('concentrationPeriod').textContent = first

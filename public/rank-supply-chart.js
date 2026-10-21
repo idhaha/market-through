@@ -5,7 +5,12 @@
     const colors = { individual: '#339af0', foreign: '#e11d48', institution: '#16a34a', program: '#8b5cf6' };
     const dayKey = t => new Date(t + 9 * 3600000).toISOString().slice(0, 10);
     const clock = t => new Date(t + 9 * 3600000).toISOString().slice(11, 16);
-    const format = n => Number.isFinite(n) ? `${n > 0 ? '+' : ''}${n.toLocaleString('ko-KR')}주` : '미제공';
+    const format = (n, signed = true) => {
+        if (!Number.isFinite(n)) return '미제공';
+        const thousands = Math.abs(n) >= 1000;
+        const value = thousands ? Math.trunc(n / 1000) : n;
+        return `${signed && value > 0 ? '+' : ''}${value.toLocaleString('ko-KR')}${thousands ? '천주' : '주'}`;
+    };
     function mergeFlow(previous, incoming) {
         const points = new Map(previous.map(point => [point.t, point]));
         for (const point of incoming) {
@@ -35,7 +40,9 @@
             <div class="concentration-chart-footer rank-adr-zoom"><input type="range" min="0" max="0" value="0" aria-label="수급 과거 구간 이동" disabled><div class="concentration-controls"><button type="button" aria-label="수급 차트 축소">−</button><button type="button" aria-label="수급 차트 확대">+</button></div></div>
             <button type="button" data-action="more" class="concentration-icon-button" title="과거 데이터 더 불러오기" aria-label="과거 데이터 더 불러오기"><svg width="28" height="28" viewBox="0 0 34 34" shape-rendering="crispEdges" aria-hidden="true"><rect x="1" y="1" width="32" height="32" fill="#ededed"/><path d="M10 5v20" stroke="#737373" stroke-width="2"/><rect x="6" y="9" width="9" height="12" fill="#505050"/><path d="M22 5v20" stroke="#c0c0c0" stroke-width="2"/><rect x="18" y="9" width="9" height="12" fill="#969696"/><path d="M25 21v10M21 26h10" stroke="#444444" stroke-width="4"/></svg></button><p class="rank-adr-status" role="status"></p>`;
         row.append(panel);
-        panel.querySelector('.concentration-chart-header').append(panel.querySelector('.supply-legend'));
+        panel.querySelector('.rank-adr-controls').append(panel.querySelector('.supply-legend'));
+        const latestDate = document.createElement('span'); latestDate.className = 'supply-latest-date'; latestDate.textContent = '—';
+        panel.querySelector('.supply-legend').prepend(latestDate);
         panel.querySelector('[data-mode="minute"]').after(panel.querySelector('[data-action="more"]'));
         const canvas = panel.querySelector('.rank-adr-area canvas'), ctx = canvas.getContext('2d');
         const candleArea = panel.querySelector('.rank-adr-candle-area'), candle = candleArea.querySelector('canvas'), cc = candle.getContext('2d');
@@ -102,7 +109,7 @@
             const n = Math.min(points.length, count ?? points.length);
             start = Math.max(0, Math.min(start, points.length - n));
             const rows = points.slice(start, start + n), indices = new Map(rows.map((p, i) => [p.t, i]));
-            const left = 12, right = w - 82, top = 10, bottom = h - 30;
+            const left = 12, right = w - 82, top = 10, bottom = h - 34;
             const x = t => left + indices.get(t) / Math.max(1, n - 1) * (right - left);
             slider.max = String(points.length - n); slider.value = String(start); slider.disabled = n >= points.length;
             panel.querySelector('[aria-label="수급 차트 확대"]').disabled = n <= 10;
@@ -121,11 +128,22 @@
                     context.strokeStyle = '#b8c1cc'; context.setLineDash([3, 5]); context.lineWidth = 1;
                     context.beginPath(); context.moveTo(left, py); context.lineTo(right, py); context.stroke();
                     context.fillStyle = muted; context.textAlign = 'right';
-                    context.fillText(`${Math.round(value).toLocaleString('ko-KR')}${unit ? '주' : ''}`, width - 4, py + 4);
+                    context.fillText(unit ? format(Math.round(value), false) : Math.round(value).toLocaleString('ko-KR'), width - 4, py + 4);
                 }
                 context.setLineDash([]);
             }
+            const boundaryXs = [];
+            rows.forEach((point,i) => {
+                const length = mode === 'minute' ? 10 : 7;
+                if (i && dayKey(point.t).slice(0,length) !== dayKey(rows[i-1].t).slice(0,length)
+                    && (!boundaryXs.length || x(point.t) - boundaryXs.at(-1) >= 32)) boundaryXs.push(x(point.t));
+            });
+            function boundaries(context, upper, lower) {
+                context.save(); context.strokeStyle = '#b8c1cc'; context.lineWidth = 1; context.setLineDash([3,5]);
+                boundaryXs.forEach(px => { context.beginPath(); context.moveTo(px,upper); context.lineTo(px,lower); context.stroke(); }); context.restore();
+            }
             grid(ctx, w, min, max, y);
+            boundaries(ctx,top,bottom);
             if (values.length) {
                 ctx.strokeStyle = '#94a3b8'; ctx.beginPath(); ctx.moveTo(left, y(0)); ctx.lineTo(right, y(0)); ctx.stroke();
             }
@@ -137,6 +155,9 @@
                 ticks.forEach(p => context.fillText(mode === 'minute' ? `${multipleDays ? dayKey(p.t).slice(5) + ' ' : ''}${clock(p.t)}` : dayKey(p.t).slice(2), x(p.t), height - 8));
             }
             timeAxis(ctx, h);
+            const latestDates = [...new Set(series.map(s => points.findLast(point => Number.isFinite(point[s])))
+                .filter(Boolean).map(point => dayKey(point.t)))].sort();
+            latestDate.textContent = latestDates.length > 1 ? `${latestDates[0]} ~ ${latestDates.at(-1)}` : latestDates[0] || '—';
             series.forEach(s => {
                 const button = panel.querySelector(`[data-series="${s}"]`), last = points.findLast(point => Number.isFinite(point[s]));
                 button.querySelector('output').textContent = last ? format(last[s]) : points.length ? '미제공' : '—';
@@ -194,6 +215,7 @@
             for (const point of visible) { low = Math.min(low, point.low); high = Math.max(high, point.high); }
             const pad = Math.max(1, (high - low) * .1), cy = v => size.h - 30 - (v - low + pad) / (high - low + pad * 2) * (size.h - 40);
             grid(cc, size.w, low - pad, high + pad, cy, false);
+            boundaries(cc,top,size.h-30);
             const width = Math.max(1, Math.min(8, (right - left) / Math.max(1, n) * .7));
             visible.forEach(p => {
                 cc.strokeStyle = cc.fillStyle = p.close >= p.open ? '#e11d48' : '#2563eb';
@@ -289,7 +311,7 @@
                 }
                 const hasFlow = points.some(point => series.some(field => Number.isFinite(point[field])));
                 const period = points.length ? `${dayKey(points[0].t)}${dayKey(points[0].t) === dayKey(points.at(-1).t) ? '' : ' ~ ' + dayKey(points.at(-1).t)}` : '';
-                const message = mode === 'minute' ? `${period} · 1분 누적 · 미수집 구간 제외` : `일별 순매수수량 · ${points.length.toLocaleString()}봉 · 단위: 주`;
+                const message = mode === 'minute' ? `${period} · 1분 누적 · 미수집 구간 제외` : `일별 순매수수량 · ${points.length.toLocaleString()}봉 · 단위: 주/천주`;
                 const warnings = (result.warnings || []).filter(text => !text.startsWith('1분마다 관측한 당일 누적 순매수수량'));
                 chartMessage = `${hasFlow ? message : '수급 기록 없음'}${warnings.length ? ` · ${warnings.join(' · ')}` : ''}${result.status?.error && result.date === dayKey(Date.now()) ? ` · ${result.status.error}` : ''}`;
                 window.setRankCardConnection?.(panel, !result.warnings?.some(text => /실패|오류/.test(text)));
@@ -504,9 +526,11 @@
             const extra = referenceCandles && !referenceCandles.hidden ? referenceCandles.getBoundingClientRect().height : 0;
             const base = reference.getBoundingClientRect().height - extra;
             if (base <= 0) return;
-            panel.style.height = `${base + (showCandles ? 280 : 0)}px`; draw();
+            const controlExtra = Math.max(0, panel.querySelector('.rank-adr-controls').getBoundingClientRect().height - 40);
+            panel.style.height = `${base + controlExtra + (showCandles ? 280 : 0)}px`; draw();
         }
         new ResizeObserver(resize).observe(reference); new ResizeObserver(draw).observe(canvas.parentElement);
+        new ResizeObserver(resize).observe(panel.querySelector('.rank-adr-controls'));
         document.addEventListener('visibilitychange', () => { if (!document.hidden) window.refreshRankSupplyChart(); });
         window.addEventListener('online', window.refreshRankSupplyChart);
         resize(); document.dispatchEvent(new Event('rank-supply-ready'));

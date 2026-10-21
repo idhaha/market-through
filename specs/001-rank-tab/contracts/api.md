@@ -155,3 +155,8 @@ ADR history 원천의 max/min 필드는 전달될 수 있으나 화면에는 MAX
 기존 API 인증을 적용한다. 응답은 Cache-Control: no-store, { success: true, scan: LendableScanStatus }이다. 메모리 상태만 읽고 마스터 다운로드나 외부 대주 요청을 시작하지 않는다.
 
 GET /api/stock의 data.efriend_scan은 반환 목록을 얻은 시점의 상태 스냅샷이다. 한투 설정/토큰이 없으면 null이다. data.efriend는 수집 중 기존 공개 목록(최초에는 이번 전체 응답)을 반환하고 정상 완료 후 전체 병합 목록을 반환한다. 상태의 total/checked/count/running/errors/completedAt 의미는 data-model.md를 따른다. 반환 배열에 100개 상한을 두지 않는다.
+
+
+## 2026-10-21 신고가·신저가 키움 전환
+
+신고가·신저가는 KOSPI+KOSDAQ, KRX+NXT 통합시장 ka10016 집계로 전환한다. 기존 Jusikbot 자료는 보존하며 일/1분봉, 개장 확인 공유, 20:02 확정과 다음날 08:00 미만 복구, 기준 봉에 맞춘 결측 표시를 적용한다. 이전 관련 설명보다 [신고가·신저가 최신 정책](../../../docs/BREADTH_CHART.md)을 우선한다. 변동성·투자심리의 Jusikbot 정책은 유지한다.

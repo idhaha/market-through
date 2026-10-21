@@ -30,9 +30,10 @@
 .rank-supply-panel button { cursor:pointer; border:1px solid var(--border-color); border-radius:4px; padding:5px 8px; color:var(--text-primary); background:var(--bg-secondary); font:inherit; font-size:12px; }
 .rank-supply-panel button.active { background:var(--accent-primary); color:var(--bg-secondary); }
 .rank-supply-panel button:disabled { opacity:.4; cursor:default; }
-.rank-supply-panel .supply-legend { display:grid; grid-template-columns:repeat(2,max-content); gap:2px 12px; margin:0 0 0 auto; }
-.rank-supply-panel .supply-legend button { display:flex; align-items:center; gap:4px; border:0; padding:0; background:transparent; font-size:12px; line-height:18px; }
-.rank-chart-row .rank-supply-panel .supply-legend output { margin-left:auto; color:inherit; font-size:13px; font-variant-numeric:tabular-nums; }
+.rank-supply-panel .supply-legend { position:relative; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:2px 12px; margin:0 0 0 auto; width:max-content; min-width:110px; max-width:200px; flex:0 1 auto; }
+.rank-supply-panel .supply-latest-date { position:absolute; bottom:100%; right:0; white-space:nowrap; font-size:11px; line-height:15px; font-weight:400; color:var(--text-muted); }
+.rank-supply-panel .supply-legend button { display:flex; align-items:center; gap:4px; min-width:0; border:0; padding:0; background:transparent; font-size:12px; line-height:17px; }
+.rank-chart-row .rank-supply-panel .supply-legend output { margin-left:auto; color:inherit; font-size:13px; font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .supply-legend button[aria-pressed="false"] { opacity:.3; }
 .rank-supply-panel .rank-adr-controls { flex-wrap:nowrap; }
 .rank-supply-panel .supply-stock-select { width:110px; min-width:70px; flex:0 1 110px; }
@@ -129,6 +130,7 @@
 .concentration-chart-area { position: relative; height: var(--concentration-chart-height); flex: 1; min-width: 0; }
 #concentrationCanvas { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: pan-y; }
 #concentrationCanvas.is-loading { filter: blur(2px); opacity: .75; pointer-events: none; }
+#rankBreadthChartPanel canvas.is-loading { filter: blur(2px); opacity: .75; pointer-events: none; }
 .concentration-tooltip { position: absolute; top: 8px; padding: 6px 10px; background: #0f172a; color: white;
     border-radius: 4px; font-size: 12px; pointer-events: none; white-space: nowrap; }
 .concentration-chart-footer { display: flex; column-gap: 16px; row-gap: 8px; align-items: center; margin-top: 8px; }
@@ -2559,6 +2561,10 @@ body.modal-open {
 
 
 #concentrationCurrentRate { position: static; min-width: 0; text-align: right; white-space: normal; overflow-wrap:anywhere; }
+.chart-value-with-date { position:relative; display:inline-flex; align-items:center; margin-left:auto; min-width:0; flex-shrink:0; }
+.chart-value-date { position:absolute; bottom:100%; right:0; white-space:nowrap; font-size:11px; line-height:15px; font-weight:400; color:var(--text-muted); }
+.concentration-chart-panel { position:relative; }
+.concentration-value-date { bottom:auto; pointer-events:none; }
 
 .concentration-timeframe-row { display: flex; align-items: center; gap: 8px; flex: 0 0 100%; min-width: 0; overflow-x: auto; }
 .concentration-timeframe-row .concentration-controls { flex-shrink: 0; }
@@ -2738,9 +2744,14 @@ body.modal-open {
 
 /* Keep both market totals on the same right edge as the turnover axis. */
 .rank-turnover-panel .rank-adr-controls { padding-right: 4px; box-sizing: border-box; }
-.rank-turnover-panel .turnover-legend { flex: 0 0 auto; align-items: flex-end; margin-left: auto; }
+.rank-turnover-panel .turnover-legend { flex: 0 0 auto; align-items: stretch; margin-left: auto; }
 .rank-turnover-panel .turnover-legend > [data-market] { grid-template-columns: 70px auto; }
 .rank-turnover-panel .turnover-legend output { text-align: right; white-space: nowrap; }
+.rank-turnover-panel .rank-adr-controls { flex-wrap:nowrap; gap:4px; }
+.rank-turnover-panel .rank-adr-controls button { padding:5px 6px; font-size:12px; white-space:nowrap; }
+.rank-turnover-panel .rank-adr-ranges { gap:4px; }
+.rank-turnover-panel .rank-adr-ranges button { padding:5px 4px; }
+.rank-turnover-panel .turnover-latest-date { position:absolute; bottom:100%; right:0; text-align:right; font-size:11px; line-height:15px; font-weight:400; color:var(--text-muted); white-space:nowrap; }
 
 /* Shared controls-to-plot spacing for concentration, ADR and turnover. */
 .rank-chart-row { --chart-hover-height: 20px; --chart-plot-height: 260px; }
@@ -2773,6 +2784,7 @@ body.modal-open {
 .rank-chart-row .rank-adr-area {
     height: var(--chart-plot-height);
     min-height: var(--chart-plot-height);
+    max-height: var(--chart-plot-height);
     flex: 0 0 var(--chart-plot-height);
 }
 
@@ -2826,18 +2838,28 @@ body.modal-open {
 .base-interest-fred-table.has-column-widths input, .base-interest-fred-table.has-column-widths textarea { min-width:0; }
 .base-interest-fred-table-wrap:has(.has-column-widths) { max-width:none; }
 .rank-volatility-panel { grid-column:1; max-width:none; }
-.rank-volatility-panel .volatility-legend { margin-left:auto; display:flex; gap:12px; font-size:12px; font-weight:600; flex-wrap:wrap; }
+.rank-volatility-panel .volatility-legend { margin-left:auto; display:flex; flex-direction:column; align-items:stretch; gap:2px; font-size:12px; line-height:18px; font-weight:600; flex-wrap:nowrap; }
+.rank-volatility-panel .volatility-legend > [data-volatility] { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:6px; height:18px; line-height:18px; white-space:nowrap; }
+.rank-volatility-panel .volatility-legend > [data-volatility] > span { text-align:left; }
+.rank-volatility-panel .volatility-legend output { text-align:right; }
+.rank-volatility-panel .risk-latest-date { position:absolute; bottom:100%; right:0; text-align:right; font-size:11px; line-height:15px; font-weight:400; color:var(--text-muted); white-space:nowrap; }
+.rank-turnover-panel .turnover-legend, .rank-volatility-panel .volatility-legend { position:relative; }
 .rank-volatility-panel .volatility-legend output { margin-left:4px; min-width:0; color:inherit; font-size:16px; }
-.rank-volatility-panel .rank-adr-area { min-height:200px; }
+.rank-chart-row .rank-volatility-panel .rank-adr-area { height:var(--chart-plot-height); min-height:var(--chart-plot-height); max-height:var(--chart-plot-height); flex:0 0 var(--chart-plot-height); }
+.rank-sentiment-panel .volatility-legend > [data-volatility] { grid-template-columns:auto minmax(0,1fr) auto; }
+.rank-sentiment-panel .volatility-legend .risk-series-date { color:var(--text-muted); font-size:11px; font-weight:400; }
 .rank-volatility-panel .volatility-candle-label { position:absolute; top:2px; left:16px; font-size:12px; font-weight:600; pointer-events:none; }
 .rank-volatility-panel { position:relative; }
-.rank-breadth-panel { grid-column:1; grid-row:2; }
+.rank-breadth-panel { grid-column:3; grid-row:1; }
+.rank-turnover-panel { grid-column:1; grid-row:2; }
+.rank-breadth-panel .breadth-notice { position:relative; top:-6px; margin-left:auto; flex-shrink:0; white-space:pre; text-align:left; font-size:11px; line-height:15px; font-weight:400; color:var(--text-muted); }
+.rank-breadth-panel .concentration-chart-header h2 { flex-shrink:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .rank-supply-panel { grid-column:2; grid-row:1; }
 #rankAdrChartPanel { grid-column:1; grid-row:3; }
 .rank-volatility-panel:not(.rank-breadth-panel):not(.rank-sentiment-panel) { grid-column:2; grid-row:2; }
 .rank-sentiment-panel { grid-column:3; }
 @media (max-width:700px) {
-    #rankAdrChartPanel, .rank-breadth-panel, .rank-sentiment-panel, .rank-supply-panel,
+    #rankAdrChartPanel, .rank-breadth-panel, .rank-turnover-panel, .rank-sentiment-panel, .rank-supply-panel,
     .rank-volatility-panel:not(.rank-breadth-panel):not(.rank-sentiment-panel) { grid-column:1; grid-row:auto; }
 }
 .volatility-help-trigger { cursor:help; }
@@ -2865,6 +2887,7 @@ body.modal-open {
 .base-interest-fred-add-url { border-radius:50%; width:26px; height:26px; padding:0; font-size:20px; line-height:1; cursor:pointer; }
 
 .rank-volatility-panel .concentration-chart-header { padding-right:30px; }
+.rank-breadth-panel .concentration-chart-header { padding-right:4px; }
 .chart-info-button { position:absolute; top:14px; right:14px; width:20px; height:20px; padding:0; border:1px solid #94a3b8; border-radius:50%; background:var(--bg-panel,#fff); color:#64748b; font:600 13px/18px Georgia,serif; text-align:center; z-index:3; }
 .chart-info-button:hover { color:var(--text-primary); border-color:currentColor; }
 .chart-guide-tabs { display:flex; gap:6px; position:sticky; top:-16px; z-index:1; margin:-16px -18px 14px; padding:12px 14px; background:#fff; border-bottom:1px solid #e2e8f0; }

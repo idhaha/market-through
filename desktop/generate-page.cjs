@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const root = path.join(__dirname, '..');
-const source = fs.readFileSync(path.join(root, 'public/index.html'), 'utf8');
+const source = fs.readFileSync(path.join(root, 'public/index.html'), 'utf8').replace(/\r\n/g, '\n');
 const start = source.indexOf('<h2>거래대금 상위 [키움]</h2>');
 const tableStart = source.lastIndexOf('<div class="panel">', start);
 const tableEnd = source.indexOf('\n                    <div class="panel">', start);
@@ -13,9 +13,9 @@ if (start < 0 || chartStart < 0 || tableEnd < 0) throw new Error('Rank template 
 fs.writeFileSync(path.join(root, 'public/rank-independent.html'), `<!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>[독립창]</title><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"><link rel="stylesheet" href="style.css?v=20261020_supply14">
-<link rel="stylesheet" href="rank-independent.css?v=22">
+<link rel="stylesheet" href="rank-independent.css?v=23">
 <script src="rank-connection-status.js?v=20261019_v5" defer></script>
-<script src="rank-independent-client.js?v=20261021_v6" defer></script>
+<script src="rank-independent-client.js?v=20261021_v7" defer></script>
 <script src="concentration-chart.js?v=20261019_v2" defer></script>
 <script src="rank-supply-chart.js?v=20261021_v3" defer></script></head>
 <body class="rank-independent"><div class="independent-toolbar">

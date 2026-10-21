@@ -1,5 +1,5 @@
 .rank-independent { margin: 0; padding: 8px; overflow: auto; min-width: 0; height: 100dvh; display: flex; flex-direction: column; }
-.rank-independent #tab_rank { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(3, minmax(500px, 1fr)); gap: 14px; align-items: stretch; flex: 1; min-height: 0; overflow: auto; }
+.rank-independent #tab_rank { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(3, max-content); align-content: start; gap: 14px; align-items: stretch; flex: 1; min-height: 0; overflow: auto; }
 .rank-independent #tab_rank > .panel { display: flex; flex-direction: column; min-height: 0; }
 .rank-independent .panel-header, .independent-chart-heading, .independent-toolbar { flex-shrink: 0; }
 .rank-independent #independentTransactionContent { flex: 1; min-height: 0; }
@@ -61,3 +61,16 @@
 .rank-independent #concentrationTooltip.chart-hover-info { height:20px; min-height:20px; line-height:18px; padding:1px 0; box-sizing:border-box; }
 .rank-independent .chart-hover-info[hidden] { display:block !important; visibility:hidden; }
 .rank-independent .independent-collapsed > .concentration-chart-header > :not(.independent-panel-title) { display:none; }
+
+/* Match the main cards: extra window space stays below the cards. */
+.rank-independent #tab_rank > .panel { align-self:start; }
+.rank-independent #independentTransactionContent,
+.rank-independent #independentChartContent,
+.rank-independent #independentSupplyContent,
+.rank-independent .concentration-chart-layout { flex:0 0 auto; }
+.rank-independent #transactionBody { flex:0 1 560px; height:560px; max-height:560px; }
+.rank-independent .concentration-chart-area,
+.rank-independent .rank-supply-panel .rank-adr-area,
+.rank-independent .concentration-candle-area,
+.rank-independent .rank-supply-panel .rank-adr-candle-area { flex:0 0 260px !important; height:260px !important; min-height:260px; max-height:260px; }
+.rank-independent #transactionBody[data-row-limit] { flex:1 1 auto; min-height:0; height:auto; }

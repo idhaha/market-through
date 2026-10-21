@@ -21,9 +21,9 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
     const store = createSupplyStore({ directory, now });
     const statuses = new Map(), verifiedDay = new Map(), cache = new Map();
     let queue = Promise.resolve(), running = null, timer;
-    let market = store.marketDay(), lastMarketAttempt = null;
+    let market = store.marketDay(), lastMarketAttempt = null, marketRequest = null;
     function marketConfirmed() { return market?.day === dayKey(now()); }
-    async function confirmMarket() {
+    async function checkMarket() {
         if (marketConfirmed()) return true;
         const at = now(), minute = Math.floor(at / 60000);
         const clock = new Date(at + 9 * 3600000);
@@ -44,6 +44,11 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
             market = { day, confirmed_at: now() };
             return true;
         } catch (error) { log('[Supply market] ' + error.message); return false; }
+    }
+    function confirmMarket() {
+        if (!collectingAt(now())) return Promise.resolve(false);
+        if (!marketRequest) marketRequest = checkMarket().finally(() => { marketRequest = null; });
+        return marketRequest;
     }
     function post(api, body, next = '') {
         const task = queue.then(async () => {
@@ -268,6 +273,6 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
         run(); timer = setInterval(run, 60000); timer.unref?.();
     }
     function stop() { clearInterval(timer); timer = null; }
-    return { summary, configure, query, candles, collect, start, stop, store };
+    return { summary, configure, query, candles, collect, start, stop, store, confirmMarket };
 }
 module.exports = { createSupplyService, quantity, timestamp, collectingAt };
