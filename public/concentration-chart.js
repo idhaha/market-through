@@ -445,7 +445,10 @@
                 cursor: data.cursor, hasMore: data.hasMore, busy: data.busy });
             if (changed || !state.visible) { state.start = 0; state.visible = state.points.length; }
             else { state.visible = Math.min(state.visible, state.points.length); state.start = atEnd ? state.points.length - state.visible : Math.min(state.start, state.points.length - state.visible); }
-            name.value = state.selection?.name || ''; market.textContent = data.market || ''; status.textContent = data.status || '';
+            // Shared snapshots keep arriving while a manual stock query is being
+            // edited. Keep that draft separate from the selected chart stock.
+            if (document.activeElement !== name) name.value = state.selection?.name || '';
+            market.textContent = data.market || ''; status.textContent = data.status || '';
             selectedRows(); draw();
         };
         window.selectRankChartStock = stock => chooseStock(stock);
@@ -453,7 +456,8 @@
             const changed = state.mode !== mode || state.interval !== interval || (followSelection && state.selection?.code !== selection?.code);
             state.mode = mode === 'minute' ? 'minute' : 'day'; state.interval = scopes.includes(Number(interval)) ? Number(interval) : 1;
             if (followSelection && selection && /^[0-9A-Za-z]{6}$/.test(selection.code)) {
-                state.selection = selection; name.value = selection.name;
+                state.selection = selection;
+                if (document.activeElement !== name) name.value = selection.name;
             }
             if (changed) { selectedRows(); saveDisplaySettings(); load(); }
         };
@@ -511,7 +515,10 @@
             if (document.activeElement === name) name.dispatchEvent(new Event('input'));
         }));
         name.addEventListener('compositionend', () => name.dispatchEvent(new Event('input')));
-        name.addEventListener('blur', hideSuggestions);
+        name.addEventListener('blur', () => {
+            hideSuggestions();
+            name.value = state.selection?.name || '';
+        });
         name.addEventListener('keydown', event => {
             // Arrow navigation works even while the IME finalizes its last syllable.
             if (event.isComposing && !['ArrowDown', 'ArrowUp'].includes(event.key)) return;

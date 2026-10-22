@@ -16,7 +16,7 @@ fs.writeFileSync(path.join(root, 'public/rank-independent.html'), `<!doctype htm
 <link rel="stylesheet" href="rank-independent.css?v=24">
 <script src="rank-connection-status.js?v=20261019_v5" defer></script>
 <script src="rank-independent-client.js?v=20261022_v1" defer></script>
-<script src="concentration-chart.js?v=20261019_v2" defer></script>
+<script src="concentration-chart.js?v=20261022_v1" defer></script>
 <script src="rank-supply-chart.js?v=20261021_v3" defer></script></head>
 <body class="rank-independent"><div class="independent-toolbar">
 <span id="rankConnectionStatus" role="status">메인 페이지 연결 중</span>
