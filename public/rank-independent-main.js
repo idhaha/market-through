@@ -104,8 +104,15 @@
             try {
                 const payload = { replies: pending, acks };
                 if (dirty) { payload.snapshot = snapshot(); dirty = false; }
-                const response = await rawFetch(`/api/rank-independent/${channel.id}/owner`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rank-Owner': channel.ownerKey }, body: JSON.stringify(payload) });
-                if (response.status === 404) { reset('독립창 연결이 종료되었습니다.'); return; }
+                const response = await rawFetch(`/api/rank-independent/${channel.id}/owner`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rank-Owner': channel.ownerKey }, body: JSON.stringify(payload), signal: AbortSignal.timeout(10000) });
+                if (response.status === 404) {
+                    const restored = await rawFetch(`/api/rank-independent/${channel.id}/recover`, { method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: channel.token, ownerKey: channel.ownerKey }), signal: AbortSignal.timeout(10000) });
+                    if (!restored.ok) throw new Error('독립창 연결 복구 재시도');
+                    replies.unshift(...pending); acknowledgements.unshift(...acks); dirty = true;
+                    message.textContent = '독립창 연결 복구 중';
+                    return;
+                }
                 if (!response.ok) throw new Error('독립창 연결 재시도');
                 const result = await response.json();
                 if (result.connected) { connected = true; peerLastSeen = Date.now(); message.textContent = ''; }

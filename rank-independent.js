@@ -6,6 +6,10 @@ function createRankIndependentRelay({ now = Date.now, refresh, request, schedule
     const channels = new Map();
     const ttl = 120000;
     const hash = value => crypto.createHash('sha256').update(String(value || '')).digest('hex');
+    function newChannel(email, token, ownerKey) {
+        return { owner: email, ownerKey: hash(ownerKey), token: hash(token), epoch: crypto.randomUUID(),
+            generation: 0, nextRefresh: 0, refreshing: false, data: null, error: false, overrides: {}, ownerSeen: now(), peerSeen: 0, snapshot: null, version: 0, commands: [], commandIds: new Set(), replies: {}, closed: false };
+    }
     function prune() {
         for (const [id, channel] of channels) if (now() - Math.max(channel.ownerSeen, channel.peerSeen) > ttl) channels.delete(id);
     }
@@ -83,9 +87,29 @@ function createRankIndependentRelay({ now = Date.now, refresh, request, schedule
             const id = crypto.randomBytes(16).toString('hex');
             const token = crypto.randomBytes(32).toString('hex');
             const ownerKey = crypto.randomBytes(32).toString('hex');
-            channels.set(id, { owner: req.authUser.email, ownerKey: hash(ownerKey), token: hash(token),
-                generation: 0, nextRefresh: 0, refreshing: false, data: null, error: false, overrides: {}, ownerSeen: now(), peerSeen: 0, snapshot: null, version: 0, commands: [], commandIds: new Set(), replies: {}, closed: false });
+            channels.set(id, newChannel(req.authUser.email, token, ownerKey));
             res.json({ id, token, ownerKey });
+        });
+        // Only the authenticated main page can restore a lost in-memory channel.
+        // Reusing its capability keeps the already-open native window connected.
+        app.post('/api/rank-independent/:id/recover', (req, res) => {
+            if (!req.authUser?.email) return res.status(401).json({ error: '로그인이 필요합니다.' });
+            const { token, ownerKey } = req.body || {}, id = req.params.id;
+            if (!/^[a-f0-9]{32}$/.test(id) || !/^[a-f0-9]{64}$/.test(token || '') || !/^[a-f0-9]{64}$/.test(ownerKey || ''))
+                return res.status(400).json({ error: '잘못된 복구 정보입니다.' });
+            prune();
+            const existing = channels.get(id);
+            if (existing) {
+                if (existing.owner !== req.authUser.email || existing.ownerKey !== hash(ownerKey) || existing.token !== hash(token))
+                    return res.status(403).json({ error: '연결 소유자가 일치하지 않습니다.' });
+                if (existing.closed) return res.status(409).json({ error: '닫힌 독립창입니다.' });
+                existing.ownerSeen = now();
+            } else {
+                if (channels.size >= 8 || [...channels.values()].filter(channel => channel.owner === req.authUser.email).length >= 2)
+                    return res.status(503).json({ error: '독립창 연결 한도를 초과했습니다.' });
+                channels.set(id, newChannel(req.authUser.email, token, ownerKey));
+            }
+            res.json({ success: true });
         });
         app.post('/api/rank-independent/:id/owner', (req, res) => {
             const channel = owner(req, res); if (!channel) return;
@@ -166,7 +190,7 @@ function createRankIndependentRelay({ now = Date.now, refresh, request, schedule
                 }
             }
             const replies = Object.values(channel.replies);
-            res.json({ version: channel.version, snapshot: Number(req.body.version) === channel.version ? null : channel.snapshot, replies, serverRefresh: refresh ? { data: channel.data, interval: intervalFor(channel), error: channel.error, serverNow: now() } : null });
+            res.json({ epoch: channel.epoch, version: channel.version, snapshot: req.body.epoch === channel.epoch && Number(req.body.version) === channel.version ? null : channel.snapshot, replies, serverRefresh: refresh ? { data: channel.data, interval: intervalFor(channel), error: channel.error, serverNow: now() } : null });
         });
     }
     return { mount };

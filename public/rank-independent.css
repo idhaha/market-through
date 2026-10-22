@@ -3,7 +3,7 @@
 .rank-independent #tab_rank > .panel { display: flex; flex-direction: column; min-height: 0; }
 .rank-independent .panel-header, .independent-chart-heading, .independent-toolbar { flex-shrink: 0; }
 .rank-independent #independentTransactionContent { flex: 1; min-height: 0; }
-.rank-independent #transactionTable { display: flex; flex-direction: column; height: 100%; }
+.rank-independent #transactionTable { display: flex; flex-direction: column; height: auto; }
 .rank-independent #transactionTable thead { flex-shrink: 0; }
 .rank-independent #transactionBody { flex: 1; min-height: 0; max-height: none; overflow-y: auto; }
 .rank-independent #transactionBody tr { height: var(--rank-row-height, auto); }

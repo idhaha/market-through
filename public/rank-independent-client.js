@@ -4,12 +4,12 @@
     const rawFetch = window.fetch.bind(window), params = new URLSearchParams(location.hash.slice(1));
     const id = params.get('id'), token = params.get('token');
     history.replaceState(null, '', location.pathname);
-    let version = -1, lastSnapshot, closed = false, serverRefresh = null, receivedAt = 0, serverAge = 0, transportFailed = false;
+    let version = -1, relayEpoch = null, lastSnapshot, closed = false, serverRefresh = null, receivedAt = 0, serverAge = 0, transportFailed = false;
     const pending = new Map(), outgoing = [], acknowledgements = [];
     const enqueue = value => { const id = crypto.randomUUID(); outgoing.push({ id, ...value }); return id; };
     window.saveAppData = () => {};
     const peer = payload => rawFetch(`/api/rank-independent/peer/${id}`, { method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(payload), signal: AbortSignal.timeout(10000) });
     function command(value, signal) {
         const requestId = crypto.randomUUID();
         return new Promise((resolve, reject) => {
@@ -70,18 +70,33 @@
         let restoringInitialDisplay = false;
         let initialDisplayApplied = false;
         let automaticResize = false, resizeReset, resizeComplete;
-        function finishResize() { automaticResize = false; clearTimeout(resizeReset); const complete = resizeComplete; resizeComplete = null; complete?.(); }
-        function requestHeight(delta, complete) {
-            finishResize();
+        const resizeQueue = [];
+        function finishResize() {
+            if (!automaticResize) return;
+            automaticResize = false; clearTimeout(resizeReset);
+            const complete = resizeComplete; resizeComplete = null; complete?.();
+            startResize();
+        }
+        function startResize() {
+            if (automaticResize || !resizeQueue.length) return;
+            const { delta, complete, target } = resizeQueue.shift();
             const before = innerHeight;
             resizeComplete = complete ? () => complete(innerHeight - before) : null;
-            automaticResize = true; clearTimeout(resizeReset);
+            automaticResize = true;
             resizeReset = setTimeout(finishResize, 1000);
-            window.chrome?.webview?.postMessage(`resize-window:0,${Math.round(delta)},${innerWidth},${innerHeight}`);
+            const change = target == null ? (typeof delta === 'function' ? delta() : delta) : target - innerHeight;
+            if (window.chrome?.webview) window.chrome.webview.postMessage(`resize-window:0,${Math.round(change)},${innerWidth},${innerHeight}`);
+            else requestAnimationFrame(finishResize);
+        }
+        function requestHeight(delta, complete, target) {
+            resizeQueue.push({ delta, complete, target });
+            startResize();
         }
         function fixRows(sizes) {
             layout.style.gridTemplateColumns = 'minmax(0, 1fr)';
-            layout.style.gridTemplateRows = sizes.map(size => size.height + 'px').join(' ');
+            // Cards have intrinsic, capped heights. Pixel tracks retain obsolete
+            // table/header heights after row-count changes or narrow-window wraps.
+            layout.style.gridTemplateRows = sizes.map(() => 'max-content').join(' ');
             layout.style.flex = '1'; layout.style.width = '100%';
             layout.style.height = 'auto';
             layout.style.minHeight = '';
@@ -106,9 +121,8 @@
             if (event.detail.open) candleHeights.set(chart.id, plotHeight); else candleHeights.delete(chart.id);
             foldLayout = { stacked: true, sizes: sizes.map((size, i) => panels[i].classList.contains('independent-collapsed') ? foldLayout?.sizes[i] || size : size) };
             fixRows(sizes);
-            const growth = event.detail.open ? delta : -(candleWindowGrowth.get(chart.id) ?? plotHeight);
-            if (!event.detail.open) candleWindowGrowth.delete(chart.id);
-            requestHeight(growth, event.detail.open ? actual => candleWindowGrowth.set(chart.id, Math.max(0, actual)) : null);
+            const growth = event.detail.open ? delta : () => -(candleWindowGrowth.get(chart.id) ?? plotHeight);
+            requestHeight(growth, event.detail.open ? actual => candleWindowGrowth.set(chart.id, Math.max(0, actual)) : () => candleWindowGrowth.delete(chart.id));
         });
         window.addEventListener('rank-native-resize-complete', () => requestAnimationFrame(finishResize));
         window.addEventListener('resize', () => {
@@ -118,7 +132,7 @@
             if (panels.every(item => item.classList.contains('independent-collapsed'))) return;
             for (const panel of panels) panel.querySelectorAll('.concentration-chart-area, .rank-adr-area, .concentration-candle-area, .rank-adr-candle-area').forEach(area => { area.style.flex = ''; area.style.height = ''; });
             layout.style.flex = '1'; layout.style.width = '100%'; layout.style.height = 'auto';
-            layout.style.gridTemplateRows = panels.map(item => item.classList.contains('independent-collapsed') ? collapsedSize(item).height + 'px' : item === table && rowLimit ? limitedTableHeight + 'px' : 'max-content').join(' ');
+            layout.style.gridTemplateRows = panels.map(() => 'max-content').join(' ');
             requestAnimationFrame(() => {
                 if (!foldLayout) return;
                 panels.forEach((panel, index) => {
@@ -140,23 +154,21 @@
                 if (!item.classList.contains('independent-collapsed')) return foldLayout.sizes[i];
                 return collapsedSize(item);
             });
-            const height = foldLayout.stacked ? sizes.reduce((sum, item) => sum + item.height, 0) + 14 * (sizes.length - 1) : Math.max(...sizes.map(item => item.height));
-            layout.style.gridTemplateColumns = foldLayout.stacked ? 'minmax(0, 1fr)' : sizes.map(item => item.width + 'px').join(' ');
-            layout.style.gridTemplateRows = foldLayout.stacked ? sizes.map(item => item.height + 'px').join(' ') : height + 'px';
-            layout.style.flex = '1'; layout.style.width = '100%'; layout.style.height = 'auto';
+            fixRows(sizes);
             layout.scrollTop = 0; document.scrollingElement.scrollTop = 0;
             const bodyStyle = getComputedStyle(document.body);
             const toolbar = document.querySelector('.independent-toolbar');
             const toolbarStyle = getComputedStyle(toolbar);
-            const viewportHeight = Math.ceil(height + toolbar.offsetHeight + parseFloat(toolbarStyle.marginTop) + parseFloat(toolbarStyle.marginBottom) + parseFloat(bodyStyle.paddingTop) + parseFloat(bodyStyle.paddingBottom));
+            const contentHeight = panels.reduce((sum, item) => sum + item.getBoundingClientRect().height, 0) + parseFloat(getComputedStyle(layout).rowGap) * (panels.length - 1);
+            const viewportHeight = Math.ceil(contentHeight + toolbar.offsetHeight + parseFloat(toolbarStyle.marginTop) + parseFloat(toolbarStyle.marginBottom) + parseFloat(bodyStyle.paddingTop) + parseFloat(bodyStyle.paddingBottom));
             // A candle may overflow the monitor: size from the actual viewport,
             // never subtract an offscreen content height from the native window.
-            requestHeight(viewportHeight - innerHeight);
+            requestHeight(0, null, viewportHeight);
             if (!panels.some(item => item.classList.contains('independent-collapsed'))) {
                 // Resume responsive sizing after the native window restores its full size.
                 setTimeout(() => {
                     const fixedPlot = [...layout.querySelectorAll('.concentration-chart-area, .rank-adr-area')].some(area => area.style.flex);
-                    if (!candleHeights.size && !fixedPlot) { layout.removeAttribute('style'); foldLayout = null; }
+                    if (!layout.querySelector('.independent-collapsed') && !rowLimit && !candleHeights.size && !fixedPlot) { layout.removeAttribute('style'); foldLayout = null; }
                 }, 100);
             }
         }
@@ -181,11 +193,11 @@
         collapseControl(table, table.querySelector('h2'), [tableBody], table.querySelector('.panel-controls'));
         const rows = document.getElementById('transactionBody');
         let rowBaseline = null, resetRowBaseline = false;
-        let rowLimit = 0, defaultTableHeight = null, limitedTableHeight = 0;
+        let rowLimit = 0, defaultTableHeight = null;
         const rowLimitButton = document.createElement('button');
         rowLimitButton.type = 'button'; rowLimitButton.className = 'independent-row-limit'; rowLimitButton.innerHTML = '<svg width="18" height="20" viewBox="0 0 18 20" aria-hidden="true" focusable="false"><path d="M9 2v16M4 7l5-5 5 5M4 13l5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
         table.querySelector('h2').after(rowLimitButton);
-        function fitTableRows() {
+        function fitTableRows(previousHeight) {
             if (table.classList.contains('independent-collapsed')) return;
             const panels = [...layout.children], index = panels.indexOf(table);
             const current = table.getBoundingClientRect().height;
@@ -195,12 +207,12 @@
             }
             const visible = [...rows.children].slice(0, rowLimit || rows.children.length);
             const target = rowLimit ? Math.ceil(current - rows.clientHeight + visible.reduce((sum, row) => sum + row.getBoundingClientRect().height, 0)) : defaultTableHeight;
-            if (!target || Math.abs(target - current) < 1) return;
-            if (rowLimit) limitedTableHeight = target;
+            const before = Number.isFinite(previousHeight) ? previousHeight : current;
+            if (!target || Math.abs(target - before) < 1) return;
             const sizes = panels.map(item => ({ width: item.offsetWidth, height: item.getBoundingClientRect().height }));
             sizes[index].height = target;
             foldLayout = { stacked: true, sizes: sizes.map((size, i) => panels[i].classList.contains('independent-collapsed') ? foldLayout?.sizes[i] || size : size) };
-            fixRows(sizes); requestHeight(target - current);
+            fixRows(sizes); requestHeight(target - before);
         }
         function updateRowLimitButton() {
             const current = rowLimit ? rowLimit + '개' : '기본', next = rowLimit === 5 ? '10개' : rowLimit === 10 ? '기본' : '5개';
@@ -208,10 +220,12 @@
             rowLimitButton.setAttribute('aria-label', rowLimitButton.title);
         }
         rowLimitButton.addEventListener('click', () => {
+            const previousHeight = table.getBoundingClientRect().height;
             if (!rowLimit) defaultTableHeight = table.classList.contains('independent-collapsed') ? foldLayout?.sizes[[...layout.children].indexOf(table)]?.height : table.getBoundingClientRect().height;
             rowLimit = rowLimit === 0 ? 5 : rowLimit === 5 ? 10 : 0;
-            rows.dataset.rowLimit = String(rowLimit); rows.scrollTop = 0;
-            updateRowLimitButton(); fitTableRows();
+            if (rowLimit) rows.dataset.rowLimit = String(rowLimit); else delete rows.dataset.rowLimit;
+            rows.scrollTop = 0;
+            updateRowLimitButton(); fitTableRows(previousHeight);
             if (!rowLimit) defaultTableHeight = null;
         });
         updateRowLimitButton();
@@ -338,16 +352,17 @@
             if (closed) return;
             const nextCommand = outgoing.shift(), acks = acknowledgements.splice(0);
             try {
-                const response = await peer({ version, command: nextCommand, acks, pinned: false });
+                const response = await peer({ version, epoch: relayEpoch, command: nextCommand, acks, pinned: false });
                 if ([401, 404].includes(response.status)) {
                     document.querySelectorAll('#tab_rank .panel').forEach(panel => window.setRankCardConnection?.(panel, false));
-                    closed = true; status.textContent = '메인 페이지 연결이 종료되었습니다. 메인 페이지에서 다시 실행하세요.';
-                    pending.forEach(request => request.reject(new Error(status.textContent))); pending.clear();
-                    // Keep the last displayed chart open even when the relay expires.
-                    return;
+                    version = -1;
+                    // The authenticated main page restores the same capability after
+                    // server restart. Keep the view and retry instead of stopping.
+                    throw new Error('메인 페이지 연결 복구 대기');
                 }
                 if (!response.ok) throw new Error('연결 실패');
                 const result = await response.json();
+                relayEpoch = result.epoch || null;
                 if (nextCommand?.id === supplySettingsPending) supplySettingsPending = null;
                 for (const reply of result.replies || []) { pending.get(reply.id)?.resolve(reply); pending.delete(reply.id); acknowledgements.push(reply.id); }
                 if (result.snapshot) { version = result.version; apply(result.snapshot); }
@@ -355,7 +370,7 @@
                 status.textContent = '';
                 if (result.serverRefresh) applyServerRefresh(result.serverRefresh);
             } catch (error) { transportFailed = true; document.querySelectorAll('#tab_rank .panel').forEach(panel => window.setRankCardConnection?.(panel, false)); if (nextCommand) outgoing.unshift(nextCommand); acknowledgements.unshift(...acks); status.textContent = '서버 연결 재시도 중 · 갱신 지연'; document.getElementById('independentStatusText').textContent = '갱신 지연'; }
-            finally { if (!closed) setTimeout(tick, outgoing.length ? 50 : 500); }
+            finally { if (!closed) setTimeout(tick, transportFailed ? 1000 : outgoing.length ? 50 : 500); }
         }
         if (!/^[a-f0-9]{32}$/.test(id || '') || !/^[a-f0-9]{64}$/.test(token || '')) { status.textContent = '메인 페이지의 독립창 버튼으로 실행하세요.'; closed = true; return; }
         tick();

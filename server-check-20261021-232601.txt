@@ -1,0 +1,697 @@
+=== 확인 시각 ===
+2026-10-21T23:26:01+00:00
+
+=== Node 프로세스 ===
+    PID                  STARTED     ELAPSED COMMAND
+
+=== PM2 상태 ===
+┌────┬───────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name              │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼───────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 1  │ market-through    │ default     │ 1.2.0   │ fork    │ 165619   │ 9h     │ 59   │ online    │ 0%       │ 220.7mb  │ ubuntu   │ disabled │
+└────┴───────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+Module
+┌────┬──────────────────────────────┬───────────────┬──────────┬──────────┬──────┬──────────┬──────────┬──────────┐
+│ id │ module                       │ version       │ pid      │ status   │ ↺    │ cpu      │ mem      │ user     │
+├────┼──────────────────────────────┼───────────────┼──────────┼──────────┼──────┼──────────┼──────────┼──────────┤
+│ 0  │ pm2-logrotate                │ 3.0.0         │ 1124     │ online   │ 0    │ 0%       │ 42.1mb   │ ubuntu   │
+└────┴──────────────────────────────┴───────────────┴──────────┴──────────┴──────┴──────────┴──────────┴──────────┘
+
+=== PM2 최근 로그 ===
+[TAILING] Tailing last 200 lines for [all] processes (change the value with --lines option)
+/home/ubuntu/.pm2/pm2.log last 200 lines:
+PM2        | 2026-10-14T12:46:06: PM2 log: pid=99184 msg=process killed
+PM2        | 2026-10-14T12:46:06: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-14T12:46:06: PM2 log: App [market-through:1] online
+PM2        | 2026-10-14T13:31:56: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-14T13:31:56: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-14T13:31:56: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-14T13:31:56: PM2 log: pid=99605 msg=process killed
+PM2        | 2026-10-14T13:31:56: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-14T13:31:56: PM2 log: App [market-through:1] online
+PM2        | 2026-10-14T14:18:22: PM2 warn: [pidusage] We couldn't find uptime from /proc/uptime, using os.uptime() value
+PM2        | 2026-10-14T14:18:55: PM2 warn: [pidusage] We couldn't find uptime from /proc/uptime, using os.uptime() value
+PM2        | 2026-10-14T17:22:18: PM2 warn: [pidusage] We couldn't find uptime from /proc/uptime, using os.uptime() value
+PM2        | 2026-10-14T17:22:51: PM2 warn: [pidusage] We couldn't find uptime from /proc/uptime, using os.uptime() value
+PM2        | 2026-10-14T17:24:23: PM2 warn: [pidusage] We couldn't find uptime from /proc/uptime, using os.uptime() value
+PM2        | 2026-10-14T17:27:35: PM2 warn: [pidusage] We couldn't find uptime from /proc/uptime, using os.uptime() value
+PM2        | 2026-10-14T17:40:39: PM2 warn: [pidusage] We couldn't find uptime from /proc/uptime, using os.uptime() value
+PM2        | 2026-10-14T17:42:33: PM2 warn: [pidusage] We couldn't find uptime from /proc/uptime, using os.uptime() value
+PM2        | 2026-10-15T10:19:50: PM2 log: [PM2] This PM2 is not UP TO DATE
+PM2        | 2026-10-15T10:19:50: PM2 log: [PM2] Upgrade to version 7.0.4
+PM2        | 2026-10-15T14:02:08: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-15T14:02:08: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-15T14:02:08: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-15T14:02:08: PM2 log: pid=99875 msg=process killed
+PM2        | 2026-10-15T14:02:08: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-15T14:02:08: PM2 log: App [market-through:1] online
+PM2        | 2026-10-15T14:09:26: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-15T14:09:26: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-15T14:09:26: PM2 log: pid=118848 msg=failed to kill - retrying in 100ms
+PM2        | 2026-10-15T14:09:26: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-15T14:09:26: PM2 log: pid=118848 msg=process killed
+PM2        | 2026-10-15T14:09:26: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-15T14:09:26: PM2 log: App [market-through:1] online
+PM2        | 2026-10-15T14:49:35: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-15T14:49:35: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-15T14:49:35: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-15T14:49:36: PM2 log: pid=119020 msg=process killed
+PM2        | 2026-10-15T14:49:36: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-15T14:49:36: PM2 log: App [market-through:1] online
+PM2        | 2026-10-15T14:50:47: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-15T14:50:47: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-15T14:50:48: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-15T14:50:48: PM2 log: pid=119290 msg=process killed
+PM2        | 2026-10-15T14:50:48: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-15T14:50:48: PM2 log: App [market-through:1] online
+PM2        | 2026-10-15T15:47:21: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-15T15:47:21: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-15T15:47:21: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-15T15:47:21: PM2 log: pid=119444 msg=process killed
+PM2        | 2026-10-15T15:47:21: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-15T15:47:21: PM2 log: App [market-through:1] online
+PM2        | 2026-10-16T10:19:50: PM2 log: [PM2] This PM2 is not UP TO DATE
+PM2        | 2026-10-16T10:19:50: PM2 log: [PM2] Upgrade to version 7.0.4
+PM2        | 2026-10-16T12:47:42: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-16T12:47:42: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-16T12:47:42: PM2 log: pid=119665 msg=failed to kill - retrying in 100ms
+PM2        | 2026-10-16T12:47:42: PM2 log: pid=119665 msg=failed to kill - retrying in 100ms
+PM2        | 2026-10-16T12:47:43: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-16T12:47:43: PM2 log: pid=119665 msg=process killed
+PM2        | 2026-10-16T12:47:43: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-16T12:47:43: PM2 log: App [market-through:1] online
+PM2        | 2026-10-16T13:12:49: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-16T13:12:49: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-16T13:12:49: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-16T13:12:49: PM2 log: pid=125548 msg=process killed
+PM2        | 2026-10-16T13:12:49: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-16T13:12:49: PM2 log: App [market-through:1] online
+PM2        | 2026-10-16T14:50:15: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-16T14:50:15: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-16T14:50:15: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-16T14:50:15: PM2 log: pid=126178 msg=process killed
+PM2        | 2026-10-16T14:50:15: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-16T14:50:15: PM2 log: App [market-through:1] online
+PM2        | 2026-10-17T10:19:50: PM2 log: [PM2] This PM2 is not UP TO DATE
+PM2        | 2026-10-17T10:19:50: PM2 log: [PM2] Upgrade to version 7.0.4
+PM2        | 2026-10-17T13:59:44: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-17T13:59:44: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-17T13:59:44: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-17T13:59:44: PM2 log: pid=126653 msg=process killed
+PM2        | 2026-10-17T13:59:44: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-17T13:59:44: PM2 log: App [market-through:1] online
+PM2        | 2026-10-17T15:30:21: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-17T15:30:21: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-17T15:30:21: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-17T15:30:21: PM2 log: pid=132267 msg=process killed
+PM2        | 2026-10-17T15:30:21: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-17T15:30:21: PM2 log: App [market-through:1] online
+PM2        | 2026-10-18T07:22:44: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-18T07:22:44: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-18T07:22:44: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-18T07:22:44: PM2 log: pid=132655 msg=process killed
+PM2        | 2026-10-18T07:22:44: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-18T07:22:44: PM2 log: App [market-through:1] online
+PM2        | 2026-10-18T10:19:50: PM2 log: [PM2] This PM2 is not UP TO DATE
+PM2        | 2026-10-18T10:19:50: PM2 log: [PM2] Upgrade to version 7.0.4
+PM2        | 2026-10-18T13:00:50: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-18T13:00:50: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-18T13:00:50: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-18T13:00:50: PM2 log: pid=136272 msg=process killed
+PM2        | 2026-10-18T13:00:50: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-18T13:00:50: PM2 log: App [market-through:1] online
+PM2        | 2026-10-18T13:04:00: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-18T13:04:00: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-18T13:04:00: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-18T13:04:00: PM2 log: pid=138936 msg=process killed
+PM2        | 2026-10-18T13:04:00: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-18T13:04:00: PM2 log: App [market-through:1] online
+PM2        | 2026-10-18T13:18:43: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-18T13:18:43: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-18T13:18:43: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-18T13:18:43: PM2 log: pid=139123 msg=process killed
+PM2        | 2026-10-18T13:18:43: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-18T13:18:43: PM2 log: App [market-through:1] online
+PM2        | 2026-10-18T13:39:32: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-18T13:39:32: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-18T13:39:32: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-18T13:39:32: PM2 log: pid=139385 msg=process killed
+PM2        | 2026-10-18T13:39:32: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-18T13:39:32: PM2 log: App [market-through:1] online
+PM2        | 2026-10-18T13:44:35: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-18T13:44:35: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-18T13:44:35: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-18T13:44:35: PM2 log: pid=139807 msg=process killed
+PM2        | 2026-10-18T13:44:35: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-18T13:44:35: PM2 log: App [market-through:1] online
+PM2        | 2026-10-18T13:47:52: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-18T13:47:52: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-18T13:47:52: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-18T13:47:52: PM2 log: pid=140010 msg=process killed
+PM2        | 2026-10-18T13:47:52: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-18T13:47:52: PM2 log: App [market-through:1] online
+PM2        | 2026-10-18T13:53:01: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-18T13:53:01: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-18T13:53:01: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-18T13:53:01: PM2 log: pid=140187 msg=process killed
+PM2        | 2026-10-18T13:53:01: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-18T13:53:01: PM2 log: App [market-through:1] online
+PM2        | 2026-10-18T13:55:56: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-18T13:55:56: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-18T13:55:56: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-18T13:55:56: PM2 log: pid=140365 msg=process killed
+PM2        | 2026-10-18T13:55:56: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-18T13:55:56: PM2 log: App [market-through:1] online
+PM2        | 2026-10-19T02:00:29: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-19T02:00:29: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-19T02:00:29: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-19T02:00:29: PM2 log: pid=140532 msg=process killed
+PM2        | 2026-10-19T02:00:29: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-19T02:00:29: PM2 log: App [market-through:1] online
+PM2        | 2026-10-19T10:19:50: PM2 log: [PM2] This PM2 is not UP TO DATE
+PM2        | 2026-10-19T10:19:50: PM2 log: [PM2] Upgrade to version 7.0.4
+PM2        | 2026-10-19T12:08:44: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-19T12:08:44: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-19T12:08:44: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-19T12:08:44: PM2 log: pid=145899 msg=process killed
+PM2        | 2026-10-19T12:08:44: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-19T12:08:44: PM2 log: App [market-through:1] online
+PM2        | 2026-10-19T15:44:13: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-19T15:44:13: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-19T15:44:13: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-19T15:44:13: PM2 log: pid=148746 msg=process killed
+PM2        | 2026-10-19T15:44:13: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-19T15:44:13: PM2 log: App [market-through:1] online
+PM2        | 2026-10-20T10:19:50: PM2 log: [PM2] This PM2 is not UP TO DATE
+PM2        | 2026-10-20T10:19:50: PM2 log: [PM2] Upgrade to version 7.0.4
+PM2        | 2026-10-20T15:40:25: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-20T15:40:25: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-20T15:40:25: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-20T15:40:25: PM2 log: pid=149186 msg=process killed
+PM2        | 2026-10-20T15:40:25: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-20T15:40:25: PM2 log: App [market-through:1] online
+PM2        | 2026-10-20T15:58:39: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-20T15:58:39: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-20T15:58:40: PM2 log: pid=158703 msg=failed to kill - retrying in 100ms
+PM2        | 2026-10-20T15:58:40: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-20T15:58:40: PM2 log: pid=158703 msg=process killed
+PM2        | 2026-10-20T15:58:40: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-20T15:58:40: PM2 log: App [market-through:1] online
+PM2        | 2026-10-20T23:29:31: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-20T23:29:31: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-20T23:29:31: PM2 log: pid=159006 msg=failed to kill - retrying in 100ms
+PM2        | 2026-10-20T23:29:31: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-20T23:29:31: PM2 log: pid=159006 msg=process killed
+PM2        | 2026-10-20T23:29:31: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-20T23:29:31: PM2 log: App [market-through:1] online
+PM2        | 2026-10-21T10:19:50: PM2 log: [PM2] This PM2 is not UP TO DATE
+PM2        | 2026-10-21T10:19:50: PM2 log: [PM2] Upgrade to version 7.1.0
+PM2        | 2026-10-21T12:19:12: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-21T12:19:12: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-21T12:19:12: PM2 log: pid=160706 msg=failed to kill - retrying in 100ms
+PM2        | 2026-10-21T12:19:12: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-21T12:19:13: PM2 log: pid=160706 msg=process killed
+PM2        | 2026-10-21T12:19:13: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-21T12:19:13: PM2 log: App [market-through:1] online
+PM2        | 2026-10-21T14:03:39: PM2 log: Process 1 in a stopped status, starting it
+PM2        | 2026-10-21T14:03:39: PM2 log: Stopping app:market-through id:1
+PM2        | 2026-10-21T14:03:39: PM2 log: pid=165392 msg=failed to kill - retrying in 100ms
+PM2        | 2026-10-21T14:03:39: PM2 log: App [market-through:1] exited with code [0] via signal [SIGINT]
+PM2        | 2026-10-21T14:03:39: PM2 log: pid=165392 msg=process killed
+PM2        | 2026-10-21T14:03:39: PM2 log: App [market-through:1] starting in -fork mode-
+PM2        | 2026-10-21T14:03:39: PM2 log: App [market-through:1] online
+
+/home/ubuntu/.pm2/logs/pm2-logrotate-error.log last 200 lines:
+/home/ubuntu/.pm2/logs/pm2-logrotate-out.log last 200 lines:
+0|pm2-logr | "/home/ubuntu/.pm2/logs/pm2-logrotate-out__2026-10-21_00-00-00.log" has been created
+0|pm2-logr | "/home/ubuntu/.pm2/logs/market-through-error__2026-10-21_00-00-00.log" has been created
+0|pm2-logr | "pm2-logrotate-out__2026-10-16_00-00-00.log" has been deleted
+0|pm2-logr | "market-through-error__2026-10-16_00-00-00.log" has been deleted
+0|pm2-logr | "/home/ubuntu/.pm2/logs/market-through-out__2026-10-21_00-00-00.log" has been created
+0|pm2-logr | "market-through-out__2026-10-20_14-42-17.log" has been deleted
+0|pm2-logr | "/home/ubuntu/.pm2/logs/market-through-out__2026-10-21_01-15-18.log" has been created
+0|pm2-logr | "market-through-out__2026-10-20_15-54-47.log" has been deleted
+0|pm2-logr | "/home/ubuntu/.pm2/logs/market-through-out__2026-10-21_02-08-19.log" has been created
+0|pm2-logr | "market-through-out__2026-10-20_17-47-47.log" has been deleted
+0|pm2-logr | "/home/ubuntu/.pm2/logs/market-through-out__2026-10-21_03-00-49.log" has been created
+0|pm2-logr | "market-through-out__2026-10-20_20-52-18.log" has been deleted
+0|pm2-logr | "/home/ubuntu/.pm2/logs/market-through-out__2026-10-21_03-54-19.log" has been created
+0|pm2-logr | "market-through-out__2026-10-20_23-15-48.log" has been deleted
+0|pm2-logr | "/home/ubuntu/.pm2/logs/market-through-out__2026-10-21_04-47-49.log" has been created
+0|pm2-logr | "market-through-out__2026-10-21_00-00-00.log" has been deleted
+0|pm2-logr | "/home/ubuntu/.pm2/logs/market-through-out__2026-10-21_05-39-49.log" has been created
+0|pm2-logr | "market-through-out__2026-10-21_01-15-18.log" has been deleted
+0|pm2-logr | "/home/ubuntu/.pm2/logs/market-through-out__2026-10-21_06-33-19.log" has been created
+0|pm2-logr | "market-through-out__2026-10-21_02-08-19.log" has been deleted
+0|pm2-logr | "/home/ubuntu/.pm2/logs/market-through-out__2026-10-21_07-27-19.log" has been created
+0|pm2-logr | "market-through-out__2026-10-21_03-00-49.log" has been deleted
+0|pm2-logr | "/home/ubuntu/.pm2/logs/market-through-out__2026-10-21_08-21-50.log" has been created
+0|pm2-logr | "market-through-out__2026-10-21_03-54-19.log" has been deleted
+0|pm2-logr | "/home/ubuntu/.pm2/logs/market-through-out__2026-10-21_09-15-20.log" has been created
+0|pm2-logr | "market-through-out__2026-10-21_04-47-49.log" has been deleted
+0|pm2-logr | "/home/ubuntu/.pm2/logs/market-through-out__2026-10-21_10-19-50.log" has been created
+0|pm2-logr | "market-through-out__2026-10-21_05-39-49.log" has been deleted
+0|pm2-logr | "/home/ubuntu/.pm2/logs/market-through-out__2026-10-21_11-31-50.log" has been created
+0|pm2-logr | "market-through-out__2026-10-21_06-33-19.log" has been deleted
+0|pm2-logr | "/home/ubuntu/.pm2/logs/market-through-out__2026-10-21_12-38-50.log" has been created
+0|pm2-logr | "market-through-out__2026-10-21_07-27-19.log" has been deleted
+0|pm2-logr | "/home/ubuntu/.pm2/logs/market-through-out__2026-10-21_13-34-50.log" has been created
+0|pm2-logr | "market-through-out__2026-10-21_08-21-50.log" has been deleted
+0|pm2-logr | "/home/ubuntu/.pm2/logs/market-through-out__2026-10-21_15-16-21.log" has been created
+0|pm2-logr | "market-through-out__2026-10-21_09-15-20.log" has been deleted
+0|pm2-logr | "/home/ubuntu/.pm2/logs/market-through-out__2026-10-21_17-32-51.log" has been created
+0|pm2-logr | "market-through-out__2026-10-21_10-19-50.log" has been deleted
+0|pm2-logr | "/home/ubuntu/.pm2/logs/market-through-out__2026-10-21_19-45-21.log" has been created
+0|pm2-logr | "market-through-out__2026-10-21_11-31-50.log" has been deleted
+0|pm2-logr | "/home/ubuntu/.pm2/logs/market-through-out__2026-10-21_22-00-21.log" has been created
+0|pm2-logr | "market-through-out__2026-10-21_12-38-50.log" has been deleted
+
+/home/ubuntu/.pm2/logs/market-through-error.log last 200 lines:
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 K 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+1|market-t | ⚠️ ka20001 Q 시장 거래대금 응답에 유효한 trde_prica가 없습니다.
+
+/home/ubuntu/.pm2/logs/market-through-out.log last 200 lines:
+1|market-t |       "stk_cd": "000990_AL",
+1|market-t |       "now_rank": "88",
+1|market-t |       "pred_rank": "151",
+1|market-t |       "stk_nm": "DB하이텍",
+1|market-t |       "cur_prc": "-103200",
+1|market-t |       "pred_pre_sig": "5",
+1|market-t |       "pred_pre": "-600",
+1|market-t |       "flu_rt": "-0.58",
+1|market-t |       "sel_bid": "-103200",
+1|market-t |       "buy_bid": "-103100",
+1|market-t |       "now_trde_qty": "11147",
+1|market-t |       "pred_trde_qty": "426773",
+1|market-t |       "trde_prica": "1153"
+1|market-t |     },
+1|market-t |     {
+1|market-t |       "stk_cd": "034730_AL",
+1|market-t |       "now_rank": "89",
+1|market-t |       "pred_rank": "42",
+1|market-t |       "stk_nm": "SK",
+1|market-t |       "cur_prc": "-480000",
+1|market-t |       "pred_pre_sig": "5",
+1|market-t |       "pred_pre": "-2000",
+1|market-t |       "flu_rt": "-0.41",
+1|market-t |       "sel_bid": "-480500",
+1|market-t |       "buy_bid": "-478500",
+1|market-t |       "now_trde_qty": "2391",
+1|market-t |       "pred_trde_qty": "331144",
+1|market-t |       "trde_prica": "1141"
+1|market-t |     },
+1|market-t |     {
+1|market-t |       "stk_cd": "124500_AL",
+1|market-t |       "now_rank": "90",
+1|market-t |       "pred_rank": "580",
+1|market-t |       "stk_nm": "아이티센글로벌",
+1|market-t |       "cur_prc": "+22400",
+1|market-t |       "pred_pre_sig": "2",
+1|market-t |       "pred_pre": "+550",
+1|market-t |       "flu_rt": "+2.52",
+1|market-t |       "sel_bid": "+22450",
+1|market-t |       "buy_bid": "+22350",
+1|market-t |       "now_trde_qty": "47358",
+1|market-t |       "pred_trde_qty": "228518",
+1|market-t |       "trde_prica": "1069"
+1|market-t |     },
+1|market-t |     {
+1|market-t |       "stk_cd": "000250_AL",
+1|market-t |       "now_rank": "91",
+1|market-t |       "pred_rank": "176",
+1|market-t |       "stk_nm": "삼천당제약",
+1|market-t |       "cur_prc": "+214000",
+1|market-t |       "pred_pre_sig": "2",
+1|market-t |       "pred_pre": "+1500",
+1|market-t |       "flu_rt": "+0.71",
+1|market-t |       "sel_bid": "+214000",
+1|market-t |       "buy_bid": "+213500",
+1|market-t |       "now_trde_qty": "4851",
+1|market-t |       "pred_trde_qty": "163883",
+1|market-t |       "trde_prica": "1030"
+1|market-t |     },
+1|market-t |     {
+1|market-t |       "stk_cd": "028300_AL",
+1|market-t |       "now_rank": "92",
+1|market-t |       "pred_rank": "193",
+1|market-t |       "stk_nm": "HLB",
+1|market-t |       "cur_prc": "+42400",
+1|market-t |       "pred_pre_sig": "2",
+1|market-t |       "pred_pre": "+50",
+1|market-t |       "flu_rt": "+0.12",
+1|market-t |       "sel_bid": "+42400",
+1|market-t |       "buy_bid": "42350",
+1|market-t |       "now_trde_qty": "24248",
+1|market-t |       "pred_trde_qty": "742854",
+1|market-t |       "trde_prica": "1028"
+1|market-t |     },
+1|market-t |     {
+1|market-t |       "stk_cd": "064350_AL",
+1|market-t |       "now_rank": "93",
+1|market-t |       "pred_rank": "94",
+1|market-t |       "stk_nm": "현대로템",
+1|market-t |       "cur_prc": "-87500",
+1|market-t |       "pred_pre_sig": "5",
+1|market-t |       "pred_pre": "-1100",
+1|market-t |       "flu_rt": "-1.24",
+1|market-t |       "sel_bid": "-87500",
+1|market-t |       "buy_bid": "-87400",
+1|market-t |       "now_trde_qty": "11674",
+1|market-t |       "pred_trde_qty": "840916",
+1|market-t |       "trde_prica": "1022"
+1|market-t |     },
+1|market-t |     {
+1|market-t |       "stk_cd": "095610_AL",
+1|market-t |       "now_rank": "94",
+1|market-t |       "pred_rank": "194",
+1|market-t |       "stk_nm": "테스",
+1|market-t |       "cur_prc": "-118600",
+1|market-t |       "pred_pre_sig": "5",
+1|market-t |       "pred_pre": "-1500",
+1|market-t |       "flu_rt": "-1.25",
+1|market-t |       "sel_bid": "-118500",
+1|market-t |       "buy_bid": "-118400",
+1|market-t |       "now_trde_qty": "8252",
+1|market-t |       "pred_trde_qty": "261025",
+1|market-t |       "trde_prica": "980"
+1|market-t |     },
+1|market-t |     {
+1|market-t |       "stk_cd": "011790_AL",
+1|market-t |       "now_rank": "95",
+1|market-t |       "pred_rank": "234",
+1|market-t |       "stk_nm": "SKC",
+1|market-t |       "cur_prc": "91500",
+1|market-t |       "pred_pre_sig": "3",
+1|market-t |       "pred_pre": "0",
+1|market-t |       "flu_rt": "0.00",
+1|market-t |       "sel_bid": "91500",
+1|market-t |       "buy_bid": "-91400",
+1|market-t |       "now_trde_qty": "10465",
+1|market-t |       "pred_trde_qty": "263658",
+1|market-t |       "trde_prica": "960"
+1|market-t |     },
+1|market-t |     {
+1|market-t |       "stk_cd": "319660_AL",
+1|market-t |       "now_rank": "96",
+1|market-t |       "pred_rank": "199",
+1|market-t |       "stk_nm": "피에스케이",
+1|market-t |       "cur_prc": "-122400",
+1|market-t |       "pred_pre_sig": "5",
+1|market-t |       "pred_pre": "-2900",
+1|market-t |       "flu_rt": "-2.31",
+1|market-t |       "sel_bid": "-122700",
+1|market-t |       "buy_bid": "-122400",
+1|market-t |       "now_trde_qty": "7674",
+1|market-t |       "pred_trde_qty": "246400",
+1|market-t |       "trde_prica": "943"
+1|market-t |     },
+1|market-t |     {
+1|market-t |       "stk_cd": "012330_AL",
+1|market-t |       "now_rank": "97",
+1|market-t |       "pred_rank": "43",
+1|market-t |       "stk_nm": "현대모비스",
+1|market-t |       "cur_prc": "-344500",
+1|market-t |       "pred_pre_sig": "5",
+1|market-t |       "pred_pre": "-1500",
+1|market-t |       "flu_rt": "-0.43",
+1|market-t |       "sel_bid": "-345000",
+1|market-t |       "buy_bid": "-344500",
+1|market-t |       "now_trde_qty": "2709",
+1|market-t |       "pred_trde_qty": "440349",
+1|market-t |       "trde_prica": "933"
+1|market-t |     },
+1|market-t |     {
+1|market-t |       "stk_cd": "455900_AL",
+1|market-t |       "now_rank": "98",
+1|market-t |       "pred_rank": "1090",
+1|market-t |       "stk_nm": "엔젤로보틱스",
+1|market-t |       "cur_prc": "+19170",
+1|market-t |       "pred_pre_sig": "2",
+1|market-t |       "pred_pre": "+680",
+1|market-t |       "flu_rt": "+3.68",
+1|market-t |       "sel_bid": "+19180",
+1|market-t |       "buy_bid": "+19170",
+1|market-t |       "now_trde_qty": "46940",
+1|market-t |       "pred_trde_qty": "61565",
+1|market-t |       "trde_prica": "920"
+1|market-t |     },
+1|market-t |     {
+1|market-t |       "stk_cd": "000270_AL",
+1|market-t |       "now_rank": "99",
+1|market-t |       "pred_rank": "64",
+1|market-t |       "stk_nm": "기아",
+1|market-t |       "cur_prc": "-109800",
+1|market-t |       "pred_pre_sig": "5",
+1|market-t |       "pred_pre": "-700",
+1|market-t |       "flu_rt": "-0.63",
+1|market-t |       "sel_bid": "-109900",
+1|market-t |       "buy_bid": "-109800",
+1|market-t |       "now_trde_qty": "8024",
+1|market-t |       "pred_trde_qty": "973446",
+1|market-t |       "trde_prica": "881"
+1|market-t |     },
+1|market-t |     {
+1|market-t |       "stk_cd": "488900_AL",
+1|market-t |       "now_rank": "100",
+1|market-t |       "pred_rank": "422",
+1|market-t |       "stk_nm": "비츠로넥스텍",
+1|market-t |       "cur_prc": "-8960",
+1|market-t |       "pred_pre_sig": "5",
+1|market-t |       "pred_pre": "-140",
+1|market-t |       "flu_rt": "-1.54",
+1|market-t |       "sel_bid": "-8960",
+1|market-t |       "buy_bid": "-8910",
+1|market-t |       "now_trde_qty": "96420",
+1|market-t |       "pred_trde_qty": "1037000",
+1|market-t |       "trde_prica": "881"
+1|market-t |     }
+1|market-t |   ],
+1|market-t |   "return_code": 0,
+1|market-t |   "return_msg": "정상적으로 처리되었습니다"
+1|market-t | }
+1|market-t | [Rank] /api/transaction_rank ka10032 received 100 items (return_code=0)
+1|market-t | Step 3: 거래대금상위 시장구분(ka10100) 보정 시작 (100/100개)...
+
+
+=== 서버 부팅 시각 ===
+2026-10-04 10:19:02
+
+=== 재부팅·종료 기록 ===
+ubuntu   pts/0        221.149.119.121  Wed Oct 21 23:14   still logged in
+ubuntu   pts/0        221.149.119.121  Thu Oct 15 13:36 - 14:14 (6+00:38)
+ubuntu   pts/1        211.192.253.152  Mon Oct 12 13:12 - 15:58 (2+02:45)
+ubuntu   pts/0        221.149.119.121  Sun Oct 11 08:01 - 18:24 (3+10:22)
+ubuntu   pts/1        211.192.253.152  Fri Oct  9 08:27 - 22:13 (2+13:45)
+ubuntu   pts/1        211.192.253.152  Fri Oct  9 08:25 - 08:27  (00:01)
+ubuntu   pts/0        221.149.119.121  Wed Oct  7 14:59 - 04:11 (2+13:11)
+runlevel (to lvl 5)   6.8.0-1062-oracl Sun Oct  4 10:20   still running
+ubuntu   pts/0        221.149.119.121  Sun Oct  4 10:19 - 13:57 (3+03:38)
+reboot   system boot  6.8.0-1062-oracl Sun Oct  4 10:19   still running
+shutdown system down  6.8.0-1062-oracl Sun Oct  4 10:18 - 10:19  (00:00)
+runlevel (to lvl 5)   6.8.0-1062-oracl Sun Oct  4 05:00 - 10:18  (05:17)
+ubuntu   pts/0        221.149.119.121  Sun Oct  4 05:00 - 10:18  (05:18)
+reboot   system boot  6.8.0-1062-oracl Sun Oct  4 04:59 - 10:18  (05:18)
+ubuntu   pts/0        221.149.119.121  Sat Oct  3 10:30 - crash  (18:29)
+runlevel (to lvl 5)   6.8.0-1062-oracl Sat Oct  3 10:30 - 05:00  (18:30)
+reboot   system boot  6.8.0-1062-oracl Sat Oct  3 10:29 - 10:18  (23:49)
+ubuntu   pts/0        221.149.119.121  Thu Oct  1 03:05 - crash (2+07:24)
+ubuntu   pts/0        221.149.119.121  Wed Sep 30 00:54 - 17:27  (16:33)
+ubuntu   pts/0        221.149.119.121  Wed Sep 30 00:39 - 00:53  (00:13)

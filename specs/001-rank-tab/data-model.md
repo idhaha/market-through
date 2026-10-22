@@ -125,10 +125,10 @@ POST /api/concentration-chart에 {code:선택종목, mode:"minute", interval:5, 
 이 절은 과거의 ADR “브라우저에만 저장/서버 저장 없음” 설명을 대체한다.
 
 - **AdrMinuteArchive**: 시장별 최신 거래일과 정규화된 `{t, adr}` 1분 배열. 초/밀리초 입력을 밀리초로 통일하고 한국 거래시간 09:00~15:30으로 제한한다. 새로운 거래일 수신 시 하루 전체를 교체한다. 과거 응답은 최신 날짜를 되돌리지 않는다.
-- **RiskArchive**: 지표별 `{points, checkedAt, asOf}`. 일반 지표는 `{date,value}`, breadth 원본은 highs/lows/valid를 추가로 보존한다. 날짜 정렬·중복 제거 후 기존 날짜는 불변이고 새 날짜만 추가한다.
+- **RiskArchive**: 지표별 `{points, checkedAt, asOf}`. 변동성·투자심리 지표는 `{date,value}`를 사용한다. 신고가·신저가는 별도 BreadthArchive로 분리한다. 날짜 정렬·중복 제거 후 기존 날짜는 불변이고 새 날짜만 추가한다.
 - **RiskRange**: 6m/1y/3y/all. all은 원천 최대 기간이 아니라 저장된 전체 기록이다.
-- **BreadthView**: 원본 highs는 양수, lows는 음수로 변환한다. 원본 net·유효성은 응답에 유지하며 임의로 누락 날짜를 채우지 않는다.
-- **RiskDisplay**: 기존 rankChartDisplay 안 volatility/breadth/sentiment 각각 range와 candleOpen. 확대 위치와 hover는 페이지 메모리 상태다.
+- **BreadthView**: 저장 highs/lows는 음수가 아닌 개수이며 응답의 lows만 음수로 변환한다. net/valid는 현재 계약에 포함하지 않는다. 기준 봉의 날짜 자리를 유지하고 관측이 없는 값은 null로 표시한다.
+- **RiskDisplay**: 기존 rankChartDisplay 안 volatility/sentiment는 range와 candleOpen, breadth는 mode(day/minute)와 candleOpen을 사용한다. breadth에 남아 있는 이전 range 값은 현재 조회 기준이 아니다. 확대 위치와 hover는 페이지 메모리 상태다.
 - **KOSPICandleHover**: 선택 날짜 종가와 직전 거래일 종가 기반 changeRate. 배지는 close, 정보 줄의 비율 이름은 등락율이다. 지표별 휴장일 차이는 서로 독립적인 결측으로 남긴다.
 
 
@@ -154,3 +154,12 @@ LendableScanStatus:
 ## 수급 개장 확인 파일
 
 data/supply/market-day.json: {day: YYYY-MM-DD, confirmed_at: epoch milliseconds}. 오늘 날짜와 일치할 때만 유효한 개장 확정으로 사용한다. 최대 한 날짜 기록만 유지하며 다음 확정 시 교체한다. 미확인 API 실패를 휴장 확정 파일로 기록하지 않는다.
+
+
+## 신고가·신저가 저장 모델 (2026-10-21)
+
+- `data/breadth/daily.json`: `{points:[{date,highs,lows}],legacyThrough,integratedFrom}`. 개수는 음수가 아닌 정수다. 전환일은 파일 전체 메타데이터이며 날짜별 출처·조건을 저장하지 않는다. 일봉은 날짜당 확정 한 건이다.
+- `data/breadth/YYYY-MM-DD.json[.gz]`: `[{t,highs,lows}]`. t는 한국 거래일의 관측 분을 나타내는 Unix 밀리초다. 같은 분은 최신 정상 관측값으로 병합하며 완료된 날짜는 검증 후 무손실 압축한다.
+- `jusikbot-backup.json`: 최초 이관 원본 바이트. 기존 `data/volatility/new-highs-lows.json`도 유지한다.
+- 조회 시 기준 봉과 결합한 null은 화면의 결측 표현이다. 누락 관측을 0으로 저장하지 않으며, 신저가 음수 변환은 응답 표시용으로만 적용한다.
+- 기준 날짜, 레이블 위치, 천주 표기, 메인 캔들 동기화와 날짜 경계선은 [공통 차트 정책](../../docs/RANK_CHART_POLICY.md)을 따른다.

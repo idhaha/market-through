@@ -142,9 +142,9 @@ ADR history 원천의 max/min 필드는 전달될 수 있으나 화면에는 MAX
 ## 2026-10-18 추가 계약: 위험지표·ADR 서버 기록
 
 - 인증된 `GET /api/risk/volatility?range=1y`: series 키 vix/vkospi.
-- 인증된 `GET /api/risk/breadth?range=1y`: series 키 highs/lows/net. highs는 양수, lows는 음수이며 원천 new-highs-lows에서 파생된다.
+- 신고가·신저가의 이전 `range`/`net` 계약은 아래의 `mode`/`cursor` 계약으로 대체한다.
 - 인증된 `GET /api/risk/sentiment?range=1y`: series 키 fear-greed/high-yield-spread.
-- range 허용값은 6m/1y/3y/all이며 기본 1y. 응답은 `{range,series:{id:{points:[{date,value}],asOf,archiveFrom,warning?,error?}}}` 형태다. breadth net 점은 원천 유효성 필드를 포함할 수 있다. 부분 실패는 해당 series의 빈 points/error로 전달하며 전체 실패는 502와 오류 메시지를 반환한다. Cache-Control은 no-store다.
+- 변동성·투자심리의 range 허용값은 6m/1y/3y/all이며 기본 1y. 응답은 `{range,series:{id:{points:[{date,value}],asOf,archiveFrom,warning?,error?}}}` 형태다. 부분 실패는 해당 series의 빈 points/error로 전달하며 전체 실패는 502와 오류 메시지를 반환한다. Cache-Control은 no-store다.
 - 서버는 Jusikbot risk-indicators의 최신 날짜를 확인한 뒤 risk-history의 3y/6m 제공 범위를 조회한다. 임의 from/to 증분 요청은 지원 계약이 아니며 날짜별 누락분만 저장한다.
 - `GET /api/adr/today?market=kospi|kosdaq`는 수신 자료와 서버의 최신 하루 기록을 병합한다. 원천 실패 시 기록이 있으면 intraday/intradayDate/sourceError와 함께 제공한다. 저장 이력이 없으면 실패 응답을 유지한다.
 - 기존 `/api/adr/candles?market=kospi&mode=day&from=...&to=...`의 실제 OHLC를 위험지표 아래 캔들에 재사용한다. 위험지표 일별 값에서 OHLC를 생성하지 않는다.
@@ -160,3 +160,13 @@ GET /api/stock의 data.efriend_scan은 반환 목록을 얻은 시점의 상태 
 ## 2026-10-21 신고가·신저가 키움 전환
 
 신고가·신저가는 KOSPI+KOSDAQ, KRX+NXT 통합시장 ka10016 집계로 전환한다. 기존 Jusikbot 자료는 보존하며 일/1분봉, 개장 확인 공유, 20:02 확정과 다음날 08:00 미만 복구, 기준 봉에 맞춘 결측 표시를 적용한다. 이전 관련 설명보다 [신고가·신저가 최신 정책](../../../docs/BREADTH_CHART.md)을 우선한다. 변동성·투자심리의 Jusikbot 정책은 유지한다.
+
+
+## GET /api/risk/breadth — 현재 계약
+
+- 인증 필요, Cache-Control: no-store. `mode=day|minute`(기본 day), 선택 `cursor`를 받는다. 기존 range 기반 조회는 종료했다.
+- 응답: `{mode,dates,series:{highs:{points:[{date,value}]},lows:{points:[{date,value}]}},candles,cursor,has_more,warning,notice}`. highs 양수·lows 음수, 정상 0과 결측 null을 구분한다. 분봉 date는 `YYYY-MM-DD HH:mm`, 일봉은 `YYYY-MM-DD`다.
+- `dates`는 신고가 자료 유무와 독립적인 삼성전자 통합시장 기본 한 페이지의 기준 봉이다. 일봉 cursor는 이전 기준일 YYYYMMDD, 분봉 cursor는 키움의 불투명 연속조회 키다. 기본 봉 수를 임의 600 상수로 고정하지 않는다.
+- 응답 candles는 기준 종목 봉이다. 화면 아래 표시용 KOSPI 지수 캔들은 기존 `/api/adr/candles`에서 별도로 받아 동일 시간축에 맞춘다. 지표의 관측 이전·누락 구간은 빈 값으로 유지한다.
+- 개수는 서버 `ka10016` 통합시장 집계와 저장 자료만 사용한다. 화면 조회로 Jusikbot 갱신이나 일봉·분봉 소급 생성을 수행하지 않는다.
+- 서버 수집·복구·보관·일회성 수동 집계 기록은 [신고가 정책](../../../docs/BREADTH_CHART.md), 표시·조작은 [공통 정책](../../../docs/RANK_CHART_POLICY.md)을 따른다.
