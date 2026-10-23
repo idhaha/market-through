@@ -65,6 +65,7 @@
         async function execute(command) {
             try {
                 if (command.type === 'supply-watchlist') { await window.refreshRankSupplyChart?.(); dirty = true; return; }
+                if (command.type === 'supply-display' && command.pinned) return;
                 if (command.type === 'supply-display') {
                     const current = window.getRankSupplyState?.() || {};
                     const fields = ['selected', 'mode', 'visibleSeries'];
@@ -83,7 +84,7 @@
                 }
                 if (command.type === 'refresh') { if (window.loadTransactionRank) await window.loadTransactionRank({ refreshMarketCharts: false, reportStatus: true }); else window.refreshConcentrationChart?.(); return; }
                 if (command.type !== 'request' || !allowed(command.path) || command.path.length > 300) throw new Error('지원하지 않는 요청입니다.');
-                if (command.path === '/api/concentration-chart' && !command.body?.debug_five) {
+                if (command.path === '/api/concentration-chart' && !command.pinned && !command.body?.debug_five) {
                     window.setRankChartQuery?.(command.selection, command.body.mode, command.body.interval, !command.pinned);
                 }
                 const body = command.body ? JSON.stringify(command.body) : '';

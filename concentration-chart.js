@@ -19,9 +19,9 @@ function barKey(row, mode, interval) {
     if (mode === 'day') return /^\d{8}$/.test(time) ? time : null;
     if (!/^\d{14}$/.test(time)) return null;
     const minutes = Number(time.slice(8, 10)) * 60 + Number(time.slice(10, 12));
-    if (minutes < 540 || minutes >= 1440 || Number(time.slice(10, 12)) > 59) return null;
-    // Align both sources to the same KRX session, excluding NXT bars before 09:00.
-    const bucket = 540 + Math.floor((minutes - 540) / interval) * interval;
+    if (minutes < 480 || minutes >= 1440 || Number(time.slice(10, 12)) > 59) return null;
+    // Preserve the integrated-market session from 08:00; absent index bars leave the ratio null.
+    const bucket = 480 + Math.floor((minutes - 480) / interval) * interval;
     return time.slice(0, 8) + String(Math.floor(bucket / 60)).padStart(2, '0') + String(bucket % 60).padStart(2, '0') + '00';
 }
 

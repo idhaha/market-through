@@ -2961,3 +2961,18 @@ body { height:100dvh; min-height:0; overflow:hidden; display:flex; flex-directio
 #tab_rank .grid-container > .panel, #tab_rank .rank-chart-row > .panel, #tab_rank > .panel { position:relative; }
 .rank-connection-dot { position:absolute; left:7px; top:7px; width:7px; height:7px; border-radius:50%; background:#dc2626; z-index:4; pointer-events:auto; }
 .rank-connection-dot.is-connected { background:#16a34a; }
+.rank-card-source { flex:0 0 auto; align-self:stretch; margin:8px 0 0; color:var(--text-muted); font-size:12px; line-height:18px; text-align:right; }
+
+.rank-turnover-panel .rank-adr-controls > .concentration-candle-toggle { margin-left:6px; }
+
+.chart-today-button[hidden] { display:none !important; }
+
+.rank-history-notice { margin:6px 0 0; color:var(--text-muted); font-size:12px; }
+
+/* Share the status/source row and give its former row back to the plot. */
+.rank-card-footer { display:flex; align-items:center; gap:12px; margin-top:8px; min-height:18px; flex:0 0 18px; min-width:0; }
+.rank-card-messages { display:flex; gap:8px; flex:1; min-width:0; overflow:hidden; }
+.rank-card-footer .rank-card-source { flex:0 0 auto; margin:0; white-space:nowrap; }
+.rank-card-messages > :is(.rank-adr-status,#concentrationPeriod,#concentrationStatus,.rank-history-notice) { position:static; flex:0 1 auto; order:initial; margin:0; min-width:0; font-size:12px; line-height:18px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text-muted); }
+.rank-card-messages:has(.rank-history-notice:not([hidden])) > :not(.rank-history-notice) { display:none; }
+.rank-chart-row { --chart-plot-height:286px; }

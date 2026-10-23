@@ -14,6 +14,7 @@ const assert = require('node:assert/strict');
         fetch: () => new Promise(resolve => requests.push(resolve)),
         window: {
             rankChartRowAttributes: () => '',
+            RankChartAxis: { refreshCharts: ({skipConcentration}={}) => { if(!skipConcentration)refreshed.push(body.innerHTML); } },
             refreshConcentrationChart: () => refreshed.push(body.innerHTML),
             getRankChartState: () => ({ selection }),
             selectRankChartStock: stock => { selection = stock; selected.push(stock); }
@@ -37,7 +38,7 @@ const assert = require('node:assert/strict');
     requests[2](result('new leader', '000660')); await next;
     assert.equal(selected.length, 1, 'Refreshing the ranking must preserve the selected stock');
     assert.equal(refreshed.length, 1);
-    assert.ok(refreshed[0].includes('new leader'), 'Refresh chart only after new table data is rendered');
+    assert.ok(refreshed[0].includes('latest'), 'Selected chart refresh starts before the ranking response instead of waiting for new table data');
     selection = { code: '035420', name: 'direct input' };
     const afterDirectInput = context.loadTransactionRank();
     requests[3](result('another leader', '373220')); await afterDirectInput;

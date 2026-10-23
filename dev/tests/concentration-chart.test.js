@@ -15,12 +15,12 @@ function response(field, list, nextKey = '') {
     return { data: { return_code: 0, [field]: list }, headers: { 'cont-yn': nextKey ? 'Y' : 'N', 'next-key': nextKey } };
 }
 
-test('minute ratios use absolute price, integer volume, same timestamp, and exclude pre-09:00 NXT', () => {
+test('minute ratios use absolute price, integer volume, same timestamp, and retain 08:00 NXT prices with missing index ratios', () => {
     const stock = rows([minute('20261007080000'), minute('20261007090000'), minute('20261007090100'), minute('20261007090200', '100', '0'), minute('20261007090300')]);
     const market = rows([minute('20261007090000', '+1,000', '10'), minute('20261007090200', '1000', '10'), minute('20261007090300', '1000', '0')]);
     const points = calculatePoints(stock, market, 'minute', 1);
-    assert.deepEqual(points.map(point => point.value), [0.1, null, 0, null]);
-    assert.equal(points[0].time, '20261007090000');
+    assert.deepEqual(points.map(point => point.value), [null, 0.1, null, 0, null]);
+    assert.equal(points[0].time, '20261007080000');
 });
 
 test('minute index estimate applies index /100 and volume *10000 without changing the stock estimate', () => {

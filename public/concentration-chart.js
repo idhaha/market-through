@@ -1,7 +1,7 @@
 (() => {
     'use strict';
-    const scopes = [1, 3, 5, 10, 15, 30, 45, 60];
-    const state = { selection: null, mode: 'day', interval: 5, points: [], cursor: null,
+    const scopes = [1];
+    const state = { selection: null, mode: 'day', interval: 1, points: [], cursor: null,
         hasMore: false, busy: false, visible: 0, start: 0, request: 0, controller: null, hover: null, drag: null };
     const encoded = value => encodeURIComponent(String(value || '')).replace(/'/g, '%27');
     window.rankChartRowAttributes = (stock, efriend = false) => {
@@ -25,6 +25,7 @@
             const button = event.target.closest?.('.rank-chart-row .concentration-candle-toggle');
             if (!button || button.disabled) return;
             const open = button.getAttribute('aria-expanded') !== 'true';
+            window.rankMainCandleOpen=open;
             event.preventDefault(); event.stopImmediatePropagation();
             window.rankCandleSyncing = true;
             try {
@@ -79,6 +80,7 @@
         });
         window.applyConcentrationDisplaySettings = settings => {
             const nextCandleOpen = settings?.candleOpen === true;
+            if(!window.rankIndependentClient)window.rankMainCandleOpen=nextCandleOpen;
             if (nextCandleOpen !== !candleArea.hidden) document.dispatchEvent(new CustomEvent('rank-candle-display', { detail: { open: nextCandleOpen } }));
             const mode = settings?.mode === 'minute' ? 'minute' : 'day';
             const interval = scopes.includes(Number(settings?.interval)) ? Number(settings.interval) : 1;
@@ -88,11 +90,12 @@
             candleToggle.setAttribute('aria-expanded', String(!candleArea.hidden));
             candleToggle.textContent = '캔들차트';
             candleToggle.setAttribute('aria-label', candleArea.hidden ? '캔들차트 펼치기' : '캔들차트 접기');
-            if (settings && 'adrCandleOpen' in settings) window.applyRankAdrCandleOpen?.(settings.adrCandleOpen === true);
-            if (settings && 'turnoverCandleOpen' in settings) window.applyRankTurnoverCandleOpen?.(settings.turnoverCandleOpen === true);
-            if (settings && 'volatility' in settings) window.applyRankVolatilityDisplaySettings?.(settings.volatility);
-            if (settings && 'breadth' in settings) window.applyRankBreadthDisplaySettings?.(settings.breadth);
-            if (settings && 'sentiment' in settings) window.applyRankSentimentDisplaySettings?.(settings.sentiment);
+            if (!window.rankIndependentClient || settings && 'adrCandleOpen' in settings) window.applyRankAdrCandleOpen?.(window.rankIndependentClient ? settings.adrCandleOpen === true : nextCandleOpen);
+            if (!window.rankIndependentClient || settings && 'turnoverCandleOpen' in settings) window.applyRankTurnoverCandleOpen?.(window.rankIndependentClient ? settings.turnoverCandleOpen === true : nextCandleOpen);
+            if (settings && 'volatility' in settings) window.applyRankVolatilityDisplaySettings?.(window.rankIndependentClient ? settings.volatility : {...settings.volatility,candleOpen:nextCandleOpen});
+            if (settings && 'breadth' in settings) window.applyRankBreadthDisplaySettings?.(window.rankIndependentClient ? settings.breadth : {...settings.breadth,candleOpen:nextCandleOpen});
+            if (settings && 'sentiment' in settings) window.applyRankSentimentDisplaySettings?.(window.rankIndependentClient ? settings.sentiment : {...settings.sentiment,candleOpen:nextCandleOpen});
+            if(!window.rankIndependentClient)window.applyRankSupplyCandleOpen?.(nextCandleOpen);
             state.hover = null; tooltip.hidden = true; candleTooltip.hidden = true;
             draw();
             if (changed && state.selection) load();
@@ -123,6 +126,7 @@
             slider.max = String(Math.max(0, state.points.length - state.visible));
             slider.value = String(state.start);
             slider.disabled = state.busy || !state.points.length || state.visible >= state.points.length;
+            window.RankChartAxis.updateSlider('concentration',slider,state.busy);
         }
         function selectedRows() {
             document.querySelectorAll('#tab_rank tr[data-chart-code]').forEach(row => {
@@ -157,18 +161,15 @@
             const width = chartArea.clientWidth, height = candleArea.clientHeight;
             candleCanvas.width = Math.round(width * ratio); candleCanvas.height = Math.round(height * ratio);
             candleCtx.setTransform(ratio, 0, 0, ratio, 0, 0); candleCtx.clearRect(0, 0, width, height);
-            const top = 36, bottom = height - 30;
+
             const candles = points.filter(validCandle);
             if (!candles.length) {
+                candleCtx.font='12px Inter, sans-serif';candleCtx.textAlign='center';candleCtx.fillStyle='#64748b';labels.forEach(({label,labelX})=>candleCtx.fillText(label,labelX,height-14));
                 candleCtx.fillStyle = '#64748b'; candleCtx.font = '12px Inter, sans-serif'; candleCtx.textAlign = 'center';
                 candleCtx.fillText('캔들 데이터가 없습니다.', width / 2, height / 2); return;
             }
-            let minimum = candles.reduce((min, p) => Math.min(min, p.stock_low), Infinity);
-            let maximum = candles.reduce((max, p) => Math.max(max, p.stock_high), -Infinity);
-            const padding = Math.max((maximum - minimum) * .08, maximum * .001);
-            minimum = Math.max(0, minimum - padding); maximum += padding;
-            const y = price => bottom - (price - minimum) / (maximum - minimum) * (bottom - top);
-            const candleWidth = Math.max(1, Math.min(10, (plot.right - plot.left - 24) / Math.max(1, points.length) * .7));
+            const layout=window.RankChartAxis.candleLayout(candles,p=>p.stock_low,p=>p.stock_high,p=>x(points.indexOf(p)),height,plot.left,plot.right);
+            const {top,bottom,minimum,maximum,y}=layout,candleWidth=layout.width;
             candleGeometry = { plot: { ...plot, top, bottom }, points, x, y, candleWidth, width, height };
             candleCtx.font = '12px Inter, sans-serif'; candleCtx.textBaseline = 'middle';
             for (let tick = 0; tick <= 4; tick++) {
@@ -184,10 +185,10 @@
                 candleCtx.moveTo(boundaryX, top); candleCtx.lineTo(boundaryX, bottom); candleCtx.stroke();
             });
             candleCtx.setLineDash([]);
-            const bodyWidth = Math.max(1, Math.min(10, (plot.right - plot.left - 24) / Math.max(1, points.length) * .7));
+            const bodyWidth = candleWidth;
             points.forEach((point, i) => {
                 if (!validCandle(point)) return;
-                const color = point.stock_price > point.stock_open ? '#e11d48' : point.stock_price < point.stock_open ? '#2563eb' : '#64748b';
+                const color = point.stock_price >= point.stock_open ? '#e11d48' : '#2563eb';
                 candleCtx.strokeStyle = color; candleCtx.fillStyle = color; candleCtx.lineWidth = 1;
                 candleCtx.beginPath(); candleCtx.moveTo(x(i), y(point.stock_high)); candleCtx.lineTo(x(i), y(point.stock_low)); candleCtx.stroke();
                 const bodyTop = Math.min(y(point.stock_open), y(point.stock_price));
@@ -217,7 +218,6 @@
         });
         function draw() {
             if (!window.rankIndependentClient) document.dispatchEvent(new Event('rank-chart-state'));
-            if (state.busy && state.points.length) { updateControls(); return; }
             const width = chartArea.clientWidth;
             if (!width) return;
             const height = chartArea.clientHeight;
@@ -229,6 +229,7 @@
             ctx.clearRect(0, 0, width, height);
             ctx.lineWidth = 1;
             const plot = { left: 16, top: 10, right: width - 58, bottom: height - 34 };
+            {const view=window.RankChartAxis.sharedRange('concentration',state.points,p=>p.time,state.mode,state.start,state.visible,draw);state.start=view.start;state.visible=view.count ?? state.visible;}
             const points = state.points.slice(state.start, state.start + state.visible);
             const maximum = points.reduce((max, point) => Number.isFinite(point.value) ? Math.max(max, point.value) : max, 0);
             let tickStep = 10;
@@ -246,8 +247,9 @@
             const xLabels = [];
             const boundaries = [];
             canvas.setAttribute('aria-label', `시장 거래대금 대비 종목 거래대금 비율 차트, 세로축 0~${axisMaximum.toLocaleString()}%, 자동 범위`);
-            const x = index => points.length <= 1 ? (plot.left + plot.right) / 2
-                : plot.left + index / (points.length - 1) * (plot.right - plot.left - 24);
+            const sessionX=window.RankChartAxis.sessionX(points,p=>p.time,plot.left,plot.right,state.mode==='minute',state.mode==='day');
+            const x = index => sessionX?sessionX(points[index].time):points.length <= 1 ? (plot.left + plot.right) / 2
+                : plot.left + index / (points.length - 1) * (plot.right - plot.left);
             const y = value => plot.bottom - value / axisMaximum * (plot.bottom - plot.top);
             geometry = { plot, points, x, y, width, height };
             ctx.font = '12px Inter, sans-serif';
@@ -280,6 +282,7 @@
             }
             ctx.setLineDash([]);
             if (!points.length) {
+                if(state.mode==='minute'){xLabels.push(...window.RankChartAxis.ticks(ctx,points,p=>p.time,(_,i)=>x(i),plot.left,plot.right,state.mode));ctx.textAlign='center';ctx.fillStyle='#64748b';xLabels.forEach(({label,labelX})=>ctx.fillText(label,labelX,height-14));}
                 ctx.textAlign = 'center'; ctx.fillStyle = '#64748b';
                 if (!state.busy) ctx.fillText(state.selection
                     ? '표시할 데이터가 없습니다.' : '위 테이블에서 종목을 선택하세요.', width / 2, height / 2);
@@ -300,48 +303,9 @@
                     const lastY = y(latest.value);
                     ctx.beginPath(); ctx.fillStyle = '#f97316'; ctx.arc(lastX, lastY, 4, 0, 2 * Math.PI); ctx.fill();
                 }
-                const singleDay = points[0].time.slice(0, 8) === points.at(-1).time.slice(0, 8);
-                const timeLabels = state.mode === 'minute' && (singleDay || points.length <= 120);
                 ctx.fillStyle = '#64748b'; ctx.textAlign = 'center';
-                if (timeLabels) {
-                    const plotWidth = plot.right - plot.left;
-                    const halfHours = [];
-                    let previousBucket = '';
-                    points.forEach((point, i) => {
-                        const bucket = `${point.time.slice(0, 10)}${Number(point.time.slice(10, 12)) < 30 ? '00' : '30'}`;
-                        if (bucket !== previousBucket) halfHours.push({ i, bucket });
-                        previousBucket = bucket;
-                    });
-                    const zoomed = state.visible < state.points.length;
-                    const halfHourSpacing = halfHours.slice(1).reduce((minimum, tick, i) =>
-                        Math.min(minimum, x(tick.i) - x(halfHours[i].i)), Infinity);
-                    const showHalfHours = zoomed && halfHours.length > 1 && halfHourSpacing >= 65;
-                    const ticks = showHalfHours ? halfHours : halfHours.filter((tick, i) =>
-                        i === 0 || tick.bucket.slice(0, 10) !== halfHours[i - 1].bucket.slice(0, 10));
-                    const maxLabels = Math.max(1, Math.floor(plotWidth / (showHalfHours ? 65 : 45)));
-                    const stride = Math.max(1, Math.ceil(ticks.length / maxLabels));
-                    ticks.forEach(({ i, bucket }, index) => {
-                        if (index % stride !== 0) return;
-                        const label = showHalfHours ? `${bucket.slice(8, 10)}:${bucket.slice(10, 12)}` : bucket.slice(8, 10);
-                        const halfWidth = ctx.measureText(label).width / 2;
-                        const labelX = Math.min(plot.right - halfWidth, Math.max(plot.left + halfWidth, x(i)));
-                        ctx.fillText(label, labelX, height - 14);
-                        xLabels.push({ label, labelX });
-                    });
-                } else {
-                    const labelCount = Math.max(2, Math.floor((plot.right - plot.left) / 130));
-                    const step = Math.max(1, Math.ceil(points.length / labelCount));
-                    let previousDate = '';
-                    for (let i = 0; i < points.length; i += step) {
-                        const label = formatDate(points[i].time);
-                        if (label === previousDate) continue;
-                        const halfWidth = ctx.measureText(label).width / 2;
-                        const labelX = Math.min(plot.right - halfWidth, Math.max(plot.left + halfWidth, x(i)));
-                        ctx.fillText(label, labelX, height - 14);
-                        xLabels.push({ label, labelX });
-                        previousDate = label;
-                    }
-                }
+                xLabels.push(...window.RankChartAxis.eightTick(ctx,window.RankChartAxis.ticks(ctx, points, p=>p.time, (_,i)=>x(i), plot.left, plot.right, state.mode),plot.left,plot.right,state.mode==='minute',window.RankChartAxis.sessionStartLabel(points,p=>p.time)));
+                xLabels.forEach(({label,labelX})=>ctx.fillText(label,labelX,height-14));
                 if (state.hover != null && points[state.hover]) {
                     ctx.beginPath(); ctx.setLineDash([3, 3]); ctx.strokeStyle = '#000';
                     ctx.moveTo(x(state.hover), plot.top); ctx.lineTo(x(state.hover), plot.bottom); ctx.stroke(); ctx.setLineDash([]);
@@ -373,8 +337,12 @@
                 : '쏠림율';
             updateControls();
         }
+        let todayOnly = true;
+        window.RankChartAxis.todayButton(panel,'[data-chart-mode="minute"]',()=>state.mode,()=>{todayOnly=true;draw();void load(false,true);});
         async function load(append = false, refresh = false) {
+            if(window.rankManagedChartRefresh && !window.rankChartRefreshStarted)return;
             if (!state.selection || (append && state.busy)) return;
+            if(append){window.RankChartAxis.showHistory();todayOnly=false;}else if(!refresh){todayOnly=true;}
             const previous = { points: state.points, start: state.start, visible: state.visible };
             state.controller?.abort();
             const controller = new AbortController();
@@ -395,7 +363,7 @@
                 const result = await response.json();
                 if (request !== state.request) return;
                 if (!response.ok || !result.success) throw new Error(result.error || '차트 조회 실패');
-                const freshPoints = state.mode === 'minute' ? result.points.filter(point => Number.isFinite(point.value)) : result.points;
+                const freshPoints = result.points;
                 if ((refresh || append) && previous.points.length && result.points.length) {
                     const earliest = result.points[0].time;
                     state.points = [...previous.points.filter(point => point.time < earliest), ...freshPoints];
@@ -412,6 +380,7 @@
                         ? state.points.length - state.visible
                         : Math.max(0, Math.min(state.points.length - state.visible, anchoredStart < 0 ? previous.start : anchoredStart));
                 }
+
                 market.textContent = result.market === 'K' ? '코스피' : '코스닥';
                 window.setRankCardConnection?.('#concentrationChartPanel', true);
                 const valid = state.points.filter(point => point.value != null).length;
@@ -449,7 +418,7 @@
             // edited. Keep that draft separate from the selected chart stock.
             if (document.activeElement !== name) name.value = state.selection?.name || '';
             market.textContent = data.market || ''; status.textContent = data.status || '';
-            selectedRows(); draw();
+            if(changed){todayOnly=true;}selectedRows(); draw();
         };
         window.selectRankChartStock = stock => chooseStock(stock);
         window.setRankChartQuery = (selection, mode, interval, followSelection) => {
@@ -565,15 +534,11 @@
             if (row && ['Enter', ' '].includes(event.key)) { event.preventDefault(); selectRow(row); }
         });
         panel.querySelectorAll('[data-chart-mode]').forEach(button => button.addEventListener('click', () => {
-            if (button.dataset.chartMode === 'minute' && state.mode !== 'minute') state.interval = 5;
+            if (button.dataset.chartMode === 'minute' && state.mode !== 'minute') state.interval = 1;
             state.mode = button.dataset.chartMode; updateControls(); saveDisplaySettings(); load();
         }));
-        panel.querySelectorAll('[data-chart-interval]').forEach(button => button.addEventListener('click', () => {
-            const interval = Number(button.dataset.chartInterval);
-            if (state.mode !== 'minute' || !scopes.includes(interval)) return;
-            state.interval = interval; updateControls(); saveDisplaySettings(); load();
-        }));
-        more.addEventListener('click', () => load(true));
+        window.RankChartAxis.registerHistoryLoader('concentration',()=>load(true),()=>state.busy);
+        more.addEventListener('click', () => window.RankChartAxis.requestHistory(state.mode));
         function zoom(factor, anchor = .5) {
             if (!state.points.length) return;
             const previousCount = state.visible;
@@ -584,13 +549,13 @@
         zoomIn.addEventListener('click', () => zoom(0.5));
         zoomOut.addEventListener('click', () => zoom(2));
         slider.addEventListener('input', () => { state.start = Number(slider.value); state.hover = null; tooltip.hidden = true; draw(); });
-        const dragX = event => Math.max(geometry.plot.left, Math.min(geometry.plot.right - 24,
+        const dragX = event => Math.max(geometry.plot.left, Math.min(geometry.plot.right,
             event.clientX - event.currentTarget.getBoundingClientRect().left));
         [canvas, candleCanvas].forEach(surface => {
         surface.addEventListener('wheel', event => {
             if (!geometry?.points.length || state.drag || state.busy || !event.deltaY) return;
             const px = event.clientX - surface.getBoundingClientRect().left;
-            const left = geometry.plot.left, right = geometry.plot.right - 24;
+            const left = geometry.plot.left, right = geometry.plot.right;
             if (px < left || px > right) return;
             event.preventDefault(); zoom(event.deltaY < 0 ? .8 : 1.25, (px - left) / (right - left));
         }, { passive: false });
@@ -602,7 +567,7 @@
             const bounds = surface.getBoundingClientRect();
             const offsetX = event.clientX - bounds.left;
             const offsetY = event.clientY - bounds.top;
-            if (offsetX < geometry.plot.left || offsetX > geometry.plot.right - 24 || offsetY < graph.plot.top || offsetY > graph.plot.bottom) return;
+            if (offsetX < geometry.plot.left || offsetX > geometry.plot.right || offsetY < graph.plot.top || offsetY > graph.plot.bottom) return;
             state.drag = { surface, pointerId: event.pointerId, startX: dragX(event), endX: dragX(event), start: state.start, visible: state.visible };
             state.hover = null; tooltip.hidden = true;
             surface.setPointerCapture(event.pointerId);
@@ -621,7 +586,7 @@
             if (surface.hasPointerCapture(event.pointerId)) surface.releasePointerCapture(event.pointerId);
             if (Math.abs(drag.endX - drag.startX) > 10) {
                 if (drag.endX > drag.startX) {
-                    const span = geometry.plot.right - geometry.plot.left - 24;
+                    const span = geometry.plot.right - geometry.plot.left;
                     const first = Math.floor((drag.startX - geometry.plot.left) / span * (drag.visible - 1));
                     const last = Math.ceil((drag.endX - geometry.plot.left) / span * (drag.visible - 1));
                     state.visible = Math.min(state.points.length, Math.max(Math.min(10, state.points.length), last - first + 1));
@@ -646,7 +611,7 @@
             const { plot, points, x, width } = geometry;
             const offset = event.clientX - event.currentTarget.getBoundingClientRect().left;
             if (offset < plot.left || offset > plot.right) { clearHover(); return; }
-            const index = Math.max(0, Math.min(points.length - 1, Math.round((offset - plot.left) / (plot.right - plot.left - 24) * (points.length - 1))));
+            const index = Math.max(0, Math.min(points.length - 1, Math.round((offset - plot.left) / (plot.right - plot.left) * (points.length - 1))));
             const point = points[index]; state.hover = index;
             const change = candleChange(point);
             const date = `${point.time.slice(0,4)}-${point.time.slice(4,6)}-${point.time.slice(6,8)}`;

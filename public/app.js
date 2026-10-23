@@ -591,7 +591,6 @@ function unlockApp(user = null) {
     if (tabContents) tabContents.style.display = 'block';
     console.log("🚀 App Unlocked & Ready");
     window.refreshServerStorage?.();
-    window.refreshRankSupplyChart?.();
 }
 
 function setCalendarSyncStatus(message, isError = false) {
@@ -1198,15 +1197,14 @@ function renderEfriendTable(stocks) {
 let transactionRankRequest = 0;
 async function loadTransactionRank({ refreshMarketCharts = true, reportStatus = false } = {}) {
     if (isCapturing) { console.log('[Capture] loadTransactionRank() skipped (isCapturing)'); return; }
-    if (refreshMarketCharts) {
-        window.refreshRankAdrChart?.();
-        window.refreshRankTurnoverChart?.();
-        window.refreshRankVolatilityChart?.();
-        window.refreshRankBreadthChart?.();
-        window.refreshRankSentimentChart?.();
-        window.refreshRankSupplyChart?.();
+    let marketChartsStarted=false;
+    const startMarketCharts=(skipConcentration=false)=>{
+        if(!refreshMarketCharts || marketChartsStarted)return;
+        marketChartsStarted=true;
+        window.RankChartAxis?.refreshCharts({skipConcentration});
         window.refreshServerStorage?.();
-    }
+    };
+    if(window.getRankChartState?.()?.selection)startMarketCharts();
     if (reportStatus) updateStatus('loading', '거래대금 조회 중...');
     const mrktTp = mrktTpSelect.value;
     const stexTp = stexTpSelect.value;
@@ -1234,7 +1232,7 @@ async function loadTransactionRank({ refreshMarketCharts = true, reportStatus = 
 
             if (items.length === 0) {
                 transactionBody.innerHTML = `<tr><td colspan="6" class="align-center">데이터가 없습니다.</td></tr>`;
-                window.refreshConcentrationChart?.();
+                if(!refreshMarketCharts)window.refreshConcentrationChart?.();
                 return;
             }
 
@@ -1264,13 +1262,15 @@ async function loadTransactionRank({ refreshMarketCharts = true, reportStatus = 
             const firstStock = items[0];
             const firstCode = String(firstStock.stk_cd || '').replace(/_(AL|NX)$/i, '');
             if (!window.getRankChartState?.()?.selection && /^[0-9A-Za-z]{6}$/.test(firstCode)) {
+                if(refreshMarketCharts)window.rankChartRefreshStarted=true;
                 window.selectRankChartStock?.({
                     code: firstCode,
                     name: firstStock.stk_nm || firstStock.isu_nm || firstCode,
                     market: firstStock.mkt_type
                 });
+                startMarketCharts(true);
             } else {
-                window.refreshConcentrationChart?.();
+                if(!refreshMarketCharts)window.refreshConcentrationChart?.();
             }
 
         } else {
@@ -1290,6 +1290,8 @@ async function loadTransactionRank({ refreshMarketCharts = true, reportStatus = 
         } else {
             console.warn('[Rank] 거래대금 백그라운드 갱신 실패 (UI 억제됨):', e.message);
         }
+    } finally {
+        if(request===transactionRankRequest)startMarketCharts();
     }
 }
 

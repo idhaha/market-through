@@ -59,8 +59,9 @@
         let controller, candleController, revision = 0, candleRevision = 0, refreshing = false, refreshPending = false;
         let showCandles = false, candleMessage = '', chartMessage = '', configError = '';
         const visibleSeries = new Set(series);
-        try { selected = localStorage.getItem('rankSupplySelectedV1') || ''; } catch {}
-        function remember() { try { localStorage.setItem('rankSupplySelectedV1', selected); } catch {} }
+        const selectionStorage=window.rankIndependentClient?sessionStorage:localStorage;
+        try { selected = selectionStorage.getItem('rankSupplySelectedV1') || ''; } catch {}
+        function remember() { try { selectionStorage.setItem('rankSupplySelectedV1', selected); } catch {} }
         function setStatus() { status.textContent = [configError, chartMessage, candleMessage].filter(Boolean).join(' · '); status.title = status.textContent; }
         const settings = () => ({ selected, mode, showCandles, visibleSeries: [...visibleSeries] });
         function publish() { document.dispatchEvent(new CustomEvent('rank-supply-state', { detail: settings() })); }
@@ -69,7 +70,7 @@
             if (!value || !['day', 'minute'].includes(value.mode)) return;
             const changed = selected !== value.selected || mode !== value.mode;
             if (changed) { controller?.abort(); candleController?.abort(); ++revision; ++candleRevision; loading = candleLoading = false; selected = value.selected || ''; mode = value.mode; clearView(); remember(); }
-            showCandles = value.showCandles === true; candleArea.hidden = !showCandles;
+            showCandles = !window.rankIndependentClient && typeof window.rankMainCandleOpen==='boolean' ? window.rankMainCandleOpen : value.showCandles === true; candleArea.hidden = !showCandles;
             panel.querySelector('.concentration-candle-toggle').setAttribute('aria-expanded', String(showCandles));
             if (Array.isArray(value.visibleSeries)) { visibleSeries.clear(); value.visibleSeries.filter(s => series.includes(s)).forEach(s => visibleSeries.add(s)); }
             panel.querySelectorAll('[data-series]').forEach(b => b.setAttribute('aria-pressed', String(visibleSeries.has(b.dataset.series))));
@@ -92,6 +93,7 @@
         panel.addEventListener('click', event => { if (event.target.closest('[data-mode], [data-series], .concentration-candle-toggle')) queueMicrotask(publish); });
         stockSelect.addEventListener('change', () => queueMicrotask(publish));
         function clearView() {
+            todayOnly=true;
             points = []; candles = []; start = 0; count = null; hover = null; info.hidden = true;
             cursor = null; hasMore = false; historyLoaded = false;
             minuteDays.clear();
@@ -106,12 +108,15 @@
         }
         function draw() {
             const { w, h } = surface(canvas, ctx);
+            {const view=window.RankChartAxis.sharedRange('supply',points,p=>p.t,mode,start,count,draw);start=view.start;count=view.count;}
             const n = Math.min(points.length, count ?? points.length);
             start = Math.max(0, Math.min(start, points.length - n));
             const rows = points.slice(start, start + n), indices = new Map(rows.map((p, i) => [p.t, i]));
             const left = 12, right = w - 82, top = 10, bottom = h - 34;
-            const x = t => left + indices.get(t) / Math.max(1, n - 1) * (right - left);
+            const sessionX=window.RankChartAxis.sessionX(rows,p=>p.t,left,right,mode==='minute',mode==='day');
+            const x = t => sessionX?sessionX(t):left + indices.get(t) / Math.max(1, n - 1) * (right - left);
             slider.max = String(points.length - n); slider.value = String(start); slider.disabled = n >= points.length;
+            window.RankChartAxis.updateSlider('supply',slider);
             panel.querySelector('[aria-label="수급 차트 확대"]').disabled = n <= 10;
             panel.querySelector('[aria-label="수급 차트 축소"]').disabled = n >= points.length;
             more.hidden = false; more.disabled = !selected || !(hasMore || mode === 'minute' && priceCursor) || loading || mode === 'minute' && candleLoading;
@@ -147,12 +152,10 @@
             if (values.length) {
                 ctx.strokeStyle = '#94a3b8'; ctx.beginPath(); ctx.moveTo(left, y(0)); ctx.lineTo(right, y(0)); ctx.stroke();
             }
-            const stride = Math.max(1, Math.ceil(n / Math.max(1, Math.floor((right - left) / 90))));
-            const ticks = rows.filter((_, i) => i % stride === 0);
+            const ticks = window.RankChartAxis.eightTick(ctx,window.RankChartAxis.ticks(ctx, rows, p=>p.t, p=>x(p.t), left, right, mode),left,right,mode==='minute',window.RankChartAxis.sessionStartLabel(rows,p=>p.t));
             function timeAxis(context, height) {
                 context.fillStyle = muted; context.textAlign = 'center';
-                const multipleDays = mode === 'minute' && rows.length && dayKey(rows[0].t) !== dayKey(rows.at(-1).t);
-                ticks.forEach(p => context.fillText(mode === 'minute' ? `${multipleDays ? dayKey(p.t).slice(5) + ' ' : ''}${clock(p.t)}` : dayKey(p.t).slice(2), x(p.t), height - 8));
+                ticks.forEach(({label,labelX})=>context.fillText(label,labelX,height-8));
             }
             timeAxis(ctx, h);
             const latestDates = [...new Set(series.map(s => points.findLast(point => Number.isFinite(point[s])))
@@ -211,12 +214,11 @@
             const size = surface(candle, cc); timeAxis(cc, size.h);
             const visible = candles.filter(p => indices.has(p.t));
             if (!visible.length) return;
-            let low = Infinity, high = -Infinity;
-            for (const point of visible) { low = Math.min(low, point.low); high = Math.max(high, point.high); }
-            const pad = Math.max(1, (high - low) * .1), cy = v => size.h - 30 - (v - low + pad) / (high - low + pad * 2) * (size.h - 40);
-            grid(cc, size.w, low - pad, high + pad, cy, false);
-            boundaries(cc,top,size.h-30);
-            const width = Math.max(1, Math.min(8, (right - left) / Math.max(1, n) * .7));
+            const layout=window.RankChartAxis.candleLayout(visible,p=>p.low,p=>p.high,p=>x(p.t),size.h,left,right);
+            const cy=layout.y,width=layout.width;
+            grid(cc,size.w,layout.minimum,layout.maximum,cy,false);
+            boundaries(cc,layout.top,layout.bottom);
+            cc.lineWidth=1;
             visible.forEach(p => {
                 cc.strokeStyle = cc.fillStyle = p.close >= p.open ? '#e11d48' : '#2563eb';
                 cc.beginPath(); cc.moveTo(x(p.t), cy(p.high)); cc.lineTo(x(p.t), cy(p.low)); cc.stroke();
@@ -285,12 +287,16 @@
                 if (refreshPending && !refreshing && !loading && !drag) { refreshPending = false; void window.refreshRankSupplyChart(); }
             }
         }
+        let todayOnly = true;
+        window.RankChartAxis.todayButton(panel,'[data-mode="minute"]',()=>mode,()=>{todayOnly=true;draw();void load();});
         async function load(append = false) {
+            if(window.rankManagedChartRefresh && !window.rankChartRefreshStarted)return;
             const nextCursor = append ? [hasMore ? cursor : null, mode === 'minute' ? priceCursor : null].filter(Boolean).sort().at(-1) : null;
             if (append && (loading || candleLoading || !nextCursor)) return;
             controller?.abort(); const current = controller = new AbortController(), id = ++revision;
             candleController?.abort(); ++candleRevision; candleLoading = false;
             if (!selected) { loading = false; clearView(); chartMessage = '+ 종목 추가에서 최대 5종목을 지정하세요.'; setStatus(); return; }
+            if(append){window.RankChartAxis.showHistory();todayOnly=false;}
             loading = true; chartMessage = append ? '과거 수급 조회 중…' : '수급 조회 중…'; setStatus(); draw();
             try {
                 const params = new URLSearchParams({ code: selected, mode, ...(append ? { cursor: nextCursor } : {}) });
@@ -310,13 +316,14 @@
                     if (append && nextCursor) minuteDays.add(`${nextCursor.slice(0,4)}-${nextCursor.slice(4,6)}-${nextCursor.slice(6,8)}`);
                 }
                 const hasFlow = points.some(point => series.some(field => Number.isFinite(point[field])));
-                const period = points.length ? `${dayKey(points[0].t)}${dayKey(points[0].t) === dayKey(points.at(-1).t) ? '' : ' ~ ' + dayKey(points.at(-1).t)}` : '';
+                const periodPoints=mode==='minute' && todayOnly?points.filter(p=>dayKey(p.t)===dayKey(Date.now())):points;
+                const period = periodPoints.length ? `${dayKey(periodPoints[0].t)}${dayKey(periodPoints[0].t) === dayKey(periodPoints.at(-1).t) ? '' : ' ~ ' + dayKey(periodPoints.at(-1).t)}` : '당일 자료 없음';
                 const message = mode === 'minute' ? `${period} · 1분 누적 · 미수집 구간 제외` : `일별 순매수수량 · ${points.length.toLocaleString()}봉 · 단위: 주/천주`;
                 const warnings = (result.warnings || []).filter(text => !text.startsWith('1분마다 관측한 당일 누적 순매수수량'));
                 chartMessage = `${hasFlow ? message : '수급 기록 없음'}${warnings.length ? ` · ${warnings.join(' · ')}` : ''}${result.status?.error && result.date === dayKey(Date.now()) ? ` · ${result.status.error}` : ''}`;
                 window.setRankCardConnection?.(panel, !result.warnings?.some(text => /실패|오류/.test(text)));
                 hover = null; info.hidden = true; setStatus(); draw();
-                if (showCandles || mode === 'minute') void loadCandles();
+                if (showCandles || mode === 'minute') await loadCandles();
             } catch (error) {
                 if (error.name === 'AbortError' || id !== revision) return;
                 chartMessage = `${error.message}${points.length ? ' · 이전 데이터 표시' : ''}`; setStatus();
@@ -330,6 +337,7 @@
             }
         }
         window.refreshRankSupplyChart = async () => {
+            if(window.rankManagedChartRefresh && !window.rankChartRefreshStarted)return;
             if (drag || refreshing || loading || candleLoading) { refreshPending = true; return; }
             refreshing = true; refreshPending = false;
             try {
@@ -350,11 +358,12 @@
         slider.addEventListener('input', () => { start = Number(slider.value); draw(); });
         panel.querySelectorAll('[data-mode]').forEach(button => button.addEventListener('click', () => {
             if (mode === button.dataset.mode) return;
-            mode = button.dataset.mode; clearView();
+            mode = button.dataset.mode; todayOnly=true;clearView();
             panel.querySelectorAll('[data-mode]').forEach(b => { b.classList.toggle('active', b === button); b.setAttribute('aria-pressed', String(b === button)); });
             load();
         }));
-        more.addEventListener('click', () => load(true));
+        window.RankChartAxis.registerHistoryLoader('supply',()=>load(true),()=>loading || candleLoading);
+        more.addEventListener('click', () => window.RankChartAxis.requestHistory(mode));
         panel.querySelectorAll('[data-series]').forEach(button => button.addEventListener('click', () => {
             const field = button.dataset.series;
             if (visibleSeries.has(field)) { if (visibleSeries.size === 1) return; visibleSeries.delete(field); } else visibleSeries.add(field);
@@ -515,6 +524,12 @@
         picker.addEventListener('cancel', event => { if (saving) event.preventDefault(); });
         picker.addEventListener('close', () => { picker.hidden = true; ++searchRevision; clearTimeout(searchTimer); clearSuggestions(); paintStocks(); });
         const reference = document.getElementById('concentrationChartPanel') || breadth;
+        window.applyRankSupplyCandleOpen = open => {
+            showCandles=open===true;candleArea.hidden=!showCandles;
+            panel.querySelector('.concentration-candle-toggle').setAttribute('aria-expanded',String(showCandles));
+            if(showCandles)void loadCandles();else{candleMessage='';setStatus();}
+            resize();
+        };
         let independentCandleOpen = false;
         function resize() {
             if (window.rankIndependentClient) {
@@ -533,8 +548,9 @@
         new ResizeObserver(resize).observe(panel.querySelector('.rank-adr-controls'));
         document.addEventListener('visibilitychange', () => { if (!document.hidden) window.refreshRankSupplyChart(); });
         window.addEventListener('online', window.refreshRankSupplyChart);
+        if(!window.rankIndependentClient && typeof window.rankMainCandleOpen==='boolean')window.applyRankSupplyCandleOpen(window.rankMainCandleOpen);
         resize(); document.dispatchEvent(new Event('rank-supply-ready'));
-        if (!window.rankIndependentClient) window.refreshRankSupplyChart();
+        if (!window.rankIndependentClient && !window.rankManagedChartRefresh) window.refreshRankSupplyChart();
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initialize, { once: true }); else initialize();
 })();

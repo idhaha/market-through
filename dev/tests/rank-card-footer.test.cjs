@@ -1,0 +1,11 @@
+const {chromium}=require('playwright'),assert=require('node:assert/strict');
+(async()=>{const browser=await chromium.launch({headless:true,channel:'msedge'});try{const page=await browser.newPage();
+await page.setContent('<main id="tab_rank"><div class="rank-chart-row"><section id="rankBreadthChartPanel" class="panel rank-adr-panel"><div class="concentration-chart-header"><h2>신고가</h2></div><div class="rank-adr-area"><canvas></canvas></div><div class="concentration-chart-footer rank-adr-zoom"><input type="range"></div><p class="rank-adr-status" role="status">2024-05-03 ~ 2026-10-23 · 조회 중</p></section></div></main>');
+await page.addStyleTag({path:'public/style.css'});await page.addScriptTag({path:'public/rank-connection-status.js'});
+await page.waitForFunction(()=>document.querySelector('.rank-card-footer .rank-adr-status'));
+const result=await page.evaluate(()=>{const rect=s=>document.querySelector(s).getBoundingClientRect();return {status:rect('.rank-adr-status').y,source:rect('.rank-card-source').y,plot:rect('.rank-adr-area').height,footers:document.querySelectorAll('.rank-card-footer').length,sources:document.querySelectorAll('.rank-card-source').length};});
+assert.equal(result.status,result.source);assert.equal(result.plot,286);assert.equal(result.footers,1);assert.equal(result.sources,1);
+await page.evaluate(()=>{document.querySelector('.rank-adr-status').textContent='로딩 완료';const p=document.createElement('p');p.className='rank-history-notice';p.textContent='이전 자료 없음';document.querySelector('.panel').append(p);});
+await page.waitForFunction(()=>document.querySelector('.rank-card-messages .rank-history-notice'));assert.equal(await page.locator('.rank-card-source').count(),1);
+console.log('PASS shared status/source row, recovered 26px plot height, dynamic notice and no duplicate footer');
+}finally{await browser.close()}})().catch(e=>{console.error(e);process.exitCode=1});

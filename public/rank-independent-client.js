@@ -23,7 +23,7 @@
     window.fetch = async (input, options = {}) => {
         if (typeof input !== 'string' || !/^\/api\/(?:concentration-(chart|stock|stocks)|supply\/(watchlist|chart|candles))(\?|$)/.test(input)) return rawFetch(input, options);
         const result = await command({ type: 'request', path: input, method: options.method || 'GET', body: options.body ? JSON.parse(options.body) : null,
-            selection: window.getRankChartState?.()?.selection, pinned: false }, options.signal);
+            selection: window.getRankChartState?.()?.selection, pinned: true }, options.signal);
         return new Response(result.body, { status: result.status, headers: { 'Content-Type': 'application/json' } });
     };
     document.addEventListener('DOMContentLoaded', () => {
@@ -39,24 +39,22 @@
             const content = document.createElement('div'); content.id = 'independentSupplyContent';
             content.append(...[...supply.children].filter(node => node !== header && !node.classList.contains('rank-connection-dot'))); supply.append(content);
             collapseControl(supply, header.querySelector('h2'), [content]);
-            if (lastSnapshot?.supply) applySupplySnapshot(lastSnapshot.supply);
+            if (lastSnapshot && !initialDisplayApplied) initializeCharts(lastSnapshot);
         }
         if (document.getElementById('rankSupplyChartPanel')) mountSupply();
         else document.addEventListener('rank-supply-ready', mountSupply, { once: true });
-        function applySupplySnapshot(value) {
-            const showCandles = window.getRankSupplyState?.().showCandles === true;
-            window.applyRankSupplyState?.({ ...value, showCandles });
+        let chartsInitialized=false,lastChartRefreshAt=0;
+        function initializeCharts(snapshot) {
+            if(chartsInitialized)return;
+            chartsInitialized=true;
+            // Seed the stock once; subsequent snapshots never replace local chart state.
+            if(snapshot.chart?.selection)window.selectRankChartStock?.({...snapshot.chart.selection,market:snapshot.chart.market?.includes('코스피')?'K':'Q'});
+            void window.refreshRankSupplyChart?.();
         }
-        function sendSupplySettings() {
-            const value = window.getRankSupplyState?.(); if (!value) return;
-            const settings = { selected: value.selected, mode: value.mode, visibleSeries: value.visibleSeries };
-            const key = JSON.stringify(settings);
-            if (key === supplyKey) return;
-            const previous = supplyKey ? JSON.parse(supplyKey) : {};
-            const changed = Object.keys(settings).filter(name => JSON.stringify(previous[name]) !== JSON.stringify(settings[name]));
-            supplyKey = key; supplySettingsPending = enqueue({ type: 'supply-display', settings, changed, pinned: false });
+        function refreshLocalCharts() {
+            void window.refreshConcentrationChart?.();
+            void window.refreshRankSupplyChart?.();
         }
-        document.addEventListener('rank-supply-state', sendSupplySettings);
         function collapsedSize(panel) {
             const heading = panel.querySelector('.independent-panel-title');
             const style = getComputedStyle(panel);
@@ -215,14 +213,14 @@
             fixRows(sizes); requestHeight(target - before);
         }
         function updateRowLimitButton() {
-            const current = rowLimit ? rowLimit + '개' : '기본', next = rowLimit === 5 ? '10개' : rowLimit === 10 ? '기본' : '5개';
+            const current = rowLimit ? rowLimit + '개' : '기본', next = rowLimit === 0 ? '10개' : rowLimit === 10 ? '5개' : '기본';
             rowLimitButton.title = '목록 ' + current + ' 표시 · 클릭하면 ' + next;
             rowLimitButton.setAttribute('aria-label', rowLimitButton.title);
         }
         rowLimitButton.addEventListener('click', () => {
             const previousHeight = table.getBoundingClientRect().height;
             if (!rowLimit) defaultTableHeight = table.classList.contains('independent-collapsed') ? foldLayout?.sizes[[...layout.children].indexOf(table)]?.height : table.getBoundingClientRect().height;
-            rowLimit = rowLimit === 0 ? 5 : rowLimit === 5 ? 10 : 0;
+            rowLimit = rowLimit === 0 ? 10 : rowLimit === 10 ? 5 : 0;
             if (rowLimit) rows.dataset.rowLimit = String(rowLimit); else delete rows.dataset.rowLimit;
             rows.scrollTop = 0;
             updateRowLimitButton(); fitTableRows(previousHeight);
@@ -256,18 +254,8 @@
                 else window.setRankCardConnection?.(target, typeof flag === 'boolean' ? flag : fallback);
             };
             applyConnection('#transactionTable', snapshot.tableConnection, snapshot.tableConnected, !!snapshot.rows);
-            {
-                const legacyHealthy = !!snapshot.chart?.points?.length && !/실패|오류|만료|연결.*종료/.test(snapshot.chart?.status || '');
-                applyConnection('#concentrationChartPanel', snapshot.chartConnection, snapshot.chartConnected, legacyHealthy);
-            }
             lastSnapshot = snapshot;
-            if (snapshot.supply && !pending.size && !supplySettingsPending) {
-                const value = snapshot.supply;
-                restoringInitialDisplay = !initialDisplayApplied;
-                applySupplySnapshot(value); restoringInitialDisplay = false;
-                const current = window.getRankSupplyState?.();
-                if (current) supplyKey = JSON.stringify({ selected: current.selected, mode: current.mode, visibleSeries: current.visibleSeries });
-            }
+            initializeCharts(snapshot);
             if (snapshot.refreshStatus) {
                 document.getElementById('independentLastUpdate').textContent = snapshot.refreshStatus.time;
                 document.getElementById('independentStatusText').textContent = snapshot.refreshStatus.text;
@@ -305,12 +293,12 @@
                 if (![...select.options].some(option => option.value === value)) select.add(new Option(value === '0' ? '수동' : `${Number(value) / 1000}초`, value));
                 select.value = value;
             }
-            if (!pending.size) window.applyRankChartState?.(snapshot.chart);
+            // Chart queries, pages and display state belong to this window.
             initialDisplayApplied = true;
         }
         document.getElementById('rankIndependentRefresh').addEventListener('click', () => {
             enqueue({ type: 'refresh' });
-            window.refreshRankSupplyChart?.();
+            refreshLocalCharts();
         });
         for (const key of ['mrktTp', 'stexTp', 'refreshInterval']) document.getElementById(key).addEventListener('change', event => { enqueue({ type: 'conditions', values: { [key]: event.target.value } }); });
         function formatServerRefreshTime(timestamp) {
@@ -329,6 +317,10 @@
         }
         function applyServerRefresh(info) {
             transportFailed = false; serverRefresh = info; receivedAt = Date.now();
+            if(info.data?.at && info.data.at!==lastChartRefreshAt){
+                const previous=lastChartRefreshAt;lastChartRefreshAt=info.data.at;
+                if(previous && chartsInitialized)refreshLocalCharts();
+            }
             serverAge = info.data ? Math.max(0, info.serverNow - info.data.at) : 0;
             if (info.data && lastSnapshot) {
                 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -352,7 +344,7 @@
             if (closed) return;
             const nextCommand = outgoing.shift(), acks = acknowledgements.splice(0);
             try {
-                const response = await peer({ version, epoch: relayEpoch, command: nextCommand, acks, pinned: false });
+                const response = await peer({ version, epoch: relayEpoch, command: nextCommand, acks, pinned: true });
                 if ([401, 404].includes(response.status)) {
                     document.querySelectorAll('#tab_rank .panel').forEach(panel => window.setRankCardConnection?.(panel, false));
                     version = -1;

@@ -1,7 +1,29 @@
 (() => {
     const states = new Map();
+    const cardSources = [
+        ['#transactionTable', '키움'], ['#stockTable', '키움'],
+        ['#efriendStockTable', '한투'], ['#watchlistTable', '키움'],
+        ['#concentrationChartPanel', '키움'], ['#rankAdrChartPanel', 'jusikbot'],
+        ['#rankTurnoverChartPanel', '키움'], ['#rankSupplyChartPanel', '키움'],
+        ['#rankVolatilityChartPanel', 'jusikbot'], ['#rankBreadthChartPanel', '키움'],
+        ['#rankSentimentChartPanel', 'jusikbot']
+    ];
     const getPanel = target => typeof target === 'string' ? document.querySelector(target)?.closest('.panel') : target?.closest('.panel');
     function paint(panel, state) {
+        const source = cardSources.find(([selector]) => panel.matches(selector) || panel.querySelector(selector))?.[1];
+        if (source && !panel.querySelector('.rank-card-source')) {
+            const credit = document.createElement('p');
+            credit.className = 'rank-card-source';
+            credit.textContent = `출처: ${source}`;
+            panel.append(credit);
+        }
+        if(source && panel.querySelector('canvas')) {
+            let footer=panel.querySelector(':scope > .rank-card-footer');
+            if(!footer){footer=document.createElement('div');footer.className='rank-card-footer';const messages=document.createElement('div');messages.className='rank-card-messages';footer.append(messages);panel.append(footer);}
+            const messages=footer.querySelector('.rank-card-messages');
+            for(const node of panel.querySelectorAll('.rank-adr-status,#concentrationPeriod,#concentrationStatus,.rank-history-notice'))if(node.parentElement!==messages)messages.append(node);
+            const credit=panel.querySelector('.rank-card-source');if(credit && credit.parentElement!==footer)footer.append(credit);
+        }
         let dot = panel.querySelector(':scope > .rank-connection-dot');
         // Layout wrappers may move card children; keep exactly one card-level indicator.
         panel.querySelectorAll('.rank-connection-dot').forEach(candidate => {

@@ -199,6 +199,20 @@ const breadthService = createBreadthService({
     legacyFile: path.join(__dirname, 'data', 'volatility', 'new-highs-lows.json'),
     http: axios, getToken: () => getAccessToken(process.env.KIWOOM_APPKEY, process.env.KIWOOM_SECRETKEY), supply: supplyService
 });
+const turnoverService = require('./turnover-service').createTurnoverService({
+    http: axios, getToken: () => getAccessToken(process.env.KIWOOM_APPKEY, process.env.KIWOOM_SECRETKEY)
+});
+app.get('/api/turnover/chart', async (req, res) => {
+    try { res.set('Cache-Control', 'no-store').json(await turnoverService.query(req.query)); }
+    catch (error) { res.status(error.status || 502).json({ error: error.message }); }
+});
+const chartReferenceService = require('./chart-reference-service').createChartReferenceService({
+    http: axios, getToken: () => getAccessToken(process.env.KIWOOM_APPKEY, process.env.KIWOOM_SECRETKEY)
+});
+app.get('/api/chart-reference', async (req, res) => {
+    try { res.set('Cache-Control', 'no-store').json(await chartReferenceService.query(req.query)); }
+    catch(error) { res.status(error.status || 502).json({error:error.message}); }
+});
 app.get('/api/supply/watchlist', (req, res) => {
     try { res.set('Cache-Control', 'no-store').json(supplyService.summary()); }
     catch (error) { res.status(error.status || 500).json({ success: false, error: error.message }); }
@@ -2795,6 +2809,8 @@ app.get('/api/ecos', async (req, res) => {
 
 // 2. 그 다음 정적 파일 서빙
 app.use(express.static(path.join(__dirname, 'public')));
+
+app.use('/api', (req, res) => res.status(404).json({ error: 'API 경로가 없습니다. 서버 업데이트·재시작을 확인하세요.' }));
 
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
