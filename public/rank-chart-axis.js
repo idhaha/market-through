@@ -74,6 +74,21 @@
     let historyMode=false, sharedCutoff='',redrawQueued=false,historyBusy=false;
     let dailyHistory=false,dailyCutoff='',rangeRevision=0;
     const historyLoaders=new Map();
+    let historyButtonsQueued=false;
+    function scheduleHistoryButtons(){
+        if(typeof document==='undefined' || historyButtonsQueued)return;
+        historyButtonsQueued=true;queueMicrotask(()=>{
+            historyButtonsQueued=false;
+            for(const [id,chart] of minuteCharts){
+                const loader=historyLoaders.get(id);if(!loader?.state)continue;
+                const panel=document.getElementById(viewportPanels[id]);if(!panel)continue;
+                const button=panel.querySelector('#concentrationMore,[data-action="more"],[data-adr-more],[data-more],[data-breadth-more],[data-risk-more]');
+                if(!button)continue;
+                const available=[...minuteCharts].some(([peerId,peer])=>peer.mode===chart.mode && historyLoaders.get(peerId)?.state?.().hasMore);
+                button.disabled=historyBusy || !available;
+            }
+        });
+    }
     function notifyCharts() {
         if(redrawQueued)return;redrawQueued=true;
         queueMicrotask(()=>{redrawQueued=false;for(const chart of minuteCharts.values())chart.draw();});
@@ -92,15 +107,77 @@
         }
         return Promise.allSettled(pending);
     }
-    function registerHistoryLoader(id,load,busy=()=>false){historyLoaders.set(id,{load,busy});}
+    const pendingHistoryTargets=new Map();
+    function registerHistoryLoader(id,load,busy=()=>false,state){historyLoaders.set(id,{load,busy,state});}
     async function requestHistory(mode='minute') {
         if(historyBusy)return;
-        const before=mode==='day'?dailyCutoff:sharedCutoff;
-        historyBusy=true;
+        let before=mode==='day'?dailyCutoff:sharedCutoff;
+        historyBusy=true;scheduleHistoryButtons();
         const participants=[...minuteCharts.entries()].filter(([id,c])=>c.mode===mode && historyLoaders.has(id)).sort(([a],[b])=>(refreshOrder.indexOf(a)<0?99:refreshOrder.indexOf(a))-(refreshOrder.indexOf(b)<0?99:refreshOrder.indexOf(b)));
-        const failures=[];
+        const failures=[], exhausted=[];
+        const coordinated=participants.some(([id])=>historyLoaders.get(id).state);
+        const originalViewport=viewports.get(mode);
+        const initialDomain=mode==='day'?dailyDomain():minuteDomain();
+        if(coordinated && initialDomain){
+            before=before || initialDomain.first;
+            viewports.set(mode,{first:initialDomain.first,last:initialDomain.last});
+        }
+        let target=pendingHistoryTargets.get(mode), cancelled=false;
+        const ensureReady=async loader=>{
+            const deadline=Date.now()+20000;
+            while(loader.busy() && Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,50));
+            if(loader.busy())throw new Error('조회 대기 시간 초과');
+        };
+        const step=async id=>{
+            const loader=historyLoaders.get(id);await ensureReady(loader);
+            if(minuteCharts.get(id)?.mode!==mode){cancelled=true;throw new Error('조회 주기 변경');}
+            const old=minuteCharts.get(id)?.first, cursor=loader.state?.().cursor;
+            await loader.load();await ensureReady(loader);
+            if(minuteCharts.get(id)?.mode!==mode){cancelled=true;throw new Error('조회 주기 변경');}
+            const state=loader.state?.();
+            if(state?.error)throw new Error(state.error);
+            if(minuteCharts.get(id)?.first===old && state?.hasMore && state.cursor===cursor)throw new Error('과거 조회가 진행되지 않았습니다.');
+        };
         try {
-            for(const [id] of participants){
+            if(coordinated){
+                for(const [id] of participants){try{await ensureReady(historyLoaders.get(id));}catch{failures.push(id);}}
+                // One leading page establishes a fixed target; peers catch up to it.
+                if(!target && !failures.length){
+                    const leaders=[...participants].sort(([a],[b])=>(minuteCharts.get(a)?.first || '').localeCompare(minuteCharts.get(b)?.first || ''));
+                    for(const [id] of leaders){
+                        const loader=historyLoaders.get(id);if(!loader.state?.().hasMore)continue;
+                        try{
+                            let pages=0;
+                            while(loader.state().hasMore && (!target || target>=before)){
+                                if(++pages>80)throw new Error('과거 조회 페이지 한도 도달');
+                                await step(id);target=minuteCharts.get(id)?.first;
+                            }
+                        }catch{failures.push(id);break;}
+                        if(target && target<before)break;
+                    }
+                    if(!target)target=before || participants.map(([id])=>minuteCharts.get(id)?.first).filter(Boolean).sort()[0];
+                }
+                if(target && !failures.length){
+                    for(const [id] of participants){
+                        const loader=historyLoaders.get(id);let pages=0;
+                        try{
+                            while(!minuteCharts.get(id)?.first || minuteCharts.get(id).first>target){
+                                if(!loader.state?.().hasMore){exhausted.push(id);break;}
+                                if(++pages>80)throw new Error('과거 조회 페이지 한도 도달');
+                                await step(id);
+                            }
+                        }catch{failures.push(id);}
+                    }
+                }
+                if(target && !failures.length){
+                    for(const [id] of participants){
+                        const loader=historyLoaders.get(id),ensure=loader.state?.().ensureRange;
+                        if(ensure)try{await ensure(target);await ensureReady(loader);}catch{failures.push(id);}
+                    }
+                }
+                if(failures.length && target && !cancelled)pendingHistoryTargets.set(mode,target);
+                else pendingHistoryTargets.delete(mode);
+            }else for(const [id] of participants){
                 const loader=historyLoaders.get(id),deadline=Date.now()+20000;
                 try {
                     while(loader.busy() && Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,50));
@@ -111,7 +188,7 @@
         } finally {
             historyBusy=false;
             const starts=[...minuteCharts.values()].filter(c=>c.mode===mode && c.first).map(c=>c.first).sort();
-            const candidate=starts.at(-1);
+            const candidate=coordinated ? failures.length || cancelled ? before : target : starts.at(-1);
             if(mode==='day') {
                 dailyHistory=true;
                 if(candidate && (!before || candidate<before))dailyCutoff=candidate;
@@ -122,9 +199,12 @@
                 else if(before)sharedCutoff=before;
             }
             rangeRevision++;
-            viewports.delete(mode);
+            if(coordinated && (failures.length || cancelled)){
+                if(originalViewport)viewports.set(mode,originalViewport);
+                else if(initialDomain)viewports.set(mode,{first:initialDomain.first,last:initialDomain.last});
+            }else viewports.delete(mode);
             for(const chart of minuteCharts.values())chart.applied=undefined;
-            notifyCharts();
+            notifyCharts();scheduleHistoryButtons();
         }
         const after=mode==='day'?dailyCutoff:sharedCutoff;
         const advanced=Boolean(after && (!before || after<before));
@@ -133,12 +213,13 @@
             const panel=document.getElementById(panelIds[id]);if(!panel)continue;
             let notice=panel.querySelector('.rank-history-notice');
             if(!notice){notice=document.createElement('p');notice.className='rank-history-notice';notice.setAttribute('role','status');panel.append(notice);}
-            notice.textContent=advanced?'':failures.length?'일부 차트의 과거 조회가 완료되지 않아 기존 표시 기간을 유지합니다.':'공통으로 표시할 더 이전 자료가 없어 기존 표시 기간을 유지합니다.';
-            notice.hidden=advanced;
+            notice.textContent=advanced && !exhausted.length?'':failures.length?'일부 차트의 과거 조회가 완료되지 않아 기존 표시 기간을 유지합니다.':exhausted.length?'일부 차트는 원천 과거 자료가 끝나 해당 구간을 결측으로 표시합니다.':'공통으로 표시할 더 이전 자료가 없어 기존 표시 기간을 유지합니다.';
+            notice.hidden=advanced && !failures.length && !exhausted.length;
         }
-        return {advanced,failures};
+        return {advanced,failures,exhausted,target};
     }
     function sharedRange(id,values,getDate,mode,start,count,draw) {
+        scheduleHistoryButtons();
         const previous=minuteCharts.get(id);
         if(mode==='minute' && previous && previous.mode!=='minute')historyMode=false;
         const length=mode==='day'?10:16;
@@ -304,6 +385,10 @@
         const domain=minuteDomain(values,getDate);
         return (domain.days.length>1?domain.first.slice(5,10)+' ':'')+domain.first.slice(11,16);
     }
+    function validCandle(point) {
+        return ['open','high','low','close'].every(key=>Number.isFinite(point?.[key]) && point[key]>0) &&
+            point.low<=Math.min(point.open,point.close) && point.high>=Math.max(point.open,point.close);
+    }
     function candleLabel(area, text) {
         let label=area.querySelector('.rank-candle-label,.volatility-candle-label,.market-candle-label');
         if(!label){label=document.createElement('span');area.prepend(label);}
@@ -364,7 +449,7 @@
         const buttonMode=button=>button.dataset.chartMode || button.dataset.mode || button.dataset.adrMode || button.dataset.breadthMode || button.dataset.rankMode;
         let modeRevision=0,dispatchingMode=false;
         function synchronizeMode(mode) {
-            viewports.delete(mode);
+            viewports.delete(mode);pendingHistoryTargets.delete(mode);
             const revision=++modeRevision;
             if(mode==='day' && [...minuteCharts.values()].some(c=>c.mode==='minute')){dailyHistory=false;dailyCutoff='';}
             if(mode==='minute')showToday();
@@ -393,5 +478,5 @@
             if(mode==='day' || mode==='minute')synchronizeMode(mode);
         },true);
     }
-    window.RankChartAxis={candleLabel,selectViewport,plotBounds,registerHover,synchronizeHover,matchesHover,updateSlider,scrollViewport,synchronizeViewport,refreshOrder,refreshCharts,registerHistoryLoader,requestHistory,showHistory,showToday,sharedRange,dailyDomain,minuteDomain,ticks,todayRange,limitToday,sessionRange,limitSessions,sessionX,eightTick,sessionStartLabel,candleLayout,todayButton};
+    window.RankChartAxis={validCandle,candleLabel,selectViewport,plotBounds,registerHover,synchronizeHover,matchesHover,updateSlider,scrollViewport,synchronizeViewport,refreshOrder,refreshCharts,registerHistoryLoader,requestHistory,showHistory,showToday,sharedRange,dailyDomain,minuteDomain,ticks,todayRange,limitToday,sessionRange,limitSessions,sessionX,eightTick,sessionStartLabel,candleLayout,todayButton};
 })();

@@ -541,7 +541,7 @@
             if (button.dataset.chartMode === 'minute' && state.mode !== 'minute') state.interval = 1;
             state.mode = button.dataset.chartMode; updateControls(); saveDisplaySettings(); load();
         }));
-        window.RankChartAxis.registerHistoryLoader('concentration',()=>load(true),()=>state.busy);
+        window.RankChartAxis.registerHistoryLoader('concentration',()=>load(true),()=>state.busy,()=>({hasMore:!!state.selection && state.hasMore,cursor:state.cursor}));
         more.addEventListener('click', () => window.RankChartAxis.requestHistory(state.mode));
         function zoom(factor, anchor = .5) {
             if (!state.points.length) return;

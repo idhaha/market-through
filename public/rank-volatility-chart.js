@@ -222,6 +222,7 @@
             });
         }
         function changeBreadthMarket(market) {
+            candleController?.abort();++candleRequest;candleKey='';candles=[];candleGeometry=null;candleStatus.textContent='';tip.hidden=true;
             breadthMarket=market;breadthPages.clear();breadthCursor=null;dates=[];ids.forEach(id=>data[id]=[]);start=0;count=null;hover=null;
             try{localStorage.setItem('rankBreadthMarketV1',market);}catch{}
             panel.querySelector('h2').title=({kospi:'KOSPI',kosdaq:'KOSDAQ',all:'KOSPI+KOSDAQ'})[market]+' 신고가·신저가 (KRX+NXT 통합)';
@@ -240,7 +241,7 @@
             candlePointerY=null;tip.hidden=true;draw();
         });
         function draw() {
-            window.RankChartAxis.candleLabel(candleArea,'KOSPI');
+            window.RankChartAxis.candleLabel(candleArea,breadth && breadthMarket==='kosdaq'?'KOSDAQ':'KOSPI');
             {const view=window.RankChartAxis.sharedRange(sentiment?'sentiment':breadth?'breadth':'volatility',dates,d=>d,breadth?breadthMode:'day',start,count,draw);start=view.start;count=view.count;}
             const n = Math.min(dates.length, count ?? dates.length);
             start = Math.max(0, Math.min(start, dates.length - n));
@@ -319,7 +320,7 @@
         }
         function drawCandles({ visible, indices, x, left, right, axis, boundaries }) {
             const { w, h } = surface(candle, cc);
-            const rows = candles.filter(point => indices.has(point.date));
+            const rows = candles.filter(point => indices.has(point.date) && window.RankChartAxis.validCandle(point));
             candleGeometry = null;
             if (!rows.length || right <= left) { axis(cc,h);return; }
             const layout=window.RankChartAxis.candleLayout(rows,p=>p.low,p=>p.high,p=>x(p.date),h,left,right);
@@ -339,22 +340,24 @@
         async function loadCandles() {
             if (!breadth && candles.length) { draw(); return; }
             if (candleArea.hidden || !dates.length) return;
-            const key = `${breadth ? breadthMode : 'day'}:${dates[0]}:${dates.at(-1)}`;
+            const priceMarket=breadth && breadthMarket==='kosdaq'?'kosdaq':'kospi';
+            const priceName=priceMarket==='kosdaq'?'KOSDAQ':'KOSPI';
+            const key = `${priceMarket}:${breadth ? breadthMode : 'day'}:${dates[0]}:${dates.at(-1)}`;
             if (key === candleKey && candles.length) { draw(); return; }
             candleController?.abort(); candleController = new AbortController(); const request = ++candleRequest;
-            candleStatus.textContent = 'KOSPI 일봉 조회 중…';
+            candleStatus.textContent = `${priceName} ${breadth && breadthMode==='minute'?'1분봉':'일봉'} 조회 중…`;
             try {
                 const minute = breadth && breadthMode === 'minute';
                 const from = new Date(Date.parse(`${dates[0].slice(0,10)}T00:00:00Z`) - (minute ? 0 : 35 * 86400000)).toISOString().slice(0, 10).replaceAll('-', '');
-                const response = await fetch(`/api/adr/candles?market=kospi&mode=${minute ? 'minute' : 'day'}&from=${from}&to=${dates.at(-1).slice(0,10).replaceAll('-', '')}`, { signal: candleController.signal });
-                const result = await response.json(); if (!response.ok) throw new Error(result.error || 'KOSPI 캔들 조회 실패');
+                const response = await fetch(`/api/adr/candles?market=${priceMarket}&mode=${minute ? 'minute' : 'day'}&from=${from}&to=${dates.at(-1).slice(0,10).replaceAll('-', '')}`, { signal: candleController.signal });
+                const result = await response.json(); if (!response.ok) throw new Error(result.error || `${priceName} 캔들 조회 실패`);
                 if (request !== candleRequest) return;
                 candles = (Array.isArray(result.points) ? result.points : []).filter(point => ['t', 'open', 'high', 'low', 'close'].every(key => point[key] != null && Number.isFinite(Number(point[key])))).map(point => ({ ...point, date: minute ? new Date(Number(point.t) + 9 * 3600000).toISOString().slice(0,16).replace('T', ' ') : dateKey(Number(point.t)) })).sort((a, b) => a.t - b.t);
                 candles.forEach((point, index) => {
                     const previous = index > 0 ? Number(candles[index - 1].close) : null;
                     point.changeRate = previous > 0 ? (Number(point.close) / previous - 1) * 100 : null;
                 });
-                candleKey = key; candleStatus.textContent = candles.length ? result.partial ? 'KOSPI · 일부 구간만 조회되었습니다.' : '' : 'KOSPI 캔들 데이터 없음'; draw();
+                candleKey = key; candleStatus.textContent = candles.length ? result.partial ? `${priceName} · 일부 구간만 조회되었습니다.` : '' : `${priceName} 캔들 데이터 없음`; draw();
             } catch (error) { if (error.name !== 'AbortError' && request === candleRequest) candleStatus.textContent = error.message; }
         }
         let todayOnly = true;
@@ -389,7 +392,7 @@
                 status.textContent = [shownDates.length ? `${shownDates[0]} ~ ${shownDates.at(-1)}` : breadthMode==='minute' && todayOnly ? '당일 분봉 데이터 없음' : '기준 봉 없음', pages[0]?.warning, '키움 · 250일 고저 기준 · 누락 —'].filter(Boolean).join(' · ');
                 window.setRankCardConnection?.(panel, !pages[0]?.warning);
                 if (more) { start = 0; count = null; }
-                candleKey = ''; draw(); void loadCandles();
+                candleKey = ''; draw(); await loadCandles();
             } catch (error) { status.textContent = error.message; window.setRankCardConnection?.(panel, false); }
             finally {
                 breadthLoading = false;
@@ -403,7 +406,7 @@
                 }
             }
         }
-        if(breadth)window.RankChartAxis.registerHistoryLoader('breadth',()=>refreshBreadth(true),()=>breadthLoading);
+        if(breadth)window.RankChartAxis.registerHistoryLoader('breadth',()=>refreshBreadth(true),()=>breadthLoading,()=>({hasMore:!!breadthCursor,cursor:breadthCursor}));
         panel.querySelector('[data-breadth-more]')?.addEventListener('click', () => window.RankChartAxis.requestHistory(breadthMode));
         panel.querySelectorAll('[data-breadth-mode]').forEach(button => button.addEventListener('click', () => {
             if (breadthLoading) { pendingBreadthMode = button.dataset.breadthMode; return; }
@@ -420,7 +423,7 @@
         if (riskMore) {
             const icon = document.querySelector('#concentrationMore svg');
             if (icon) riskMore.replaceChildren(icon.cloneNode(true));
-            window.RankChartAxis.registerHistoryLoader(sentiment?'sentiment':'volatility',()=>refreshRisk(true),()=>riskLoading);
+            window.RankChartAxis.registerHistoryLoader(sentiment?'sentiment':'volatility',()=>refreshRisk(true),()=>riskLoading,()=>({hasMore:!!referenceCursor,cursor:referenceCursor}));
             riskMore.addEventListener('click',()=>window.RankChartAxis.requestHistory('day'));
         }
         async function refreshRisk(more = false) {
@@ -474,7 +477,7 @@
             if (breadth) {
                 const mode = settings?.mode === 'minute' ? 'minute' : 'day';
                 if (mode !== breadthMode) panel.querySelector(`[data-breadth-mode="${mode}"]`).click();
-                candleArea.hidden = !settings?.candleOpen; toggle.setAttribute('aria-expanded', String(!candleArea.hidden)); resize(); return;
+                candleArea.hidden = !settings?.candleOpen; toggle.setAttribute('aria-expanded', String(!candleArea.hidden)); resize(); if(!candleArea.hidden)void loadCandles(); return;
             }
             candleArea.hidden = !settings?.candleOpen; toggle.setAttribute('aria-expanded', String(!candleArea.hidden));
             resize(); loadCandles();

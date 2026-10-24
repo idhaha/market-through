@@ -40,7 +40,7 @@
             into.disabled = n <= 10; out.disabled = n >= dates.length;
             const {w,h} = surface(canvas,ctx), left = 16, top = 10, bottom = h-34;
             const rows = Object.fromEntries(Object.keys(data).map(m => [m,data[m].filter(p => indices.has(p.t))]));
-            const selected = rows[selectedMarket].filter(p=>[p.open,p.high,p.low,p.close].every(Number.isFinite));
+            const selected = rows[selectedMarket].filter(window.RankChartAxis.validCandle);
             const highestCandle = selected.reduce((highest, point) => Math.max(highest, Number(point.high) || 0), 0);
             const candleAxisWidth = candleArea.hidden || !selected.length ? 0 : ctx.measureText(Math.round(highestCandle).toLocaleString('ko-KR')).width;
             const right = w - Math.max(58, candleAxisWidth + 18);
@@ -191,7 +191,7 @@
             }
         }
         window.refreshRankTurnoverChart = () => load();
-        window.RankChartAxis.registerHistoryLoader('turnover',()=>load(true),()=>loading);
+        window.RankChartAxis.registerHistoryLoader('turnover',()=>load(true),()=>loading,()=>({hasMore:!!cursor,cursor}));
         moreButton.addEventListener('click',()=>window.RankChartAxis.requestHistory(mode));
         panel.querySelectorAll('[data-mode]').forEach(button=>button.addEventListener('click',()=>{
             if(loading || mode===button.dataset.mode)return;

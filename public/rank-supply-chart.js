@@ -254,7 +254,7 @@
             }
             if (!showCandles) return;
             const size = surface(candle, cc); timeAxis(cc, size.h);
-            const visible = candles.filter(p => indices.has(p.t));
+            const visible = candles.filter(p => indices.has(p.t) && window.RankChartAxis.validCandle(p));
             if (!visible.length) return;
             const layout=window.RankChartAxis.candleLayout(visible,p=>p.low,p=>p.high,p=>x(p.t),size.h,left,right);
             const cy=layout.y,width=layout.width;
@@ -417,7 +417,7 @@
             panel.querySelectorAll('[data-mode]').forEach(b => { b.classList.toggle('active', b === button); b.setAttribute('aria-pressed', String(b === button)); });
             load();
         }));
-        window.RankChartAxis.registerHistoryLoader('supply',()=>load(true),()=>loading || candleLoading);
+        window.RankChartAxis.registerHistoryLoader('supply',()=>load(true),()=>loading || candleLoading,()=>({hasMore:!!selected && (hasMore || mode==='minute' && !!priceCursor),cursor:[cursor,priceCursor].join(':')}));
         more.addEventListener('click', () => window.RankChartAxis.requestHistory(mode));
         panel.querySelectorAll('[data-series]').forEach(button => button.addEventListener('click', () => {
             const field = button.dataset.series;

@@ -54,6 +54,7 @@
         let points = [], candles = [], start = 0, count = null, hover = null, drag = null, geometry;
         let controller, candleController, revision = 0, candleRevision = 0, refreshing = false, refreshPending = false;
         let showCandles = false, candleMessage = '', chartMessage = '', configError = '';
+        let candleRangeKey='', candleRangePending='', candleSchedule=false;
         const visibleSeries = new Set(series);
         const selectionStorage=window.rankIndependentClient?sessionStorage:localStorage;
         try { selected = selectionStorage.getItem('rankMarketSupplySelectedV1') || 'kospi'; if (!['kospi','kosdaq','futures','futuresKosdaq'].includes(selected)) selected='kospi'; } catch {}
@@ -77,6 +78,7 @@
         stockSelect.addEventListener('change', () => queueMicrotask(publish));
         function clearView() {
             todayOnly=true;
+            candleRangeKey='';candleRangePending='';
             points = []; candles = []; start = 0; count = null; hover = null; info.hidden = true;
             cursor = null; hasMore = false; historyLoaded = false;
             minuteDays.clear();
@@ -215,8 +217,11 @@
             panel.dataset.chartMode=mode;
             panel.dataset.market=selected;
             if (!showCandles) return;
+            if(mode==='minute' && !candleSchedule){
+                candleSchedule=true;queueMicrotask(()=>{candleSchedule=false;void loadCandles();});
+            }
             const size = surface(candle, cc); timeAxis(cc, size.h);
-            const visible = candles.filter(p => indices.has(p.t));
+            const visible = candles.filter(p => indices.has(p.t) && window.RankChartAxis.validCandle(p));
             if (!visible.length) return;
             const layout=window.RankChartAxis.candleLayout(visible,p=>p.low,p=>p.high,p=>x(p.t),size.h,left,right);
             const cy=layout.y,width=layout.width;
@@ -247,7 +252,40 @@
             if (selected === code) return;
             selected = code; remember(); clearView(); paintStocks(); load();
         }
-        async function loadCandles() { draw(); }
+        window.getMarketSupplyCandleDiagnostics = () => ({market:selected,mode,points:points.length,candles:candles.length,
+            validCandles:candles.filter(window.RankChartAxis.validCandle).length,
+            visiblePoints:geometry?.rows.length || 0,visibleCandles:candles.filter(p=>geometry?.rows.some(row=>row.t===p.t) && window.RankChartAxis.validCandle(p)).length,
+            first:points[0]?.t,last:points.at(-1)?.t,candleFirst:candles[0]?.t,candleLast:candles.at(-1)?.t});
+        async function loadCandles(requestedRange) {
+            if(!showCandles || mode!=='minute')return;
+            const domain=window.RankChartAxis.minuteDomain();
+            const from=(requestedRange?.first || domain.first).slice(0,10).replaceAll('-',''),to=(requestedRange?.last || domain.last).slice(0,10).replaceAll('-','');
+            if(!/^\d{8}$/.test(from) || !/^\d{8}$/.test(to) || from>to)return;
+            const market=selected==='kosdaq'||selected==='futuresKosdaq'?'kosdaq':'kospi';
+            const key=`${market}:${from}:${to}`;
+            if(key===candleRangeKey || key===candleRangePending)return;
+            candleController?.abort();const current=candleController=new AbortController(),id=++candleRevision;
+            candleRangePending=key;candleLoading=true;
+            try{
+                const response=await fetch(`/api/adr/candles?market=${market}&mode=minute&from=${from}&to=${to}`,{signal:current.signal});
+                const result=await response.json();
+                if(!response.ok)throw new Error(result.error || '시장 가격 조회 실패');
+                if(id!==candleRevision)return;
+                const incoming=(result.points || []).filter(p=>Number.isFinite(p.t));
+                candles=[...new Map([...candles,...incoming].map(p=>[p.t,p])).values()].sort((a,b)=>a.t-b.t);
+                const timeline=new Map(incoming.map(p=>[p.t,{t:p.t}]));
+                for(const point of points)timeline.set(point.t,point);
+                const anchor=points[start]?.t;
+                points=[...timeline.values()].sort((a,b)=>a.t-b.t);
+                if(count!=null && anchor!=null)start=Math.max(0,points.findIndex(p=>p.t>=anchor));
+                candleRangeKey=key;
+                candleMessage=result.partial?'가격 캔들 일부 구간만 조회됨':incoming.some(window.RankChartAxis.validCandle)?'':'선택 기간의 가격 캔들 없음';
+            }catch(error){
+                if(error.name!=='AbortError' && id===candleRevision){candleMessage=error.message;candleRangeKey=key;}
+            }finally{
+                if(id===candleRevision){candleRangePending='';candleLoading=false;setStatus();draw();}
+            }
+        }
         window.RankChartAxis.registerHover('marketSupply',()=>mode,()=>hover,key=>{
             hover=geometry?.rows.find(p=>window.RankChartAxis.matchesHover(p.t,key,mode))?.t ?? null;
             info.hidden=true;draw();
@@ -259,7 +297,7 @@
             const nextCursor = append && hasMore ? cursor : null;
             if (append && (loading || candleLoading || !nextCursor)) return;
             controller?.abort(); const current = controller = new AbortController(), id = ++revision;
-            candleController?.abort(); ++candleRevision; candleLoading = false;
+            candleController?.abort(); ++candleRevision; candleLoading = false;candleRangeKey='';candleRangePending='';
             if (!selected) { loading = false; clearView(); chartMessage = '시장을 선택하세요.'; setStatus(); return; }
             if(append){window.RankChartAxis.showHistory();todayOnly=false;}
             loading = true; chartMessage = append ? '과거 수급 조회 중…' : '수급 조회 중…'; setStatus(); draw();
@@ -335,7 +373,7 @@
             panel.querySelectorAll('[data-mode]').forEach(b => { b.classList.toggle('active', b === button); b.setAttribute('aria-pressed', String(b === button)); });
             load();
         }));
-        window.RankChartAxis.registerHistoryLoader('marketSupply',()=>load(true),()=>loading || candleLoading);
+        window.RankChartAxis.registerHistoryLoader('marketSupply',()=>load(true),()=>loading || candleLoading,()=>({hasMore:hasMore,cursor,ensureRange:async target=>{await loadCandles({first:target});if(/실패|일부/.test(candleMessage))throw new Error(candleMessage);}}));
         more.addEventListener('click', () => window.RankChartAxis.requestHistory(mode));
         panel.querySelectorAll('[data-series]').forEach(button => button.addEventListener('click', () => {
             const field = button.dataset.series;

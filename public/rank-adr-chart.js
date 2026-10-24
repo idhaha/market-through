@@ -79,7 +79,7 @@
         }
         let todayOnly = true;
         window.RankChartAxis.todayButton(panel,'[data-adr-mode="minute"]',()=>mode,()=>{todayOnly=true;draw();void window.refreshRankAdrChart();});
-        window.RankChartAxis.registerHistoryLoader('adr',()=>window.refreshRankAdrChart(true),()=>referenceLoading);
+        window.RankChartAxis.registerHistoryLoader('adr',()=>window.refreshRankAdrChart(true),()=>referenceLoading,()=>({hasMore:!!referenceCursor,cursor:referenceCursor}));
         moreButton.addEventListener('click',()=>window.RankChartAxis.requestHistory(mode));
         function viewportPoints() {
             {const view=window.RankChartAxis.sharedRange('adr',axisPoints(),p=>p.t,mode,viewStart,viewCount,draw);viewStart=view.start;viewCount=view.count;}
@@ -211,7 +211,7 @@
             if (candleCanvas.height !== ph) candleCanvas.height = ph;
             candleCtx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0); candleCtx.clearRect(0,0,w,h);
             drawXAxis(candleCtx, h);
-            const visible = candles.filter(p => p.t >= geometry.start && p.t <= geometry.end);
+            const visible = candles.filter(p => p.t >= geometry.start && p.t <= geometry.end && window.RankChartAxis.validCandle(p));
             if (!visible.length) return;
             const layout=window.RankChartAxis.candleLayout(visible,p=>p.low,p=>p.high,p=>geometry.x(p.t),h,geometry.left,geometry.right);
             const lo=layout.minimum,hi=layout.maximum,y=layout.y,cw=layout.width;
@@ -240,6 +240,10 @@
             context.fillStyle = drag.endX >= drag.startX ? 'rgba(15,23,42,.12)' : 'rgba(234,88,12,.12)';
             context.fillRect(Math.min(drag.startX,drag.endX),graph.top,Math.abs(drag.endX-drag.startX),graph.bottom-graph.top);
         }
+        window.getAdrCandleDiagnostics = () => ({market:selectedMarket,mode,points:axisPoints().length,candles:candles.length,
+            validCandles:candles.filter(window.RankChartAxis.validCandle).length,
+            visiblePoints:geometry?.points.length || 0,visibleCandles:candles.filter(p=>p.t>=geometry?.start && p.t<=geometry?.end && window.RankChartAxis.validCandle(p)).length,
+            first:geometry?.start,last:geometry?.end,candleFirst:candles[0]?.t,candleLast:candles.at(-1)?.t});
         async function loadCandles() {
             if(referencePoints.length){candles=referencePoints;candleStatus.textContent='';draw();return;}
             if(candleArea.hidden || !points.length)return;
