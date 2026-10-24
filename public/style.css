@@ -2850,14 +2850,15 @@ body.modal-open {
 .rank-sentiment-panel .volatility-legend .risk-series-date { color:var(--text-muted); font-size:11px; font-weight:400; }
 .rank-volatility-panel .volatility-candle-label { position:absolute; top:2px; left:16px; font-size:12px; font-weight:600; pointer-events:none; }
 .rank-volatility-panel { position:relative; }
-.rank-breadth-panel { grid-column:3; grid-row:1; }
-.rank-turnover-panel { grid-column:1; grid-row:2; }
+.rank-market-supply-panel { grid-column:3; grid-row:1; }
+.rank-breadth-panel { grid-column:1; grid-row:2; }
+.rank-turnover-panel { grid-column:3; grid-row:2; }
 .rank-breadth-panel .breadth-notice { position:relative; top:-6px; margin-left:auto; flex-shrink:0; white-space:pre; text-align:left; font-size:11px; line-height:15px; font-weight:400; color:var(--text-muted); }
 .rank-breadth-panel .concentration-chart-header h2 { flex-shrink:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .rank-supply-panel { grid-column:2; grid-row:1; }
-#rankAdrChartPanel { grid-column:1; grid-row:3; }
-.rank-volatility-panel:not(.rank-breadth-panel):not(.rank-sentiment-panel) { grid-column:2; grid-row:2; }
-.rank-sentiment-panel { grid-column:3; }
+#rankAdrChartPanel { grid-column:2; grid-row:2; }
+.rank-volatility-panel:not(.rank-breadth-panel):not(.rank-sentiment-panel) { grid-column:1; grid-row:3; }
+.rank-sentiment-panel { grid-column:2; grid-row:3; }
 @media (max-width:700px) {
     #rankAdrChartPanel, .rank-breadth-panel, .rank-turnover-panel, .rank-sentiment-panel, .rank-supply-panel,
     .rank-volatility-panel:not(.rank-breadth-panel):not(.rank-sentiment-panel) { grid-column:1; grid-row:auto; }
@@ -2976,3 +2977,24 @@ body { height:100dvh; min-height:0; overflow:hidden; display:flex; flex-directio
 .rank-card-messages > :is(.rank-adr-status,#concentrationPeriod,#concentrationStatus,.rank-history-notice) { position:static; flex:0 1 auto; order:initial; margin:0; min-width:0; font-size:12px; line-height:18px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text-muted); }
 .rank-card-messages:has(.rank-history-notice:not([hidden])) > :not(.rank-history-notice) { display:none; }
 .rank-chart-row { --chart-plot-height:286px; }
+
+/* Market flow shares stock-flow controls; keep the Rank grid at three columns. */
+.rank-chart-row > .rank-market-supply-panel { grid-column:3; grid-row:1; }
+.rank-market-supply-panel .supply-stock-select { width:110px; min-width:78px; flex:0 1 110px; }
+@media(max-width:700px) { .rank-chart-row > .rank-market-supply-panel { grid-column:1; grid-row:auto; } }
+
+.rank-market-supply-panel .rank-adr-candle-area { position:relative; }
+.rank-market-supply-panel .market-candle-label { position:absolute; top:2px; left:12px; color:var(--text-muted); font-size:11px; pointer-events:none; }
+
+/* Main ranking tables share one local three-stage row limit. */
+#tab_rank .main-rank-table-title { display:flex; align-items:center; gap:6px; min-width:0; }
+#tab_rank .main-rank-row-limit { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; width:26px; height:26px; padding:2px; border:0; border-radius:4px; background:transparent; color:var(--text-muted); cursor:pointer; }
+#tab_rank .main-rank-row-limit:hover { background:var(--bg-primary); color:var(--text-primary); }
+#tab_rank .main-rank-row-limit:focus-visible { outline:2px solid #3b82f6; outline-offset:2px; }
+#tab_rank[data-table-row-limit="10"] .grid-container tbody { height:280px; max-height:280px; }
+#tab_rank[data-table-row-limit="5"] .grid-container tbody { height:140px; max-height:140px; }
+#tab_rank[data-table-row-limit="10"] .grid-container tbody > tr:nth-child(n+11),
+#tab_rank[data-table-row-limit="5"] .grid-container tbody > tr:nth-child(n+6) { display:none; }
+
+/* Every price candle uses the same instrument label. */
+:is(.rank-adr-candle-area,.concentration-candle-area) > .rank-candle-label { position:absolute; top:2px; left:12px; z-index:2; color:var(--text-primary,#0f172a); background:var(--bg-secondary,#fff); font:600 12px/16px Inter,sans-serif; max-width:calc(100% - 100px); overflow:hidden; white-space:nowrap; text-overflow:ellipsis; pointer-events:none; }

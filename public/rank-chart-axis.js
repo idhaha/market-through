@@ -44,7 +44,16 @@
     const minuteCharts=new Map();
     const viewports=new Map();
     let viewportSource=null,viewportBefore=null;
-    const viewportPanels={concentration:'concentrationChartPanel',supply:'rankSupplyChartPanel',breadth:'rankBreadthChartPanel',turnover:'rankTurnoverChartPanel',adr:'rankAdrChartPanel',volatility:'rankVolatilityChartPanel',sentiment:'rankSentimentChartPanel'};
+    const viewportPanels={concentration:'concentrationChartPanel',supply:'rankSupplyChartPanel',marketSupply:'rankMarketSupplyChartPanel',breadth:'rankBreadthChartPanel',turnover:'rankTurnoverChartPanel',adr:'rankAdrChartPanel',volatility:'rankVolatilityChartPanel',sentiment:'rankSentimentChartPanel'};
+    const hoverCharts=new Map();
+    function hoverKey(value,mode) { return value==null?null:dateParts(value).slice(0,mode==='minute'?16:10); }
+    function registerHover(id,getMode,getValue,apply) { hoverCharts.set(id,{getMode,getValue,apply}); }
+    function synchronizeHover(id,clear=false) {
+        const source=hoverCharts.get(id);if(!source)return;
+        const mode=source.getMode(),key=clear?null:hoverKey(source.getValue(),mode);
+        for(const [peerId,peer] of hoverCharts)if(peerId!==id)peer.apply(peer.getMode()===mode?key:null);
+    }
+    function matchesHover(value,key,mode) { return key!=null && hoverKey(value,mode)===key; }
     function synchronizeViewport(id) {
         const chart=minuteCharts.get(id);
         if(!chart?.dates.length || !chart.count)return;
@@ -71,8 +80,8 @@
     }
     function showHistory(){if(historyBusy)return;historyMode=true;for(const chart of minuteCharts.values())chart.applied=undefined;notifyCharts();}
     function showToday(){viewports.delete('minute');historyMode=false;for(const chart of minuteCharts.values())chart.applied=undefined;notifyCharts();}
-    const refreshOrder=['concentration','supply','breadth','turnover','adr','sentiment','volatility'];
-    const refreshMethods={concentration:'refreshConcentrationChart',supply:'refreshRankSupplyChart',breadth:'refreshRankBreadthChart',turnover:'refreshRankTurnoverChart',adr:'refreshRankAdrChart',sentiment:'refreshRankSentimentChart',volatility:'refreshRankVolatilityChart'};
+    const refreshOrder=['concentration','supply','marketSupply','breadth','turnover','adr','sentiment','volatility'];
+    const refreshMethods={concentration:'refreshConcentrationChart',supply:'refreshRankSupplyChart',marketSupply:'refreshRankMarketSupplyChart',breadth:'refreshRankBreadthChart',turnover:'refreshRankTurnoverChart',adr:'refreshRankAdrChart',sentiment:'refreshRankSentimentChart',volatility:'refreshRankVolatilityChart'};
     function refreshCharts({skipConcentration=false}={}) {
         window.rankChartRefreshStarted=true;
         const pending=[];
@@ -119,7 +128,7 @@
         }
         const after=mode==='day'?dailyCutoff:sharedCutoff;
         const advanced=Boolean(after && (!before || after<before));
-        const panelIds={concentration:'concentrationChartPanel',supply:'rankSupplyChartPanel',breadth:'rankBreadthChartPanel',turnover:'rankTurnoverChartPanel',adr:'rankAdrChartPanel',volatility:'rankVolatilityChartPanel',sentiment:'rankSentimentChartPanel'};
+        const panelIds={concentration:'concentrationChartPanel',supply:'rankSupplyChartPanel',marketSupply:'rankMarketSupplyChartPanel',breadth:'rankBreadthChartPanel',turnover:'rankTurnoverChartPanel',adr:'rankAdrChartPanel',volatility:'rankVolatilityChartPanel',sentiment:'rankSentimentChartPanel'};
         if(typeof document!=='undefined')for(const [id] of participants){
             const panel=document.getElementById(panelIds[id]);if(!panel)continue;
             let notice=panel.querySelector('.rank-history-notice');
@@ -164,13 +173,20 @@
     }
     function dailyDomain() {
         const viewport=viewports.get('day');
-        if(!viewport && (!dailyHistory || !dailyCutoff))return null;
-        const active=[...minuteCharts.values()].filter(c=>c.mode==='day');
-        const first=viewport?.first || dailyCutoff;
+        const active=[...minuteCharts.values()].filter(c=>c.mode==='day' && c.dates.length);
+        const first=viewport?.first || (dailyHistory && dailyCutoff) || active.map(c=>c.first).sort()[0];
         const last=viewport?.last || active.map(c=>c.last).filter(Boolean).sort().at(-1);
         const days=[...new Set([first,last,...active.flatMap(c=>c.days || [])])].filter(d=>d>=first && d<=last).sort();
         if(!days.length)return null;
         return {first,last,days};
+    }
+    const plotMargins=new Map();
+    function plotBounds(id,width,left,right) {
+        if(!window.rankIndependentClient)return {left,right};
+        const margin={left,right:width-right},previous=plotMargins.get(id);
+        plotMargins.set(id,margin);
+        if(!previous || previous.left!==margin.left || previous.right!==margin.right)notifyCharts();
+        return {left:Math.max(...[...plotMargins.values()].map(p=>p.left)),right:width-Math.max(...[...plotMargins.values()].map(p=>p.right))};
     }
     function minuteDomain(values=[],getDate=v=>v,useViewport=true) {
         const active=[...minuteCharts.values()].filter(c=>c.mode==='minute');
@@ -224,6 +240,34 @@
         const start=Math.round(Math.max(0,Math.min(10000,Number(value)))/10000*range.travel);
         viewports.set(chart.mode,{first:range.domain.at(start),last:range.domain.at(start+range.span)});notifyCharts();
     }
+    // Select on the rendered common time axis, not a chart's private row count.
+    function selectViewport(id,from,to) {
+        const chart=minuteCharts.get(id);if(!chart)return;
+        viewportSource=null;
+        if(to<from){
+            viewports.delete(chart.mode);
+            const domain=chart.mode==='day'?dailyDomain():minuteDomain();
+            if(domain)viewports.set(chart.mode,{first:domain.first,last:domain.last});
+            notifyCharts();return;
+        }
+        const a=Math.max(0,Math.min(1,from)),b=Math.max(0,Math.min(1,to));
+        let first,last;
+        if(chart.mode==='day'){
+            const domain=dailyDomain();if(!domain)return;
+            first=domain.days[Math.floor(a*(domain.days.length-1))];
+            last=domain.days[Math.ceil(b*(domain.days.length-1))];
+        }else{
+            const domain=minuteDomain();
+            const at=fraction=>{
+                const position=domain.offset+Math.round(fraction*domain.span);
+                const index=Math.max(0,Math.min(domain.days.length-1,Math.floor(position/720)));
+                const minute=480+position-index*720;
+                return domain.days[index]+' '+String(Math.floor(minute/60)).padStart(2,'0')+':'+String(minute%60).padStart(2,'0');
+            };
+            first=at(a);last=at(b);
+        }
+        if(first && last){viewports.set(chart.mode,{first,last});notifyCharts();}
+    }
     function sessionX(values,getDate,left,right,active,day=false) {
         if(!active){const daily=day?dailyDomain():null;return daily?value=>left+daily.days.indexOf(dateParts(value).slice(0,10))/Math.max(1,daily.days.length-1)*(right-left):null;}
         const domain=minuteDomain(values,getDate);
@@ -260,6 +304,16 @@
         const domain=minuteDomain(values,getDate);
         return (domain.days.length>1?domain.first.slice(5,10)+' ':'')+domain.first.slice(11,16);
     }
+    function candleLabel(area, text) {
+        let label=area.querySelector('.rank-candle-label,.volatility-candle-label,.market-candle-label');
+        if(!label){label=document.createElement('span');area.prepend(label);}
+        if(label.className!=='rank-candle-label')label.className='rank-candle-label';
+        if(label.textContent!==(text || ''))label.textContent=text || '';
+        label.hidden=!text;
+        if(label.title!==(text || ''))label.title=text || '';
+        const canvas=area.querySelector('canvas');
+        if(canvas && text && canvas.getAttribute('aria-label')!==text+' 캔들차트')canvas.setAttribute('aria-label',text+' 캔들차트');
+    }
     function candleLayout(rows,getLow,getHigh,x,height,left,right) {
         const low=Math.min(...rows.map(getLow)),high=Math.max(...rows.map(getHigh));
         const pad=Math.max(1,(high-low)*.1),top=10,bottom=height-30;
@@ -277,6 +331,17 @@
         new MutationObserver(update).observe(minute,{attributes:true,attributeFilter:['class','aria-pressed']});update();return button;
     }
     if(typeof document!=='undefined') {
+        // Local handlers choose the source time first; peers use their own hover rendering.
+        document.addEventListener('mousemove',event=>{
+            if(!event.target.matches?.('canvas') || event.buttons)return;
+            const entry=Object.entries(viewportPanels).find(([,panel])=>event.target.closest('#'+panel));
+            if(entry)synchronizeHover(entry[0]);
+        });
+        for(const type of ['mouseleave','pointerdown','pointercancel'])document.addEventListener(type,event=>{
+            if(!event.target.matches?.('canvas'))return;
+            const entry=Object.entries(viewportPanels).find(([,panel])=>event.target.closest('#'+panel));
+            if(entry)synchronizeHover(entry[0],true);
+        },true);
         // Local handlers update their range first; publish it to peers after the event.
         for(const type of ['click','input','wheel','pointerup'])document.addEventListener(type,event=>{
             const target=event.target;
@@ -295,7 +360,7 @@
             if(chart && `${chart.start}:${chart.count}`!==viewportBefore)synchronizeViewport(id);
             viewportBefore=null;
         });
-        const selector='[data-chart-mode],[data-mode],[data-adr-mode],[data-breadth-mode],[data-rank-mode]';
+        const selector='button[data-chart-mode],button[data-mode],button[data-adr-mode],button[data-breadth-mode],button[data-rank-mode]';
         const buttonMode=button=>button.dataset.chartMode || button.dataset.mode || button.dataset.adrMode || button.dataset.breadthMode || button.dataset.rankMode;
         let modeRevision=0,dispatchingMode=false;
         function synchronizeMode(mode) {
@@ -328,5 +393,5 @@
             if(mode==='day' || mode==='minute')synchronizeMode(mode);
         },true);
     }
-    window.RankChartAxis={updateSlider,scrollViewport,synchronizeViewport,refreshOrder,refreshCharts,registerHistoryLoader,requestHistory,showHistory,showToday,sharedRange,dailyDomain,minuteDomain,ticks,todayRange,limitToday,sessionRange,limitSessions,sessionX,eightTick,sessionStartLabel,candleLayout,todayButton};
+    window.RankChartAxis={candleLabel,selectViewport,plotBounds,registerHover,synchronizeHover,matchesHover,updateSlider,scrollViewport,synchronizeViewport,refreshOrder,refreshCharts,registerHistoryLoader,requestHistory,showHistory,showToday,sharedRange,dailyDomain,minuteDomain,ticks,todayRange,limitToday,sessionRange,limitSessions,sessionX,eightTick,sessionStartLabel,candleLayout,todayButton};
 })();

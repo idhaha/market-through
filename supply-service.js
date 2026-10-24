@@ -15,11 +15,18 @@ function collectingAt(t) {
     const clock = new Date(t + 9 * 3600000), minute = clock.getUTCHours() * 60 + clock.getUTCMinutes();
     return ![0, 6].includes(clock.getUTCDay()) && minute >= 480 && minute <= 1201;
 }
+function investorObservationAt(t) {
+    const clock = new Date(t + 9 * 3600000), minute = clock.getUTCHours() * 60 + clock.getUTCMinutes();
+    // Store the 15:30 close and permit one 15:31 settlement recheck only.
+    return minute <= 931;
+}
 
 function createSupplyService({ directory, http, getToken, resolveStock, now = Date.now,
     pause = ms => new Promise(resolve => setTimeout(resolve, ms)), log = console.warn }) {
     const store = createSupplyStore({ directory, now });
-    const statuses = new Map(), verifiedDay = new Map(), cache = new Map();
+    const statuses = new Map(), verifiedDay = new Map();
+    const { createHistoryCache, createDailyQueryCache } = require('./daily-query-cache');
+    const cache = createDailyQueryCache({ now }), historyCache = createHistoryCache({ now });
     let queue = Promise.resolve(), running = null, timer;
     let market = store.marketDay(), lastMarketAttempt = null, marketRequest = null;
     function marketConfirmed() { return market?.day === dayKey(now()); }
@@ -85,6 +92,12 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
     function active(stock) {
         return store.config().stocks.some(item => item.code === stock.code && item.added_at === stock.added_at);
     }
+    function latestPoint(code, date, field) {
+        return store.points(code, date).findLast(point => Number.isSafeInteger(point[field]));
+    }
+    function latestInvestorPoint(code, date) {
+        return store.points(code, date).findLast(point => ['individual', 'foreign', 'institution'].some(field => Number.isSafeInteger(point[field])));
+    }
     function collect() {
         if (running) return running;
         if (!collectingAt(now())) return Promise.resolve();
@@ -95,25 +108,34 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
                 if (!active(stock)) continue;
                 const startDay = dayKey(now()), date = startDay.replaceAll('-', ''), errors = [];
                 const state = { ...statuses.get(stock.code), checked_at: now(), investor_ok: false, program_ok: false };
-                try {
-                    const response = await post('ka10060', { dt: date, stk_cd: `${stock.code}_AL`, amt_qty_tp: '2', trde_tp: '0', unit_tp: '1' });
-                    const rows = response.data.stk_invsr_orgn_chart;
-                    if (!Array.isArray(rows)) throw new Error('투자자 수급 응답 형식 오류');
-                    const row = rows.find(row => row.dt === date), observed = now();
-                    if (!row) throw new Error('당일 투자자 수급 미제공');
-                    const point = { t: observed, individual: quantity(row.ind_invsr), foreign: quantity(row.frgnr_invsr), institution: quantity(row.orgn) };
-                    if (dayKey(observed) === startDay && active(stock)) {
-                        verifiedDay.set(stock.code, startDay);
-                        if (['individual', 'foreign', 'institution'].some(field => point[field] != null)) {
-                            store.merge(stock.code, point); state.investor_at = observed;
+                if (investorObservationAt(now())) {
+                    try {
+                        const response = await post('ka10060', { dt: date, stk_cd: `${stock.code}_AL`, amt_qty_tp: '2', trde_tp: '0', unit_tp: '1' });
+                        const rows = response.data.stk_invsr_orgn_chart;
+                        if (!Array.isArray(rows)) throw new Error('투자자 수급 응답 형식 오류');
+                        const row = rows.find(row => row.dt === date), observed = now();
+                        if (!row) throw new Error('당일 투자자 수급 미제공');
+                        const point = { t: observed, individual: quantity(row.ind_invsr), foreign: quantity(row.frgnr_invsr), institution: quantity(row.orgn) };
+                        if (dayKey(observed) === startDay && active(stock)) {
+                            verifiedDay.set(stock.code, startDay);
+                            const previous = latestInvestorPoint(stock.code, startDay);
+                            const changed = !previous || ['individual', 'foreign', 'institution'].some(field => point[field] !== previous[field]);
+                            if (['individual', 'foreign', 'institution'].some(field => point[field] != null) && (!previous || observed < timestamp(date, '153100') || changed)) {
+                                store.merge(stock.code, point); state.investor_at = observed;
+                            } else state.investor_at = previous.t;
+                            if (['individual', 'foreign', 'institution'].some(field => point[field] == null)) throw new Error('일부 투자자 수급 미제공');
+                            state.investor_ok = true;
                         }
-                        if (['individual', 'foreign', 'institution'].some(field => point[field] == null)) throw new Error('일부 투자자 수급 미제공');
-                        state.investor_ok = true;
-                    }
-                } catch (error) { errors.push(error.message); }
+                    } catch (error) { errors.push(error.message); }
+                } else {
+                    const previous = latestInvestorPoint(stock.code, startDay);
+                    state.investor_at = previous?.t;
+                    state.investor_ok = !!previous;
+                    if (!previous) errors.push('개인·외국인·기관 장마감 관측값 없음');
+                }
                 try {
-                    // ka90008 has only HHmmss, so confirm today's session via dated ka10060 data.
-                    if (verifiedDay.get(stock.code) !== startDay) throw new Error('당일 거래일 미확인 · 프로그램 수집 대기');
+                    // ka90008 has only HHmmss. After investor polling closes, the confirmed market day validates collection.
+                    if (verifiedDay.get(stock.code) !== startDay && !(marketConfirmed() && !investorObservationAt(now()))) throw new Error('당일 거래일 미확인 · 프로그램 수집 대기');
                     const response = await post('ka90008', { stk_cd: `${stock.code}_AL`, amt_qty_tp: '2', date });
                     const rows = response.data.stk_tm_prm_trde_trnsn;
                     if (!Array.isArray(rows)) throw new Error('프로그램 수급 응답 형식 오류');
@@ -132,7 +154,7 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
         })().finally(() => { running = null; });
         return running;
     }
-    async function history(api, body, field, from, to) {
+    async function history(api, body, field, from, to, onPage = () => {}) {
         const rows = new Map(); let next = '', partial = false, error = '';
         for (let page = 0; page < 80; page++) {
             try {
@@ -144,6 +166,7 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
                 const list = response.data[field];
                 if (!Array.isArray(list)) throw new Error(`${api} 수급 응답 형식 오류`);
                 for (const row of list) if (/^\d{8}$/.test(String(row.dt)) && row.dt >= from && row.dt <= to) rows.set(row.dt, row);
+                onPage([...rows.values()]);
                 const dates = list.map(row => String(row.dt || '')).filter(date => /^\d{8}$/.test(date));
                 if (response.headers?.['cont-yn'] !== 'Y' || dates.some(date => date <= from)) break;
                 const key = String(response.headers?.['next-key'] || '');
@@ -157,7 +180,7 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
         }
         return { rows: [...rows.values()], partial, error };
     }
-    async function daily(code, cursor) {
+    async function daily(code, cursor, onProgress = () => {}) {
         const date = cursor || dayKey(now()).replaceAll('-', '');
         // Match concentration's initial stock page instead of choosing a calendar range.
         const anchor = await post('ka10081', { stk_cd: `${code}_AL`, upd_stkpc_tp: '0', base_dt: date });
@@ -166,24 +189,8 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
         const byDate = new Map(bars.filter(row => /^\d{8}$/.test(String(row.dt)) && row.dt <= date).map(row => [row.dt, row]));
         const dates = [...byDate.keys()].sort(), from = dates[0];
         if (!from) return { success: true, mode: 'day', points: [], candles: [], warnings: [], has_more: false, cursor: null };
-        const results = await Promise.allSettled([
-            history('ka10060', { dt: date, stk_cd: `${code}_AL`, amt_qty_tp: '2', trde_tp: '0', unit_tp: '1' }, 'stk_invsr_orgn_chart', from, date),
-            history('ka90013', { date, stk_cd: `${code}_AL`, amt_qty_tp: '2' }, 'stk_daly_prm_trde_trnsn', from, date)
-        ]);
-        const points = new Map(dates.map(day => [timestamp(day), { t: timestamp(day) }])), warnings = [];
-        results.forEach((result, i) => {
-            if (result.status === 'rejected') { warnings.push(result.reason.message); return; }
-            if (result.value.error) warnings.push(result.value.error);
-            else if (result.value.partial) warnings.push('일부 과거 구간 조회 한도 도달');
-            for (const row of result.value.rows) {
-                const t = timestamp(row.dt); if (!Number.isFinite(t)) continue;
-                const point = points.get(t); if (!point) continue;
-                if (i === 0) Object.assign(point, { individual: quantity(row.ind_invsr), foreign: quantity(row.frgnr_invsr), institution: quantity(row.orgn) });
-                else point.program = quantity(row.prm_netprps_qty);
-                points.set(t, point);
-            }
-        });
-        // Daily results live only in a short-lived memory cache; never write them to disk.
+        const to=dates.at(-1), points = new Map(dates.map(day => [timestamp(day), { t: timestamp(day) }])), warnings = [];
+        // Daily source data and completed history remain in bounded memory caches only.
         const candles = dates.map(day => {
             const row = byDate.get(day);
             return { t: timestamp(day), open: Math.abs(quantity(row.open_pric) ?? NaN), high: Math.abs(quantity(row.high_pric) ?? NaN),
@@ -191,8 +198,27 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
         }).filter(point => [point.open, point.high, point.low, point.close].every(value => Number.isFinite(value) && value > 0));
         const next = dayKey(timestamp(from) - 86400000).replaceAll('-', '');
         const hasMore = anchor.headers?.['cont-yn'] === 'Y';
-        return { success: true, mode: 'day', points: [...points.values()], candles, warnings,
-            has_more: hasMore, cursor: hasMore ? next : null };
+        const snapshot = () => ({ success: true, mode: 'day', points: [...points.values()].map(point=>({...point})), candles, warnings: [...warnings],
+            has_more: hasMore, cursor: hasMore ? next : null });
+        function accept(result, i) {
+            for (const row of result.rows) {
+                const point=points.get(timestamp(row.dt)); if (!point) continue;
+                if (i===0) Object.assign(point,{individual:quantity(row.ind_invsr),foreign:quantity(row.frgnr_invsr),institution:quantity(row.orgn)});
+                else point.program=quantity(row.prm_netprps_qty);
+            }
+            onProgress(snapshot());
+        }
+        onProgress(snapshot());
+        const sources = [ ['ka10060','stk_invsr_orgn_chart'], ['ka90013','stk_daly_prm_trde_trnsn'] ];
+        await Promise.all(sources.map(async([api,field],i)=>{
+            const result=await historyCache.read(`${code}:${api}`,{from,to,recent:cursor?false:dates.at(-2)||to,
+                load:(start,end,onPage)=>history(api,{ ...(i===0 ? {dt:end,trde_tp:'0',unit_tp:'1'} : {date:end}),stk_cd:`${code}_AL`,amt_qty_tp:'2'},field,start,end,onPage),
+                onProgress:result=>accept(result,i) });
+            if (result.error) warnings.push(result.error);
+            else if (result.partial) warnings.push('일부 과거 구간 조회 한도 도달');
+            accept(result,i);
+        }));
+        return snapshot();
     }
     async function query(input = {}) {
         const { code, mode = 'day', cursor = '' } = input;
@@ -212,13 +238,8 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
                 investor_api: 'ka10060', individual_supported: true,
                 warnings: ['1분마다 관측한 당일 누적 순매수수량 · 수집 이전/누락 구간은 제공되지 않습니다.'] };
         }
-        const key = `${code}:${cursor}`, previous = cache.get(key);
-        if (previous && previous.expires > now()) return previous.promise;
-        const entry = { expires: now() + 60000 };
-        entry.promise = daily(code, cursor).catch(error => { if (cache.get(key) === entry) cache.delete(key); throw error; });
-        cache.set(key, entry);
-        if (cache.size > 12) cache.delete(cache.keys().next().value);
-        return entry.promise;
+        return cache.read(`${code}:${cursor}`, { ttl: cursor ? 6*3600000 : 60000, progressive: input.progressive === '1',
+            load: onProgress => daily(code,cursor,onProgress) });
     }
     async function candles(input = {}) {
         if (!input.mode || input.mode === 'day') {
@@ -275,4 +296,4 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
     function stop() { clearInterval(timer); timer = null; }
     return { summary, configure, query, candles, collect, start, stop, store, confirmMarket };
 }
-module.exports = { createSupplyService, quantity, timestamp, collectingAt };
+module.exports = { createSupplyService, quantity, timestamp, collectingAt, investorObservationAt };

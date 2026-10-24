@@ -46,6 +46,13 @@
         let chartsInitialized=false,lastChartRefreshAt=0;
         function initializeCharts(snapshot) {
             if(chartsInitialized)return;
+            // This client registers its DOM-ready handler before the chart script.
+            // A fast initial peer response can therefore arrive before the chart
+            // exposes its selection API; retry without consuming the snapshot.
+            if(typeof window.selectRankChartStock!=='function'){
+                setTimeout(()=>initializeCharts(lastSnapshot||snapshot),0);
+                return;
+            }
             chartsInitialized=true;
             // Seed the stock once; subsequent snapshots never replace local chart state.
             if(snapshot.chart?.selection)window.selectRankChartStock?.({...snapshot.chart.selection,market:snapshot.chart.market?.includes('코스피')?'K':'Q'});

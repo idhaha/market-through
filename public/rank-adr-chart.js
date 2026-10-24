@@ -103,6 +103,7 @@
         zoomIn.addEventListener('click', () => zoom(.5)); zoomOut.addEventListener('click', () => zoom(2));
         slider.addEventListener('input', () => { viewStart=Number(slider.value); clearHover(); });
         function draw() {
+            window.RankChartAxis.candleLabel(candleArea,selectedMarket==='kosdaq'?'KOSDAQ':'KOSPI');
             const latest = points.at(-1);
             currentDate.textContent = latest ? dateKey(latest.t) : closing ? chartDay : '—';
             const visiblePoints = viewportPoints();
@@ -387,6 +388,10 @@
             window.applyRankAdrCandleOpen(candleArea.hidden);
             if (!window.rankCandleSyncing && typeof saveAppData === 'function') saveAppData();
         });
+        window.RankChartAxis.registerHover('adr',()=>mode,()=>hover?.t,key=>{
+            hover=geometry?.points.find(p=>window.RankChartAxis.matchesHover(p.t,key,mode)) ?? null;
+            candlePointerY=null;tooltip.hidden=true;candleTip.hidden=true;draw();
+        });
         function hoverChart(event) {
             if (drag) return;
             if (!geometry) return;
@@ -427,12 +432,8 @@
                 const previous=drag; previous.endX=offset(event); drag=null;
                 if (surface.hasPointerCapture(event.pointerId)) surface.releasePointerCapture(event.pointerId);
                 if (Math.abs(previous.endX-previous.startX)>10) {
-                    if (previous.endX>previous.startX) {
-                        const first=Math.floor((previous.startX-geometry.left)/(geometry.right-geometry.left)*(previous.count-1));
-                        const last=Math.ceil((previous.endX-geometry.left)/(geometry.right-geometry.left)*(previous.count-1));
-                        const count=Math.min(axisPoints().length,Math.max(Math.min(10,axisPoints().length),last-first+1));
-                        viewCount=count===axisPoints().length?null:count; viewStart=Math.min(axisPoints().length-count,previous.start+first);
-                    } else { viewStart=0; viewCount=null; }
+                    if(previous.endX<previous.startX){viewStart=0;viewCount=null;}
+                    window.RankChartAxis.selectViewport('adr',(previous.startX-geometry.left)/(geometry.right-geometry.left),(previous.endX-geometry.left)/(geometry.right-geometry.left));
                 }
                 clearHover();
                 if (refreshPending) window.refreshRankAdrChart();

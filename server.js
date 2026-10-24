@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
+const indexHttp = require('./shared-index-http').createSharedIndexHttp({ http: axios });
 const path = require('path');
 const cors = require('cors');
 const fs = require('fs');
@@ -103,8 +104,11 @@ const SERVER_START_TIME = new Date().toLocaleString();
 const GOOGLE_OAUTH_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '218429663028-l66pfc3i804uec317arj717r1hrf519u.apps.googleusercontent.com';
 const AUTH_ADMIN_EMAIL = 'azikanbal@gmail.com';
 const AUTHORIZED_EMAILS_FILE = path.join(__dirname, 'authorized_emails.json');
-const AUTH_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
-const authSessions = new Map();
+const { createSessionStore } = require('./auth-session-store');
+const authSessionStore = createSessionStore({
+    filename: path.join(__dirname, 'data', 'auth-private', 'sessions.json'),
+    allowed: email => email === AUTH_ADMIN_EMAIL || readAuthorizedEmails().includes(email)
+});
 
 // 미들웨어 설정
 app.use(cors());
@@ -188,26 +192,39 @@ createRankIndependentRelay({
         throw new Error('지원하지 않는 요청입니다.');
     }
 }).mount(app);
-const concentrationChartService = createConcentrationChartService({ axios, getAccessToken, marketCache });
+const concentrationChartService = createConcentrationChartService({ axios: indexHttp, getAccessToken, marketCache });
 const supplyService = createSupplyService({
     directory: path.join(__dirname, 'data', 'supply'), http: axios,
     getToken: () => getAccessToken(process.env.KIWOOM_APPKEY, process.env.KIWOOM_SECRETKEY),
     resolveStock: code => concentrationChartService.resolveStock(code)
 });
 const breadthService = createBreadthService({
-    directory: path.join(__dirname, 'data', 'breadth'),
-    legacyFile: path.join(__dirname, 'data', 'volatility', 'new-highs-lows.json'),
+    directory: path.join(__dirname, 'data', 'breadth', 'markets'),
+    legacyKospiDirectory: path.join(__dirname, 'data', 'breadth', 'kospi'),
+    legacyFile: fs.existsSync(path.join(__dirname, 'data', 'breadth', 'kospi', 'daily.json'))
+        ? path.join(__dirname, 'data', 'breadth', 'kospi', 'daily.json')
+        : path.join(__dirname, 'data', 'volatility', 'new-highs-lows.json'),
     http: axios, getToken: () => getAccessToken(process.env.KIWOOM_APPKEY, process.env.KIWOOM_SECRETKEY), supply: supplyService
 });
 const turnoverService = require('./turnover-service').createTurnoverService({
-    http: axios, getToken: () => getAccessToken(process.env.KIWOOM_APPKEY, process.env.KIWOOM_SECRETKEY)
+    http: indexHttp, getToken: () => getAccessToken(process.env.KIWOOM_APPKEY, process.env.KIWOOM_SECRETKEY)
 });
 app.get('/api/turnover/chart', async (req, res) => {
     try { res.set('Cache-Control', 'no-store').json(await turnoverService.query(req.query)); }
     catch (error) { res.status(error.status || 502).json({ error: error.message }); }
 });
 const chartReferenceService = require('./chart-reference-service').createChartReferenceService({
-    http: axios, getToken: () => getAccessToken(process.env.KIWOOM_APPKEY, process.env.KIWOOM_SECRETKEY)
+    http: indexHttp, getToken: () => getAccessToken(process.env.KIWOOM_APPKEY, process.env.KIWOOM_SECRETKEY)
+});
+const marketSupplyService = require('./market-supply-service').createMarketSupplyService({
+    directory: path.join(__dirname, 'data', 'market-supply'), http: axios,
+    credentials: () => ({ domain: (process.env.EFRIEND_DOMAIN || '').trim(), appKey: (process.env.EFRIEND_APPKEY || '').trim(), secretKey: (process.env.EFRIEND_SECRETKEY || '').trim() }),
+    getToken: () => getEfriendAccessToken((process.env.EFRIEND_DOMAIN || '').trim(), (process.env.EFRIEND_APPKEY || '').trim(), (process.env.EFRIEND_SECRETKEY || '').trim()),
+    reference: chartReferenceService, supply: supplyService
+});
+app.get('/api/market-supply/chart', async (req, res) => {
+    try { res.set('Cache-Control', 'no-store').json(await marketSupplyService.query(req.query)); }
+    catch(error) { res.status(error.status || 502).json({ success: false, error: error.message }); }
 });
 app.get('/api/chart-reference', async (req, res) => {
     try { res.set('Cache-Control', 'no-store').json(await chartReferenceService.query(req.query)); }
@@ -1790,7 +1807,7 @@ app.get('/api/adr/candles', async (req, res) => {
         const daily = mode === 'day', points = new Map();
         let next = '', more = false;
         for (let page = 0; page < 12; page++) {
-            const response = await axios.post('https://api.kiwoom.com/api/dostk/chart', {
+            const response = await indexHttp.post('https://api.kiwoom.com/api/dostk/chart', {
                 inds_cd: market === 'kospi' ? '001' : '101',
                 ...(daily ? { base_dt: to } : { tic_scope: '1' })
             }, { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'api-id': daily ? 'ka20006' : 'ka20005',
@@ -1889,23 +1906,17 @@ function getSessionFromRequest(req) {
     const cookieHeader = req.headers.cookie || '';
     const sessionCookie = cookieHeader.split(';').map(part => part.trim()).find(part => part.startsWith('azikanbal_session='));
     if (!sessionCookie) return null;
-    const sessionId = decodeURIComponent(sessionCookie.slice('azikanbal_session='.length));
-    const session = authSessions.get(sessionId);
+    let sessionId;
+    try { sessionId = decodeURIComponent(sessionCookie.slice('azikanbal_session='.length)); } catch { return null; }
+    const session = authSessionStore.get(sessionId);
     if (!session) return null;
-    if (Date.now() >= session.expiresAt) {
-        authSessions.delete(sessionId);
-        return null;
-    }
-    if (session.email !== AUTH_ADMIN_EMAIL && !readAuthorizedEmails().includes(session.email)) {
-        authSessions.delete(sessionId);
-        return null;
-    }
+    if (req.res && !req.res.headersSent) setAuthCookie(req, req.res, sessionId, session.expiresAt);
     return { ...session, isAdmin: Boolean(AUTH_ADMIN_EMAIL && session.email === AUTH_ADMIN_EMAIL) };
 }
 
-function setAuthCookie(req, res, sessionId) {
+function setAuthCookie(req, res, sessionId, expiresAt) {
     const secure = req.secure || req.get('x-forwarded-proto') === 'https';
-    res.setHeader('Set-Cookie', `azikanbal_session=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(AUTH_SESSION_TTL_MS / 1000)}${secure ? '; Secure' : ''}`);
+    res.setHeader('Set-Cookie', `azikanbal_session=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.max(0, Math.floor((expiresAt - Date.now()) / 1000))}${secure ? '; Secure' : ''}`);
 }
 
 app.post('/api/auth/login', async (req, res) => {
@@ -1929,12 +1940,10 @@ app.post('/api/auth/login', async (req, res) => {
         if (!isAdmin && !readAuthorizedEmails().includes(email)) {
             return res.status(403).json({ success: false, error: '이 Google 이메일은 서비스 로그인 허용 목록에 없습니다.' });
         }
-        const sessionId = crypto.randomBytes(32).toString('base64url');
-        const session = { email, name: String(claims.name || ''), picture: String(claims.picture || ''), expiresAt: Date.now() + AUTH_SESSION_TTL_MS };
-        authSessions.set(sessionId, session);
-        setAuthCookie(req, res, sessionId);
+        const { token: sessionId, session } = authSessionStore.create({ email, name: String(claims.name || ''), picture: String(claims.picture || '') });
+        setAuthCookie(req, res, sessionId, session.expiresAt);
         res.set('Cache-Control', 'no-store');
-        return res.json({ success: true, user: { email, name: session.name, picture: session.picture, isAdmin } });
+        return res.json({ success: true, user: { email, name: session.name, picture: session.picture, isAdmin, reauthenticateAt: session.reauthenticateAt } });
     } catch (error) {
         console.error('[Auth] Google ID token verification failed:', error.response?.data || error.message);
         return res.status(401).json({ success: false, error: 'Google 계정 확인에 실패했습니다. 다시 로그인해 주세요.' });
@@ -1947,14 +1956,17 @@ app.get('/api/auth/session', (req, res) => {
     res.set('Cache-Control', 'no-store');
     res.json({
         authenticated: true,
-        user: { email: session.email, name: session.name, picture: session.picture, isAdmin: session.isAdmin }
+        user: { email: session.email, name: session.name, picture: session.picture, isAdmin: session.isAdmin, reauthenticateAt: session.reauthenticateAt }
     });
 });
 
 app.post('/api/auth/logout', (req, res) => {
     const cookieHeader = req.headers.cookie || '';
     const sessionCookie = cookieHeader.split(';').map(part => part.trim()).find(part => part.startsWith('azikanbal_session='));
-    if (sessionCookie) authSessions.delete(decodeURIComponent(sessionCookie.slice('azikanbal_session='.length)));
+    if (sessionCookie) {
+        try { authSessionStore.remove(decodeURIComponent(sessionCookie.slice('azikanbal_session='.length))); }
+        catch { return res.status(503).json({ error: '로그아웃 저장 실패. 다시 시도해 주세요.' }); }
+    }
     res.setHeader('Set-Cookie', 'azikanbal_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
     res.json({ success: true });
 });
@@ -1987,9 +1999,7 @@ app.delete('/api/auth/users/:email', requireAdmin, (req, res) => {
     const emails = readAuthorizedEmails();
     if (!emails.includes(email)) return res.status(404).json({ success: false, error: '등록된 이메일을 찾을 수 없습니다.' });
     writeAuthorizedEmails(emails.filter(item => item !== email));
-    for (const [sessionId, session] of authSessions) {
-        if (session.email === email) authSessions.delete(sessionId);
-    }
+    authSessionStore.revoke(email);
     res.json({ success: true, emails: [...new Set([AUTH_ADMIN_EMAIL, ...readAuthorizedEmails()])].filter(Boolean) });
 });
 
@@ -2917,6 +2927,7 @@ async function getEfriendAccessToken(domain, appKey, secretKey) {
 
 app.listen(PORT, () => {
     supplyService.start();
+    marketSupplyService.start();
     breadthService.start();
     // Keep the daily archive current even when no chart is open.
     const refreshVolatilityArchive = () => Promise.allSettled([volatilityService.query('all'), sentimentService.query('all')]).then(results => results.forEach(result => { if (result.status === 'rejected') console.warn('[Risk] Archive refresh failed:', result.reason.message); }));

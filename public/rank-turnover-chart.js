@@ -26,7 +26,12 @@
             c.width = Math.round(w*dpr); c.height = Math.round(h*dpr); context.setTransform(dpr,0,0,dpr,0,0); context.clearRect(0,0,w,h);
             context.font = '12px Inter, sans-serif'; return {w,h};
         }
+        window.RankChartAxis.registerHover('turnover',()=>mode,()=>hover,key=>{
+            hover=geometry?.visible.find(t=>window.RankChartAxis.matchesHover(t,key,mode)) ?? null;
+            candlePointerY=null;tip.hidden=true;draw();
+        });
         function draw() {
+            window.RankChartAxis.candleLabel(candleArea,selectedMarket==='kosdaq'?'KOSDAQ':'KOSPI');
             {const view=window.RankChartAxis.sharedRange('turnover',dates,t=>t,mode,start,count,draw);start=view.start;count=view.count;}
             const n = Math.min(dates.length,count ?? dates.length); start = Math.max(0,Math.min(start,dates.length-n));
             const visible = dates.slice(start,start+n), indices = new Map(visible.map((t,i) => [t,i]));
@@ -229,11 +234,8 @@
                 const previous=drag;previous.endX=offset(event);drag=null;
                 if(c.hasPointerCapture(event.pointerId))c.releasePointerCapture(event.pointerId);
                 if(Math.abs(previous.endX-previous.startX)>10){
-                    if(previous.endX>previous.startX){
-                        const first=Math.floor((previous.startX-geometry.left)/(geometry.right-geometry.left)*(previous.count-1));
-                        const last=Math.ceil((previous.endX-geometry.left)/(geometry.right-geometry.left)*(previous.count-1));
-                        count=Math.min(dates.length,Math.max(Math.min(10,dates.length),last-first+1));start=Math.min(dates.length-count,previous.start+first);
-                    }else{start=0;count=null;}
+                    if(previous.endX<previous.startX){start=0;count=null;}
+                    window.RankChartAxis.selectViewport('turnover',(previous.startX-geometry.left)/(geometry.right-geometry.left),(previous.endX-geometry.left)/(geometry.right-geometry.left));
                 }
                 draw();if(refreshPending)window.refreshRankTurnoverChart();
             });

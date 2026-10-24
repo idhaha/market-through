@@ -2,7 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { createSupplyService, quantity, timestamp, collectingAt } = require('../../supply-service');
+const { createSupplyService, quantity, timestamp, collectingAt, investorObservationAt } = require('../../supply-service');
 const { createSupplyStore } = require('../../supply-store');
 
 const today = '20261020';
@@ -41,7 +41,29 @@ test('sign parsing preserves missing vs zero and collecting hours use Korea time
     assert.equal(collectingAt(timestamp(today, '080000')), true);
     assert.equal(collectingAt(timestamp(today, '200100')), true);
     assert.equal(collectingAt(timestamp(today, '200200')), false);
+    assert.equal(investorObservationAt(timestamp(today, '153100')), true);
+    assert.equal(investorObservationAt(timestamp(today, '153200')), false);
     assert.equal(collectingAt(timestamp('20261018', '101500')), false);
+});
+test('after close rechecks investors once, then continues program minute storage', async t => {
+    let investor = { ind_invsr: '+10', frgnr_invsr: '--20', orgn: '+30' }, program = '--40', programTime = '153000';
+    const f = fixture(t, api => {
+        if (api === 'ka10060') return { data: { stk_invsr_orgn_chart: [investorRow(investor)] }, headers: {} };
+        if (api === 'ka90008') return { data: { stk_tm_prm_trde_trnsn: [{ tm: programTime, prm_netprps_qty: program }] }, headers: {} };
+        return normal(api);
+    });
+    await f.service.configure(['005930'], 0); await f.service.collect();
+    f.setTime(timestamp(today, '153000')); await f.service.collect();
+    f.setTime(timestamp(today, '153100')); await f.service.collect();
+    assert.equal((await f.service.query({ code: '005930', mode: 'minute' })).points.length, 3, 'program remains stored every minute after the investor close');
+    investor = { ind_invsr: '+11', frgnr_invsr: '--21', orgn: '+31' };
+    f.setTime(timestamp(today, '153100')); await f.service.collect();
+    program = '--41'; programTime = '153200'; f.setTime(timestamp(today, '153200')); await f.service.collect();
+    f.setTime(timestamp(today, '153300')); await f.service.collect();
+    const points = (await f.service.query({ code: '005930', mode: 'minute' })).points;
+    assert.deepEqual(points.map(point => [point.individual, point.foreign, point.institution, point.program]), [[10, -20, 30, undefined], [10, -20, 30, -40], [11, -21, 31, -40], [undefined, undefined, undefined, -41], [undefined, undefined, undefined, -41]]);
+    assert.equal(f.calls.filter(call => call.headers['api-id'] === 'ka10060').length, 4, 'initial observation plus 15:30 and two 15:31 calls only');
+    assert.equal(f.calls.filter(call => call.headers['api-id'] === 'ka90008').length, 6);
 });
 test('five background stocks persist, one row per minute, restart, and removed archives survive', async t => {
     const f = fixture(t, normal), codes = ['005930', '000660', '035420', '035720', '005380'];
@@ -303,4 +325,53 @@ test('10:30 final probe can confirm opening and start collection immediately', a
     await f.service.configure(['005930'],0); await f.service.collect();
     assert.equal(f.service.summary().market_confirmed,true);
     assert.equal(f.service.store.points('005930','2026-10-20').length,1);
+});
+
+
+test('daily refresh reuses historical pages and only reloads the latest two trading dates across day rollover',async t=>{
+    let nextDay=false;
+    const f=fixture(t,(api,body,headers)=>{
+        const recent=nextDay?['20261021','20261020']:['20261020','20261019'];
+        const old=['20261016','20261015'];
+        if(api==='ka10081')return {data:{stk_dt_pole_chart_qry:[...recent,...old].map(dt=>({dt,open_pric:'100',high_pric:'120',low_pric:'90',cur_prc:'110'}))},headers:{}};
+        const field=api==='ka10060'?'stk_invsr_orgn_chart':'stk_daly_prm_trde_trnsn';
+        const dates=headers['next-key']?old:recent;
+        return {data:{[field]:dates.map(dt=>api==='ka10060'?investorRow({dt}):{dt,prm_netprps_qty:'-40'})},headers:headers['next-key']?{}:{'cont-yn':'Y','next-key':'older'}};
+    });
+    f.setTime(timestamp(today,'220000'));f.service.store.configure([{code:'005930',name:'삼성전자'}],0);
+    const first=await f.service.query({code:'005930'});assert.equal(f.calls.length,5);
+    f.setTime(timestamp(today,'220101'));
+    const refreshed=await f.service.query({code:'005930'});
+    assert.equal(f.calls.length,8,'Only one anchor + one page per investor/program API after cache expiry');
+    assert.deepEqual(refreshed.points,first.points);
+    assert.ok(f.calls.slice(5).every(c=>!c.headers['next-key']));
+    nextDay=true;f.setTime(timestamp('20261021','000100'));
+    const rolled=await f.service.query({code:'005930'});
+    assert.equal(f.calls.length,11);assert.equal(rolled.points.at(-1).t,timestamp('20261021'));
+    assert.ok(f.calls.slice(8).every(c=>!c.headers['next-key']));
+    assert.deepEqual(fs.readdirSync(f.directory),['watchlist.json'],'No daily cache is written to disk');
+});
+
+test('historical daily pages remain cached after latest-data cache expiry',async t=>{
+    const f=fixture(t,(api)=>{
+        if(api==='ka10081')return {data:{stk_dt_pole_chart_qry:[{dt:'20261016',open_pric:'100',high_pric:'120',low_pric:'90',cur_prc:'110'}]},headers:{}};
+        return api==='ka10060'?{data:{stk_invsr_orgn_chart:[investorRow({dt:'20261016'})]},headers:{}}:{data:{stk_daly_prm_trde_trnsn:[{dt:'20261016',prm_netprps_qty:'-40'}]},headers:{}};
+    });
+    f.setTime(timestamp(today,'220000'));f.service.store.configure([{code:'005930',name:'삼성전자'}],0);
+    await f.service.query({code:'005930',cursor:'20261016'});const calls=f.calls.length;
+    f.setTime(timestamp(today,'220101'));await f.service.query({code:'005930',cursor:'20261016'});assert.equal(f.calls.length,calls);
+});
+
+test('progressive daily exposes investor data while program is blocked and shares one job across polling callers',async t=>{
+    let release,started;
+    const gate=new Promise(resolve=>{release=resolve;}), programStarted=new Promise(resolve=>{started=resolve;});
+    t.after(()=>release());
+    const f=fixture(t,async(api,body)=>{if(api==='ka90013'){started();await gate;}return normal(api,body);});
+    f.setTime(timestamp(today,'220000'));f.service.store.configure([{code:'005930',name:'삼성전자'}],0);
+    const first=await f.service.query({code:'005930',progressive:'1'});assert.equal(first.pending,true);assert.equal(first.candles.length,1);
+    await programStarted;
+    const partial=await f.service.query({code:'005930',progressive:'1'});
+    assert.equal(partial.pending,true);assert.equal(partial.points[0].foreign,-20);assert.equal(partial.points[0].program,undefined);
+    await f.service.query({code:'005930',progressive:'1'});assert.equal(f.calls.length,3);
+    release();const final=await f.service.query({code:'005930'});assert.equal(final.points[0].program,-40);assert.equal(f.calls.length,3);
 });

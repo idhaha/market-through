@@ -11,7 +11,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=requ
  if(url.pathname==='/api/adr/history')return route.fulfill({json:{series:[]}});
  return route.fulfill({contentType:'text/html',body:fs.readFileSync('public/index.html','utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'').replace(/<link\b[^>]*>/gi,'')});});
  await page.goto('http://drag.test/');await page.addStyleTag({path:'public/style.css'});
- await page.evaluate(INDEPENDENT=>{document.querySelector('#tabContents').style.display='block';document.querySelector('#loginOverlay').style.display='none';window.rankIndependentClient=INDEPENDENT;if(!INDEPENDENT){const panel=document.createElement('section');panel.id='rankBreadthChartPanel';document.querySelector('.rank-chart-row').append(panel);}
+ await page.evaluate(INDEPENDENT=>{Date.now=()=>Date.parse('2026-10-23T10:00:00+09:00');document.querySelector('#tabContents').style.display='block';document.querySelector('#loginOverlay').style.display='none';window.rankIndependentClient=INDEPENDENT;if(!INDEPENDENT){const panel=document.createElement('section');panel.id='rankBreadthChartPanel';document.querySelector('.rank-chart-row').append(panel);}
  const p=CanvasRenderingContext2D.prototype,clear=p.clearRect,line=p.lineTo,fill=p.fillRect;
  p.clearRect=function(...a){this.canvas.dragRect=null;this.canvas.maxLineX=0;return clear.apply(this,a)};
  p.lineTo=function(x,y){this.canvas.maxLineX=Math.max(this.canvas.maxLineX,x);return line.call(this,x,y)};

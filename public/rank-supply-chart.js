@@ -5,6 +5,10 @@
     const colors = { individual: '#339af0', foreign: '#e11d48', institution: '#16a34a', program: '#8b5cf6' };
     const dayKey = t => new Date(t + 9 * 3600000).toISOString().slice(0, 10);
     const clock = t => new Date(t + 9 * 3600000).toISOString().slice(11, 16);
+    const afterInvestorClose = t => {
+        const clock = new Date(t + 9 * 3600000);
+        return clock.getUTCHours() * 60 + clock.getUTCMinutes() > 930;
+    };
     const format = (n, signed = true) => {
         if (!Number.isFinite(n)) return '미제공';
         const thousands = Math.abs(n) >= 1000;
@@ -20,6 +24,24 @@
         }
         return [...points.values()].sort((a,b) => a.t - b.t);
     }
+    function displayFlow(source, mode) {
+        if (mode !== 'minute') return source;
+        const latest = new Map();
+        return source.map(point => {
+            const next = { ...point };
+            for (const field of ['individual', 'foreign', 'institution']) {
+                if (Number.isFinite(point[field])) latest.set(field, { value: point[field], at: point.t, day: dayKey(point.t) });
+                else {
+                    const previous = latest.get(field);
+                    if (Number.isFinite(point.program) && afterInvestorClose(point.t) && previous?.day === dayKey(point.t)) {
+                        next[field] = previous.value;
+                        next[`${field}_carried_from`] = previous.at;
+                    }
+                }
+            }
+            return next;
+        });
+    }
     async function request(url, options) {
         const response = await fetch(url, options), data = await response.json();
         if (!response.ok || !data.success) throw Object.assign(new Error(data.error || '수급 조회 실패'), { status: response.status });
@@ -31,7 +53,7 @@
         const panel = document.createElement('section');
         panel.id = 'rankSupplyChartPanel'; panel.className = 'panel rank-adr-panel rank-supply-panel';
         panel.setAttribute('aria-label', '종목별 수급 차트');
-        panel.innerHTML = `<div class="concentration-chart-header"><h2>수급</h2><button type="button" data-action="add-stock" aria-haspopup="dialog" aria-expanded="false">+ 종목 추가</button></div>
+        panel.innerHTML = `<div class="concentration-chart-header"><h2>종목 수급</h2><button type="button" data-action="add-stock" aria-haspopup="dialog" aria-expanded="false">+ 종목 추가</button></div>
             <div class="rank-adr-controls"><select class="supply-stock-select" aria-label="수급 종목 선택"></select><button type="button" data-mode="day" class="active" aria-pressed="true">일봉</button><button type="button" data-mode="minute" aria-pressed="false">1분봉(누적)</button>
             <button type="button" class="concentration-candle-toggle" aria-expanded="false">캔들차트</button></div>
             <div class="supply-legend">${series.map(s => `<button type="button" data-series="${s}" aria-label="${names[s]} 표시" title="${names[s]} 표시 전환" aria-pressed="true" style="color:${colors[s]}"><span>${Array.from(names[s])[0]}</span><output>—</output></button>`).join('')}</div>
@@ -107,12 +129,13 @@
             context.font = '12px Inter, sans-serif'; return { w, h };
         }
         function draw() {
+            window.RankChartAxis.candleLabel(candleArea,config.archive.find(stock=>stock.code===selected)?.name || selected);
             const { w, h } = surface(canvas, ctx);
             {const view=window.RankChartAxis.sharedRange('supply',points,p=>p.t,mode,start,count,draw);start=view.start;count=view.count;}
             const n = Math.min(points.length, count ?? points.length);
             start = Math.max(0, Math.min(start, points.length - n));
-            const rows = points.slice(start, start + n), indices = new Map(rows.map((p, i) => [p.t, i]));
-            const left = 12, right = w - 82, top = 10, bottom = h - 34;
+            const rows = displayFlow(points, mode).slice(start, start + n), indices = new Map(rows.map((p, i) => [p.t, i]));
+            const {left,right}=window.RankChartAxis.plotBounds('supply',w,12,w-82), top = 10, bottom = h - 34;
             const sessionX=window.RankChartAxis.sessionX(rows,p=>p.t,left,right,mode==='minute',mode==='day');
             const x = t => sessionX?sessionX(t):left + indices.get(t) / Math.max(1, n - 1) * (right - left);
             slider.max = String(points.length - n); slider.value = String(start); slider.disabled = n >= points.length;
@@ -147,9 +170,20 @@
                 context.save(); context.strokeStyle = '#b8c1cc'; context.lineWidth = 1; context.setLineDash([3,5]);
                 boundaryXs.forEach(px => { context.beginPath(); context.moveTo(px,upper); context.lineTo(px,lower); context.stroke(); }); context.restore();
             }
-            grid(ctx, w, min, max, y);
+            const lanes = new Map();
+            if (mode === 'day') {
+                const laneHeight=(bottom-top)/4;
+                ['program','foreign','institution','individual'].forEach((field,i)=>{
+                    const zero=top+laneHeight*(i+.5);
+                    const values=rows.map(p=>p[field]).filter(Number.isFinite);
+                    const extent=Math.max(1,...values.map(Math.abs));
+                    lanes.set(field,{zero,y:value=>zero-value/extent*(laneHeight/2-9)});
+                    ctx.strokeStyle='#b8c1cc';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(left,zero);ctx.lineTo(right,zero);ctx.stroke();
+                    ctx.fillStyle=colors[field];ctx.textAlign='right';ctx.save();ctx.textBaseline='middle';ctx.fillText(names[field],w-4,zero);ctx.restore();
+                });
+            } else grid(ctx, w, min, max, y);
             boundaries(ctx,top,bottom);
-            if (values.length) {
+            if (mode !== 'day' && values.length) {
                 ctx.strokeStyle = '#94a3b8'; ctx.beginPath(); ctx.moveTo(left, y(0)); ctx.lineTo(right, y(0)); ctx.stroke();
             }
             const ticks = window.RankChartAxis.eightTick(ctx,window.RankChartAxis.ticks(ctx, rows, p=>p.t, p=>x(p.t), left, right, mode),left,right,mode==='minute',window.RankChartAxis.sessionStartLabel(rows,p=>p.t));
@@ -167,6 +201,13 @@
                 button.querySelector('output').title = last ? `${dayKey(last.t)} ${clock(last.t)} 기준` : '관측값 없음';
                 button.querySelector('output').style.color = colors[s];
                 if (!visibleSeries.has(s)) return;
+                if (mode === 'day') {
+                    const lane=lanes.get(s), positions=rows.map(p=>x(p.t));
+                    const spacing=positions.length>1?Math.min(...positions.slice(1).map((v,i)=>v-positions[i])):8;
+                    const width=Math.max(1,Math.min(12,spacing*.7));
+                    rows.forEach(p=>{if(!Number.isFinite(p[s]) || p[s]===0)return;const py=lane.y(p[s]);ctx.fillStyle=p[s]>0?'#e11d48':'#2563eb';ctx.fillRect(x(p.t)-width/2,Math.min(lane.zero,py),width,Math.max(1,Math.abs(py-lane.zero)));});
+                    return;
+                }
                 ctx.strokeStyle = colors[s]; ctx.lineWidth = 2; ctx.beginPath(); let previous;
                 rows.forEach(p => {
                     if (!Number.isFinite(p[s])) { previous = null; return; }
@@ -205,8 +246,9 @@
                 info.replaceChildren(document.createTextNode(`${dayKey(hover)}${mode === 'minute' ? ` ${clock(hover)}` : ''}`));
                 series.forEach(s => {
                     const label = document.createElement('span'); label.style.color = colors[s];
-                    label.textContent = ` · ${names[s]} ${format(point[s])}`; info.append(label);
-                    if (visibleSeries.has(s) && Number.isFinite(point[s])) valueBadge(ctx, point[s], y(point[s]), colors[s], h, format(point[s]));
+                    const carriedAt = point[`${s}_carried_from`];
+                    label.textContent = ` · ${names[s]} ${format(point[s])}${Number.isFinite(carriedAt) ? ` (${clock(carriedAt)} 최종 관측값)` : ''}`; info.append(label);
+                    if (mode !== 'day' && visibleSeries.has(s) && Number.isFinite(point[s])) valueBadge(ctx, point[s], y(point[s]), colors[s], h, format(point[s]));
                 });
                 info.hidden = false;
             }
@@ -287,6 +329,10 @@
                 if (refreshPending && !refreshing && !loading && !drag) { refreshPending = false; void window.refreshRankSupplyChart(); }
             }
         }
+        window.RankChartAxis.registerHover('supply',()=>mode,()=>hover,key=>{
+            hover=geometry?.rows.find(p=>window.RankChartAxis.matchesHover(p.t,key,mode))?.t ?? null;
+            info.hidden=true;draw();
+        });
         let todayOnly = true;
         window.RankChartAxis.todayButton(panel,'[data-mode="minute"]',()=>mode,()=>{todayOnly=true;draw();void load();});
         async function load(append = false) {
@@ -299,7 +345,9 @@
             if(append){window.RankChartAxis.showHistory();todayOnly=false;}
             loading = true; chartMessage = append ? '과거 수급 조회 중…' : '수급 조회 중…'; setStatus(); draw();
             try {
-                const params = new URLSearchParams({ code: selected, mode, ...(append ? { cursor: nextCursor } : {}) });
+                let firstResponse=true;
+                do {
+                const params = new URLSearchParams({ code: selected, mode, ...(mode === 'day' ? { progressive: '1' } : {}), ...(append ? { cursor: nextCursor } : {}) });
                 const result = await request(`/api/supply/chart?${params}`, { signal: current.signal });
                 if (id !== revision) return;
                 const followLatest = start + Math.min(points.length, count ?? points.length) >= points.length, oldAnchor = points[start]?.t;
@@ -309,7 +357,7 @@
                     candles = [...new Map([...candles, ...(result.candles || [])].map(p => [p.t, p])).values()].sort((a,b) => a.t - b.t);
                 }
                 if (append || !historyLoaded) { cursor = result.cursor; hasMore = result.has_more === true; historyLoaded = true; }
-                if (append) { start = 0; count = null; }
+                if (append && firstResponse) { start = 0; count = null; }
                 if (!append && count != null) start = followLatest ? Math.max(0, points.length - count) : Math.max(0, points.findIndex(p => p.t >= oldAnchor));
                 if (mode === 'minute') {
                     for (const point of fresh) minuteDays.add(dayKey(point.t));
@@ -321,9 +369,16 @@
                 const message = mode === 'minute' ? `${period} · 1분 누적 · 미수집 구간 제외` : `일별 순매수수량 · ${points.length.toLocaleString()}봉 · 단위: 주/천주`;
                 const warnings = (result.warnings || []).filter(text => !text.startsWith('1분마다 관측한 당일 누적 순매수수량'));
                 chartMessage = `${hasFlow ? message : '수급 기록 없음'}${warnings.length ? ` · ${warnings.join(' · ')}` : ''}${result.status?.error && result.date === dayKey(Date.now()) ? ` · ${result.status.error}` : ''}`;
+                if(result.pending)chartMessage=hasFlow?`${chartMessage} · 추가 조회 중…`:'가격 수신 · 수급 조회 중…';
                 window.setRankCardConnection?.(panel, !result.warnings?.some(text => /실패|오류/.test(text)));
                 hover = null; info.hidden = true; setStatus(); draw();
                 if (showCandles || mode === 'minute') await loadCandles();
+                publish();
+                firstResponse=false;
+                if (!result.pending) break;
+                await new Promise(resolve=>setTimeout(resolve,400));
+                if (id !== revision || current.signal.aborted) return;
+                } while(true);
             } catch (error) {
                 if (error.name === 'AbortError' || id !== revision) return;
                 chartMessage = `${error.message}${points.length ? ' · 이전 데이터 표시' : ''}`; setStatus();
@@ -394,11 +449,8 @@
                 const previous = drag; previous.to = offset(event); drag = null;
                 if (c.hasPointerCapture(event.pointerId)) c.releasePointerCapture(event.pointerId);
                 if (Math.abs(previous.to - previous.from) > 10) {
-                    if (previous.to > previous.from) {
-                        const first = Math.floor((previous.from - geometry.left) / (geometry.right - geometry.left) * (previous.n - 1));
-                        const last = Math.ceil((previous.to - geometry.left) / (geometry.right - geometry.left) * (previous.n - 1));
-                        count = Math.max(Math.min(10, points.length), last - first + 1); start = Math.min(points.length - count, previous.start + first);
-                    } else { start = 0; count = null; }
+                    if (previous.to < previous.from) { start = 0; count = null; }
+                    window.RankChartAxis.selectViewport('supply', (previous.from-geometry.left)/(geometry.right-geometry.left), (previous.to-geometry.left)/(geometry.right-geometry.left));
                 }
                 draw(); if (refreshPending) window.refreshRankSupplyChart();
             });

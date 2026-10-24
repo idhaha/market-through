@@ -9,19 +9,22 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=20261023_footer21">
-    <script src="rank-connection-status.js?v=20261023_footer21" defer></script>
+    <link rel="stylesheet" href="style.css?v=20261024_adrorder">
+    <script src="rank-connection-status.js?v=20261024_market_supply2" defer></script>
     <script>window.rankManagedChartRefresh = true;</script>
-    <script src="rank-chart-axis.js?v=20261023_slider28" defer></script>
-    <script src="concentration-chart.js?v=20261023_slider28" defer></script>
-    <script src="rank-adr-chart.js?v=20261023_slider28" defer></script>
-    <script src="rank-turnover-chart.js?v=20261023_slider28" defer></script>
-    <script src="rank-volatility-chart.js?v=20261023_slider28" defer></script>
+    <script src="rank-chart-axis.js?v=20261024_candlelabels" defer></script>
+    <script src="concentration-chart.js?v=20261024_candlelabels" defer></script>
+    <script src="rank-adr-chart.js?v=20261024_candlelabels" defer></script>
+    <script src="rank-turnover-chart.js?v=20261024_candlelabels" defer></script>
+    <script src="rank-volatility-chart.js?v=20261024_breadth_marketnames" defer></script>
+    <script src="rank-table-fold.js?v=20261024_v1" defer></script>
+    <script src="auth-session-status.js?v=20261024_v1" defer></script>
     <script src="server-storage.js?v=20261020_v1" defer></script>
-    <script src="rank-supply-chart.js?v=20261023_slider28" defer></script>
+    <script src="rank-supply-chart.js?v=20261024_candlelabels" defer></script>
+    <script src="rank-market-supply-chart.js?v=20261024_marketnames" defer></script>
     <script src="rank-independent-main.js?v=20261023_isolated26" defer></script>
     <script src="us-links.js?v=20261018_v13" defer></script>
-    <script src="app.js?v=20261023_refresh22" defer></script>
+    <script src="app.js?v=20261024_auth1" defer></script>
     <script src="tab-scroll-layout.js?v=20261018_v26" defer></script>
     <!-- Quill Editor -->
     <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
@@ -57,6 +60,7 @@
         </aside>
 
         <div class="right-controls">
+            <span id="reauthCountdown" class="server-storage" style="margin-right:12px" hidden></span>
             <span id="serverStorage" class="server-storage" role="status">서버 용량 확인 중…</span>
             <button id="bulkUpload" class="btn-icon header-icon server-transfer-icon" title="현재 서버 프로젝트 폴더에서 전체 설정 불러오기" aria-label="서버에서 전체 설정 불러오기">
                 <span class="server-transfer-glyph" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M16 21V3m0 0 7 7m-7-7-7 7M5 25v4h22v-4" /></svg><span>서버</span></span>

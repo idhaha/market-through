@@ -74,17 +74,18 @@
             <div class="concentration-chart-footer rank-adr-zoom"><input type="range" min="0" max="0" value="0" aria-label="변동성 차트 과거 구간 이동" disabled><div class="concentration-controls"><button type="button" aria-label="변동성 차트 축소">−</button><button type="button" aria-label="변동성 차트 확대">+</button></div></div>
             <p class="rank-adr-status" role="status"></p>`;
         if (breadth) {
-            panel.querySelector('h2').textContent = '신고가-신저가 (KOSPI+KOSDAQ)';
+            panel.querySelector('h2').textContent = '신고/신저';
             panel.querySelector('h2').removeAttribute('aria-describedby');
             panel.querySelector('h2').removeAttribute('tabindex');
             panel.querySelector('h2').classList.remove('volatility-help-trigger');
             panel.querySelector('.volatility-guide').remove();
-            panel.innerHTML = panel.innerHTML.replaceAll('volatilityCandleArea', 'breadthCandleArea').replaceAll('data-volatility="vkospi"', 'data-volatility="highs"').replaceAll('data-volatility="vix"', 'data-volatility="lows"').replaceAll('● VKOSPI', '● 신고가').replaceAll('● VIX', '● 신저가').replaceAll('변동성 차트', '신고가·신저가 차트').replaceAll('VKOSPI 및 VIX 일별 변동성 지수', 'KOSPI+KOSDAQ 통합시장 신고가 및 신저가 종목 수');
+            panel.innerHTML = panel.innerHTML.replaceAll('volatilityCandleArea', 'breadthCandleArea').replaceAll('data-volatility="vkospi"', 'data-volatility="highs"').replaceAll('data-volatility="vix"', 'data-volatility="lows"').replaceAll('● VKOSPI', '● 신고가').replaceAll('● VIX', '● 신저가').replaceAll('변동성 차트', '신고가·신저가 차트').replaceAll('VKOSPI 및 VIX 일별 변동성 지수', '선택 시장 신고가 및 신저가 종목 수 (KRX+NXT 통합)');
             panel.querySelector('.rank-adr-ranges').innerHTML = '<button type="button" data-breadth-mode="day" class="active" aria-pressed="true">일</button><button type="button" data-breadth-mode="minute" aria-pressed="false">1분봉</button><button type="button" data-breadth-more aria-label="신고가·신저가 과거 추가조회" disabled>▥+</button>';
             const more = panel.querySelector('[data-breadth-more]');
             more.classList.add('concentration-icon-button');
             const icon = document.querySelector('#concentrationMore svg');
             if (icon) more.replaceChildren(icon.cloneNode(true));
+            panel.querySelector('h2').title = '코스피 신고가·신저가 (KRX+NXT 통합)';
             panel.querySelector('.concentration-chart-header').insertAdjacentHTML('beforeend', '<span class="breadth-notice"></span>');
             panel.querySelector('.volatility-candle-label').textContent = 'KOSPI';
             panel.querySelector('.rank-adr-candle-area canvas').setAttribute('aria-label', 'KOSPI 캔들차트');
@@ -208,6 +209,24 @@
         let pendingRefresh = false, resizeFrame;
         let breadthMode = 'day', breadthCursor = null, breadthLoading = false, pendingBreadthMode = null;
         const breadthPages = new Map();
+        let breadthMarket = 'kospi', pendingBreadthMarket = null;
+        try { breadthMarket = localStorage.getItem('rankBreadthMarketV1') || 'kospi'; } catch {}
+        if (!['kospi','kosdaq','all'].includes(breadthMarket)) breadthMarket='kospi';
+        if (breadth) {
+            const select=document.createElement('select');select.className='supply-stock-select';select.setAttribute('aria-label','신고가·신저가 시장 선택');
+            select.innerHTML='<option value="kospi">KOSPI</option><option value="kosdaq">KOSDAQ</option><option value="all">KOSPI+KOSDAQ</option>';
+            select.value=breadthMarket;panel.querySelector('.rank-adr-ranges').before(select);
+            select.addEventListener('change',()=>{
+                if(breadthLoading){pendingBreadthMarket=select.value;return;}
+                changeBreadthMarket(select.value);
+            });
+        }
+        function changeBreadthMarket(market) {
+            breadthMarket=market;breadthPages.clear();breadthCursor=null;dates=[];ids.forEach(id=>data[id]=[]);start=0;count=null;hover=null;
+            try{localStorage.setItem('rankBreadthMarketV1',market);}catch{}
+            panel.querySelector('h2').title=({kospi:'KOSPI',kosdaq:'KOSDAQ',all:'KOSPI+KOSDAQ'})[market]+' 신고가·신저가 (KRX+NXT 통합)';
+            draw();void refreshBreadth();
+        }
         let candlePointerY = null;
         const dateKey = t => new Date(t + 9 * 3600000).toISOString().slice(0, 10);
         function surface(target, context) {
@@ -216,7 +235,12 @@
             context.setTransform(dpr, 0, 0, dpr, 0, 0); context.clearRect(0, 0, w, h); context.font = '12px Inter, sans-serif';
             return { w, h };
         }
+        window.RankChartAxis.registerHover(sentiment?'sentiment':breadth?'breadth':'volatility',()=>breadth?breadthMode:'day',()=>hover,key=>{
+            hover=geometry?.visible.find(d=>window.RankChartAxis.matchesHover(d,key,breadth?breadthMode:'day')) ?? null;
+            candlePointerY=null;tip.hidden=true;draw();
+        });
         function draw() {
+            window.RankChartAxis.candleLabel(candleArea,'KOSPI');
             {const view=window.RankChartAxis.sharedRange(sentiment?'sentiment':breadth?'breadth':'volatility',dates,d=>d,breadth?breadthMode:'day',start,count,draw);start=view.start;count=view.count;}
             const n = Math.min(dates.length, count ?? dates.length);
             start = Math.max(0, Math.min(start, dates.length - n));
@@ -347,7 +371,7 @@
             try {
                 const cursors = more ? [breadthCursor] : [...new Set(['', ...breadthPages.keys()])];
                 for (const cursor of cursors) {
-                    const response = await fetch(`/api/risk/breadth?mode=${breadthMode}&cursor=${encodeURIComponent(cursor || '')}`);
+                    const response = await fetch(`/api/risk/breadth?market=${breadthMarket}&mode=${breadthMode}&cursor=${encodeURIComponent(cursor || '')}`);
                     const result = await response.json(); if (!response.ok) throw new Error(result.error || '신고저가 조회 실패');
                     breadthPages.set(cursor || '', result);
                 }
@@ -368,7 +392,9 @@
                 candleKey = ''; draw(); void loadCandles();
             } catch (error) { status.textContent = error.message; window.setRankCardConnection?.(panel, false); }
             finally {
-                breadthLoading = false; button.disabled = !breadthCursor;
+                breadthLoading = false;
+                if(pendingBreadthMarket){const market=pendingBreadthMarket;pendingBreadthMarket=null;changeBreadthMarket(market);}
+                button.disabled = !breadthCursor;
                 canvas.classList.remove('is-loading'); candle.classList.remove('is-loading');
                 canvas.parentElement.setAttribute('aria-busy', 'false');
                 if (pendingBreadthMode) {
@@ -486,11 +512,11 @@
             });
             const finish = event => {
                 if (drag?.target !== target || drag.id !== event.pointerId) return;
-                const previous = drag; drag = null;
+                const previous = drag; if(event.type==='pointerup')previous.to=offset(event); drag = null;
                 if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId);
                 if (event.type === 'pointerup' && Math.abs(previous.to - previous.from) > 10) {
-                    if (previous.to > previous.from) { const first = Math.floor((previous.from - geometry.left) / (geometry.right - geometry.left) * (previous.count - 1)), last = Math.ceil((previous.to - geometry.left) / (geometry.right - geometry.left) * (previous.count - 1)); count = Math.min(dates.length, Math.max(Math.min(10, dates.length), last - first + 1)); start = previous.start + first; }
-                    else { start = 0; count = null; }
+                    if(previous.to<previous.from){start=0;count=null;}
+                    window.RankChartAxis.selectViewport(sentiment?'sentiment':breadth?'breadth':'volatility',(previous.from-geometry.left)/(geometry.right-geometry.left),(previous.to-geometry.left)/(geometry.right-geometry.left));
                 }
                 draw(); if (pendingRefresh) window[refreshName]();
             };

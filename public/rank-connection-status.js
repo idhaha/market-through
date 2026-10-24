@@ -4,7 +4,7 @@
         ['#transactionTable', '키움'], ['#stockTable', '키움'],
         ['#efriendStockTable', '한투'], ['#watchlistTable', '키움'],
         ['#concentrationChartPanel', '키움'], ['#rankAdrChartPanel', 'jusikbot'],
-        ['#rankTurnoverChartPanel', '키움'], ['#rankSupplyChartPanel', '키움'],
+        ['#rankTurnoverChartPanel', '키움'], ['#rankSupplyChartPanel', '키움'], ['#rankMarketSupplyChartPanel', '한투'],
         ['#rankVolatilityChartPanel', 'jusikbot'], ['#rankBreadthChartPanel', '키움'],
         ['#rankSentimentChartPanel', 'jusikbot']
     ];

@@ -586,6 +586,7 @@ function unlockApp(user = null) {
     const tabContents = document.getElementById('tabContents');
 
     if (user) currentAuthUser = user;
+    window.updateAuthSessionStatus?.(user);
     if (loginOverlay) loginOverlay.style.display = 'none';
     if (tabContainer) tabContainer.style.display = 'flex';
     if (tabContents) tabContents.style.display = 'block';

@@ -15,6 +15,8 @@ const assert = require('node:assert/strict');
         await page.addStyleTag({ content: fs.readFileSync('public/style.css', 'utf8') });
         await page.addStyleTag({ content: fs.readFileSync('public/rank-independent.css', 'utf8') });
         await page.evaluate(() => {
+            // Keep the minute-chart "today" viewport aligned with the fixture dates.
+            Date.now = () => Date.parse('2026-10-01T06:00:00.000Z');
             window.verticalDateLines = [];
             const prototype = CanvasRenderingContext2D.prototype;
             const begin = prototype.beginPath, move = prototype.moveTo, line = prototype.lineTo, stroke = prototype.stroke;
@@ -39,6 +41,7 @@ const assert = require('node:assert/strict');
                 }))
             }));
         });
+        await page.addScriptTag({ content: fs.readFileSync('public/rank-chart-axis.js', 'utf8') });
         await page.addScriptTag({ content: fs.readFileSync('public/concentration-chart.js', 'utf8') });
         await page.evaluate(() => document.dispatchEvent(new Event('DOMContentLoaded')));
         await page.evaluate(() => selectRankChartStock({ code: '005930', name: '삼성전자', market: 'K' }));
@@ -48,7 +51,12 @@ const assert = require('node:assert/strict');
             ['concentrationCandleCanvas', 'concentrationCanvas'], 'Daily main and candle charts mark month boundaries');
         await page.evaluate(() => applyConcentrationDisplaySettings({ ...getConcentrationDisplaySettings(), mode: 'minute' }));
         await page.waitForFunction(() => getRankChartState().mode === 'minute' && !getRankChartState().busy);
-        await page.evaluate(() => { window.verticalDateLines = []; applyRankChartState(getRankChartState()); });
+        await page.evaluate(() => {
+            window.verticalDateLines = [];
+            window.RankChartAxis.showHistory();
+            applyRankChartState(getRankChartState());
+        });
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
         assert.deepEqual(await page.evaluate(() => [...new Set(window.verticalDateLines)].sort()),
             ['concentrationCandleCanvas', 'concentrationCanvas'], 'Minute charts retain date boundaries');
         const positions = () => page.evaluate(() => {
@@ -73,9 +81,14 @@ const assert = require('node:assert/strict');
         assert.equal(after.infoHeight, 20);
         assert.deepEqual(errors, []);
         const independent = await browser.newPage({ viewport: { width: 850, height: 1320 } });
+        independent.setDefaultTimeout(10000);
         await independent.addInitScript(() => {
             window.resizeMessages = [];
             window.chrome.webview = { postMessage: message => window.resizeMessages.push(message) };
+            if (!crypto.randomUUID) {
+                let sequence = 0;
+                crypto.randomUUID = () => `00000000-0000-4000-8000-${String(++sequence).padStart(12, '0')}`;
+            }
         });
         const points = Array.from({ length: 20 }, (_, index) => ({
             time: `202609${String(index + 1).padStart(2, '0')}`, value: 20 + index, stock_price: 1000
@@ -91,7 +104,10 @@ const assert = require('node:assert/strict');
             if (pathname.startsWith('/api/rank-independent/peer/')) {
                 const command = route.request().postDataJSON()?.command;
                 if (command?.type === 'display') { snapshot.display.candleOpen = command.candleOpen; snapshot.displayCommandId = command.id; }
-                return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ version: 1, snapshot, replies: [] }) });
+                const replies = command?.type === 'request' && command.path === '/api/concentration-chart'
+                    ? [{ id: command.id, status: 200, body: JSON.stringify({ success: true, market: 'K', cursor: null, has_more: false, points }) }]
+                    : [];
+                return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ version: 1, snapshot, replies }) });
             }
             const path = pathname === '/rank-independent.html' ? 'public/rank-independent.html' : `public${pathname}`;
             const contentType = path.endsWith('.css') ? 'text/css' : path.endsWith('.js') ? 'text/javascript' : 'text/html';
@@ -106,13 +122,8 @@ const assert = require('node:assert/strict');
         await stockInput.fill('에스');
         await independent.waitForTimeout(1100);
         assert.equal(await stockInput.inputValue(), '에스', 'Polling preserves a partially typed Korean stock name');
-        snapshot.chart.selection = { code: '000660', name: 'SK하이닉스' };
-        await independent.waitForFunction(() => getRankChartState().selection.code === '000660');
-        assert.equal(await stockInput.inputValue(), '에스', 'A remote selection updates the chart without replacing the active draft');
         await stockInput.blur();
-        assert.equal(await stockInput.inputValue(), 'SK하이닉스', 'Leaving an unsubmitted draft displays the latest selected stock');
-        snapshot.chart.selection = { code: '005930', name: '삼성전자' };
-        await independent.waitForFunction(() => document.getElementById('concentrationStockName').value === '삼성전자');
+        assert.equal(await stockInput.inputValue(), '삼성전자', 'Leaving an unsubmitted draft restores this window\'s selected stock');
         assert.equal(await independent.locator('#concentrationCandleArea').isVisible(), false, 'Initial main-window candle state is not imported');
         await independent.locator('#concentrationCandleToggle').click();
         await independent.evaluate(() => new Promise(resolve => { window.resizeMessages = []; window.dispatchEvent(new Event('rank-native-resize-complete')); requestAnimationFrame(() => requestAnimationFrame(resolve)); }));
@@ -179,14 +190,18 @@ const assert = require('node:assert/strict');
         const afterToggleGrowth = await rowHeights();
         assert.deepEqual(afterToggleGrowth, toggled, 'After toggling candles, manual growth still retains capped card heights');
         await independent.setViewportSize({ width: 440, height: 1100 });
-        assert.ok(await independent.evaluate(() => {
+        const narrowControl = await independent.evaluate(() => {
             const row = document.querySelector('.concentration-timeframe-row');
             const rate = document.getElementById('concentrationCurrentRate');
             const before = row.scrollLeft;
             row.scrollLeft = row.scrollWidth;
-            return row.scrollWidth > row.clientWidth + 20 && row.scrollLeft > before
-                && rate.getBoundingClientRect().height < 30 && getComputedStyle(rate).whiteSpace === 'nowrap';
-        }), 'Narrow window scrolls the control row while keeping the latest rate on one line');
+            return { scrollWidth: row.scrollWidth, clientWidth: row.clientWidth, before, after: row.scrollLeft,
+                rateHeight: rate.getBoundingClientRect().height, rateWhiteSpace: getComputedStyle(rate).whiteSpace };
+        });
+        const needsInnerScroll = narrowControl.scrollWidth > narrowControl.clientWidth + 20;
+        assert.ok((!needsInnerScroll || narrowControl.after > narrowControl.before)
+            && narrowControl.rateHeight < 30 && narrowControl.rateWhiteSpace === 'nowrap',
+        `Narrow window keeps the latest rate on one line and scrolls controls only when needed: ${JSON.stringify(narrowControl)}`);
         const narrowOverflow = await independent.evaluate(() => ({
             bodyWidth: document.body.scrollWidth, viewportWidth: innerWidth,
             bodyLeft: document.scrollingElement.scrollLeft,

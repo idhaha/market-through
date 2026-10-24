@@ -8,7 +8,7 @@
 
 **Request body**: `{ "credential": <Google ID token> }`
 
-**Response 200**: `{ "success": true, "user": { "email": string, "name": string, "picture": string, "isAdmin": boolean } }`
+**Response 200**: `{ "success": true, "user": { "email": string, "name": string, "picture": string, "isAdmin": boolean, "reauthenticateAt": number } }`
 
 **Response 400**: credential 누락 또는 문자열이 아님
 
@@ -16,13 +16,13 @@
 
 **Response 403**: Google 인증은 유효하지만 이메일이 허용 목록에 없음
 
-**Side effect**: `azikanbal_session` HttpOnly 쿠키 설정, 세션 만료 24시간. HTTPS 요청에는 Secure 속성 포함.
+**Side effect**: `azikanbal_session` HttpOnly 쿠키 설정, 최초 7일 만료, 인증 요청에서 시간당 갱신하되 최초 로그인부터 30일 상한. HTTPS 요청에는 Secure 속성 포함.
 
 ## GET /api/auth/session
 
 **Auth**: 공개 조회 절차; 유효 쿠키가 있으면 현재 허용 상태도 재검사
 
-**Response 200**: `{ "authenticated": true, "user": { "email": string, "name": string, "picture": string, "isAdmin": boolean } }`
+**Response 200**: `{ "authenticated": true, "user": { "email": string, "name": string, "picture": string, "isAdmin": boolean, "reauthenticateAt": number } }`
 
 **Response 401**: `{ "authenticated": false }`
 
@@ -68,7 +68,7 @@
 
 **Response 404**: 허용 목록에 없는 이메일
 
-**Side effect**: 허용 목록에서 제거하고 실행 중인 프로세스의 해당 계정 세션을 즉시 폐기한다.
+**Side effect**: 허용 목록에서 제거하고 해당 계정의 메모리·파일 세션을 폐기한다.
 
 ## Other /api routes
 
@@ -80,3 +80,11 @@
 - TLS 인증서 발급·갱신은 서버 운영 계층의 책임이다. Express에 별도의 인증서 관리 API를 추가하지 않는다.
 - HTTPS 프록시 요청은 원래 프로토콜을 Express에 전달해야 한다. 현재 쿠키 코드는 `req.secure` 또는 `X-Forwarded-Proto: https`이면 Secure 속성을 붙인다. 실제 Nginx 전달 설정 및 로그인 응답 쿠키 확인은 미완료다.
 - 로컬 HTTP 개발을 위한 기존 동작은 유지한다. 인증서 개인키는 API 응답이나 저장소에 포함하지 않는다.
+
+## 세션 영속화 및 기한 계약 (2026-10-24)
+
+- `user.reauthenticateAt`은 최초 로그인부터 30일 뒤의 Unix epoch 밀리초다. 시간당 연장이나 서버 재시작으로 변경하지 않는다.
+- 현재 세션 조회도 정상 인증 요청이며 슬라이딩 갱신 대상이다. 서버가 세션을 검사할 때 쿠키 수명을 실제 만료까지로 설정한다.
+- 세션 발급은 파일 저장 성공 후 응답한다. 현재 구현에서 저장 실패는 로그인 핸들러의 401 오류 경로로 처리된다. 갱신 저장 실패는 기존 세션 만료를 유지한다.
+- 로그아웃 저장 실패는 HTTP 503과 오류 메시지를 반환하며 성공 응답으로 처리하지 않는다.
+- 로그인·세션 응답은 `Cache-Control: no-store`이며 원본 토큰이나 해시는 JSON 응답에 포함하지 않는다. 원본은 HttpOnly 쿠키로만 전달한다.

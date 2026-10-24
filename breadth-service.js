@@ -4,7 +4,7 @@ const zlib = require('node:zlib');
 const { dayKey, failure } = require('./supply-store');
 const { collectingAt, timestamp, quantity } = require('./supply-service');
 
-function createBreadthService({ directory, legacyFile, http, getToken, supply, now = Date.now,
+function createBreadthService({ directory, legacyFile, legacyKospiDirectory, http, getToken, supply, now = Date.now,
     pause = ms => new Promise(resolve => setTimeout(resolve, ms)), log = console.warn }) {
     let running, timer, queue = Promise.resolve(), error = '', lastMinute;
     const cache = new Map();
@@ -27,7 +27,7 @@ function createBreadthService({ directory, legacyFile, http, getToken, supply, n
         const saved = JSON.parse(original);
         if (!Array.isArray(saved.points)) throw new Error('기존 신고가·신저가 자료 형식 오류');
         if (!fs.existsSync(file('jusikbot-backup.json'))) bytes('jusikbot-backup.json', original);
-        const points = saved.points.map(({ date, highs, lows }) => ({ date, highs, lows }));
+        const points = saved.points.map(({ date, highs, lows }) => ({ date, kospi: { highs, lows } }));
         write('daily.json', { points, legacyThrough: points.map(p => p.date).sort().at(-1) || null, integratedFrom: null });
     }
     function post(api, body, next = '') {
@@ -44,10 +44,10 @@ function createBreadthService({ directory, legacyFile, http, getToken, supply, n
         queue = task.catch(() => {}); return task;
     }
     async function snapshot() {
-        const counts = {};
+        const counts = { kospi: {}, kosdaq: {} };
         for (const [name, type] of [['highs', '1'], ['lows', '2']]) {
-            const codes = new Set();
-            for (const market of ['001', '101']) {
+            for (const [market, marketName] of [['001', 'kospi'], ['101', 'kosdaq']]) {
+                const codes = new Set();
                 let next = ''; const seen = new Set();
                 for (let page = 0; ; page++) {
                     if (page >= 100) throw new Error('신고저가 연속조회 한도 초과');
@@ -65,8 +65,8 @@ function createBreadthService({ directory, legacyFile, http, getToken, supply, n
                     if (!next || seen.has(next)) throw new Error('신고저가 연속조회 키 오류');
                     seen.add(next);
                 }
+                counts[marketName][name] = codes.size;
             }
-            counts[name] = codes.size;
         }
         return counts;
     }
@@ -74,7 +74,19 @@ function createBreadthService({ directory, legacyFile, http, getToken, supply, n
         const name = `${date}.json`;
         if (fs.existsSync(file(name))) return read(name, []);
         try { return JSON.parse(zlib.gunzipSync(fs.readFileSync(file(`${name}.gz`)))); }
-        catch (cause) { if (cause.code === 'ENOENT') return []; throw cause; }
+        catch (cause) {
+            if (cause.code !== 'ENOENT') throw cause;
+            if (!legacyKospiDirectory) return [];
+            const old = path.join(legacyKospiDirectory, name);
+            let rows;
+            try { rows=JSON.parse(fs.readFileSync(old,'utf8')); }
+            catch (e) {
+                if(e.code!=='ENOENT')throw e;
+                try {rows=JSON.parse(zlib.gunzipSync(fs.readFileSync(old+'.gz')));}
+                catch(e){if(e.code==='ENOENT')return [];throw e;}
+            }
+            return rows.map(p=>({t:p.t,kospi:{highs:p.highs,lows:p.lows}}));
+        }
     }
     function archive() {
         const today = dayKey(now()), clock = new Date(now() + 9 * 3600000), closed = clock.getUTCHours() * 60 + clock.getUTCMinutes() >= 1202;
@@ -127,10 +139,10 @@ function createBreadthService({ directory, legacyFile, http, getToken, supply, n
         })().catch(cause => { error = cause.message; log('[Breadth] ' + error); }).finally(() => { running = null; });
         return running;
     }
-    async function query({ mode = 'day', cursor = '' } = {}) {
-        if (!['day', 'minute'].includes(mode) || typeof cursor !== 'string' || cursor.length > 2048 || mode === 'day' && cursor && !/^\d{8}$/.test(cursor)) throw failure('잘못된 신고저가 조회 조건입니다.');
+    async function query({ mode = 'day', cursor = '', market = 'kospi' } = {}) {
+        if (!['kospi', 'kosdaq', 'all'].includes(market) || !['day', 'minute'].includes(mode) || typeof cursor !== 'string' || cursor.length > 2048 || mode === 'day' && cursor && !/^\d{8}$/.test(cursor)) throw failure('잘못된 신고저가 조회 조건입니다.');
         migrate();
-        const key = `${mode}:${cursor}`, cached = cache.get(key);
+        const key = `${market}:${mode}:${cursor}`, cached = cache.get(key);
         if (cached && cached.until > now()) return cached.promise;
         const promise = (async () => {
             const response = await post(mode === 'day' ? 'ka10081' : 'ka10080', { stk_cd: '005930_AL', upd_stkpc_tp: '0',
@@ -147,17 +159,19 @@ function createBreadthService({ directory, legacyFile, http, getToken, supply, n
                 if (!minutes.has(date) && mode === 'minute') minutes.set(date, new Map(minuteRows(date).map(p => [p.t, p])));
                 const value = mode === 'day' ? byDay.get(date) : minutes.get(date).get(Math.floor(t / 60000) * 60000);
                 const axis = mode === 'day' ? date : `${date} ${raw.slice(8, 10)}:${raw.slice(10, 12)}`;
-                points.set(axis, { date: axis, highs: value?.highs ?? null, lows: value?.lows ?? null });
+                const selected = market === 'all' ? Object.fromEntries(['highs', 'lows'].map(id => [id,
+                    Number.isFinite(value?.kospi?.[id]) && Number.isFinite(value?.kosdaq?.[id]) ? value.kospi[id] + value.kosdaq[id] : null])) : value?.[market];
+                points.set(axis, { date: axis, highs: selected?.highs ?? null, lows: selected?.lows ?? null });
                 const candle = { t, date: axis, open: Math.abs(quantity(row.open_pric) ?? NaN), high: Math.abs(quantity(row.high_pric) ?? NaN), low: Math.abs(quantity(row.low_pric) ?? NaN), close: Math.abs(quantity(row.cur_prc) ?? NaN) };
                 if (['open', 'high', 'low', 'close'].every(k => Number.isFinite(candle[k]) && candle[k] > 0)) candles.push(candle);
             }
             const sorted = [...points.values()].sort((a, b) => a.date.localeCompare(b.date));
             const hasMore = response.headers?.['cont-yn'] === 'Y';
             const next = mode === 'day' ? sorted.length ? dayKey(timestamp(sorted[0].date.replaceAll('-', '')) - 86400000).replaceAll('-', '') : null : response.headers?.['next-key'];
-            return { mode, dates: sorted.map(p => p.date), candles: candles.sort((a, b) => a.t - b.t),
-                series: Object.fromEntries(['highs', 'lows'].map(id => [id, { points: sorted.map(p => ({ date: p.date, value: p[id] == null ? null : id === 'lows' ? -p[id] : p[id] })) }])),
+            return { mode, market, dates: sorted.map(p => p.date), candles: candles.sort((a, b) => a.t - b.t),
+                series: Object.fromEntries(['highs', 'lows'].map(id => [id, { points: sorted.map(p => ({ date: p.date, value: p[id] == null ? null : id === 'lows' && p[id] !== 0 ? -p[id] : p[id] })) }])),
                 cursor: hasMore ? next : null, has_more: Boolean(hasMore && next), warning: error,
-                notice: `${daily.legacyThrough || '전환 전'}까지 KOSPI · ${daily.integratedFrom || '수집 시작일'}부터 KOSPI+KOSDAQ(KRX+NXT 통합)` };
+                notice: `${{kospi:'KOSPI',kosdaq:'KOSDAQ',all:'KOSPI+KOSDAQ'}[market]} · KRX+NXT 통합 · ${daily.integratedFrom || '수집 시작일'}부터 키움 집계` };
         })();
         cache.set(key, { until: now() + 60000, promise });
         promise.catch(() => cache.delete(key));

@@ -1,0 +1,20 @@
+const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=require('playwright');
+(async()=>{const browser=await chromium.launch({channel:'msedge',headless:true});try{
+ const page=await browser.newPage({viewport:{width:1800,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.addInitScript(()=>{window.lines={};const original=CanvasRenderingContext2D.prototype.stroke;CanvasRenderingContext2D.prototype.stroke=function(){if(this.strokeStyle==='#000000'&&this.getLineDash().length){const id=this.canvas.closest('section')?.id;window.lines[id]=(window.lines[id]||0)+1;}return original.call(this);};});
+ const rows=Array.from({length:30},(_,i)=>({t:Date.parse('2026-10-01T09:00:00+09:00')+i*86400000,individual:i+1,foreign:-i-1,institution:i*2,program:-i*2}));
+ const candles=rows.map(p=>({...p,open:100,high:110,low:90,close:105}));
+ await page.route('http://hover.test/**',route=>{const url=new URL(route.request().url());if(url.pathname==='/api/supply/watchlist')return route.fulfill({json:{success:true,stocks:[{code:'005930',name:'test'}],archive:[{code:'005930',name:'test'}]}});if(url.pathname.startsWith('/api/'))return route.fulfill({json:{success:true,points:rows,candles,warnings:[],has_more:false}});return route.fulfill({contentType:'text/html',body:'<div id="tab_rank"><div class="rank-chart-row"><section class="panel" id="concentrationChartPanel" style="height:450px"></section><section class="panel" id="rankBreadthChartPanel" style="height:450px"></section></div></div>'});});
+ await page.goto('http://hover.test/');await page.addStyleTag({content:fs.readFileSync('public/style.css','utf8')});
+ for(const f of ['rank-chart-axis.js','rank-supply-chart.js','rank-market-supply-chart.js'])await page.addScriptTag({path:'public/'+f});
+ await page.waitForFunction(()=>document.querySelector('#rankSupplyChartPanel [role="status"]')?.textContent.includes('30'));
+ const source=page.locator('#rankSupplyChartPanel .rank-adr-area canvas');const box=await source.boundingBox();
+ await page.evaluate(()=>window.lines={});await page.mouse.move(box.x+box.width/2,box.y+box.height/2);
+ await page.waitForFunction(()=>window.lines.rankSupplyChartPanel>0&&window.lines.rankMarketSupplyChartPanel>0);
+ await page.mouse.move(1,1);await page.evaluate(()=>window.lines={});
+ await page.evaluate(()=>window.RankChartAxis.synchronizeHover('supply'));
+ assert.equal(await page.evaluate(()=>window.lines.rankMarketSupplyChartPanel||0),0);
+ const peer=await page.locator('#rankMarketSupplyChartPanel .rank-adr-area canvas').boundingBox();
+ await page.mouse.move(peer.x+peer.width/2,peer.y+peer.height/2);await page.waitForFunction(()=>window.lines.rankSupplyChartPanel>0&&window.lines.rankMarketSupplyChartPanel>0);
+ assert.deepEqual(errors,[]);console.log('Shared hover: real mouse movement draws peer crosshairs in both directions and leaving clears them.');
+}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

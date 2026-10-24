@@ -23,3 +23,15 @@ test('daily and minute candles share geometry across stock and index field forma
  const extreme=api.candleLayout([{low:1,high:1000000}],p=>p.low,p=>p.high,()=>30,280,16,500);
  assert.equal(extreme.minimum,0);assert.ok(Number.isFinite(extreme.y(1)));
 });
+
+test('shared hover normalizes timestamps, preserves modes, clears peers and never echoes into source',()=>{
+ const api=context.window.RankChartAxis,received=[];
+ api.registerHover('source',()=> 'minute',()=>Date.parse('2026-10-23T09:12:35+09:00'),()=>assert.fail('source echo'));
+ api.registerHover('peer',()=> 'minute',()=>null,key=>received.push(['minute',key]));
+ api.registerHover('daily',()=> 'day',()=>null,key=>received.push(['day',key]));
+ api.synchronizeHover('source');
+ assert.deepEqual(received,[['minute','2026-10-23 09:12'],['day',null]]);
+ assert.equal(api.matchesHover('20261023091200',received[0][1],'minute'),true);
+ assert.equal(api.matchesHover('20261023091300',received[0][1],'minute'),false);
+ api.synchronizeHover('source',true);assert.deepEqual(received.slice(-2),[['minute',null],['day',null]]);
+});

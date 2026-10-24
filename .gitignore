@@ -54,6 +54,7 @@ data/fred-cache/
 data/adr-minutes/
 data/volatility/
 data/supply/
+data/market-supply/
 data/breadth/
 
 # Development outputs and historical one-off tools
@@ -70,3 +71,6 @@ user_settings_autosaved.json
 user_settings_autosaved.json.*.tmp
 user_settings_autosaved_*.json
 user_settings_manualsaved_*.json
+
+# Private hashed login sessions
+data/auth-private/

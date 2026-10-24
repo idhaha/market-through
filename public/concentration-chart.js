@@ -76,6 +76,7 @@
             ...(window.getRankTurnoverCandleOpen ? { turnoverCandleOpen: window.getRankTurnoverCandleOpen() } : {}),
             ...(window.getRankVolatilityDisplaySettings ? { volatility: window.getRankVolatilityDisplaySettings() } : {}),
             ...(window.getRankBreadthDisplaySettings ? { breadth: window.getRankBreadthDisplaySettings() } : {}),
+            ...(window.getRankMarketSupplyDisplaySettings ? { marketSupply: window.getRankMarketSupplyDisplaySettings() } : {}),
             ...(window.getRankSentimentDisplaySettings ? { sentiment: window.getRankSentimentDisplaySettings() } : {})
         });
         window.applyConcentrationDisplaySettings = settings => {
@@ -94,8 +95,9 @@
             if (!window.rankIndependentClient || settings && 'turnoverCandleOpen' in settings) window.applyRankTurnoverCandleOpen?.(window.rankIndependentClient ? settings.turnoverCandleOpen === true : nextCandleOpen);
             if (settings && 'volatility' in settings) window.applyRankVolatilityDisplaySettings?.(window.rankIndependentClient ? settings.volatility : {...settings.volatility,candleOpen:nextCandleOpen});
             if (settings && 'breadth' in settings) window.applyRankBreadthDisplaySettings?.(window.rankIndependentClient ? settings.breadth : {...settings.breadth,candleOpen:nextCandleOpen});
+            if (settings && 'marketSupply' in settings) window.applyRankMarketSupplyDisplaySettings?.(settings.marketSupply);
             if (settings && 'sentiment' in settings) window.applyRankSentimentDisplaySettings?.(window.rankIndependentClient ? settings.sentiment : {...settings.sentiment,candleOpen:nextCandleOpen});
-            if(!window.rankIndependentClient)window.applyRankSupplyCandleOpen?.(nextCandleOpen);
+            if(!window.rankIndependentClient){ window.applyRankSupplyCandleOpen?.(nextCandleOpen); window.applyRankMarketSupplyCandleOpen?.(nextCandleOpen); }
             state.hover = null; tooltip.hidden = true; candleTooltip.hidden = true;
             draw();
             if (changed && state.selection) load();
@@ -217,6 +219,7 @@
             saveDisplaySettings();
         });
         function draw() {
+            window.RankChartAxis.candleLabel(candleArea,state.selection?.name || state.selection?.code || '');
             if (!window.rankIndependentClient) document.dispatchEvent(new Event('rank-chart-state'));
             const width = chartArea.clientWidth;
             if (!width) return;
@@ -244,6 +247,7 @@
             const maxPrice = points.reduce((max, point) => Math.max(max, point.stock_high || 0), 0);
             const priceMargin = !candleArea.hidden ? ctx.measureText(Math.ceil(maxPrice * 1.1).toLocaleString()).width + 18 : 0;
             plot.right = width - Math.max(58, priceMargin, ctx.measureText(`${axisMaximum.toLocaleString()}%`).width + 18);
+            Object.assign(plot,window.RankChartAxis.plotBounds('concentration',width,plot.left,plot.right));
             const xLabels = [];
             const boundaries = [];
             canvas.setAttribute('aria-label', `시장 거래대금 대비 종목 거래대금 비율 차트, 세로축 0~${axisMaximum.toLocaleString()}%, 자동 범위`);
@@ -585,16 +589,8 @@
             state.drag = null;
             if (surface.hasPointerCapture(event.pointerId)) surface.releasePointerCapture(event.pointerId);
             if (Math.abs(drag.endX - drag.startX) > 10) {
-                if (drag.endX > drag.startX) {
-                    const span = geometry.plot.right - geometry.plot.left;
-                    const first = Math.floor((drag.startX - geometry.plot.left) / span * (drag.visible - 1));
-                    const last = Math.ceil((drag.endX - geometry.plot.left) / span * (drag.visible - 1));
-                    state.visible = Math.min(state.points.length, Math.max(Math.min(10, state.points.length), last - first + 1));
-                    state.start = Math.min(state.points.length - state.visible, drag.start + first);
-                } else {
-                    state.visible = state.points.length;
-                    state.start = 0;
-                }
+                if(drag.endX<drag.startX){state.start=0;state.visible=state.points.length;}
+                window.RankChartAxis.selectViewport('concentration',(drag.startX-geometry.plot.left)/(geometry.plot.right-geometry.plot.left),(drag.endX-geometry.plot.left)/(geometry.plot.right-geometry.plot.left));
             }
             state.hover = null; tooltip.hidden = true; draw(); flushRefresh();
         });
@@ -605,13 +601,17 @@
         surface.addEventListener('pointercancel', cancelDrag);
         surface.addEventListener('lostpointercapture', cancelDrag);
         });
+        window.RankChartAxis.registerHover('concentration',()=>state.mode,()=>geometry?.points[state.hover]?.time,key=>{
+            const index=geometry?.points.findIndex(p=>window.RankChartAxis.matchesHover(p.time,key,state.mode)) ?? -1;
+            state.hover=index<0?null:index;candlePointerY=null;tooltip.hidden=true;candleTooltip.hidden=true;draw();
+        });
         function hoverChart(event) {
             if (state.busy || state.drag || !geometry?.points.length) return;
             candlePointerY = event.currentTarget === candleCanvas ? event.clientY - candleCanvas.getBoundingClientRect().top : null;
             const { plot, points, x, width } = geometry;
             const offset = event.clientX - event.currentTarget.getBoundingClientRect().left;
             if (offset < plot.left || offset > plot.right) { clearHover(); return; }
-            const index = Math.max(0, Math.min(points.length - 1, Math.round((offset - plot.left) / (plot.right - plot.left) * (points.length - 1))));
+            const index = points.reduce((best,_,i)=>Math.abs(x(i)-offset)<Math.abs(x(best)-offset)?i:best,0);
             const point = points[index]; state.hover = index;
             const change = candleChange(point);
             const date = `${point.time.slice(0,4)}-${point.time.slice(4,6)}-${point.time.slice(6,8)}`;
