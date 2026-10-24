@@ -4,7 +4,7 @@ const zlib = require('node:zlib');
 const { dayKey, failure } = require('./supply-store');
 const { collectingAt, timestamp, quantity } = require('./supply-service');
 
-function createBreadthService({ directory, legacyFile, legacyKospiDirectory, http, getToken, supply, now = Date.now,
+function createBreadthService({ directory, legacyFile, legacyKospiDirectory, legacyCombinedDirectory, http, getToken, supply, now = Date.now,
     pause = ms => new Promise(resolve => setTimeout(resolve, ms)), log = console.warn }) {
     let running, timer, queue = Promise.resolve(), error = '', lastMinute;
     const cache = new Map();
@@ -72,21 +72,20 @@ function createBreadthService({ directory, legacyFile, legacyKospiDirectory, htt
     }
     function minuteRows(date) {
         const name = `${date}.json`;
-        if (fs.existsSync(file(name))) return read(name, []);
-        try { return JSON.parse(zlib.gunzipSync(fs.readFileSync(file(`${name}.gz`)))); }
-        catch (cause) {
-            if (cause.code !== 'ENOENT') throw cause;
-            if (!legacyKospiDirectory) return [];
-            const old = path.join(legacyKospiDirectory, name);
-            let rows;
-            try { rows=JSON.parse(fs.readFileSync(old,'utf8')); }
-            catch (e) {
-                if(e.code!=='ENOENT')throw e;
-                try {rows=JSON.parse(zlib.gunzipSync(fs.readFileSync(old+'.gz')));}
-                catch(e){if(e.code==='ENOENT')return [];throw e;}
-            }
-            return rows.map(p=>({t:p.t,kospi:{highs:p.highs,lows:p.lows}}));
+        function loadFrom(folder) {
+            if(!folder)return [];
+            const filename=path.join(folder,name);
+            try{return JSON.parse(fs.readFileSync(filename,'utf8'));}
+            catch(error){if(error.code!=='ENOENT')throw error;}
+            try{return JSON.parse(zlib.gunzipSync(fs.readFileSync(filename+'.gz')));}
+            catch(error){if(error.code==='ENOENT')return [];throw error;}
         }
+        // Read older archives without moving or rewriting them. Never split a total.
+        const rows=new Map();
+        for(const p of loadFrom(legacyCombinedDirectory))rows.set(p.t,{t:p.t,all:{highs:p.highs,lows:p.lows}});
+        for(const p of loadFrom(legacyKospiDirectory))rows.set(p.t,{...rows.get(p.t),t:p.t,kospi:{highs:p.highs,lows:p.lows}});
+        for(const p of loadFrom(directory))rows.set(p.t,{...rows.get(p.t),...p});
+        return [...rows.values()].sort((a,b)=>a.t-b.t);
     }
     function archive() {
         const today = dayKey(now()), clock = new Date(now() + 9 * 3600000), closed = clock.getUTCHours() * 60 + clock.getUTCMinutes() >= 1202;
@@ -160,7 +159,7 @@ function createBreadthService({ directory, legacyFile, legacyKospiDirectory, htt
                 const value = mode === 'day' ? byDay.get(date) : minutes.get(date).get(Math.floor(t / 60000) * 60000);
                 const axis = mode === 'day' ? date : `${date} ${raw.slice(8, 10)}:${raw.slice(10, 12)}`;
                 const selected = market === 'all' ? Object.fromEntries(['highs', 'lows'].map(id => [id,
-                    Number.isFinite(value?.kospi?.[id]) && Number.isFinite(value?.kosdaq?.[id]) ? value.kospi[id] + value.kosdaq[id] : null])) : value?.[market];
+                    Number.isFinite(value?.kospi?.[id]) && Number.isFinite(value?.kosdaq?.[id]) ? value.kospi[id] + value.kosdaq[id] : Number.isFinite(value?.all?.[id]) ? value.all[id] : null])) : value?.[market];
                 points.set(axis, { date: axis, highs: selected?.highs ?? null, lows: selected?.lows ?? null });
                 const candle = { t, date: axis, open: Math.abs(quantity(row.open_pric) ?? NaN), high: Math.abs(quantity(row.high_pric) ?? NaN), low: Math.abs(quantity(row.low_pric) ?? NaN), close: Math.abs(quantity(row.cur_prc) ?? NaN) };
                 if (['open', 'high', 'low', 'close'].every(k => Number.isFinite(candle[k]) && candle[k] > 0)) candles.push(candle);

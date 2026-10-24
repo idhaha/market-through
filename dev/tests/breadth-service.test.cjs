@@ -126,3 +126,28 @@ test('KOSDAQ failure cannot commit a partial combined snapshot',async t=>{
  f.options.http.post=(url,body,options)=>{if(body.mrkt_tp==='101')throw new Error('KOSDAQ unavailable');return original(url,body,options);};
  await f.service.tick();assert.deepEqual(f.service.minuteRows('2026-10-21'),[]);
 });
+
+
+test('old combined minute JSON and gzip remain queryable only as all; new data wins and originals remain intact',async t=>{
+ const zlib=require('node:zlib');const f=fixture(t);
+ const legacyCombinedDirectory=path.join(f.root,'old-combined'),legacyKospiDirectory=path.join(f.root,'old-kospi');
+ fs.mkdirSync(legacyCombinedDirectory);fs.mkdirSync(legacyKospiDirectory);
+ const old21=JSON.stringify([{t:timestamp('20261021','080100'),highs:46,lows:131}]);
+ const old22=JSON.stringify([{t:timestamp('20261022','080100'),highs:57,lows:344}]);
+ fs.writeFileSync(path.join(legacyCombinedDirectory,'2026-10-21.json'),old21);
+ const compressed=zlib.gzipSync(old22);fs.writeFileSync(path.join(legacyCombinedDirectory,'2026-10-22.json.gz'),compressed);
+ const options={...f.options,legacyCombinedDirectory,legacyKospiDirectory};
+ let service=createBreadthService(options);
+ options.http.post=async()=>({data:{stk_min_pole_chart_qry:['20261021080100','20261022080100'].map(cntr_tm=>({cntr_tm,cur_prc:'100',open_pric:'100',high_pric:'100',low_pric:'100'}))},headers:{}});
+ f.at('20261023','120000');
+ const all=await service.query({mode:'minute',market:'all'});
+ assert.deepEqual(all.series.highs.points.map(p=>p.value),[46,57]);
+ for(const market of ['kospi','kosdaq'])assert.ok((await service.query({mode:'minute',market})).series.highs.points.every(p=>p.value===null));
+ fs.writeFileSync(path.join(legacyKospiDirectory,'2026-10-21.json'),JSON.stringify([{t:timestamp('20261021','080100'),highs:10,lows:20}]));
+ fs.writeFileSync(path.join(options.directory,'2026-10-22.json'),JSON.stringify([{t:timestamp('20261022','080100'),kospi:{highs:1,lows:2},kosdaq:{highs:3,lows:4}}]));
+ service=createBreadthService(options);
+ assert.deepEqual((await service.query({mode:'minute',market:'all'})).series.highs.points.map(p=>p.value),[46,4]);
+ assert.deepEqual((await service.query({mode:'minute',market:'kospi'})).series.highs.points.map(p=>p.value),[10,1]);
+ assert.equal(fs.readFileSync(path.join(legacyCombinedDirectory,'2026-10-21.json'),'utf8'),old21);
+ assert.ok(fs.readFileSync(path.join(legacyCombinedDirectory,'2026-10-22.json.gz')).equals(compressed));
+});

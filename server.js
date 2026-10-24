@@ -201,6 +201,7 @@ const supplyService = createSupplyService({
 const breadthService = createBreadthService({
     directory: path.join(__dirname, 'data', 'breadth', 'markets'),
     legacyKospiDirectory: path.join(__dirname, 'data', 'breadth', 'kospi'),
+    legacyCombinedDirectory: path.join(__dirname, 'data', 'breadth'),
     legacyFile: fs.existsSync(path.join(__dirname, 'data', 'breadth', 'kospi', 'daily.json'))
         ? path.join(__dirname, 'data', 'breadth', 'kospi', 'daily.json')
         : path.join(__dirname, 'data', 'volatility', 'new-highs-lows.json'),
