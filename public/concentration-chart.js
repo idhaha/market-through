@@ -99,6 +99,7 @@
             ...(window.getRankTurnoverCandleOpen ? { turnoverCandleOpen: window.getRankTurnoverCandleOpen() } : {}),
             ...(window.getRankVolatilityDisplaySettings ? { volatility: window.getRankVolatilityDisplaySettings() } : {}),
             ...(window.getRankBreadthDisplaySettings ? { breadth: window.getRankBreadthDisplaySettings() } : {}),
+            ...(window.getRankLsMarketSupplyDisplaySettings ? { lsMarketSupply: window.getRankLsMarketSupplyDisplaySettings() } : {}),
             ...(window.getRankMarketSupplyDisplaySettings ? { marketSupply: window.getRankMarketSupplyDisplaySettings() } : {}),
             ...(window.getRankSentimentDisplaySettings ? { sentiment: window.getRankSentimentDisplaySettings() } : {})
         });
@@ -119,9 +120,10 @@
                 if (!window.rankIndependentClient || settings && 'turnoverCandleOpen' in settings) window.applyRankTurnoverCandleOpen?.(window.rankIndependentClient ? settings.turnoverCandleOpen === true : nextCandleOpen);
                 if (settings && 'volatility' in settings) window.applyRankVolatilityDisplaySettings?.(window.rankIndependentClient ? settings.volatility : {...settings.volatility,candleOpen:nextCandleOpen});
                 if (settings && 'breadth' in settings) window.applyRankBreadthDisplaySettings?.(window.rankIndependentClient ? settings.breadth : {...settings.breadth,candleOpen:nextCandleOpen});
+                if (settings && 'lsMarketSupply' in settings) window.applyRankLsMarketSupplyDisplaySettings?.(settings.lsMarketSupply);
                 if (settings && 'marketSupply' in settings) window.applyRankMarketSupplyDisplaySettings?.(settings.marketSupply);
                 if (settings && 'sentiment' in settings) window.applyRankSentimentDisplaySettings?.(window.rankIndependentClient ? settings.sentiment : {...settings.sentiment,candleOpen:nextCandleOpen});
-                if(!window.rankIndependentClient){ window.applyRankSupplyCandleOpen?.(nextCandleOpen); window.applyRankMarketSupplyCandleOpen?.(nextCandleOpen); }
+                if(!window.rankIndependentClient){ window.applyRankLsMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankSupplyCandleOpen?.(nextCandleOpen); window.applyRankMarketSupplyCandleOpen?.(nextCandleOpen); }
                 window.applyKisConcentrationDisplaySettings?.(settings);
             }
             state.hover = null; tooltip.hidden = true; candleTooltip.hidden = true;

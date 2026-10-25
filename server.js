@@ -230,6 +230,20 @@ const marketSupplyService = require('./market-supply-service').createMarketSuppl
     getToken: () => getEfriendAccessToken((process.env.EFRIEND_DOMAIN || '').trim(), (process.env.EFRIEND_APPKEY || '').trim(), (process.env.EFRIEND_SECRETKEY || '').trim()),
     reference: chartReferenceService, supply: supplyService
 });
+const lsMarketSupplyProvider = require('./ls-market-supply').createLsMarketSupply({
+    directory: path.join(__dirname, 'data', 'ls-market-supply'), http: axios, supply: supplyService,
+    credentials: () => ({ appKey: (process.env.LS_APPKEY || '').trim(), secretKey: (process.env.LS_SECRETKEY || '').trim() })
+});
+const lsMarketSupplyService = require('./market-supply-service').createMarketSupplyService({
+    directory: path.join(__dirname, 'data', 'ls-market-supply'), minuteProvider: lsMarketSupplyProvider,
+    reference: chartReferenceService, supply: supplyService
+});
+app.get('/api/ls-market-supply/chart', async (req, res) => {
+    try {
+        const result = req.query.mode === 'minute' ? await lsMarketSupplyService.query(req.query) : await marketSupplyService.query(req.query);
+        res.set('Cache-Control', 'no-store').json(result);
+    } catch (error) { res.status(error.status || 502).json({ success: false, error: error.message }); }
+});
 app.get('/api/market-supply/chart', async (req, res) => {
     try { res.set('Cache-Control', 'no-store').json(await marketSupplyService.query(req.query)); }
     catch(error) { res.status(error.status || 502).json({ success: false, error: error.message }); }
@@ -2949,6 +2963,7 @@ async function requestEfriendAccessToken(domain, appKey, secretKey) {
 app.listen(PORT, () => {
     supplyService.start();
     marketSupplyService.start();
+    lsMarketSupplyService.start();
     kisConcentrationChartService.start();
     breadthService.start();
     // Keep the daily archive current even when no chart is open.

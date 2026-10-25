@@ -75,3 +75,5 @@ user_settings_manualsaved_*.json
 
 # Private hashed login sessions
 data/auth-private/
+
+data/ls-market-supply/

@@ -4,7 +4,7 @@
         ['#transactionTable', '키움'], ['#stockTable', '키움'],
         ['#efriendStockTable', '한투'], ['#watchlistTable', '키움'],
         ['#concentrationChartPanel', '키움'], ['#kisConcentrationChartPanel', '한투'], ['#rankAdrChartPanel', 'jusikbot'],
-        ['#rankTurnoverChartPanel', '키움'], ['#rankSupplyChartPanel', '키움'], ['#rankMarketSupplyChartPanel', '한투'],
+        ['#rankTurnoverChartPanel', '키움'], ['#rankSupplyChartPanel', '키움'], ['#rankMarketSupplyChartPanel', '한투'], ['#rankLsMarketSupplyChartPanel', 'LS(분봉)·한투(일봉)·키움(가격)'],
         ['#rankVolatilityChartPanel', 'jusikbot'], ['#rankBreadthChartPanel', '키움'],
         ['#rankSentimentChartPanel', 'jusikbot']
     ];
@@ -21,7 +21,7 @@
             let footer=panel.querySelector(':scope > .rank-card-footer');
             if(!footer){footer=document.createElement('div');footer.className='rank-card-footer';const messages=document.createElement('div');messages.className='rank-card-messages';footer.append(messages);panel.append(footer);}
             const messages=footer.querySelector('.rank-card-messages');
-            for(const node of panel.querySelectorAll('.rank-adr-status,#concentrationPeriod,.concentration-period,.concentration-status,.rank-history-notice'))if(node.parentElement!==messages)messages.append(node);
+            for(const node of panel.querySelectorAll('.rank-adr-status,#concentrationPeriod,.concentration-period,.concentration-status,.rank-history-notice,.rank-selection-history-notice'))if(node.parentElement!==messages)messages.append(node);
             const credit=panel.querySelector('.rank-card-source');if(credit && credit.parentElement!==footer)footer.append(credit);
         }
         let dot = panel.querySelector(':scope > .rank-connection-dot');

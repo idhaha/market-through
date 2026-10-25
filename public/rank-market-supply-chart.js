@@ -21,12 +21,18 @@
         if (!response.ok || !data.success) throw Object.assign(new Error(data.error || '수급 조회 실패'), { status: response.status });
         return data;
     }
-    function initialize() {
+    function initialize(isLs = false) {
+        const axisId = isLs ? 'lsMarketSupply' : 'marketSupply';
+        const panelId = isLs ? 'rankLsMarketSupplyChartPanel' : 'rankMarketSupplyChartPanel';
+        const eventName = name => isLs ? name.replace('rank-market-supply', 'rank-ls-market-supply') : name;
+        const api = name => isLs ? name.replace('MarketSupply', 'LsMarketSupply') : name;
+        const endpoint = isLs ? '/api/ls-market-supply/chart' : '/api/market-supply/chart';
+        const storageKey = isLs ? 'rankLsMarketSupplySelectedV1' : 'rankMarketSupplySelectedV1';
         if (window.rankIndependentClient) return;
         const breadth = document.getElementById('rankBreadthChartPanel'), row = window.rankIndependentClient ? document.getElementById('tab_rank') : breadth?.closest('.rank-chart-row');
-        if (!row || document.getElementById('rankMarketSupplyChartPanel')) return;
+        if (!row || document.getElementById(panelId)) return;
         const panel = document.createElement('section');
-        panel.id = 'rankMarketSupplyChartPanel'; panel.className = 'panel rank-adr-panel rank-supply-panel rank-market-supply-panel';
+        panel.id = panelId; panel.className = 'panel rank-adr-panel rank-supply-panel rank-market-supply-panel';
         panel.setAttribute('aria-label', '시장 수급 차트');
         panel.innerHTML = `<div class="concentration-chart-header"><h2>시장 수급</h2></div>
             <div class="rank-adr-controls"><button type="button" data-mode="day" class="active" aria-pressed="true">일봉</button><button type="button" data-mode="minute" aria-pressed="false">1분봉(누적)</button>
@@ -36,7 +42,7 @@
             <div class="rank-adr-candle-area" hidden><span class="market-candle-label"></span><canvas role="img" aria-label="선택 시장 지수 캔들차트"></canvas></div>
             <div class="concentration-chart-footer rank-adr-zoom"><input type="range" min="0" max="0" value="0" aria-label="수급 과거 구간 이동" disabled><div class="concentration-controls"><button type="button" aria-label="시장 수급 차트 축소">−</button><button type="button" aria-label="시장 수급 차트 확대">+</button></div></div>
             <button type="button" data-action="more" class="concentration-icon-button" title="과거 데이터 더 불러오기" aria-label="과거 데이터 더 불러오기"><svg width="28" height="28" viewBox="0 0 34 34" shape-rendering="crispEdges" aria-hidden="true"><rect x="1" y="1" width="32" height="32" fill="#ededed"/><path d="M10 5v20" stroke="#737373" stroke-width="2"/><rect x="6" y="9" width="9" height="12" fill="#505050"/><path d="M22 5v20" stroke="#c0c0c0" stroke-width="2"/><rect x="18" y="9" width="9" height="12" fill="#969696"/><path d="M25 21v10M21 26h10" stroke="#444444" stroke-width="4"/></svg></button><p class="rank-adr-status" role="status"></p>`;
-        breadth.before(panel);
+        if (isLs) { panel.classList.add('rank-ls-market-supply-panel'); row.append(panel); panel.querySelector('h2').textContent = '시장 수급(LS)'; } else breadth.before(panel);
         panel.querySelector('.rank-adr-controls').append(panel.querySelector('.supply-legend'));
         const latestDate = document.createElement('span'); latestDate.className = 'supply-latest-date'; latestDate.textContent = '—';
         panel.querySelector('.supply-legend').prepend(latestDate);
@@ -46,7 +52,7 @@
         const info = panel.querySelector('.chart-hover-info'), status = panel.querySelector('[role="status"]');
         const slider = panel.querySelector('input[type="range"]');
         const more = panel.querySelector('[data-action="more"]');
-        const stockSelect = window.RankChartAxis.marketChoice('market-supply',[], 'kospi','시장 수급 시장 선택');
+        const stockSelect = window.RankChartAxis.marketChoice(isLs ? 'ls-market-supply' : 'market-supply',[], 'kospi','시장 수급 시장 선택');
         panel.querySelector('.concentration-chart-header h2').after(stockSelect);
         stockSelect.addEventListener('change', () => { if (stockSelect.value) choose(stockSelect.value); });
         let selected = 'kospi', mode = 'day', cursor = null, hasMore = false, loading = false, historyLoaded = false;
@@ -58,12 +64,12 @@
         let candleRangeKey='', candleRangePending='', candleSchedule=false;
         const visibleSeries = new Set(series);
         const selectionStorage=window.rankIndependentClient?sessionStorage:localStorage;
-        try { selected = selectionStorage.getItem('rankMarketSupplySelectedV1') || 'kospi'; if (!['kospi','kosdaq','futures','futuresKosdaq'].includes(selected)) selected='kospi'; } catch {}
-        function remember() { try { selectionStorage.setItem('rankMarketSupplySelectedV1', selected); } catch {} }
+        try { selected = selectionStorage.getItem(storageKey) || 'kospi'; if (!['kospi','kosdaq','futures','futuresKosdaq'].includes(selected)) selected='kospi'; } catch {}
+        function remember() { try { selectionStorage.setItem(storageKey, selected); } catch {} }
         function setStatus() { status.textContent = [configError, chartMessage, candleMessage].filter(Boolean).join(' · '); status.title = status.textContent; }
         const settings = () => ({ selected, mode, visibleSeries: [...visibleSeries] });
-        window.getRankMarketSupplyDisplaySettings = settings;
-        window.applyRankMarketSupplyDisplaySettings = value => {
+        window[api('getRankMarketSupplyDisplaySettings')] = settings;
+        window[api('applyRankMarketSupplyDisplaySettings')] = value => {
             if (!value) return;
             if (['kospi','kosdaq','futures','futuresKosdaq'].includes(value.selected)) selected=value.selected;
             if (['day','minute'].includes(value.mode)) mode=value.mode;
@@ -72,7 +78,7 @@
             panel.querySelectorAll('[data-mode]').forEach(b=>{b.classList.toggle('active',b.dataset.mode===mode);b.setAttribute('aria-pressed',String(b.dataset.mode===mode));});
             paintStocks();remember();clearView();void load();
         };
-        function publish() { document.dispatchEvent(new CustomEvent('rank-market-supply-state', { detail: settings() })); }
+        function publish() { document.dispatchEvent(new CustomEvent(eventName('rank-market-supply-state'), { detail: settings() })); }
         panel.addEventListener('change',()=>{if(typeof saveAppData==='function')saveAppData();});
         panel.addEventListener('click',event=>{if(event.target.closest('[data-mode],[data-series]') && typeof saveAppData==='function')queueMicrotask(()=>saveAppData());});
         panel.addEventListener('click', event => { if (event.target.closest('[data-mode], [data-series], .concentration-candle-toggle')) queueMicrotask(publish); });
@@ -94,7 +100,7 @@
         }
         function draw() {
             const { w, h } = surface(canvas, ctx);
-            {const view=window.RankChartAxis.sharedRange('marketSupply',points,p=>p.t,mode,start,count,draw);start=view.start;count=view.count;}
+            {const view=window.RankChartAxis.sharedRange(axisId,points,p=>p.t,mode,start,count,draw);start=view.start;count=view.count;}
             const n = Math.min(points.length, count ?? points.length);
             start = Math.max(0, Math.min(start, points.length - n));
             const rows = displayFlow(points, mode).slice(start, start + n), indices = new Map(rows.map((p, i) => [p.t, i]));
@@ -102,7 +108,7 @@
             const sessionX=window.RankChartAxis.sessionX(rows,p=>p.t,left,right,mode==='minute',mode==='day');
             const x = t => sessionX?sessionX(t):left + indices.get(t) / Math.max(1, n - 1) * (right - left);
             slider.max = String(points.length - n); slider.value = String(start); slider.disabled = n >= points.length;
-            window.RankChartAxis.updateSlider('marketSupply',slider);
+            window.RankChartAxis.updateSlider(axisId,slider);
             panel.querySelector('[aria-label="시장 수급 차트 확대"]').disabled = n <= 10;
             panel.querySelector('[aria-label="시장 수급 차트 축소"]').disabled = n >= points.length;
             more.hidden = false; more.disabled = !selected || !(hasMore || mode === 'minute' && priceCursor) || loading || mode === 'minute' && candleLoading;
@@ -113,13 +119,13 @@
             geometry = { rows, left, right, top, bottom, x, y };
             if (w <= 100 || h <= 50) return;
             const muted = getComputedStyle(panel).getPropertyValue('--text-muted').trim() || '#64748b';
-            function grid(context, width, low, high, toY, unit = true) {
+            function grid(context, width, low, high, toY, unit = true, showLabels = true) {
                 for (let i = 0; i < 5; i++) {
                     const value = low + (high - low) * i / 4, py = toY(value);
                     context.strokeStyle = '#b8c1cc'; context.setLineDash([3, 5]); context.lineWidth = 1;
                     context.beginPath(); context.moveTo(left, py); context.lineTo(right, py); context.stroke();
                     context.fillStyle = muted; context.textAlign = 'right';
-                    context.fillText(unit ? format(Math.round(value), false) : value.toLocaleString('ko-KR', { maximumFractionDigits: 2 }), width - 4, py + 4);
+                    if (showLabels) context.fillText(unit ? format(Math.round(value) || 0, false) : value.toLocaleString('ko-KR', { maximumFractionDigits: 2 }), width - 4, py + 4);
                 }
                 context.setLineDash([]);
             }
@@ -144,7 +150,7 @@
                     ctx.strokeStyle='#b8c1cc';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(left,zero);ctx.lineTo(right,zero);ctx.stroke();
                     ctx.fillStyle=colors[field];ctx.textAlign='right';ctx.save();ctx.textBaseline='middle';ctx.fillText(names[field],w-4,zero);ctx.restore();
                 });
-            } else grid(ctx, w, min, max, y);
+            } else grid(ctx, w, min, max, y, true, values.length > 0);
             boundaries(ctx,top,bottom);
             if (mode !== 'day' && values.length) {
                 ctx.strokeStyle = '#94a3b8'; ctx.beginPath(); ctx.moveTo(left, y(0)); ctx.lineTo(right, y(0)); ctx.stroke();
@@ -255,9 +261,9 @@
             selected = code; remember(); clearView(); paintStocks();
             panel.querySelector('.rank-selection-history-notice')?.remove();
             if(restoreRange && mode==='minute')todayOnly=restoreRange.first.slice(0,10)===dayKey(Date.now());
-            void load(false,restoreRange).then(()=>{if(selected===code)return window.RankChartAxis.restoreHistoryRange('marketSupply',restoreRange);});
+            void load(false,restoreRange).then(()=>{if(selected===code)return window.RankChartAxis.restoreHistoryRange(axisId,restoreRange);});
         }
-        window.getMarketSupplyCandleDiagnostics = () => ({market:selected,mode,points:points.length,candles:candles.length,
+        window[api('getMarketSupplyCandleDiagnostics')] = () => ({market:selected,mode,points:points.length,candles:candles.length,
             validCandles:candles.filter(window.RankChartAxis.validCandle).length,
             visiblePoints:geometry?.rows.length || 0,visibleCandles:candles.filter(p=>geometry?.rows.some(row=>row.t===p.t) && window.RankChartAxis.validCandle(p)).length,
             first:points[0]?.t,last:points.at(-1)?.t,candleFirst:candles[0]?.t,candleLast:candles.at(-1)?.t});
@@ -291,7 +297,7 @@
                 if(id===candleRevision){candleRangePending='';candleLoading=false;setStatus();draw();}
             }
         }
-        window.RankChartAxis.registerHover('marketSupply',()=>mode,()=>hover,key=>{
+        window.RankChartAxis.registerHover(axisId,()=>mode,()=>hover,key=>{
             hover=geometry?.rows.find(p=>window.RankChartAxis.matchesHover(p.t,key,mode))?.t ?? null;
             info.hidden=true;draw();
         });
@@ -310,7 +316,7 @@
                 let firstResponse=true;
                 do {
                 const params = new URLSearchParams({ code: selected, mode, ...(mode === 'day' ? { progressive: '1' } : {}), ...(append ? { cursor: nextCursor } : {}) });
-                const result = await request(`/api/market-supply/chart?${params}`, { signal: current.signal });
+                const result = await request(`${endpoint}?${params}`, { signal: current.signal });
                 if (id !== revision) return;
                 const followLatest = start + Math.min(points.length, count ?? points.length) >= points.length, oldAnchor = points[start]?.t;
                 const fresh = (result.points || []).filter(p => Number.isFinite(p.t));
@@ -324,7 +330,7 @@
                     for(const day of restoreRange.days){
                         minuteDays.add(day);if(day===result.date)continue;
                         const params=new URLSearchParams({code:selected,mode:'minute',cursor:day.replaceAll('-','')});
-                        const past=await request(`/api/market-supply/chart?${params}`,{signal:current.signal});
+                        const past=await request(`${endpoint}?${params}`,{signal:current.signal});
                         if(id!==revision)return;
                         points=mergeFlow(points,(past.points || []).filter(p=>Number.isFinite(p.t)));
                         candles=[...new Map([...candles,...(past.candles || [])].map(p=>[p.t,p])).values()].sort((a,b)=>a.t-b.t);
@@ -362,11 +368,11 @@
             finally {
                 if (id === revision) {
                     loading = false; draw(); publish();
-                    if (refreshPending && !refreshing && !drag) { refreshPending = false; void window.refreshRankMarketSupplyChart(); }
+                    if (refreshPending && !refreshing && !drag) { refreshPending = false; void window[api('refreshRankMarketSupplyChart')](); }
                 }
             }
         }
-        window.refreshRankMarketSupplyChart = async () => {
+        window[api('refreshRankMarketSupplyChart')] = async () => {
             if(window.rankManagedChartRefresh && !window.rankChartRefreshStarted)return;
             if (drag || refreshing || loading || candleLoading) { refreshPending = true; return; }
             refreshing = true; refreshPending = false;
@@ -374,7 +380,7 @@
                 configError = '';
                 paintStocks(); await load();
             } catch (error) { configError = `시장 수급 조회 실패: ${error.message}`; setStatus(); }
-            finally { refreshing = false; if (refreshPending && !drag) { refreshPending = false; void window.refreshRankMarketSupplyChart(); } }
+            finally { refreshing = false; if (refreshPending && !drag) { refreshPending = false; void window[api('refreshRankMarketSupplyChart')](); } }
         };
         function zoom(factor, anchor = .5) {
             if (!points.length) return;
@@ -391,7 +397,7 @@
             panel.querySelectorAll('[data-mode]').forEach(b => { b.classList.toggle('active', b === button); b.setAttribute('aria-pressed', String(b === button)); });
             load();
         }));
-        window.RankChartAxis.registerHistoryLoader('marketSupply',()=>load(true),()=>loading || candleLoading,()=>({identity:selected,hasMore:hasMore,cursor,ensureRange:async target=>{await loadCandles({first:target});if(/실패|일부/.test(candleMessage))throw new Error(candleMessage);}}));
+        window.RankChartAxis.registerHistoryLoader(axisId,()=>load(true),()=>loading || candleLoading,()=>({identity:selected,hasMore:hasMore,cursor,ensureRange:async target=>{await loadCandles({first:target});if(/실패|일부/.test(candleMessage))throw new Error(candleMessage);}}));
         more.addEventListener('click', () => window.RankChartAxis.requestHistory(mode));
         panel.querySelectorAll('[data-series]').forEach(button => button.addEventListener('click', () => {
             const field = button.dataset.series;
@@ -425,18 +431,18 @@
                 if (Math.abs(previous.to - previous.from) > 10) {
                     if (previous.to < previous.from) { start = 0; count = null; }
                     const width = geometry.right - geometry.left;
-                    window.RankChartAxis.selectViewport('marketSupply',
+                    window.RankChartAxis.selectViewport(axisId,
                         (previous.from - geometry.left) / width,
                         (previous.to - geometry.left) / width);
                 }
-                draw(); if (refreshPending) window.refreshRankMarketSupplyChart();
+                draw(); if (refreshPending) window[api('refreshRankMarketSupplyChart')]();
             });
-            const cancel = () => { if (drag?.surface === c) { drag = null; draw(); if (refreshPending) window.refreshRankMarketSupplyChart(); } };
+            const cancel = () => { if (drag?.surface === c) { drag = null; draw(); if (refreshPending) window[api('refreshRankMarketSupplyChart')](); } };
             c.addEventListener('pointercancel', cancel); c.addEventListener('lostpointercapture', cancel);
             c.addEventListener('pointerleave', () => { if (!drag) { hover = null; info.hidden = true; draw(); } });
         });
         const reference = document.getElementById('concentrationChartPanel') || breadth;
-        window.applyRankMarketSupplyCandleOpen = open => {
+        window[api('applyRankMarketSupplyCandleOpen')] = open => {
             showCandles=open===true;candleArea.hidden=!showCandles;
             panel.querySelector('.concentration-candle-toggle').setAttribute('aria-expanded',String(showCandles));
             if(showCandles)void loadCandles();else{candleMessage='';setStatus();}
@@ -452,12 +458,13 @@
         }
         new ResizeObserver(resize).observe(reference); new ResizeObserver(draw).observe(canvas.parentElement);
         new ResizeObserver(resize).observe(panel.querySelector('.rank-adr-controls'));
-        document.addEventListener('visibilitychange', () => { if (!document.hidden) window.refreshRankMarketSupplyChart(); });
-        document.addEventListener('rank-market-supply-restore', event=>{const value=event.detail;if(value?.selected && ['kospi','kosdaq','futures','futuresKosdaq'].includes(value.selected)){selected=value.selected;paintStocks();remember();clearView();void load();}});
-        window.addEventListener('online', window.refreshRankMarketSupplyChart);
-        if(!window.rankIndependentClient && typeof window.rankMainCandleOpen==='boolean')window.applyRankMarketSupplyCandleOpen(window.rankMainCandleOpen);
-        paintStocks(); resize(); document.dispatchEvent(new Event('rank-market-supply-ready'));
-        if (!window.rankIndependentClient && !window.rankManagedChartRefresh) window.refreshRankMarketSupplyChart();
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) window[api('refreshRankMarketSupplyChart')](); });
+        document.addEventListener(eventName('rank-market-supply-restore'), event=>{const value=event.detail;if(value?.selected && ['kospi','kosdaq','futures','futuresKosdaq'].includes(value.selected)){selected=value.selected;paintStocks();remember();clearView();void load();}});
+        window.addEventListener('online', window[api('refreshRankMarketSupplyChart')]);
+        if(!window.rankIndependentClient && typeof window.rankMainCandleOpen==='boolean')window[api('applyRankMarketSupplyCandleOpen')](window.rankMainCandleOpen);
+        paintStocks(); resize(); document.dispatchEvent(new Event(eventName('rank-market-supply-ready')));
+        if (!window.rankIndependentClient && !window.rankManagedChartRefresh) window[api('refreshRankMarketSupplyChart')]();
     }
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initialize, { once: true }); else initialize();
+    const initializeBoth = () => { initialize(); initialize(true); };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initializeBoth, { once: true }); else initializeBoth();
 })();

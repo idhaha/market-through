@@ -15,6 +15,7 @@ function program(row) {
     return arbitrage == null || nonArbitrage == null ? null : arbitrage + nonArbitrage;
 }
 function createMarketSupplyService({ directory, http, credentials, getToken, reference, supply, now = Date.now,
+    minuteProvider,
     pause = ms => new Promise(resolve => setTimeout(resolve, ms)), log = console.warn }) {
     const store = createSupplyStore({ directory, now }), statuses = new Map();
     const { createHistoryCache, createDailyQueryCache } = require('./daily-query-cache');
@@ -95,6 +96,7 @@ function createMarketSupplyService({ directory, http, credentials, getToken, ref
         return snapshot();
     }
     function collect() {
+        if (minuteProvider) return minuteProvider.collect();
         if (running) return running;
         if (!collectingAt(now())) return Promise.resolve();
         running = (async () => {
@@ -138,7 +140,8 @@ function createMarketSupplyService({ directory, http, credentials, getToken, ref
         if (mode === 'minute') {
             if (cursor && !/^\d{8}$/.test(cursor)) throw failure('잘못된 과거 날짜입니다.');
             if (cursor && (!Number.isFinite(timestamp(cursor)) || compact(dayKey(timestamp(cursor))) !== cursor)) throw failure('잘못된 과거 날짜입니다.');
-            const config = markets[code], dates = store.dates(config.code);
+            const minuteStore = minuteProvider?.store || store;
+            const config = markets[code], dates = minuteStore.dates(config.code);
             const date = cursor ? `${cursor.slice(0,4)}-${cursor.slice(4,6)}-${cursor.slice(6,8)}` : dayKey(now());
             const index = dates.indexOf(date), previous = index > 0 ? compact(dates[index-1]) : null;
             const price = { points: [], error: '', previous: null };
@@ -154,10 +157,13 @@ function createMarketSupplyService({ directory, http, credentials, getToken, ref
                     if (page === 79) price.error = '가격 과거 조회 한도 도달';
                 }
             } catch (error) { price.error = error.message; }
-            const points = date ? store.points(config.code, date) : [];
+            const points = date ? minuteStore.points(config.code, date) : [];
             const candles = price.points.filter(p => dayKey(p.t) === date);
             const byTime = new Map(candles.map(p => [p.t, { t: p.t }]));
             points.forEach(p => byTime.set(p.t, p));
+            if (minuteProvider) return { success: true, points: [...byTime.values()].sort((a,b)=>a.t-b.t), candles, date,
+                has_more: Boolean(previous || price.previous), cursor: [previous, price.previous].filter(Boolean).sort().at(-1) || null,
+                ...minuteProvider.status(code, date), warnings: [...minuteProvider.warnings(code), ...(price.error ? [price.error] : [])] };
             return { success: true, points: [...byTime.values()].sort((a,b)=>a.t-b.t), candles, date,
                 has_more: Boolean(previous || price.previous), cursor: [previous, price.previous].filter(Boolean).sort().at(-1) || null, status: statuses.get(code), partial: Boolean(statuses.get(code)?.error), warnings: [...warnings(code),
                     '당일 누적 순매수대금 · 미수집 구간 제외', ...(price.error ? [price.error] : [])] };
@@ -166,11 +172,12 @@ function createMarketSupplyService({ directory, http, credentials, getToken, ref
             load:onProgress=>daily(code,cursor,onProgress)});
     }
     function start() {
+        if (minuteProvider) return minuteProvider.start();
         if (timer) return;
         const run = () => { try { store.archiveCompleted(); } catch(error) { log(`[Market supply] ${error.message}`); }
             void collect().catch(error => log(`[Market supply] ${error.message}`)); };
         run(); timer = setInterval(run,60000); timer.unref?.();
     }
-    return { query, collect, start, stop: () => clearInterval(timer), store };
+    return { query, collect, start, stop: () => minuteProvider ? minuteProvider.stop() : clearInterval(timer), store: minuteProvider?.store || store };
 }
 module.exports = { createMarketSupplyService, investor, program, markets };
