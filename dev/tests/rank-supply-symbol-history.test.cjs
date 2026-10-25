@@ -1,0 +1,72 @@
+const fs=require('fs'),assert=require('node:assert/strict'),{chromium}=require('playwright');
+(async()=>{const browser=await chromium.launch({headless:true,channel:'chrome'});try{
+ const page=await browser.newPage({viewport:{width:1900,height:1100}}),errors=[],requests=[];page.on('pageerror',e=>errors.push(e.message));
+ const weekend=process.env.MINUTE_TEST_WEEKEND==='1';await page.clock.install({time:new Date(weekend?'2026-10-25T01:00:00+09:00':'2026-10-23T12:00:00+09:00')});
+ await page.addInitScript(()=>{window.candleRects={};const old=CanvasRenderingContext2D.prototype.fillRect,clear=CanvasRenderingContext2D.prototype.clearRect;CanvasRenderingContext2D.prototype.clearRect=function(...a){if(this.canvas.closest('.rank-adr-candle-area,.concentration-candle-area'))window.candleRects[this.canvas.closest('section')?.id]=[];return clear.apply(this,a);};CanvasRenderingContext2D.prototype.fillRect=function(...a){if(this.canvas.closest('.rank-adr-candle-area,.concentration-candle-area'))(window.candleRects[this.canvas.closest('section')?.id]||=[]).push(a);return old.apply(this,a);};});
+ const html=fs.readFileSync('public/index.html','utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'').replace(/<link\b[^>]*>/gi,'');
+ const times=['2026-10-19','2026-10-20','2026-10-21','2026-10-22','2026-10-23'].flatMap(day=>Array.from({length:20},(_,i)=>Date.parse(day+'T09:00:00+09:00')+i*60000));
+ const prices=market=>times.map((t,i)=>({t,date:new Date(t+9*3600000).toISOString().slice(0,16).replace('T',' '),open:(market==='kosdaq'?900:2500)+i,high:(market==='kosdaq'?910:2510)+i,low:(market==='kosdaq'?890:2490)+i,close:(market==='kosdaq'?905:2505)+i,market_turnover:1e12})).map((p,i)=>i===7?{...p,low:null}:p);
+ const flow=times.map((t,i)=>({t,foreign:i+1,institution:-i-1,individual:i*2,program:-i*2}));
+ await page.route('http://minute.test/**',route=>{const u=new URL(route.request().url());requests.push(u.pathname+u.search);const market=u.searchParams.get('market')||u.searchParams.get('code')||'kospi';let data;
+ if(u.pathname==='/api/market-supply/chart')data={success:true,points:flow,candles:prices(market==='futuresKosdaq'?'kosdaq':market).slice(-5),warnings:[],has_more:false};
+ else if(u.pathname==='/api/chart-reference'||u.pathname==='/api/adr/candles')data={success:true,points:u.pathname==='/api/chart-reference'?prices(market).slice(-5):prices(market),has_more:false};
+ else if(u.pathname==='/api/concentration-chart')data={success:true,market:'K',points:prices('stock').map(p=>({time:new Date(p.t+9*3600000).toISOString().slice(0,19).replace(/[-:T ]/g,''),stock_open:p.open,stock_high:p.high,stock_low:p.low,stock_price:p.close,value:10})),has_more:false};
+ else if(u.pathname==='/api/supply/watchlist')data={success:true,stocks:[{code:'005930',name:'삼성전자'},{code:'000660',name:'SK하이닉스'}],archive:[{code:'005930',name:'삼성전자'},{code:'000660',name:'SK하이닉스'}],revision:1};
+ else if(u.pathname==='/api/supply/chart'){
+ const days=['2026-10-19','2026-10-20','2026-10-21','2026-10-22','2026-10-23'];
+ const date=u.searchParams.get('date') || (u.searchParams.get('cursor')?u.searchParams.get('cursor').replace(/^(....)(..)(..)$/,'$1-$2-$3'):'2026-10-23');
+ const index=days.indexOf(date);
+ data={success:true,date,available_dates:days,points:flow.filter(p=>new Date(p.t+9*3600000).toISOString().slice(0,10)===date),has_more:index>0,cursor:index>0?days[index-1].replaceAll('-',''):null};
+ }
+ else if(u.pathname==='/api/supply/candles'){
+ const date=u.searchParams.get('date') || '2026-10-23';
+ data={success:true,points:prices('stock').filter(p=>p.date.startsWith(date)),date,has_more:false};
+ }
+ else if(u.pathname==='/api/turnover/chart')data={success:true,markets:{kospi:prices('kospi'),kosdaq:prices('kosdaq')},warnings:[],has_more:!u.searchParams.get('cursor'),cursor:u.searchParams.get('cursor')?null:'20261018'};
+ else if(u.pathname==='/api/adr/today')data={intraday:[],lastClosed:{date:'20261023',adr:75.5}};
+ else if(u.pathname==='/api/risk/breadth')data={dates:prices(market).slice(-5).map(p=>p.date),series:Object.fromEntries(['highs','lows'].map(id=>[id,{points:prices(market).slice(-5).map(p=>({date:p.date,value:null}))}])),has_more:false};
+ else if(u.pathname.startsWith('/api/'))data={success:true,series:[],points:[],has_more:false};
+ if(data)return route.fulfill({json:data});return route.fulfill({contentType:'text/html',body:html});});
+ await page.goto('http://minute.test/');await page.addStyleTag({content:fs.readFileSync('public/style.css','utf8')+'#loginOverlay{display:none!important}#tabContents,#tab_rank{display:block!important}'});
+ for(const f of ['rank-chart-axis.js','concentration-chart.js','rank-adr-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js'])await page.addScriptTag({path:'public/'+f});
+ await page.evaluate(()=>document.dispatchEvent(new Event('DOMContentLoaded')));
+ await page.evaluate(()=>window.selectRankChartStock({code:'005930',name:'삼성전자'}));await page.locator('#rankMarketSupplyChartPanel [data-mode="minute"]').click();
+ await page.locator('#rankMarketSupplyChartPanel .concentration-candle-toggle').click();await page.waitForTimeout(500);
+ const ids=['concentrationChartPanel','rankMarketSupplyChartPanel','rankAdrChartPanel','rankSupplyChartPanel','rankTurnoverChartPanel','rankBreadthChartPanel'];
+ const assertDrawn=async()=>{for(const id of ids)assert.ok(await page.evaluate(id=>window.candleRects[id]?.length>0 && window.candleRects[id].every(a=>a.every(Number.isFinite)),id),id);};
+ if(!weekend)await assertDrawn();
+ await page.evaluate(()=>window.RankChartAxis.requestHistory('minute'));
+ await page.waitForTimeout(500);
+ assert.ok(await page.evaluate(()=>window.getMarketSupplyCandleDiagnostics().visibleCandles>=99));
+ const history=await page.evaluate(()=>window.getMarketSupplyCandleDiagnostics());
+
+ for(const id of ['rankAdrChartPanel','rankBreadthChartPanel'])assert.ok(await page.evaluate(id=>window.candleRects[id]?.length>=99,id),id+' must cover 5 days despite empty indicators and latest-only reference');
+ assert.ok(await page.evaluate(()=>window.getAdrCandleDiagnostics().visibleCandles>=99));
+ assert.equal(history.candleFirst,times[0]);
+ assert.ok(requests.some(u=>u.includes('mode=minute&from=20261019&to=20261023')),'full common history must be requested even when market response contains only latest 5 candles');
+ for(const code of ['000660','005930']){
+  const mark=requests.length;
+  await page.locator('#rankSupplyChartPanel .supply-stock-select').selectOption(code);
+  await page.waitForFunction(()=>!document.querySelector('#rankSupplyChartPanel .supply-stock-select').disabled);
+  await page.waitForTimeout(500);
+  for(const day of ['2026-10-19','2026-10-20','2026-10-21','2026-10-22'])assert.ok(requests.slice(mark).some(u=>u.includes('/api/supply/chart?')&&u.includes('code='+code)&&u.includes('date='+day)),code+' '+day);
+  assert.ok(await page.evaluate(()=>window.candleRects.rankSupplyChartPanel?.length>=99),'new symbol must preserve five days of price candles');
+  assert.equal(await page.locator('#rankSupplyChartPanel .rank-candle-label').textContent(),code==='000660'?'SK하이닉스':'삼성전자');
+ }
+ await page.locator('#rankAdrChartPanel input[value="kosdaq"]').check();
+ await page.locator('#rankTurnoverChartPanel input[value="kosdaq"]').check();
+ await page.locator('#rankBreadthChartPanel .rank-market-choice input[value="kosdaq"]').check();
+ await page.locator('#rankMarketSupplyChartPanel .rank-market-choice input[value="kosdaq"]').check();
+ await page.waitForTimeout(500);await assertDrawn();
+ for(const id of ['rankAdrChartPanel','rankTurnoverChartPanel','rankBreadthChartPanel','rankMarketSupplyChartPanel'])assert.equal(await page.locator('#'+id+' .rank-candle-label').textContent(),'KOSDAQ',id);
+ assert.ok(requests.some(u=>u.includes('/api/chart-reference?mode=minute&market=kosdaq')));
+ assert.ok(requests.some(u=>u.includes('/api/adr/candles?market=kosdaq&mode=minute')));
+ assert.ok(requests.some(u=>u.includes('/api/market-supply/chart?code=kosdaq&mode=minute')));
+ await page.locator('#rankMarketSupplyChartPanel .rank-market-choice input[value="futures"]').check();await page.waitForTimeout(200);await assertDrawn();
+ assert.equal(await page.locator('#rankMarketSupplyChartPanel .rank-candle-label').textContent(),'KOSPI (현물)');
+ await page.locator('#rankMarketSupplyChartPanel .rank-market-choice input[value="futuresKosdaq"]').check();await page.waitForTimeout(200);await assertDrawn();
+ assert.equal(await page.locator('#rankMarketSupplyChartPanel .rank-candle-label').textContent(),'KOSDAQ (현물)');
+ console.log('Five-day stock switch round-trip and empty-indicator/latest-only-reference regression; all six minute candle cards: valid drawing despite one missing OHLC, market switching, source queries and labels passed.');
+ assert.deepEqual(errors,[]);
+
+ }finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

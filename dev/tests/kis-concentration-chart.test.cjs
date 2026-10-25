@@ -51,7 +51,8 @@ test('daily uses actual amounts and never falls back to a price-times-volume est
 });
 test('API failures do not expose axios configuration or credentials',async()=>{
  const f=fixture();f.options.http.get=async()=>{throw{isAxiosError:true,config:{appkey:'SECRET'},code:'ECONNRESET'};};
- await assert.rejects(f.service.query({code:'005930',mode:'minute'},'user'),e=>!/SECRET|appkey/.test(e.message)&&/통신 오류/.test(e.message));
+ const result=await f.service.query({code:'005930',mode:'minute'},'user');
+ assert.equal(result.success,true);assert.equal(result.partial,true);assert.ok(result.points.every(p=>p.value===null && p.stock_price===200));assert.match(result.notice,/통신 오류/);assert.doesNotMatch(JSON.stringify(result),/SECRET|appkey/);
 });
 function temporaryDirectory(){
  const root=path.resolve(__dirname,'../output');fs.mkdirSync(root,{recursive:true});
@@ -102,4 +103,23 @@ test('overlapping collection shares one run, and failure in one industry does no
  await new Promise(resolve=>setImmediate(resolve));release();await a;
  assert.equal(f.calls.length,1);assert.equal(logs.length,1);assert.doesNotMatch(logs[0],/SECRET|appkey/);
  time+=60000;await f.service.collect();assert.equal(f.calls.length,3);
+});
+
+
+test('rate limit retries are bounded and failure retains reference candles without Kiwoom ratio substitution',async()=>{
+ let calls=0;const waits=[];
+ const f=fixture(undefined,{pause:async ms=>waits.push(ms),http:{get:async()=>{calls++;return {data:{rt_cd:'1',msg_cd:'EGW00201',msg1:'초당 거래건수를 초과하였습니다.'}};}}});
+ const result=await f.service.query({code:'000660',mode:'day'},'user');
+ assert.equal(calls,3);assert.ok(waits.includes(1000)&&waits.includes(2000));
+ assert.equal(result.partial,true);assert.equal(result.success,true);
+ assert.equal(result.points[0].stock_open,190);assert.equal(result.points[0].stock_high,210);assert.equal(result.points[0].value,null);
+ assert.equal(result.cursor,'bound-cursor');assert.match(result.notice,/가격 캔들은 표시/);
+});
+
+
+test('temporary KIS rate limit recovers the actual daily concentration after delayed retry',async()=>{
+ const f=fixture();const original=f.options.http.get;let calls=0;
+ f.options.http.get=async(...args)=>{if(++calls===1)return{data:{rt_cd:'1',msg_cd:'EGW00201',msg1:'초당 거래건수 초과'}};return original(...args);};
+ const result=await f.service.query({code:'000660',mode:'day'},'user');
+ assert.equal(result.partial,undefined);assert.equal(result.points[0].value,20);assert.equal(result.source,'한투');assert.equal(calls,3);
 });

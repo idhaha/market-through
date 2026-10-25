@@ -374,6 +374,7 @@
             if(window.rankManagedChartRefresh && !window.rankChartRefreshStarted)return;
             if (!state.selection || (append && state.busy)) return;
             if(append){window.RankChartAxis.showHistory();todayOnly=false;}else if(!refresh){todayOnly=true;}
+            state.historyError='';
             const previous = { points: state.points, start: state.start, visible: state.visible };
             state.controller?.abort();
             const controller = new AbortController();
@@ -401,7 +402,7 @@
                 } else {
                     state.points = refresh && !result.points.length ? previous.points : freshPoints;
                 }
-                state.cursor = result.cursor; state.hasMore = result.has_more;
+                state.cursor = result.cursor; state.hasMore = result.has_more;state.historyProgress=result.history_progress;state.historyError=result.partial ? result.notice || '거래대금 일부 조회 실패' : '';
                 state.visible = state.points.length; state.start = 0;
                 if (refresh && previous.visible < previous.points.length) {
                     state.visible = Math.min(previous.visible, state.points.length);
@@ -413,13 +414,14 @@
                 }
 
                 market.textContent = result.market === 'K' ? '코스피' : '코스닥';
-                window.setRankCardConnection?.('#' + chartKey + 'ChartPanel', true);
+                window.setRankCardConnection?.('#' + chartKey + 'ChartPanel', !result.partial);
                 const valid = state.points.filter(point => point.value != null).length;
                 status.textContent = result.history_pending ? '시장 과거 데이터가 더 필요합니다. 추가 조회 버튼을 눌러 주세요.'
-                    : !state.points.length ? '표시할 데이터가 없습니다.' : !valid ? '같은 날짜·시간의 시장 거래대금이 없어 계산할 수 없습니다.'
+                    : result.partial && result.notice ? result.notice : !state.points.length ? '표시할 데이터가 없습니다.' : !valid ? '같은 날짜·시간의 시장 거래대금이 없어 계산할 수 없습니다.'
                     : result.notice || '';
             } catch (error) {
                 if (request !== state.request || error.name === 'AbortError') return;
+                state.historyError=error.message;
                 window.setRankCardConnection?.('#' + chartKey + 'ChartPanel', false);
                 if (!append && !refresh) { state.points = []; state.start = 0; state.visible = 0; }
                 status.textContent = `${error.message} · ${refresh ? '다음 갱신 주기에 다시 조회합니다.' : append ? '추가 조회 버튼으로 다시 시도하세요.' : '일/분 버튼으로 다시 시도하세요.'}`;
@@ -470,10 +472,12 @@
             suggestionRows = []; activeSuggestion = -1; lastSuggestionQuery = null;
         }
         function chooseStock(stock) {
+            const restoreRange=state.mode==='minute'?window.RankChartAxis.minuteDomain():window.RankChartAxis.dailyDomain();
             lookupVersion++; hideSuggestions();
             state.selection = { code: stock.code, name: stock.name };
             name.value = stock.name; market.textContent = stock.market === 'K' ? '코스피' : stock.market === 'Q' ? '코스닥' : '-';
-            selectedRows(); load();
+            panel.querySelector('.rank-selection-history-notice')?.remove();
+            selectedRows(); void load().then(()=>{if(state.selection?.code===stock.code)return window.RankChartAxis.restoreHistoryRange(chartKey,restoreRange);});
             document.dispatchEvent(new CustomEvent('rank-concentration-selection', { detail: { source: chartKey, stock } }));
         }
         function highlightSuggestion(index) {
@@ -565,7 +569,7 @@
             if (button.dataset.chartMode === 'minute' && state.mode !== 'minute') state.interval = 1;
             state.mode = button.dataset.chartMode; updateControls(); saveDisplaySettings(); load();
         }));
-        window.RankChartAxis.registerHistoryLoader(chartKey,()=>load(true),()=>state.busy,()=>({hasMore:!!state.selection && state.hasMore,cursor:state.cursor}));
+        window.RankChartAxis.registerHistoryLoader(chartKey,()=>load(true),()=>state.busy,()=>({hasMore:!!state.selection && state.hasMore,cursor:state.cursor,progress:state.historyProgress,error:state.historyError,identity:state.selection?.code}));
         more.addEventListener('click', () => window.RankChartAxis.requestHistory(state.mode));
         function zoom(factor, anchor = .5) {
             if (!state.points.length) return;

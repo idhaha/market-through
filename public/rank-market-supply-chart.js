@@ -251,7 +251,11 @@
         }
         function choose(code) {
             if (selected === code) return;
-            selected = code; remember(); clearView(); paintStocks(); load();
+            const restoreRange=mode==='minute'?window.RankChartAxis.minuteDomain():window.RankChartAxis.dailyDomain();
+            selected = code; remember(); clearView(); paintStocks();
+            panel.querySelector('.rank-selection-history-notice')?.remove();
+            if(restoreRange && mode==='minute')todayOnly=restoreRange.first.slice(0,10)===dayKey(Date.now());
+            void load(false,restoreRange).then(()=>{if(selected===code)return window.RankChartAxis.restoreHistoryRange('marketSupply',restoreRange);});
         }
         window.getMarketSupplyCandleDiagnostics = () => ({market:selected,mode,points:points.length,candles:candles.length,
             validCandles:candles.filter(window.RankChartAxis.validCandle).length,
@@ -293,7 +297,7 @@
         });
         let todayOnly = true;
         window.RankChartAxis.todayButton(panel,'[data-mode="minute"]',()=>mode,()=>{todayOnly=true;draw();void load();});
-        async function load(append = false) {
+        async function load(append = false, restoreRange = null) {
             if(window.rankManagedChartRefresh && !window.rankChartRefreshStarted)return;
             const nextCursor = append && hasMore ? cursor : null;
             if (append && (loading || candleLoading || !nextCursor)) return;
@@ -315,6 +319,19 @@
                     candles = [...new Map([...candles, ...(result.candles || [])].map(p => [p.t, p])).values()].sort((a,b) => a.t - b.t);
                 }
                 if (append || !historyLoaded) { cursor = result.cursor; hasMore = result.has_more === true; historyLoaded = true; }
+                if(firstResponse && restoreRange && mode==='minute'){
+                    const older=[];
+                    for(const day of restoreRange.days){
+                        minuteDays.add(day);if(day===result.date)continue;
+                        const params=new URLSearchParams({code:selected,mode:'minute',cursor:day.replaceAll('-','')});
+                        const past=await request(`/api/market-supply/chart?${params}`,{signal:current.signal});
+                        if(id!==revision)return;
+                        points=mergeFlow(points,(past.points || []).filter(p=>Number.isFinite(p.t)));
+                        candles=[...new Map([...candles,...(past.candles || [])].map(p=>[p.t,p])).values()].sort((a,b)=>a.t-b.t);
+                        if(past.cursor && past.cursor<restoreRange.first.slice(0,10).replaceAll('-',''))older.push(past.cursor);
+                    }
+                    cursor=older.sort().at(-1) || null;hasMore=!!cursor;historyLoaded=true;
+                }
                 if (append && firstResponse) { start = 0; count = null; }
                 if (!append && count != null) start = followLatest ? Math.max(0, points.length - count) : Math.max(0, points.findIndex(p => p.t >= oldAnchor));
                 if (mode === 'minute') {
@@ -374,7 +391,7 @@
             panel.querySelectorAll('[data-mode]').forEach(b => { b.classList.toggle('active', b === button); b.setAttribute('aria-pressed', String(b === button)); });
             load();
         }));
-        window.RankChartAxis.registerHistoryLoader('marketSupply',()=>load(true),()=>loading || candleLoading,()=>({hasMore:hasMore,cursor,ensureRange:async target=>{await loadCandles({first:target});if(/실패|일부/.test(candleMessage))throw new Error(candleMessage);}}));
+        window.RankChartAxis.registerHistoryLoader('marketSupply',()=>load(true),()=>loading || candleLoading,()=>({identity:selected,hasMore:hasMore,cursor,ensureRange:async target=>{await loadCandles({first:target});if(/실패|일부/.test(candleMessage))throw new Error(candleMessage);}}));
         more.addEventListener('click', () => window.RankChartAxis.requestHistory(mode));
         panel.querySelectorAll('[data-series]').forEach(button => button.addEventListener('click', () => {
             const field = button.dataset.series;

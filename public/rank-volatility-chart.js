@@ -221,11 +221,13 @@
             });
         }
         function changeBreadthMarket(market) {
+            const restoreRange=breadthMode==='minute'?window.RankChartAxis.minuteDomain():window.RankChartAxis.dailyDomain();
             candleController?.abort();++candleRequest;candleKey='';breadthPricePending='';breadthPriceError='';candles=[];candleGeometry=null;candleStatus.textContent='';tip.hidden=true;
             breadthMarket=market;breadthPages.clear();breadthCursor=null;dates=[];ids.forEach(id=>data[id]=[]);start=0;count=null;hover=null;
             try{localStorage.setItem('rankBreadthMarketV1',market);}catch{}
             panel.querySelector('h2').title=({kospi:'KOSPI',kosdaq:'KOSDAQ',all:'KOSPI+KOSDAQ'})[market]+' 신고가·신저가 (KRX+NXT 통합)';
-            draw();void refreshBreadth();
+            panel.querySelector('.rank-selection-history-notice')?.remove();
+            draw();void refreshBreadth().then(()=>{if(breadthMarket===market)return window.RankChartAxis.restoreHistoryRange('breadth',restoreRange);});
         }
         let candlePointerY = null, breadthPricePending='',breadthPriceSchedule=false,breadthPriceError='';
         const dateKey = t => new Date(t + 9 * 3600000).toISOString().slice(0, 10);
@@ -414,7 +416,7 @@
                 }
             }
         }
-        if(breadth)window.RankChartAxis.registerHistoryLoader('breadth',()=>refreshBreadth(true),()=>breadthLoading || !!breadthPricePending,()=>({error:breadthPriceError,hasMore:!!breadthCursor,cursor:breadthCursor,ensureRange:async target=>{await loadCandles(target);if(breadthPriceError)throw new Error(breadthPriceError);}}));
+        if(breadth)window.RankChartAxis.registerHistoryLoader('breadth',()=>refreshBreadth(true),()=>breadthLoading || !!breadthPricePending,()=>({identity:breadthMarket,coverageFirst:[...breadthPages.values()].flatMap(p=>p.dates || []).sort()[0],error:breadthPriceError,hasMore:!!breadthCursor,cursor:breadthCursor,ensureRange:async target=>{await loadCandles(target);if(breadthPriceError)throw new Error(breadthPriceError);}}));
         panel.querySelector('[data-breadth-more]')?.addEventListener('click', () => window.RankChartAxis.requestHistory(breadthMode));
         panel.querySelectorAll('[data-breadth-mode]').forEach(button => button.addEventListener('click', () => {
             if (breadthLoading) { pendingBreadthMode = button.dataset.breadthMode; return; }

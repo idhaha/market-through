@@ -333,6 +333,7 @@ function createConcentrationChartService({ axios, getAccessToken, marketCache, n
                 debug_five_bars: mode === 'minute' && interval === 5 ? alignedFiveBarDebug(stock.rows, index.rows, now()) : null,
                 has_more: Boolean(stock.nextKey || pending),
                 history_pending: pending,
+                history_progress: `${stock.rows.size}:${index.rows.size}:${earliest(stock,mode,interval)}:${earliest(index,mode,1)}`,
                 calculation: mode === 'day' ? 'trde_prica * 1000000'
                     : 'stock: abs(int(cur_prc)) * int(trde_qty); market: (abs(int(cur_prc)) / 100) * (int(trde_qty) * 10000)',
                 index_interval: mode === 'minute' ? Number(index.body.tic_scope) : null

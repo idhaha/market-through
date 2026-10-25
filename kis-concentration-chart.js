@@ -40,12 +40,18 @@ function createKisConcentrationChartService({ reference, http, credentials, getT
             const { domain, appKey, secretKey } = credentials();
             if (!domain || !appKey || !secretKey) throw new Error('한국투자증권 API 설정이 필요합니다.');
             try {
+                for(let attempt=0; ;attempt++){
                 const response = await http.get(`${domain}/uapi/domestic-stock/v1/quotations/${endpoint}`, {
                     params, headers: { authorization: `Bearer ${await getToken()}`, appkey: appKey, appsecret: secretKey,
                         tr_id: tr, custtype: 'P', 'Content-Type': 'application/json; charset=utf-8' }, timeout: 10000 });
-                if (String(response.data.rt_cd) !== '0') throw new Error(response.data.msg1 || '한투 차트 조회 실패');
+                if (String(response.data.rt_cd) !== '0') {
+                    const message=response.data.msg1 || '한투 차트 조회 실패';
+                    if(attempt<2 && (response.data.msg_cd==='EGW00201' || /초당.*거래|거래.*초과/.test(message))){await pause((attempt+1)*1000);continue;}
+                    throw new Error(message);
+                }
                 if (!Array.isArray(response.data.output2)) throw new Error('한투 차트 응답 형식 오류');
                 return response.data.output2;
+                }
             } catch (error) {
                 // Axios error.config contains secrets. Only propagate a sanitized message.
                 throw new Error(error.response?.data?.msg1 || (error.isAxiosError ? `${tr} 통신 오류` : error.message));
@@ -173,6 +179,7 @@ function createKisConcentrationChartService({ reference, http, credentials, getT
         const code=String(input.code).replace(/_(AL|NX)$/i,''), industry=base.market==='K'?'0001':'1001';
         const dates=[...new Set(base.points.map(p=>p.time.slice(0,8)))].sort();
         let stocks, indices;
+        try {
         if (base.mode==='day') {
             stocks=await daily('FHKST03010100','inquire-daily-itemchartprice',code,dates[0],dates.at(-1),true);
             indices=await daily('FHKUP03500100','inquire-daily-indexchartprice',industry,dates[0],dates.at(-1),false);
@@ -188,6 +195,12 @@ function createKisConcentrationChartService({ reference, http, credentials, getT
                 const first=clock(Math.max(480,minute(keys[0])-1)), last=keys.at(-1).slice(8);
                 for (const [key,row] of await loadStockDay(code,day,first,last)) stocks.set(key,row);
             }
+        }
+        } catch(error) {
+            // Price candles belong to the successful reference query and survive a KIS amount failure.
+            return {...base,source:'한투',partial:true,
+                points:base.points.map(point=>({...point,value:null,stock_turnover:null,market_turnover:null,stock_turnover_million:null,market_turnover_million:null})),
+                notice:`한투 거래대금 조회 실패: ${error.message} · 가격 캔들은 표시합니다.`,warnings:[error.message]};
         }
         const stockAmounts=base.mode==='day'?null:differences(stocks,'080000');
         const indexAmounts=base.mode==='day'?null:differences(indices,'090000',1000000);

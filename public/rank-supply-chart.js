@@ -289,7 +289,10 @@
         }
         function choose(code) {
             if (selected === code) return;
-            selected = code; remember(); clearView(); paintStocks(); load();
+            const restoreWindow=mode==='minute'?window.RankChartAxis.minuteDomain():null;
+            selected = code; remember(); clearView(); paintStocks();
+            if(restoreWindow && restoreWindow.first.slice(0,10)<dayKey(Date.now()))todayOnly=false;
+            void load(false,restoreWindow);
         }
         async function loadCandles() {
             candleController?.abort(); const current = candleController = new AbortController(), id = ++candleRevision;
@@ -335,7 +338,7 @@
         });
         let todayOnly = true;
         window.RankChartAxis.todayButton(panel,'[data-mode="minute"]',()=>mode,()=>{todayOnly=true;draw();void load();});
-        async function load(append = false) {
+        async function load(append = false, restoreWindow = null) {
             if(window.rankManagedChartRefresh && !window.rankChartRefreshStarted)return;
             const nextCursor = append ? [hasMore ? cursor : null, mode === 'minute' ? priceCursor : null].filter(Boolean).sort().at(-1) : null;
             if (append && (loading || candleLoading || !nextCursor)) return;
@@ -357,6 +360,20 @@
                     candles = [...new Map([...candles, ...(result.candles || [])].map(p => [p.t, p])).values()].sort((a,b) => a.t - b.t);
                 }
                 if (append || !historyLoaded) { cursor = result.cursor; hasMore = result.has_more === true; historyLoaded = true; }
+                if(firstResponse && restoreWindow && mode==='minute'){
+                    // A symbol change must refill the existing common period, not just its latest session.
+                    const days=restoreWindow.days.filter(day=>day>=restoreWindow.first.slice(0,10) && day<=restoreWindow.last.slice(0,10));
+                    for(const day of days){
+                        minuteDays.add(day);
+                        if(day===result.date)continue;
+                        const params=new URLSearchParams({code:selected,mode:'minute',date:day});
+                        const past=await request(`/api/supply/chart?${params}`,{signal:current.signal});
+                        if(id!==revision)return;
+                        points=mergeFlow(points,(past.points || []).filter(p=>Number.isFinite(p.t)));
+                    }
+                    const previous=(result.available_dates || []).filter(day=>day<restoreWindow.first.slice(0,10)).sort().at(-1);
+                    cursor=previous?previous.replaceAll('-',''):null;hasMore=!!previous;historyLoaded=true;
+                }
                 if (append && firstResponse) { start = 0; count = null; }
                 if (!append && count != null) start = followLatest ? Math.max(0, points.length - count) : Math.max(0, points.findIndex(p => p.t >= oldAnchor));
                 if (mode === 'minute') {
@@ -398,7 +415,7 @@
             try {
                 config = await request('/api/supply/watchlist', { cache: 'no-store' }); configError = '';
                 if (!config.archive.some(stock => stock.code === selected)) { selected = config.stocks[0]?.code || ''; clearView(); remember(); }
-                paintStocks(); await load();
+                paintStocks(); await load(false,mode==='minute'?window.RankChartAxis.minuteDomain():null);
             } catch (error) { configError = `수집 종목 조회 실패: ${error.message}`; setStatus(); }
             finally { refreshing = false; if (refreshPending && !drag) { refreshPending = false; void window.refreshRankSupplyChart(); } }
         };

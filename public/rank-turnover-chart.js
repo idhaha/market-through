@@ -81,8 +81,14 @@
             axis(ctx,h);
             for (const m of [selectedMarket === 'kospi' ? 'kosdaq' : 'kospi',selectedMarket]) {
                 ctx.globalAlpha = m === selectedMarket ? 1 : .22; ctx.strokeStyle=colors[m]; ctx.lineWidth=m === selectedMarket ? 2 : 1.5; ctx.beginPath();
-                let connected=false;
-                rows[m].forEach(p => { if (!Number.isFinite(p.market_turnover)) {connected=false;return;} if (!connected) ctx.moveTo(x(p.t),y(p.market_turnover/1e12)); else ctx.lineTo(x(p.t),y(p.market_turnover/1e12)); connected=true; }); ctx.stroke();
+                let connected=false, previousDay=null;
+                rows[m].forEach(p => {
+                    if (!Number.isFinite(p.market_turnover)) {connected=false;previousDay=null;return;}
+                    const day=dateKey(p.t);
+                    if (!connected || mode==='minute' && previousDay!==day) ctx.moveTo(x(p.t),y(p.market_turnover/1e12));
+                    else ctx.lineTo(x(p.t),y(p.market_turnover/1e12));
+                    connected=true;previousDay=day;
+                }); ctx.stroke();
                 if (rows[m].length === 1 && Number.isFinite(rows[m][0].market_turnover)) {ctx.beginPath();ctx.arc(x(rows[m][0].t),y(rows[m][0].market_turnover/1e12),3,0,Math.PI*2);ctx.fillStyle=colors[m];ctx.fill();}
                 const latestTime = data[m].filter(p => Number.isFinite(p.market_turnover)).at(-1)?.t;
                 rows[m].forEach(p => {

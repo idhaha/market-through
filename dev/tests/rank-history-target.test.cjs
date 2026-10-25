@@ -34,3 +34,42 @@ test('caught request failure with unchanged cursor cannot be mistaken for succes
  const state=f.states.supply;f.api.registerHistoryLoader('supply',async()=>{},()=>false,()=>({hasMore:true,cursor:state.cursor}));
  const r=await f.api.requestHistory('day');f.flush();assert.ok(r.failures.includes('supply'));assert.equal(r.advanced,false);
 });
+
+
+test('stable session cursor with advancing index coverage is progress, not a stalled stock page',async()=>{
+ const f=fixture();f.add('concentration',22,[18]);f.add('supply',22,[18]);f.flush();
+ let n=0;const stock=f.states.concentration;
+ f.api.registerHistoryLoader('concentration',async()=>{
+  n++;if(n===3){stock.first=18;stock.draw();}
+ },()=>false,()=>({hasMore:n<3,cursor:'stable-session',progress:String(n)}));
+ const r=await f.api.requestHistory('day');f.flush();assert.equal(r.failures.length,0);assert.equal(n,3);assert.equal(f.domain().first,f.date(18));
+});
+
+
+test('empty today view can show available past data when another chart fails',async()=>{
+ const f=fixture('minute');f.add('concentration',22,[18]);f.add('kisConcentration',22,[18]);f.states.kisConcentration.fail=true;f.flush();
+ const result=await f.api.requestHistory('minute');f.flush();
+ assert.equal(result.partial,true);assert.ok(result.failures.includes('kisConcentration'));assert.equal(f.domain().first,f.date(18));
+});
+test('switching period while history is in flight cancels its later viewport commit',async()=>{
+ const f=fixture();f.add('concentration',22,[18]);f.flush();let release;
+ f.api.registerHistoryLoader('concentration',async()=>{await new Promise(r=>release=r);f.states.concentration.first=18;f.states.concentration.draw();},()=>false,()=>({hasMore:true,cursor:1}));
+ const pending=f.api.requestHistory('day');await new Promise(r=>setImmediate(r));
+ f.states.concentration.kind='minute';f.states.concentration.draw();f.api.showToday();f.flush();
+ const today=f.api.minuteDomain().first;release();const result=await pending;f.flush();
+ assert.equal(result.cancelled,true);assert.equal(f.api.minuteDomain().first,today);assert.equal(result.failures.length,0);
+});
+
+
+test('selection restoration catches one source up without requesting older history from peers',async()=>{
+ const f=fixture();f.add('concentration',22,[21,20,18]);f.add('supply',18,[15]);f.flush();
+ const first=f.domain().first;
+ await f.api.restoreHistoryRange('concentration',{first:f.date(18),last:f.date(23)});f.flush();
+ assert.equal(f.states.concentration.first,18);assert.equal(f.calls.filter(id=>id==='concentration').length,3);assert.ok(!f.calls.includes('supply'));assert.equal(f.domain().first,first);
+});
+test('selection restoration stops when original source ends and still ensures price coverage',async()=>{
+ const f=fixture();f.add('adr',22,[]);f.flush();let target;
+ f.api.registerHistoryLoader('adr',async()=>assert.fail('no indicator history'),()=>false,()=>({identity:'kosdaq',hasMore:false,ensureRange:async first=>target=first}));
+ await f.api.restoreHistoryRange('adr',{first:f.date(18),last:f.date(23)});
+ assert.equal(target,f.date(18));
+});

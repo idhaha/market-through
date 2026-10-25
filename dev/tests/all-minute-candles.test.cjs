@@ -19,6 +19,13 @@ const fs=require('fs'),assert=require('node:assert/strict'),{chromium}=require('
  else if(u.pathname==='/api/risk/breadth')data={dates:prices(market).map(p=>p.date),series:Object.fromEntries(['highs','lows'].map(id=>[id,{points:prices(market).map(p=>({date:p.date,value:id==='highs'?5:-3}))}])),has_more:false};
  else if(u.pathname.startsWith('/api/'))data={success:true,series:[],points:[],has_more:false};
  if(data)return route.fulfill({json:data});return route.fulfill({contentType:'text/html',body:html});});
+ await page.addInitScript(()=>{
+  window.turnoverPaths=[];
+  const proto=CanvasRenderingContext2D.prototype,begin=proto.beginPath,move=proto.moveTo,stroke=proto.stroke;
+  proto.beginPath=function(...args){this.turnoverMoves=0;return begin.apply(this,args);};
+  proto.moveTo=function(...args){this.turnoverMoves=(this.turnoverMoves || 0)+1;return move.apply(this,args);};
+  proto.stroke=function(...args){if(this.canvas.closest('#rankTurnoverChartPanel .rank-adr-area') && ['#339af0','#e11d48'].includes(this.strokeStyle) && this.lineWidth>=1.5)window.turnoverPaths.push(this.turnoverMoves);return stroke.apply(this,args);};
+ });
  await page.goto('http://minute.test/');await page.addStyleTag({content:fs.readFileSync('public/style.css','utf8')+'#loginOverlay{display:none!important}#tabContents,#tab_rank{display:block!important}'});
  for(const f of ['rank-chart-axis.js','concentration-chart.js','rank-adr-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js'])await page.addScriptTag({path:'public/'+f});
  await page.evaluate(()=>document.dispatchEvent(new Event('DOMContentLoaded')));
@@ -46,6 +53,7 @@ const fs=require('fs'),assert=require('node:assert/strict'),{chromium}=require('
  assert.equal(await page.locator('#rankMarketSupplyChartPanel .rank-candle-label').textContent(),'KOSPI (현물)');
  await page.locator('#rankMarketSupplyChartPanel .rank-market-choice input[value="futuresKosdaq"]').check();await page.waitForTimeout(200);await assertDrawn();
  assert.equal(await page.locator('#rankMarketSupplyChartPanel .rank-candle-label').textContent(),'KOSDAQ (현물)');
+ assert.ok(await page.evaluate(()=>window.turnoverPaths.some(n=>n===2)),'turnover minute lines must start a new path for each of the two sessions');
  console.log('All six minute candle cards: valid drawing despite one missing OHLC, market switching, source queries and labels passed.');
  assert.deepEqual(errors,[]);
 

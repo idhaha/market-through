@@ -71,7 +71,7 @@
         chart.start=start;chart.count=Math.min(count??chart.dates.length,chart.dates.length-start);
         return {start,count};
     }
-    let historyMode=false, sharedCutoff='',redrawQueued=false,historyBusy=false;
+    let historyMode=false, sharedCutoff='',redrawQueued=false,historyBusy=false,historyEpoch=0;
     let dailyHistory=false,dailyCutoff='',rangeRevision=0;
     const historyLoaders=new Map();
     let historyButtonsQueued=false;
@@ -82,7 +82,7 @@
             for(const [id,chart] of minuteCharts){
                 const loader=historyLoaders.get(id);if(!loader?.state)continue;
                 const panel=document.getElementById(viewportPanels[id]);if(!panel)continue;
-                const button=panel.querySelector('#concentrationMore,[data-action="more"],[data-adr-more],[data-more],[data-breadth-more],[data-risk-more]');
+                const button=panel.querySelector('#concentrationMore,#kisConcentrationMore,[data-action="more"],[data-adr-more],[data-more],[data-breadth-more],[data-risk-more]');
                 if(!button)continue;
                 const available=[...minuteCharts].some(([peerId,peer])=>peer.mode===chart.mode && historyLoaders.get(peerId)?.state?.().hasMore);
                 button.disabled=historyBusy || !available;
@@ -94,7 +94,12 @@
         queueMicrotask(()=>{redrawQueued=false;for(const chart of minuteCharts.values())chart.draw();});
     }
     function showHistory(){if(historyBusy)return;historyMode=true;for(const chart of minuteCharts.values())chart.applied=undefined;notifyCharts();}
-    function showToday(){viewports.delete('minute');historyMode=false;for(const chart of minuteCharts.values())chart.applied=undefined;notifyCharts();}
+    function resetHistoryWork(){
+        historyEpoch++;historyBusy=false;pendingHistoryTargets.clear();
+        if(typeof document!=='undefined')document.querySelectorAll('#tab_rank .rank-history-notice').forEach(notice=>notice.remove());
+        scheduleHistoryButtons();
+    }
+    function showToday(){resetHistoryWork();viewports.delete('minute');historyMode=false;sharedCutoff=new Date(Date.now()+9*3600000).toISOString().slice(0,10)+' 08:00';rangeRevision++;for(const chart of minuteCharts.values())chart.applied=undefined;notifyCharts();}
     const refreshOrder=['concentration','supply','marketSupply','breadth','turnover','adr','sentiment','volatility','kisConcentration'];
     const refreshMethods={concentration:'refreshConcentrationChart',kisConcentration:'refreshKisConcentrationChart',supply:'refreshRankSupplyChart',marketSupply:'refreshRankMarketSupplyChart',breadth:'refreshRankBreadthChart',turnover:'refreshRankTurnoverChart',adr:'refreshRankAdrChart',sentiment:'refreshRankSentimentChart',volatility:'refreshRankVolatilityChart'};
     function refreshCharts({skipConcentration=false}={}) {
@@ -109,8 +114,44 @@
     }
     const pendingHistoryTargets=new Map();
     function registerHistoryLoader(id,load,busy=()=>false,state){historyLoaders.set(id,{load,busy,state});}
+    const selectionRestores=new Map();
+    async function restoreHistoryRange(id,range){
+        if(!range?.first)return;
+        const token={},loader=historyLoaders.get(id);if(!loader?.state)return;
+        selectionRestores.set(id,token);
+        const chart=minuteCharts.get(id),mode=chart?.mode,identity=loader.state().identity;
+        const current=()=>selectionRestores.get(id)===token && minuteCharts.get(id)?.mode===mode && loader.state().identity===identity;
+        const ready=async()=>{const until=Date.now()+20000;while(loader.busy() && current() && Date.now()<until)await new Promise(r=>setTimeout(r,50));if(!current())throw new Error('cancelled');if(loader.busy())throw new Error('조회 대기 시간 초과');};
+        try{
+            await ready();let pages=0;
+            while(current()){
+                const state=loader.state(),first=state.coverageFirst || minuteCharts.get(id)?.first;
+                if(state.error)throw new Error(state.error);
+                if(first && first<=range.first || !state.hasMore)break;
+                if(++pages>80)throw new Error('과거 조회 페이지 한도 도달');
+                const previous=`${first}:${state.cursor}:${state.progress}`;
+                await loader.load();await ready();
+                const next=loader.state(),after=next.coverageFirst || minuteCharts.get(id)?.first;
+                if(next.hasMore && previous===`${after}:${next.cursor}:${next.progress}`)throw new Error('과거 조회가 진행되지 않았습니다.');
+            }
+            if(!current())return;
+            await loader.state().ensureRange?.(range.first);await ready();
+            if(loader.state().error)throw new Error(loader.state().error);
+        }catch(error){
+            if(!current())return;
+            if(typeof document!=='undefined'){
+                const panel=document.getElementById(viewportPanels[id]);if(panel){
+                    let notice=panel.querySelector('.rank-selection-history-notice');
+                    if(!notice){notice=document.createElement('p');notice.className='rank-selection-history-notice';notice.setAttribute('role','status');panel.append(notice);}
+                    notice.textContent='선택 변경 후 과거 자료 조회 실패: '+error.message;
+                }
+            }
+            return {error:error.message};
+        }
+    }
     async function requestHistory(mode='minute') {
         if(historyBusy)return;
+        const epoch=historyEpoch;
         let before=mode==='day'?dailyCutoff:sharedCutoff;
         historyBusy=true;scheduleHistoryButtons();
         const participants=[...minuteCharts.entries()].filter(([id,c])=>c.mode===mode && historyLoaders.has(id)).sort(([a],[b])=>(refreshOrder.indexOf(a)<0?99:refreshOrder.indexOf(a))-(refreshOrder.indexOf(b)<0?99:refreshOrder.indexOf(b)));
@@ -122,21 +163,23 @@
             before=before || initialDomain.first;
             viewports.set(mode,{first:initialDomain.first,last:initialDomain.last});
         }
-        let target=pendingHistoryTargets.get(mode), cancelled=false;
+        const hadVisibleData=participants.some(([id])=>minuteCharts.get(id)?.dates.some(date=>!initialDomain || date>=initialDomain.first && date<=initialDomain.last));
+        let target=pendingHistoryTargets.get(mode), cancelled=false,showAvailable=false;
         const ensureReady=async loader=>{
             const deadline=Date.now()+20000;
             while(loader.busy() && Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,50));
+            if(epoch!==historyEpoch){cancelled=true;throw new Error('조회 주기 변경');}
             if(loader.busy())throw new Error('조회 대기 시간 초과');
         };
         const step=async id=>{
             const loader=historyLoaders.get(id);await ensureReady(loader);
             if(minuteCharts.get(id)?.mode!==mode){cancelled=true;throw new Error('조회 주기 변경');}
-            const old=minuteCharts.get(id)?.first, cursor=loader.state?.().cursor;
+            const old=minuteCharts.get(id)?.first, cursor=loader.state?.().cursor,progress=loader.state?.().progress;
             await loader.load();await ensureReady(loader);
             if(minuteCharts.get(id)?.mode!==mode){cancelled=true;throw new Error('조회 주기 변경');}
             const state=loader.state?.();
             if(state?.error)throw new Error(state.error);
-            if(minuteCharts.get(id)?.first===old && state?.hasMore && state.cursor===cursor)throw new Error('과거 조회가 진행되지 않았습니다.');
+            if(minuteCharts.get(id)?.first===old && state?.hasMore && state.cursor===cursor && state.progress===progress)throw new Error('과거 조회가 진행되지 않았습니다.');
         };
         try {
             if(coordinated){
@@ -181,14 +224,23 @@
                 const loader=historyLoaders.get(id),deadline=Date.now()+20000;
                 try {
                     while(loader.busy() && Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,50));
-                    if(loader.busy())throw new Error('조회 대기 시간 초과');
+                    if(epoch!==historyEpoch){cancelled=true;throw new Error('조회 주기 변경');}
+            if(loader.busy())throw new Error('조회 대기 시간 초과');
                     await loader.load();
                 } catch(error){failures.push(id);}
             }
         } finally {
+            if(epoch!==historyEpoch)return {advanced:false,failures:[],cancelled:true};
             historyBusy=false;
+            if(coordinated && failures.length && !hadVisibleData && !cancelled){
+                const available=participants.filter(([id])=>!failures.includes(id)).map(([id])=>minuteCharts.get(id)?.first).filter(Boolean).sort();
+                if(available.length){
+                    if(!target || before && target>=before)target=available[0];
+                    showAvailable=!!target && (!before || target<before);
+                }
+            }
             const starts=[...minuteCharts.values()].filter(c=>c.mode===mode && c.first).map(c=>c.first).sort();
-            const candidate=coordinated ? failures.length || cancelled ? before : target : starts.at(-1);
+            const candidate=coordinated ? (failures.length && !showAvailable || cancelled ? before : target) : starts.at(-1);
             if(mode==='day') {
                 dailyHistory=true;
                 if(candidate && (!before || candidate<before))dailyCutoff=candidate;
@@ -199,7 +251,7 @@
                 else if(before)sharedCutoff=before;
             }
             rangeRevision++;
-            if(coordinated && (failures.length || cancelled)){
+            if(coordinated && (failures.length || cancelled) && !showAvailable){
                 if(originalViewport)viewports.set(mode,originalViewport);
                 else if(initialDomain)viewports.set(mode,{first:initialDomain.first,last:initialDomain.last});
             }else viewports.delete(mode);
@@ -213,10 +265,10 @@
             const panel=document.getElementById(panelIds[id]);if(!panel)continue;
             let notice=panel.querySelector('.rank-history-notice');
             if(!notice){notice=document.createElement('p');notice.className='rank-history-notice';notice.setAttribute('role','status');panel.append(notice);}
-            notice.textContent=advanced && !exhausted.length?'':failures.length?'일부 차트의 과거 조회가 완료되지 않아 기존 표시 기간을 유지합니다.':exhausted.length?'일부 차트는 원천 과거 자료가 끝나 해당 구간을 결측으로 표시합니다.':'공통으로 표시할 더 이전 자료가 없어 기존 표시 기간을 유지합니다.';
+            notice.textContent=showAvailable?'일부 차트 조회 실패 · 확보한 과거 자료를 표시합니다.':advanced && !exhausted.length?'':failures.length?'일부 차트의 과거 조회가 완료되지 않아 기존 표시 기간을 유지합니다.':exhausted.length?'일부 차트는 원천 과거 자료가 끝나 해당 구간을 결측으로 표시합니다.':'공통으로 표시할 더 이전 자료가 없어 기존 표시 기간을 유지합니다.';
             notice.hidden=advanced && !failures.length && !exhausted.length;
         }
-        return {advanced,failures,exhausted,target};
+        return {advanced,failures,exhausted,target,partial:showAvailable};
     }
     function sharedRange(id,values,getDate,mode,start,count,draw) {
         scheduleHistoryButtons();
@@ -477,7 +529,7 @@
         const buttonMode=button=>button.dataset.chartMode || button.dataset.mode || button.dataset.adrMode || button.dataset.breadthMode || button.dataset.rankMode;
         let modeRevision=0,dispatchingMode=false;
         function synchronizeMode(mode) {
-            viewports.delete(mode);pendingHistoryTargets.delete(mode);
+            resetHistoryWork();viewports.delete(mode);pendingHistoryTargets.delete(mode);
             const revision=++modeRevision;
             if(mode==='day' && [...minuteCharts.values()].some(c=>c.mode==='minute')){dailyHistory=false;dailyCutoff='';}
             if(mode==='minute')showToday();
@@ -506,5 +558,5 @@
             if(mode==='day' || mode==='minute')synchronizeMode(mode);
         },true);
     }
-    window.RankChartAxis={marketChoice,validCandle,candleLabel,selectViewport,plotBounds,registerHover,synchronizeHover,matchesHover,updateSlider,scrollViewport,synchronizeViewport,refreshOrder,refreshCharts,registerHistoryLoader,requestHistory,showHistory,showToday,sharedRange,dailyDomain,minuteDomain,ticks,todayRange,limitToday,sessionRange,limitSessions,sessionX,eightTick,sessionStartLabel,candleLayout,todayButton};
+    window.RankChartAxis={restoreHistoryRange,marketChoice,validCandle,candleLabel,selectViewport,plotBounds,registerHover,synchronizeHover,matchesHover,updateSlider,scrollViewport,synchronizeViewport,refreshOrder,refreshCharts,registerHistoryLoader,requestHistory,showHistory,showToday,sharedRange,dailyDomain,minuteDomain,ticks,todayRange,limitToday,sessionRange,limitSessions,sessionX,eightTick,sessionStartLabel,candleLayout,todayButton};
 })();

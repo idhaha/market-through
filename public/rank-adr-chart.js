@@ -79,7 +79,7 @@
         }
         let todayOnly = true;
         window.RankChartAxis.todayButton(panel,'[data-adr-mode="minute"]',()=>mode,()=>{todayOnly=true;draw();void window.refreshRankAdrChart();});
-        window.RankChartAxis.registerHistoryLoader('adr',()=>window.refreshRankAdrChart(true),()=>referenceLoading || !!candleRangePending,()=>({error:candleRangeError,hasMore:!!referenceCursor,cursor:referenceCursor,ensureRange:async target=>{await loadCandles(target);if(candleRangeError)throw new Error(candleRangeError);}}));
+        window.RankChartAxis.registerHistoryLoader('adr',()=>window.refreshRankAdrChart(true),()=>referenceLoading || !!candleRangePending,()=>({identity:selectedMarket,coverageFirst:[...referencePages.values()].flatMap(p=>p.points || []).map(p=>new Date(p.t+9*3600000).toISOString().slice(0,mode==='minute'?16:10).replace('T',' ')).sort()[0],error:candleRangeError,hasMore:!!referenceCursor,cursor:referenceCursor,ensureRange:async target=>{await loadCandles(target);if(candleRangeError)throw new Error(candleRangeError);}}));
         moreButton.addEventListener('click',()=>window.RankChartAxis.requestHistory(mode));
         function viewportPoints() {
             {const view=window.RankChartAxis.sharedRange('adr',axisPoints(),p=>p.t,mode,viewStart,viewCount,draw);viewStart=view.start;viewCount=view.count;}
@@ -390,8 +390,8 @@
                 }
             }
         };
-        function changeView() { candleRangeKey='';candleRangePending='';candleRangeError=''; todayOnly=true;referencePages.clear();referencePoints=[];referenceCursor=null;referenceLoading=false;controller?.abort(); candleController?.abort(); viewStart=0; viewCount=null; drag=null; points = []; closing = null; hover = null; candles = []; tooltip.hidden = true; candleTip.hidden = true; output.textContent = '—'; draw(); window.refreshRankAdrChart(); }
-        panel.querySelector('.rank-market-choice').addEventListener('change', event => { selectedMarket = event.target.value; chartDay = dateKey(Date.now()); changeView(); });
+        function changeView(restoreRange) { candleRangeKey='';candleRangePending='';candleRangeError=''; todayOnly=true;referencePages.clear();referencePoints=[];referenceCursor=null;referenceLoading=false;controller?.abort(); candleController?.abort(); viewStart=0; viewCount=null; drag=null; points = []; closing = null; hover = null; candles = []; tooltip.hidden = true; candleTip.hidden = true; output.textContent = '—'; panel.querySelector('.rank-selection-history-notice')?.remove();draw();const market=selectedMarket;void window.refreshRankAdrChart().then(()=>{if(market===selectedMarket && restoreRange)return window.RankChartAxis.restoreHistoryRange('adr',restoreRange);}); }
+        panel.querySelector('.rank-market-choice').addEventListener('change', event => { const range=mode==='minute'?window.RankChartAxis.minuteDomain():window.RankChartAxis.dailyDomain();selectedMarket = event.target.value; chartDay = dateKey(Date.now()); changeView(range); });
         controls.querySelectorAll('[data-adr-mode]').forEach(button => button.addEventListener('click', () => {
             mode = button.dataset.adrMode;
             controls.querySelectorAll('[data-adr-mode]').forEach(b => b.classList.toggle('active', b === button));

@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
+const kisHttp = require('./kis-http').createKisHttp({ http: axios });
 const indexHttp = require('./shared-index-http').createSharedIndexHttp({ http: axios });
 const path = require('path');
 const cors = require('cors');
@@ -18,7 +19,7 @@ const { createAdrMinuteStore } = require('./adr-minute-store');
 const { createVolatilityService } = require('./risk-volatility');
 const { createLendableService, createLendableViewCache } = require('./lendable-stocks');
 const getLendableView = createLendableViewCache();
-const lendableService = createLendableService({ http: axios, log: message => fileLog(message) });
+const lendableService = createLendableService({ http: kisHttp, log: message => fileLog(message) });
 const adrMinuteStore = createAdrMinuteStore({ directory: path.join(__dirname, 'data', 'adr-minutes') });
 const volatilityService = createVolatilityService();
 const { createBreadthService } = require('./breadth-service');
@@ -194,7 +195,7 @@ createRankIndependentRelay({
 }).mount(app);
 const concentrationChartService = createConcentrationChartService({ axios: indexHttp, getAccessToken, marketCache });
 const kisConcentrationChartService = require('./kis-concentration-chart').createKisConcentrationChartService({
-    reference: createConcentrationChartService({ axios: indexHttp, getAccessToken, marketCache }), http: axios,
+    reference: createConcentrationChartService({ axios: indexHttp, getAccessToken, marketCache }), http: kisHttp,
     directory: path.join(__dirname, 'data', 'kis-concentration'),
     credentials: () => ({ domain: (process.env.EFRIEND_DOMAIN || '').trim(), appKey: (process.env.EFRIEND_APPKEY || '').trim(), secretKey: (process.env.EFRIEND_SECRETKEY || '').trim() }),
     getToken: () => getEfriendAccessToken((process.env.EFRIEND_DOMAIN || '').trim(), (process.env.EFRIEND_APPKEY || '').trim(), (process.env.EFRIEND_SECRETKEY || '').trim())
@@ -224,7 +225,7 @@ const chartReferenceService = require('./chart-reference-service').createChartRe
     http: indexHttp, getToken: () => getAccessToken(process.env.KIWOOM_APPKEY, process.env.KIWOOM_SECRETKEY)
 });
 const marketSupplyService = require('./market-supply-service').createMarketSupplyService({
-    directory: path.join(__dirname, 'data', 'market-supply'), http: axios,
+    directory: path.join(__dirname, 'data', 'market-supply'), http: kisHttp,
     credentials: () => ({ domain: (process.env.EFRIEND_DOMAIN || '').trim(), appKey: (process.env.EFRIEND_APPKEY || '').trim(), secretKey: (process.env.EFRIEND_SECRETKEY || '').trim() }),
     getToken: () => getEfriendAccessToken((process.env.EFRIEND_DOMAIN || '').trim(), (process.env.EFRIEND_APPKEY || '').trim(), (process.env.EFRIEND_SECRETKEY || '').trim()),
     reference: chartReferenceService, supply: supplyService
@@ -450,7 +451,7 @@ app.get('/api/stock', async (req, res) => {
                                 }
 
                                 try {
-                                    const priceRes = await axios.get(
+                                    const priceRes = await kisHttp.get(
                                         `${efriendDomain}/uapi/domestic-stock/v1/quotations/inquire-price`,
                                         {
                                             headers: {
