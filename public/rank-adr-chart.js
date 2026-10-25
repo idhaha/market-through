@@ -79,7 +79,7 @@
         }
         let todayOnly = true;
         window.RankChartAxis.todayButton(panel,'[data-adr-mode="minute"]',()=>mode,()=>{todayOnly=true;draw();void window.refreshRankAdrChart();});
-        window.RankChartAxis.registerHistoryLoader('adr',()=>window.refreshRankAdrChart(true),()=>referenceLoading,()=>({hasMore:!!referenceCursor,cursor:referenceCursor}));
+        window.RankChartAxis.registerHistoryLoader('adr',()=>window.refreshRankAdrChart(true),()=>referenceLoading || !!candleRangePending,()=>({error:candleRangeError,hasMore:!!referenceCursor,cursor:referenceCursor,ensureRange:async target=>{await loadCandles(target);if(candleRangeError)throw new Error(candleRangeError);}}));
         moreButton.addEventListener('click',()=>window.RankChartAxis.requestHistory(mode));
         function viewportPoints() {
             {const view=window.RankChartAxis.sharedRange('adr',axisPoints(),p=>p.t,mode,viewStart,viewCount,draw);viewStart=view.start;viewCount=view.count;}
@@ -103,6 +103,7 @@
         zoomIn.addEventListener('click', () => zoom(.5)); zoomOut.addEventListener('click', () => zoom(2));
         slider.addEventListener('input', () => { viewStart=Number(slider.value); clearHover(); });
         function draw() {
+            if(mode==='minute' && !candleArea.hidden && !candleRangeSchedule){candleRangeSchedule=true;queueMicrotask(()=>{candleRangeSchedule=false;void loadCandles();});}
             window.RankChartAxis.candleLabel(candleArea,selectedMarket==='kosdaq'?'KOSDAQ':'KOSPI');
             const latest = points.at(-1);
             currentDate.textContent = latest ? dateKey(latest.t) : closing ? chartDay : '—';
@@ -125,7 +126,7 @@
             if (closing) values.push(closing.adr);
             const min = Math.floor((Math.min(60, ...values) - 5) / 10) * 10, max = Math.ceil((Math.max(140, ...values) + 5) / 10) * 10;
             const y = v => bottom - (v - min) / (max - min) * (bottom - top);
-            const start = mode==='minute' && todayOnly?Date.parse(`${dateKey(Date.now())}T08:00:00+09:00`):visiblePoints[0]?.t ?? closing?.t ?? Date.parse(`${chartDay}T08:00:00+09:00`);
+            const start = visiblePoints[0]?.t ?? (mode==='minute' && todayOnly ? Date.parse(`${dateKey(Date.now())}T08:00:00+09:00`) : closing?.t ?? Date.parse(`${chartDay}T08:00:00+09:00`));
             const end = visiblePoints.at(-1)?.t ?? start;
             const sessionX=window.RankChartAxis.sessionX(visiblePoints,p=>p.t,left,right,mode==='minute',mode==='day');
             const x = t => {
@@ -244,21 +245,36 @@
             validCandles:candles.filter(window.RankChartAxis.validCandle).length,
             visiblePoints:geometry?.points.length || 0,visibleCandles:candles.filter(p=>p.t>=geometry?.start && p.t<=geometry?.end && window.RankChartAxis.validCandle(p)).length,
             first:geometry?.start,last:geometry?.end,candleFirst:candles[0]?.t,candleLast:candles.at(-1)?.t});
-        async function loadCandles() {
-            if(referencePoints.length){candles=referencePoints;candleStatus.textContent='';draw();return;}
-            if(candleArea.hidden || !points.length)return;
-            candleController?.abort();const current=candleController=new AbortController();
-            const from=dateKey(points[0].t).replaceAll('-',''),to=dateKey(points.at(-1).t).replaceAll('-','');
+        let candleRangeKey='',candleRangePending='',candleRangeSchedule=false,candleRangeError='';
+        async function loadCandles(target) {
+            if(candleArea.hidden)return;
+            if(mode==='day' && referencePoints.length){candles=referencePoints;candleStatus.textContent='';draw();return;}
+            const domain=mode==='minute'?window.RankChartAxis.minuteDomain():null;
+            const from=(target || domain?.first || (points[0] && dateKey(points[0].t)))?.slice(0,10).replaceAll('-','');
+            const to=(domain?.last || (points.at(-1) && dateKey(points.at(-1).t)))?.slice(0,10).replaceAll('-','');
+            if(!from || !to || from>to)return;
+            const key=`${selectedMarket}:${mode}:${from}:${to}`;
+            if(target && candleRangeError)candleRangeKey='';
+            if(candleRangeKey===key || candleRangePending===key)return;
+            candleController?.abort();const current=candleController=new AbortController(),market=selectedMarket;
+            candleRangePending=key;candleRangeError='';
             try {
-                const response=await fetch(`/api/adr/candles?market=${selectedMarket}&mode=${mode}&from=${from}&to=${to}`,{signal:current.signal});
+                const response=await fetch(`/api/adr/candles?market=${market}&mode=${mode}&from=${from}&to=${to}`,{signal:current.signal});
                 const result=await response.json();if(!response.ok)throw new Error(result.error || '캔들 조회 실패');
-                if(current!==candleController)return;
-                candles=Array.isArray(result.points)?result.points:[];candleStatus.textContent=result.partial?'일부 캔들 구간 표시':candles.length?'':'캔들 데이터 없음';draw();
-            } catch(error){if(error.name!=='AbortError')candleStatus.textContent='캔들 조회 실패';}
+                if(current!==candleController || market!==selectedMarket)return;
+                const fresh=(result.points || []).filter(p=>Number.isFinite(p.t));
+                candles=[...new Map([...candles,...fresh].map(p=>[p.t,p])).values()].sort((a,b)=>a.t-b.t);
+                if(mode==='minute')referencePoints=[...new Map([...referencePoints,...fresh].map(p=>[p.t,p])).values()].sort((a,b)=>a.t-b.t);
+                candleRangeError=result.partial?'일부 캔들 구간만 조회됨':'';
+                candleStatus.textContent=candleRangeError || (fresh.length?'':'선택 기간 캔들 데이터 없음');
+                candleRangeKey=key;draw();
+            } catch(error){if(error.name!=='AbortError' && current===candleController){candleRangeKey=key;candleRangeError=error.message;candleStatus.textContent=error.message;}}
+            finally{if(current===candleController)candleRangePending='';}
         }
         window.refreshRankAdrChart = async (more = false) => {
             if(window.rankManagedChartRefresh && !window.rankChartRefreshStarted)return;
             if (referenceLoading || more && !referenceCursor) return;
+            candleRangeKey='';candleRangeError='';
             if (drag) { refreshPending=true; return; }
             if(more){window.RankChartAxis.showHistory();todayOnly=false;}
             refreshPending=false;
@@ -374,7 +390,7 @@
                 }
             }
         };
-        function changeView() { todayOnly=true;referencePages.clear();referencePoints=[];referenceCursor=null;referenceLoading=false;controller?.abort(); candleController?.abort(); viewStart=0; viewCount=null; drag=null; points = []; closing = null; hover = null; candles = []; tooltip.hidden = true; candleTip.hidden = true; output.textContent = '—'; draw(); window.refreshRankAdrChart(); }
+        function changeView() { candleRangeKey='';candleRangePending='';candleRangeError=''; todayOnly=true;referencePages.clear();referencePoints=[];referenceCursor=null;referenceLoading=false;controller?.abort(); candleController?.abort(); viewStart=0; viewCount=null; drag=null; points = []; closing = null; hover = null; candles = []; tooltip.hidden = true; candleTip.hidden = true; output.textContent = '—'; draw(); window.refreshRankAdrChart(); }
         panel.querySelector('.rank-market-choice').addEventListener('change', event => { selectedMarket = event.target.value; chartDay = dateKey(Date.now()); changeView(); });
         controls.querySelectorAll('[data-adr-mode]').forEach(button => button.addEventListener('click', () => {
             mode = button.dataset.adrMode;

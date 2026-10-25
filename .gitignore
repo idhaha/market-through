@@ -55,6 +55,7 @@ data/adr-minutes/
 data/volatility/
 data/supply/
 data/market-supply/
+data/kis-concentration/
 data/breadth/
 
 # Development outputs and historical one-off tools

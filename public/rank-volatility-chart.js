@@ -74,7 +74,7 @@
             <div class="concentration-chart-footer rank-adr-zoom"><input type="range" min="0" max="0" value="0" aria-label="변동성 차트 과거 구간 이동" disabled><div class="concentration-controls"><button type="button" aria-label="변동성 차트 축소">−</button><button type="button" aria-label="변동성 차트 확대">+</button></div></div>
             <p class="rank-adr-status" role="status"></p>`;
         if (breadth) {
-            panel.querySelector('h2').textContent = '신고/신저';
+            panel.querySelector('h2').textContent = '52주 신고/신저';
             panel.querySelector('h2').removeAttribute('aria-describedby');
             panel.querySelector('h2').removeAttribute('tabindex');
             panel.querySelector('h2').classList.remove('volatility-help-trigger');
@@ -213,22 +213,21 @@
         try { breadthMarket = localStorage.getItem('rankBreadthMarketV1') || 'kospi'; } catch {}
         if (!['kospi','kosdaq','all'].includes(breadthMarket)) breadthMarket='kospi';
         if (breadth) {
-            const select=document.createElement('select');select.className='supply-stock-select';select.setAttribute('aria-label','신고가·신저가 시장 선택');
-            select.innerHTML='<option value="kospi">KOSPI</option><option value="kosdaq">KOSDAQ</option><option value="all">KOSPI+KOSDAQ</option>';
-            select.value=breadthMarket;panel.querySelector('.rank-adr-ranges').before(select);
+            const select=window.RankChartAxis.marketChoice('breadth',[['kospi','KOSPI'],['kosdaq','KOSDAQ'],['all','KOSPI+KOSDAQ']],breadthMarket,'신고가·신저가 시장 선택');
+            panel.querySelector('.concentration-chart-header h2').after(select);
             select.addEventListener('change',()=>{
                 if(breadthLoading){pendingBreadthMarket=select.value;return;}
                 changeBreadthMarket(select.value);
             });
         }
         function changeBreadthMarket(market) {
-            candleController?.abort();++candleRequest;candleKey='';candles=[];candleGeometry=null;candleStatus.textContent='';tip.hidden=true;
+            candleController?.abort();++candleRequest;candleKey='';breadthPricePending='';breadthPriceError='';candles=[];candleGeometry=null;candleStatus.textContent='';tip.hidden=true;
             breadthMarket=market;breadthPages.clear();breadthCursor=null;dates=[];ids.forEach(id=>data[id]=[]);start=0;count=null;hover=null;
             try{localStorage.setItem('rankBreadthMarketV1',market);}catch{}
             panel.querySelector('h2').title=({kospi:'KOSPI',kosdaq:'KOSDAQ',all:'KOSPI+KOSDAQ'})[market]+' 신고가·신저가 (KRX+NXT 통합)';
             draw();void refreshBreadth();
         }
-        let candlePointerY = null;
+        let candlePointerY = null, breadthPricePending='',breadthPriceSchedule=false,breadthPriceError='';
         const dateKey = t => new Date(t + 9 * 3600000).toISOString().slice(0, 10);
         function surface(target, context) {
             const w = target.clientWidth, h = target.clientHeight, dpr = window.devicePixelRatio || 1;
@@ -241,6 +240,7 @@
             candlePointerY=null;tip.hidden=true;draw();
         });
         function draw() {
+            if(breadth && breadthMode==='minute' && !candleArea.hidden && !breadthPriceSchedule){breadthPriceSchedule=true;queueMicrotask(()=>{breadthPriceSchedule=false;void loadCandles();});}
             window.RankChartAxis.candleLabel(candleArea,breadth && breadthMarket==='kosdaq'?'KOSDAQ':'KOSPI');
             {const view=window.RankChartAxis.sharedRange(sentiment?'sentiment':breadth?'breadth':'volatility',dates,d=>d,breadth?breadthMode:'day',start,count,draw);start=view.start;count=view.count;}
             const n = Math.min(dates.length, count ?? dates.length);
@@ -337,28 +337,36 @@
             if (hover && Number.isFinite(price)) drawHoverValue(cc, { left, right, top, bottom, y }, price, price.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), '#000');
             if (drag) { cc.fillStyle = 'rgba(51,154,240,.15)'; cc.fillRect(Math.min(drag.from, drag.to), top, Math.abs(drag.to - drag.from), bottom - top); }
         }
-        async function loadCandles() {
+        async function loadCandles(target) {
             if (!breadth && candles.length) { draw(); return; }
-            if (candleArea.hidden || !dates.length) return;
+            if (candleArea.hidden || !dates.length && !(breadth && breadthMode==='minute')) return;
             const priceMarket=breadth && breadthMarket==='kosdaq'?'kosdaq':'kospi';
             const priceName=priceMarket==='kosdaq'?'KOSDAQ':'KOSPI';
-            const key = `${priceMarket}:${breadth ? breadthMode : 'day'}:${dates[0]}:${dates.at(-1)}`;
-            if (key === candleKey && candles.length) { draw(); return; }
+            const domain=breadth && breadthMode==='minute'?window.RankChartAxis.minuteDomain():null;
+            const first=(target || domain?.first || dates[0]).slice(0,10),last=(domain?.last || dates.at(-1)).slice(0,10);
+            const key = `${priceMarket}:${breadth ? breadthMode : 'day'}:${first}:${last}`;
+            if(target && breadthPriceError)candleKey='';
+            if(key===candleKey || key===breadthPricePending)return;
+            breadthPricePending=key;breadthPriceError='';
             candleController?.abort(); candleController = new AbortController(); const request = ++candleRequest;
             candleStatus.textContent = `${priceName} ${breadth && breadthMode==='minute'?'1분봉':'일봉'} 조회 중…`;
             try {
                 const minute = breadth && breadthMode === 'minute';
-                const from = new Date(Date.parse(`${dates[0].slice(0,10)}T00:00:00Z`) - (minute ? 0 : 35 * 86400000)).toISOString().slice(0, 10).replaceAll('-', '');
-                const response = await fetch(`/api/adr/candles?market=${priceMarket}&mode=${minute ? 'minute' : 'day'}&from=${from}&to=${dates.at(-1).slice(0,10).replaceAll('-', '')}`, { signal: candleController.signal });
+                const from = new Date(Date.parse(`${first}T00:00:00Z`) - (minute ? 0 : 35 * 86400000)).toISOString().slice(0, 10).replaceAll('-', '');
+                const response = await fetch(`/api/adr/candles?market=${priceMarket}&mode=${minute ? 'minute' : 'day'}&from=${from}&to=${last.replaceAll('-', '')}`, { signal: candleController.signal });
                 const result = await response.json(); if (!response.ok) throw new Error(result.error || `${priceName} 캔들 조회 실패`);
                 if (request !== candleRequest) return;
-                candles = (Array.isArray(result.points) ? result.points : []).filter(point => ['t', 'open', 'high', 'low', 'close'].every(key => point[key] != null && Number.isFinite(Number(point[key])))).map(point => ({ ...point, date: minute ? new Date(Number(point.t) + 9 * 3600000).toISOString().slice(0,16).replace('T', ' ') : dateKey(Number(point.t)) })).sort((a, b) => a.t - b.t);
+                const freshCandles = (Array.isArray(result.points) ? result.points : []).filter(point => ['t', 'open', 'high', 'low', 'close'].every(key => point[key] != null && Number.isFinite(Number(point[key])))).map(point => ({ ...point, date: minute ? new Date(Number(point.t) + 9 * 3600000).toISOString().slice(0,16).replace('T', ' ') : dateKey(Number(point.t)) })).sort((a, b) => a.t - b.t);
+                candles=[...new Map([...candles,...freshCandles].map(p=>[p.t,p])).values()].sort((a,b)=>a.t-b.t);
+                if(breadth && breadthMode==='minute')dates=[...new Set([...dates,...freshCandles.map(p=>p.date)])].sort();
+                breadthPriceError=result.partial?'일부 캔들 구간만 조회됨':'';
                 candles.forEach((point, index) => {
                     const previous = index > 0 ? Number(candles[index - 1].close) : null;
                     point.changeRate = previous > 0 ? (Number(point.close) / previous - 1) * 100 : null;
                 });
                 candleKey = key; candleStatus.textContent = candles.length ? result.partial ? `${priceName} · 일부 구간만 조회되었습니다.` : '' : `${priceName} 캔들 데이터 없음`; draw();
-            } catch (error) { if (error.name !== 'AbortError' && request === candleRequest) candleStatus.textContent = error.message; }
+            } catch (error) { if (error.name !== 'AbortError' && request === candleRequest) {breadthPriceError=error.message;candleKey=key;candleStatus.textContent = error.message;} }
+            finally{if(request===candleRequest)breadthPricePending='';}
         }
         let todayOnly = true;
         if(breadth)window.RankChartAxis.todayButton(panel,'[data-breadth-mode="minute"]',()=>breadthMode,()=>{todayOnly=true;draw();void refreshBreadth();});
@@ -406,13 +414,13 @@
                 }
             }
         }
-        if(breadth)window.RankChartAxis.registerHistoryLoader('breadth',()=>refreshBreadth(true),()=>breadthLoading,()=>({hasMore:!!breadthCursor,cursor:breadthCursor}));
+        if(breadth)window.RankChartAxis.registerHistoryLoader('breadth',()=>refreshBreadth(true),()=>breadthLoading || !!breadthPricePending,()=>({error:breadthPriceError,hasMore:!!breadthCursor,cursor:breadthCursor,ensureRange:async target=>{await loadCandles(target);if(breadthPriceError)throw new Error(breadthPriceError);}}));
         panel.querySelector('[data-breadth-more]')?.addEventListener('click', () => window.RankChartAxis.requestHistory(breadthMode));
         panel.querySelectorAll('[data-breadth-mode]').forEach(button => button.addEventListener('click', () => {
             if (breadthLoading) { pendingBreadthMode = button.dataset.breadthMode; return; }
             if (breadthMode === button.dataset.breadthMode) return;
             breadthMode = button.dataset.breadthMode;todayOnly=true; breadthCursor = null; breadthPages.clear();
-            candleController?.abort(); candleRequest++; candleKey = '';
+            candleController?.abort(); candleRequest++; candleKey = '';breadthPricePending='';breadthPriceError='';
             start = 0; count = null; hover = null; tip.hidden = true; data = Object.fromEntries(ids.map(id => [id, []])); dates = []; candles = [];
             panel.querySelectorAll('[data-breadth-mode]').forEach(item => { const active = item === button; item.classList.toggle('active',active); item.setAttribute('aria-pressed',String(active)); });
             void refreshBreadth(); save();

@@ -193,6 +193,12 @@ createRankIndependentRelay({
     }
 }).mount(app);
 const concentrationChartService = createConcentrationChartService({ axios: indexHttp, getAccessToken, marketCache });
+const kisConcentrationChartService = require('./kis-concentration-chart').createKisConcentrationChartService({
+    reference: createConcentrationChartService({ axios: indexHttp, getAccessToken, marketCache }), http: axios,
+    directory: path.join(__dirname, 'data', 'kis-concentration'),
+    credentials: () => ({ domain: (process.env.EFRIEND_DOMAIN || '').trim(), appKey: (process.env.EFRIEND_APPKEY || '').trim(), secretKey: (process.env.EFRIEND_SECRETKEY || '').trim() }),
+    getToken: () => getEfriendAccessToken((process.env.EFRIEND_DOMAIN || '').trim(), (process.env.EFRIEND_APPKEY || '').trim(), (process.env.EFRIEND_SECRETKEY || '').trim())
+});
 const supplyService = createSupplyService({
     directory: path.join(__dirname, 'data', 'supply'), http: axios,
     getToken: () => getAccessToken(process.env.KIWOOM_APPKEY, process.env.KIWOOM_SECRETKEY),
@@ -262,6 +268,10 @@ app.post('/api/concentration-chart', async (req, res) => {
         console.warn('[ConcentrationChart]', error.message);
         res.status(error.status || 502).json({ success: false, error: error.message });
     }
+});
+app.post('/api/kis-concentration-chart', async (req, res) => {
+    try { res.set('Cache-Control', 'no-store').json(await kisConcentrationChartService.query(req.body, req.authUser.email)); }
+    catch (error) { res.status(error.status || 502).json({ success: false, error: error.message }); }
 });
 
 // 1. API 경로를 static 보다 먼저 정의 (우선순위 확보)
@@ -2882,11 +2892,20 @@ async function getAccessToken(appKey, secretKey) {
 // eFriend 토큰 캐싱을 위한 전역 변수
 let efriendCachedToken = null;
 let efriendTokenExpiryTime = 0;
+let efriendTokenRequest = null;
+
+function getEfriendAccessToken(domain, appKey, secretKey) {
+    if (efriendCachedToken && Date.now() < efriendTokenExpiryTime - 300000) return Promise.resolve(efriendCachedToken);
+    // Background collectors and browser queries may authenticate at the same startup instant.
+    if (!efriendTokenRequest) efriendTokenRequest = requestEfriendAccessToken(domain, appKey, secretKey)
+        .finally(() => { efriendTokenRequest = null; });
+    return efriendTokenRequest;
+}
 
 /**
  * 한국투자증권(eFriend) Access Token 발급
  */
-async function getEfriendAccessToken(domain, appKey, secretKey) {
+async function requestEfriendAccessToken(domain, appKey, secretKey) {
     if (efriendCachedToken && Date.now() < (efriendTokenExpiryTime - 300000)) {
         return efriendCachedToken;
     }
@@ -2929,6 +2948,7 @@ async function getEfriendAccessToken(domain, appKey, secretKey) {
 app.listen(PORT, () => {
     supplyService.start();
     marketSupplyService.start();
+    kisConcentrationChartService.start();
     breadthService.start();
     // Keep the daily archive current even when no chart is open.
     const refreshVolatilityArchive = () => Promise.allSettled([volatilityService.query('all'), sentimentService.query('all')]).then(results => results.forEach(result => { if (result.status === 'rejected') console.warn('[Risk] Archive refresh failed:', result.reason.message); }));

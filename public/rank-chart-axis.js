@@ -44,7 +44,7 @@
     const minuteCharts=new Map();
     const viewports=new Map();
     let viewportSource=null,viewportBefore=null;
-    const viewportPanels={concentration:'concentrationChartPanel',supply:'rankSupplyChartPanel',marketSupply:'rankMarketSupplyChartPanel',breadth:'rankBreadthChartPanel',turnover:'rankTurnoverChartPanel',adr:'rankAdrChartPanel',volatility:'rankVolatilityChartPanel',sentiment:'rankSentimentChartPanel'};
+    const viewportPanels={concentration:'concentrationChartPanel',kisConcentration:'kisConcentrationChartPanel',supply:'rankSupplyChartPanel',marketSupply:'rankMarketSupplyChartPanel',breadth:'rankBreadthChartPanel',turnover:'rankTurnoverChartPanel',adr:'rankAdrChartPanel',volatility:'rankVolatilityChartPanel',sentiment:'rankSentimentChartPanel'};
     const hoverCharts=new Map();
     function hoverKey(value,mode) { return value==null?null:dateParts(value).slice(0,mode==='minute'?16:10); }
     function registerHover(id,getMode,getValue,apply) { hoverCharts.set(id,{getMode,getValue,apply}); }
@@ -95,8 +95,8 @@
     }
     function showHistory(){if(historyBusy)return;historyMode=true;for(const chart of minuteCharts.values())chart.applied=undefined;notifyCharts();}
     function showToday(){viewports.delete('minute');historyMode=false;for(const chart of minuteCharts.values())chart.applied=undefined;notifyCharts();}
-    const refreshOrder=['concentration','supply','marketSupply','breadth','turnover','adr','sentiment','volatility'];
-    const refreshMethods={concentration:'refreshConcentrationChart',supply:'refreshRankSupplyChart',marketSupply:'refreshRankMarketSupplyChart',breadth:'refreshRankBreadthChart',turnover:'refreshRankTurnoverChart',adr:'refreshRankAdrChart',sentiment:'refreshRankSentimentChart',volatility:'refreshRankVolatilityChart'};
+    const refreshOrder=['concentration','supply','marketSupply','breadth','turnover','adr','sentiment','volatility','kisConcentration'];
+    const refreshMethods={concentration:'refreshConcentrationChart',kisConcentration:'refreshKisConcentrationChart',supply:'refreshRankSupplyChart',marketSupply:'refreshRankMarketSupplyChart',breadth:'refreshRankBreadthChart',turnover:'refreshRankTurnoverChart',adr:'refreshRankAdrChart',sentiment:'refreshRankSentimentChart',volatility:'refreshRankVolatilityChart'};
     function refreshCharts({skipConcentration=false}={}) {
         window.rankChartRefreshStarted=true;
         const pending=[];
@@ -172,7 +172,7 @@
                 if(target && !failures.length){
                     for(const [id] of participants){
                         const loader=historyLoaders.get(id),ensure=loader.state?.().ensureRange;
-                        if(ensure)try{await ensure(target);await ensureReady(loader);}catch{failures.push(id);}
+                        if(ensure)try{await ensure(target);await ensureReady(loader);if(loader.state?.().error)throw new Error(loader.state().error);}catch{failures.push(id);}
                     }
                 }
                 if(failures.length && target && !cancelled)pendingHistoryTargets.set(mode,target);
@@ -208,7 +208,7 @@
         }
         const after=mode==='day'?dailyCutoff:sharedCutoff;
         const advanced=Boolean(after && (!before || after<before));
-        const panelIds={concentration:'concentrationChartPanel',supply:'rankSupplyChartPanel',marketSupply:'rankMarketSupplyChartPanel',breadth:'rankBreadthChartPanel',turnover:'rankTurnoverChartPanel',adr:'rankAdrChartPanel',volatility:'rankVolatilityChartPanel',sentiment:'rankSentimentChartPanel'};
+        const panelIds=viewportPanels;
         if(typeof document!=='undefined')for(const [id] of participants){
             const panel=document.getElementById(panelIds[id]);if(!panel)continue;
             let notice=panel.querySelector('.rank-history-notice');
@@ -385,6 +385,21 @@
         const domain=minuteDomain(values,getDate);
         return (domain.days.length>1?domain.first.slice(5,10)+' ':'')+domain.first.slice(11,16);
     }
+    function marketChoice(name, choices, value, label) {
+        const group=document.createElement('div');group.className='rank-market-choice';group.setAttribute('role','radiogroup');group.setAttribute('aria-label',label);
+        let selected=value;
+        Object.defineProperty(group,'value',{get:()=>group.querySelector('input:checked')?.value || selected,set:value=>{selected=value;group.querySelectorAll('input').forEach(input=>input.checked=input.value===value);}});
+        Object.defineProperty(group,'selectedOptions',{get:()=>[...group.querySelectorAll('input:checked')].map(input=>({textContent:input.parentElement.textContent}))});
+        group.setChoices=choices=>{
+            const signature=JSON.stringify(choices);if(group.dataset.choices===signature)return;
+            group.dataset.choices=signature;
+            group.replaceChildren(...choices.map(([value,text])=>{
+                const item=document.createElement('label'),input=document.createElement('input');input.type='radio';input.name='rank-market-'+name;input.value=value;input.checked=value===selected;
+                item.append(input,document.createTextNode(text));return item;
+            }));
+        };
+        group.addEventListener('change',event=>{selected=event.target.value;});group.setChoices(choices);return group;
+    }
     function validCandle(point) {
         return ['open','high','low','close'].every(key=>Number.isFinite(point?.[key]) && point[key]>0) &&
             point.low<=Math.min(point.open,point.close) && point.high>=Math.max(point.open,point.close);
@@ -416,6 +431,19 @@
         new MutationObserver(update).observe(minute,{attributes:true,attributeFilter:['class','aria-pressed']});update();return button;
     }
     if(typeof document!=='undefined') {
+        let syncingMarket=false;
+        document.addEventListener('change',event=>{
+            const input=event.target;
+            if(syncingMarket || !input.matches?.('.rank-market-choice input[type="radio"]') || !input.closest('#tab_rank'))return;
+            syncingMarket=true;
+            try{
+                for(const group of document.querySelectorAll('#tab_rank .rank-market-choice[role="radiogroup"]')){
+                    if(group===input.closest('.rank-market-choice'))continue;
+                    const peer=[...group.querySelectorAll('input[type="radio"]')].find(peer=>peer.value===input.value && !peer.disabled);
+                    if(peer && !peer.checked)peer.click();
+                }
+            }finally{syncingMarket=false;}
+        });
         // Local handlers choose the source time first; peers use their own hover rendering.
         document.addEventListener('mousemove',event=>{
             if(!event.target.matches?.('canvas') || event.buttons)return;
@@ -478,5 +506,5 @@
             if(mode==='day' || mode==='minute')synchronizeMode(mode);
         },true);
     }
-    window.RankChartAxis={validCandle,candleLabel,selectViewport,plotBounds,registerHover,synchronizeHover,matchesHover,updateSlider,scrollViewport,synchronizeViewport,refreshOrder,refreshCharts,registerHistoryLoader,requestHistory,showHistory,showToday,sharedRange,dailyDomain,minuteDomain,ticks,todayRange,limitToday,sessionRange,limitSessions,sessionX,eightTick,sessionStartLabel,candleLayout,todayButton};
+    window.RankChartAxis={marketChoice,validCandle,candleLabel,selectViewport,plotBounds,registerHover,synchronizeHover,matchesHover,updateSlider,scrollViewport,synchronizeViewport,refreshOrder,refreshCharts,registerHistoryLoader,requestHistory,showHistory,showToday,sharedRange,dailyDomain,minuteDomain,ticks,todayRange,limitToday,sessionRange,limitSessions,sessionX,eightTick,sessionStartLabel,candleLayout,todayButton};
 })();

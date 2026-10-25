@@ -13,10 +13,10 @@ await page.locator('#rankMarketSupplyChartPanel .concentration-candle-toggle').c
 const labelIds=['concentrationChartPanel','rankAdrChartPanel','rankTurnoverChartPanel','rankVolatilityChartPanel','rankSentimentChartPanel','rankBreadthChartPanel','rankSupplyChartPanel','rankMarketSupplyChartPanel'];
 for(const id of labelIds)assert.equal(await page.locator('#'+id+' .rank-candle-label').count(),1,id);
 for(const id of ['rankAdrChartPanel','rankTurnoverChartPanel','rankVolatilityChartPanel','rankSentimentChartPanel','rankBreadthChartPanel','rankMarketSupplyChartPanel'])assert.equal(await page.locator('#'+id+' .rank-candle-label').textContent(),'KOSPI',id);
-await page.locator('#rankMarketSupplyChartPanel select').selectOption('kosdaq');
+await page.locator('#rankMarketSupplyChartPanel .rank-market-choice input[value="kosdaq"]').check();
 assert.equal(await page.locator('#rankMarketSupplyChartPanel .rank-candle-label').textContent(),'KOSDAQ');
 assert.equal(await page.locator('#rankMarketSupplyChartPanel .rank-candle-label').count(),1);
-const picker=page.getByRole('combobox',{name:'신고가·신저가 시장 선택'});
-await picker.selectOption('kosdaq');await page.waitForFunction(()=>!document.querySelector('#rankBreadthChartPanel canvas').classList.contains('is-loading'));
-await picker.selectOption('all');await page.waitForFunction(()=>!document.querySelector('#rankBreadthChartPanel canvas').classList.contains('is-loading'));
+const picker=page.getByRole('radiogroup',{name:'신고가·신저가 시장 선택'});
+await picker.locator('input[value=\"kosdaq\"]').check();await page.waitForFunction(()=>!document.querySelector('#rankBreadthChartPanel canvas').classList.contains('is-loading'));
+await picker.locator('input[value=\"all\"]').check();await page.waitForFunction(()=>!document.querySelector('#rankBreadthChartPanel canvas').classList.contains('is-loading'));
 assert.ok(markets.includes('kospi'));assert.ok(markets.includes('kosdaq'));assert.ok(markets.includes('all'));assert.deepEqual(errors,[]);console.log('Full page: 8 cards in 3 columns, aligned plot heights/start, footer containment, shared candle toggle passed.');}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

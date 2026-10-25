@@ -1,0 +1,53 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs'),path=require('node:path');
+const puppeteer=require('puppeteer');
+test('KIS copy shares selection, modes, candles, viewport, refresh and original rendering policies', {timeout:60000}, async()=>{
+ const source=fs.readFileSync(path.resolve(__dirname,'../../public/index.html'),'utf8');
+ const start=source.indexOf('<section class="panel concentration-chart-panel"');
+ const panel=source.slice(start,source.indexOf('</section>',start)+10);
+ const browser=await puppeteer.launch({headless:true});
+ try{
+  const page=await browser.newPage();await page.setViewport({width:2100,height:1400});const errors=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  await page.setRequestInterception(true);
+  page.on('request',request=>request.respond({contentType:'text/html',body:`<div id="tab_rank"><div class="rank-chart-row">${panel}<section id="rankSentimentChartPanel" class="panel rank-adr-panel rank-sentiment-panel"><h2>CNN</h2></section></div></div>`}));
+  await page.goto('http://kis.test/');
+  await page.addStyleTag({path:path.resolve(__dirname,'../../public/style.css')});
+  await page.evaluate(()=>{
+   window.requests=[];window.failKis=false;window.saveAppData=()=>{};Date.now=()=>Date.parse('2026-10-23T07:00:00Z');
+   window.fetch=async(url,options)=>{const input=JSON.parse(options.body);window.requests.push({url,input});
+    if(window.failKis&&url.includes('kis-'))return{ok:false,json:async()=>({error:'한투 모의 오류'})};
+    const points=Array.from({length:60},(_,i)=>({time:input.mode==='day'?`202608${String(i%28+1).padStart(2,'0')}`:`2026102314${String(i).padStart(2,'0')}00`,value:url.includes('kis-')?12+i/100:20+i/100,stock_open:200,stock_high:210,stock_low:190,stock_price:205,stock_change_rate:2.5}));
+    return{ok:true,json:async()=>({success:true,market:'K',mode:input.mode,interval:1,points,cursor:'cursor',has_more:false})};
+   };
+  });
+  for(const file of ['rank-connection-status.js','rank-chart-axis.js','concentration-chart.js'])await page.addScriptTag({path:path.resolve(__dirname,'../../public',file)});
+  await page.evaluate(()=>document.dispatchEvent(new Event('DOMContentLoaded')));
+  assert.equal(await page.$eval('#kisConcentrationChartTitle',e=>e.textContent),'쏠림율[한투]');
+  await page.waitForFunction(()=>document.querySelector('#kisConcentrationChartPanel .rank-card-source'));
+  assert.equal(await page.$eval('#kisConcentrationChartPanel .rank-card-source',e=>e.textContent),'출처: 한투');
+  const placement=await page.evaluate(()=>{const a=document.getElementById('rankSentimentChartPanel').getBoundingClientRect(),b=document.getElementById('kisConcentrationChartPanel').getBoundingClientRect();return{a:a.x,b:b.x,topA:a.top,topB:b.top};});
+  assert.ok(placement.b>placement.a);assert.equal(placement.topA,placement.topB);
+  await page.evaluate(()=>window.selectRankChartStock({code:'005930',name:'삼성전자',market:'K'}));
+  await page.waitForFunction(()=>window.getKisRankChartState?.().points.length===60&&!window.getKisRankChartState().busy);
+  assert.equal(await page.$eval('#concentrationCurrentRate',e=>e.textContent),'20.6%');
+  assert.equal(await page.$eval('#kisConcentrationCurrentRate',e=>e.textContent),'12.6%');
+  await page.click('#kisConcentrationChartPanel [data-chart-mode="minute"]');
+  await page.waitForFunction(()=>window.getRankChartState().mode==='minute'&&window.getKisRankChartState().mode==='minute'&&!window.getKisRankChartState().busy);
+  await page.click('#kisConcentrationCandleToggle');
+  assert.equal(await page.$eval('#concentrationCandleArea',e=>e.hidden),false);assert.equal(await page.$eval('#kisConcentrationCandleArea',e=>e.hidden),false);
+  const plots=await page.evaluate(()=>['concentrationCanvas','kisConcentrationCanvas'].map(id=>{const c=document.getElementById(id);return{h:c.getBoundingClientRect().height,offset:c.getBoundingClientRect().top-c.closest('section').getBoundingClientRect().top};}));
+  assert.equal(plots[0].h,286);assert.deepEqual(plots[0],plots[1]);
+  await page.click('#kisConcentrationZoomIn');
+  await page.waitForFunction(()=>document.getElementById('concentrationRange').value===document.getElementById('kisConcentrationRange').value);
+  await page.evaluate(()=>window.selectKisRankChartStock({code:'000660',name:'SK하이닉스',market:'K'}));
+  await page.waitForFunction(()=>window.getRankChartState().selection.code==='000660'&&!window.getKisRankChartState().busy);
+  await page.evaluate(async()=>{window.failKis=true;await window.RankChartAxis.refreshCharts();});
+  assert.equal(await page.$eval('#kisConcentrationCurrentRate',e=>e.textContent),'12.6%');
+  assert.match(await page.$eval('#kisConcentrationStatus',e=>e.textContent),/한투 모의 오류/);
+  assert.equal(await page.$eval('#concentrationCurrentRate',e=>e.textContent),'20.6%');
+  assert.deepEqual(errors,[]);
+  const dir=path.resolve(__dirname,'../output');fs.mkdirSync(dir,{recursive:true});await page.screenshot({path:path.join(dir,'kis-concentration-chart.png'),fullPage:true});
+ }finally{await browser.close();}
+});

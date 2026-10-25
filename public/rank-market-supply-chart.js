@@ -29,7 +29,7 @@
         panel.id = 'rankMarketSupplyChartPanel'; panel.className = 'panel rank-adr-panel rank-supply-panel rank-market-supply-panel';
         panel.setAttribute('aria-label', '시장 수급 차트');
         panel.innerHTML = `<div class="concentration-chart-header"><h2>시장 수급</h2></div>
-            <div class="rank-adr-controls"><select class="supply-stock-select" aria-label="시장 수급 시장 선택"></select><button type="button" data-mode="day" class="active" aria-pressed="true">일봉</button><button type="button" data-mode="minute" aria-pressed="false">1분봉(누적)</button>
+            <div class="rank-adr-controls"><button type="button" data-mode="day" class="active" aria-pressed="true">일봉</button><button type="button" data-mode="minute" aria-pressed="false">1분봉(누적)</button>
             <button type="button" class="concentration-candle-toggle" aria-expanded="false">캔들차트</button></div>
             <div class="supply-legend">${series.map(s => `<button type="button" data-series="${s}" aria-label="${names[s]} 표시" title="${names[s]} 표시 전환" aria-pressed="true" style="color:${colors[s]}"><span>${Array.from(names[s])[0]}</span><output>—</output></button>`).join('')}</div>
             <div class="chart-hover-info" hidden></div><div class="rank-adr-area"><canvas role="img" aria-label="개인 외국인 기관 프로그램 순매수대금 차트"></canvas></div>
@@ -46,7 +46,8 @@
         const info = panel.querySelector('.chart-hover-info'), status = panel.querySelector('[role="status"]');
         const slider = panel.querySelector('input[type="range"]');
         const more = panel.querySelector('[data-action="more"]');
-        const stockSelect = panel.querySelector('.supply-stock-select');
+        const stockSelect = window.RankChartAxis.marketChoice('market-supply',[], 'kospi','시장 수급 시장 선택');
+        panel.querySelector('.concentration-chart-header h2').after(stockSelect);
         stockSelect.addEventListener('change', () => { if (stockSelect.value) choose(stockSelect.value); });
         let selected = 'kospi', mode = 'day', cursor = null, hasMore = false, loading = false, historyLoaded = false;
         const minuteDays = new Set();
@@ -172,13 +173,13 @@
                 }
                 ctx.strokeStyle = colors[s]; ctx.lineWidth = 2; ctx.beginPath(); let previous;
                 rows.forEach(p => {
-                    if (!Number.isFinite(p[s])) { previous = null; return; }
+                    if (!Number.isFinite(p[s]) || p[s] === 0) { previous = null; return; }
                     const gap = mode === 'minute' && previous && p.t - previous.t > 60000;
                     if (!previous || gap) ctx.moveTo(x(p.t), y(p[s])); else ctx.lineTo(x(p.t), y(p[s]));
                     previous = p;
                 }); ctx.stroke();
                 rows.forEach(p => {
-                    if (!Number.isFinite(p[s])) return;
+                    if (!Number.isFinite(p[s]) || p[s] === 0) return;
                     if (p.t === last?.t || p.t === hover || rows.length === 1) {
                         ctx.fillStyle = p.t === last?.t && dayKey(p.t) === dayKey(Date.now()) ? '#f97316' : colors[s];
                         ctx.beginPath(); ctx.arc(x(p.t), y(p[s]), 3, 0, Math.PI * 2); ctx.fill();
@@ -210,7 +211,7 @@
                     const label = document.createElement('span'); label.style.color = colors[s];
                     const carriedAt = point[`${s}_carried_from`];
                     label.textContent = ` · ${names[s]} ${format(point[s])}${Number.isFinite(carriedAt) ? ` (${clock(carriedAt)} 최종 관측값)` : ''}`; info.append(label);
-                    if (mode !== 'day' && visibleSeries.has(s) && Number.isFinite(point[s])) valueBadge(ctx, point[s], y(point[s]), colors[s], h, format(point[s]));
+                    if (mode !== 'day' && visibleSeries.has(s) && Number.isFinite(point[s]) && point[s] !== 0) valueBadge(ctx, point[s], y(point[s]), colors[s], h, format(point[s]));
                 });
                 info.hidden = false;
             }
@@ -238,7 +239,7 @@
         }
         function paintStocks() {
             if (mode === 'day' && selected.startsWith('futures')) selected = selected === 'futuresKosdaq' ? 'kosdaq' : 'kospi';
-            stockSelect.replaceChildren(...(mode === 'day' ? [['kospi','KOSPI'],['kosdaq','KOSDAQ']] : [['kospi','KOSPI'],['kosdaq','KOSDAQ'],['futures','KOSPI선물'],['futuresKosdaq','KOSDAQ선물']]).map(([value,name])=>new Option(name,value)));
+            stockSelect.setChoices(mode === 'day' ? [['kospi','KOSPI'],['kosdaq','KOSDAQ']] : [['kospi','KOSPI'],['kosdaq','KOSDAQ'],['futures','KOSPI선물'],['futuresKosdaq','KOSDAQ선물']]);
             stockSelect.value=selected;
             stockSelect.title=stockSelect.selectedOptions[0]?.textContent || '시장 선택';
             const future=selected.startsWith('futures');
