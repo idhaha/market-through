@@ -5,7 +5,7 @@
     const colors = { individual: '#339af0', foreign: '#e11d48', institution: '#16a34a', program: '#8b5cf6' };
     const dayKey = t => new Date(t + 9 * 3600000).toISOString().slice(0, 10);
     const clock = t => new Date(t + 9 * 3600000).toISOString().slice(11, 16);
-    const format = (n, signed = true) => Number.isFinite(n) ? `${signed && n > 0 ? '+' : ''}${n.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}` : '미제공';
+    const formatAmount = (n, signed = true) => Number.isFinite(n) ? `${signed && n > 0 ? '+' : ''}${n.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}` : '미제공';
     function mergeFlow(previous, incoming) {
         const points = new Map(previous.map(point => [point.t, point]));
         for (const point of incoming) {
@@ -21,13 +21,15 @@
         if (!response.ok || !data.success) throw Object.assign(new Error(data.error || '수급 조회 실패'), { status: response.status });
         return data;
     }
-    function initialize(isLs = false) {
-        const axisId = isLs ? 'lsMarketSupply' : 'marketSupply';
-        const panelId = isLs ? 'rankLsMarketSupplyChartPanel' : 'rankMarketSupplyChartPanel';
-        const eventName = name => isLs ? name.replace('rank-market-supply', 'rank-ls-market-supply') : name;
-        const api = name => isLs ? name.replace('MarketSupply', 'LsMarketSupply') : name;
-        const endpoint = isLs ? '/api/ls-market-supply/chart' : '/api/market-supply/chart';
-        const storageKey = isLs ? 'rankLsMarketSupplySelectedV1' : 'rankMarketSupplySelectedV1';
+    function initialize(broker = '') {
+        const isLs = broker === 'ls', isKiwoom = broker === 'kiwoom';
+        const format = (n, signed = true) => Number.isFinite(n) ? `${formatAmount(n / 100, signed)}억원` : formatAmount(n, signed);
+        const axisId = isKiwoom ? 'kiwoomMarketSupply' : isLs ? 'lsMarketSupply' : 'marketSupply';
+        const panelId = isKiwoom ? 'rankKiwoomMarketSupplyChartPanel' : isLs ? 'rankLsMarketSupplyChartPanel' : 'rankMarketSupplyChartPanel';
+        const eventName = name => isKiwoom ? name.replace('rank-market-supply', 'rank-kiwoom-market-supply') : isLs ? name.replace('rank-market-supply', 'rank-ls-market-supply') : name;
+        const api = name => isKiwoom ? name.replace('MarketSupply', 'KiwoomMarketSupply') : isLs ? name.replace('MarketSupply', 'LsMarketSupply') : name;
+        const endpoint = isKiwoom ? '/api/kiwoom-market-supply/chart' : isLs ? '/api/ls-market-supply/chart' : '/api/market-supply/chart';
+        const storageKey = isKiwoom ? 'rankKiwoomMarketSupplySelectedV1' : isLs ? 'rankLsMarketSupplySelectedV1' : 'rankMarketSupplySelectedV1';
         if (window.rankIndependentClient) return;
         const breadth = document.getElementById('rankBreadthChartPanel'), row = window.rankIndependentClient ? document.getElementById('tab_rank') : breadth?.closest('.rank-chart-row');
         if (!row || document.getElementById(panelId)) return;
@@ -42,7 +44,10 @@
             <div class="rank-adr-candle-area" hidden><span class="market-candle-label"></span><canvas role="img" aria-label="선택 시장 지수 캔들차트"></canvas></div>
             <div class="concentration-chart-footer rank-adr-zoom"><input type="range" min="0" max="0" value="0" aria-label="수급 과거 구간 이동" disabled><div class="concentration-controls"><button type="button" aria-label="시장 수급 차트 축소">−</button><button type="button" aria-label="시장 수급 차트 확대">+</button></div></div>
             <button type="button" data-action="more" class="concentration-icon-button" title="과거 데이터 더 불러오기" aria-label="과거 데이터 더 불러오기"><svg width="28" height="28" viewBox="0 0 34 34" shape-rendering="crispEdges" aria-hidden="true"><rect x="1" y="1" width="32" height="32" fill="#ededed"/><path d="M10 5v20" stroke="#737373" stroke-width="2"/><rect x="6" y="9" width="9" height="12" fill="#505050"/><path d="M22 5v20" stroke="#c0c0c0" stroke-width="2"/><rect x="18" y="9" width="9" height="12" fill="#969696"/><path d="M25 21v10M21 26h10" stroke="#444444" stroke-width="4"/></svg></button><p class="rank-adr-status" role="status"></p>`;
-        if (isLs) { panel.classList.add('rank-ls-market-supply-panel'); row.append(panel); panel.querySelector('h2').textContent = '시장 수급(LS)'; } else breadth.before(panel);
+        row.append(panel);
+        if (isLs) panel.classList.add('rank-ls-market-supply-panel');
+        panel.querySelector('h2').textContent = `시장 수급(${isKiwoom ? '키움' : isLs ? 'LS' : '한투'})`;
+        window.RankSupplyGuide?.attach(panel, 'market', isKiwoom ? 'kiwoom' : isLs ? 'ls' : 'kis');
         panel.querySelector('.rank-adr-controls').append(panel.querySelector('.supply-legend'));
         const latestDate = document.createElement('span'); latestDate.className = 'supply-latest-date'; latestDate.textContent = '—';
         panel.querySelector('.supply-legend').prepend(latestDate);
@@ -52,10 +57,11 @@
         const info = panel.querySelector('.chart-hover-info'), status = panel.querySelector('[role="status"]');
         const slider = panel.querySelector('input[type="range"]');
         const more = panel.querySelector('[data-action="more"]');
-        const stockSelect = window.RankChartAxis.marketChoice(isLs ? 'ls-market-supply' : 'market-supply',[], 'kospi','시장 수급 시장 선택');
+        const stockSelect = window.RankChartAxis.marketChoice(isKiwoom ? 'kiwoom-market-supply' : isLs ? 'ls-market-supply' : 'market-supply',[], 'kospi','시장 수급 시장 선택');
         panel.querySelector('.concentration-chart-header h2').after(stockSelect);
         stockSelect.addEventListener('change', () => { if (stockSelect.value) choose(stockSelect.value); });
         let selected = 'kospi', mode = 'day', cursor = null, hasMore = false, loading = false, historyLoaded = false;
+        let flowLoading=false;
         const minuteDays = new Set();
         let priceCursor = null, candleLoading = false;
         let points = [], candles = [], start = 0, count = null, hover = null, drag = null, geometry;
@@ -99,6 +105,9 @@
             context.font = '12px Inter, sans-serif'; return { w, h };
         }
         function draw() {
+            const received=mode==='day' && points.length ? `수급 · 투자자 ${points.filter(p=>['individual','foreign','institution'].some(s=>Number.isFinite(p[s]))).length}/${points.length}일 · 프로그램 ${points.filter(p=>Number.isFinite(p.program)).length}/${points.length}일` : '수급';
+            window.RankChartAxis.loadingBar(canvas.parentElement,flowLoading,received);
+            window.RankChartAxis.loadingBar(candleArea,candleLoading,'캔들');
             const { w, h } = surface(canvas, ctx);
             {const view=window.RankChartAxis.sharedRange(axisId,points,p=>p.t,mode,start,count,draw);start=view.start;count=view.count;}
             const n = Math.min(points.length, count ?? points.length);
@@ -125,7 +134,7 @@
                     context.strokeStyle = '#b8c1cc'; context.setLineDash([3, 5]); context.lineWidth = 1;
                     context.beginPath(); context.moveTo(left, py); context.lineTo(right, py); context.stroke();
                     context.fillStyle = muted; context.textAlign = 'right';
-                    if (showLabels) context.fillText(unit ? format(Math.round(value) || 0, false) : value.toLocaleString('ko-KR', { maximumFractionDigits: 2 }), width - 4, py + 4);
+                    if (showLabels) context.fillText(unit ? format(Math.round(value) || 0, false) : value.toLocaleString('ko-KR', { maximumFractionDigits: 1 }), width - 4, py + 4);
                 }
                 context.setLineDash([]);
             }
@@ -169,6 +178,9 @@
                 button.querySelector('output').textContent = last ? format(last[s]) : points.length ? '미제공' : '—';
                 button.querySelector('output').title = last ? `${dayKey(last.t)} ${clock(last.t)} 기준` : '관측값 없음';
                 button.querySelector('output').style.color = colors[s];
+                let stamp=button.querySelector('.supply-observed-time');
+                if(!stamp){stamp=document.createElement('small');stamp.className='supply-observed-time';button.append(stamp);}
+                stamp.textContent=mode==='minute' && last ? clock(last.t) : '';
                 if (!visibleSeries.has(s)) return;
                 if (mode === 'day') {
                     const lane=lanes.get(s), positions=rows.map(p=>x(p.t));
@@ -184,6 +196,14 @@
                     if (!previous || gap) ctx.moveTo(x(p.t), y(p[s])); else ctx.lineTo(x(p.t), y(p[s]));
                     previous = p;
                 }); ctx.stroke();
+                if(mode==='minute'){
+                    ctx.save();ctx.setLineDash([3,4]);ctx.beginPath();let observed;
+                    rows.forEach(p=>{if(!Number.isFinite(p[s]))return;
+                        if(observed && window.RankChartAxis.intradayGap(observed.t,p.t,isLs ? 1200 : 930)){
+                            ctx.moveTo(x(observed.t),y(observed[s]));ctx.lineTo(x(p.t),y(p[s]));
+                        }observed=p;
+                    });ctx.stroke();ctx.restore();
+                }
                 rows.forEach(p => {
                     if (!Number.isFinite(p[s]) || p[s] === 0) return;
                     if (p.t === last?.t || p.t === hover || rows.length === 1) {
@@ -244,8 +264,8 @@
             if (hovered) valueBadge(cc, hovered.close, cy(hovered.close), '#000', size.h, hovered.close.toLocaleString('ko-KR'));
         }
         function paintStocks() {
-            if (mode === 'day' && selected.startsWith('futures')) selected = selected === 'futuresKosdaq' ? 'kosdaq' : 'kospi';
-            stockSelect.setChoices(mode === 'day' ? [['kospi','KOSPI'],['kosdaq','KOSDAQ']] : [['kospi','KOSPI'],['kosdaq','KOSDAQ'],['futures','KOSPI선물'],['futuresKosdaq','KOSDAQ선물']]);
+            if ((mode === 'day' || isKiwoom) && selected.startsWith('futures')) selected = selected === 'futuresKosdaq' ? 'kosdaq' : 'kospi';
+            stockSelect.setChoices(mode === 'day' || isKiwoom ? [['kospi','KOSPI'],['kosdaq','KOSDAQ']] : [['kospi','KOSPI'],['kosdaq','KOSDAQ'],['futures','KOSPI선물'],['futuresKosdaq','KOSDAQ선물']]);
             stockSelect.value=selected;
             stockSelect.title=stockSelect.selectedOptions[0]?.textContent || '시장 선택';
             const future=selected.startsWith('futures');
@@ -276,7 +296,7 @@
             const key=`${market}:${from}:${to}`;
             if(key===candleRangeKey || key===candleRangePending)return;
             candleController?.abort();const current=candleController=new AbortController(),id=++candleRevision;
-            candleRangePending=key;candleLoading=true;
+            candleRangePending=key;candleLoading=true;draw();
             try{
                 const response=await fetch(`/api/adr/candles?market=${market}&mode=minute&from=${from}&to=${to}`,{signal:current.signal});
                 const result=await response.json();
@@ -311,7 +331,7 @@
             candleController?.abort(); ++candleRevision; candleLoading = false;candleRangeKey='';candleRangePending='';
             if (!selected) { loading = false; clearView(); chartMessage = '시장을 선택하세요.'; setStatus(); return; }
             if(append){window.RankChartAxis.showHistory();todayOnly=false;}
-            loading = true; chartMessage = append ? '과거 수급 조회 중…' : '수급 조회 중…'; setStatus(); draw();
+            loading = true; flowLoading=true; chartMessage = append ? '과거 수급 조회 중…' : '수급 조회 중…'; setStatus(); draw();
             try {
                 let firstResponse=true;
                 do {
@@ -348,11 +368,13 @@
                 const periodPoints=mode==='minute' && todayOnly?points.filter(p=>dayKey(p.t)===dayKey(Date.now())):points;
                 const period = periodPoints.length ? `${dayKey(periodPoints[0].t)}${dayKey(periodPoints[0].t) === dayKey(periodPoints.at(-1).t) ? '' : ' ~ ' + dayKey(periodPoints.at(-1).t)}` : '당일 자료 없음';
                 const message = mode === 'minute' ? `${period} · 1분 누적 · 미수집 구간 제외` : `일별 순매수대금 · ${points.length.toLocaleString()}봉`;
-                const warnings = (result.warnings || []).filter(text => !text.startsWith('1분마다 관측한 당일 누적 순매수대금'));
+                const warnings = (result.warnings || []).filter(text => !text.startsWith('1분마다 관측한 당일 누적 순매수대금')).map(text => isLs ? text.replace('금액: 백만원', '금액: 억원') : text);
+                if (isLs && mode === 'minute') warnings.push('프로그램 추가 검증 중');
                 chartMessage = `${hasFlow ? message : '수급 기록 없음'}${warnings.length ? ` · ${warnings.join(' · ')}` : ''}${result.status?.error && result.date === dayKey(Date.now()) ? ` · ${result.status.error}` : ''}`;
                 if(result.pending)chartMessage=hasFlow?`${chartMessage} · 추가 조회 중…`:'가격 수신 · 수급 조회 중…';
                 window.setRankCardConnection?.(panel, !result.partial && !result.warnings?.some(text => /실패|오류/.test(text)));
                 hover = null; info.hidden = true; setStatus(); draw();
+                flowLoading=!!result.pending;draw();
                 if (showCandles || mode === 'minute') await loadCandles();
                 publish();
                 firstResponse=false;
@@ -367,7 +389,7 @@
             }
             finally {
                 if (id === revision) {
-                    loading = false; draw(); publish();
+                    loading = false; flowLoading=false; draw(); publish();
                     if (refreshPending && !refreshing && !drag) { refreshPending = false; void window[api('refreshRankMarketSupplyChart')](); }
                 }
             }
@@ -465,6 +487,6 @@
         paintStocks(); resize(); document.dispatchEvent(new Event(eventName('rank-market-supply-ready')));
         if (!window.rankIndependentClient && !window.rankManagedChartRefresh) window[api('refreshRankMarketSupplyChart')]();
     }
-    const initializeBoth = () => { initialize(); initialize(true); };
+    const initializeBoth = () => { initialize('kiwoom'); initialize(); initialize('ls'); };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initializeBoth, { once: true }); else initializeBoth();
 })();

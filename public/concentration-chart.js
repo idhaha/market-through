@@ -13,29 +13,33 @@
     document.addEventListener('DOMContentLoaded', () => {
         const original = document.getElementById('concentrationChartPanel');
         if (original && !window.rankIndependentClient && original.closest('.rank-chart-row')) {
-            const copy = original.cloneNode(true);
-            for (const element of [copy, ...copy.querySelectorAll('*')]) {
-                for (const attr of ['id', 'aria-controls', 'aria-describedby']) {
-                    const value = element.getAttribute(attr);
-                    if (value) element.setAttribute(attr, value.replaceAll('concentration', 'kisConcentration'));
+            for (const [prefix,label] of [['kisConcentration','한투'],['lsConcentration','LS']]) {
+                const copy = original.cloneNode(true);
+                for (const element of [copy, ...copy.querySelectorAll('*')]) {
+                    for (const attr of ['id', 'aria-controls', 'aria-describedby']) {
+                        const value = element.getAttribute(attr);
+                        if (value) element.setAttribute(attr, value.replaceAll('concentration', prefix));
+                    }
                 }
+                copy.querySelector('h2').textContent = `쏠림율(${label})`;
+                copy.querySelectorAll('.rank-card-source,.rank-connection-dot').forEach(element => element.remove());
+                copy.setAttribute('aria-label', `쏠림율(${label}) 차트`);
+                copy.querySelector('#'+prefix+'More').setAttribute('data-action', 'more');
+                copy.querySelector('#'+prefix+'Period').classList.add('concentration-period');
+                original.closest('.rank-chart-row').append(copy);
             }
-            copy.querySelector('h2').textContent = '쏠림율[한투]';
-            copy.querySelectorAll('.rank-card-source,.rank-connection-dot').forEach(element => element.remove());
-            copy.setAttribute('aria-label', '쏠림율[한투] 차트');
-            copy.querySelector('#kisConcentrationMore').setAttribute('data-action', 'more');
-            copy.querySelector('#kisConcentrationPeriod').classList.add('concentration-period');
-            original.closest('.rank-chart-row').append(copy);
         }
         initialize();
-        if (document.getElementById('kisConcentrationChartPanel')) initialize(true);
+        if (document.getElementById('kisConcentrationChartPanel')) initialize('kis');
+        if (document.getElementById('lsConcentrationChartPanel')) initialize('ls');
     });
-    function initialize(kis = false) {
+    function initialize(broker = '') {
+        const kis = !!broker, prefix = broker === 'ls' ? 'lsConcentration' : 'kisConcentration';
         const state = { selection: null, mode: 'day', interval: 1, points: [], cursor: null,
             hasMore: false, busy: false, visible: 0, start: 0, request: 0, controller: null, hover: null, drag: null };
-        const chartKey = kis ? 'kisConcentration' : 'concentration';
-        const get = id => document.getElementById(kis ? id.replace(/^concentration/, 'kisConcentration') : id);
-        const api = name => kis ? name.replace('Concentration', 'KisConcentration').replace('RankChart', 'KisRankChart') : name;
+        const chartKey = kis ? prefix : 'concentration';
+        const get = id => document.getElementById(kis ? id.replace(/^concentration/, prefix) : id);
+        const api = name => kis ? name.replace('Concentration', broker === 'ls' ? 'LsConcentration' : 'KisConcentration').replace('RankChart', broker === 'ls' ? 'LsRankChart' : 'KisRankChart') : name;
         let refreshPending = false, refreshTimer = null;
         function flushRefresh() {
             if (!refreshPending || state.busy || state.drag || (typeof isCapturing !== 'undefined' && isCapturing) || refreshTimer) return;
@@ -43,6 +47,8 @@
         }
         const panel = get('concentrationChartPanel');
         if (!panel) return;
+        if (!kis && !window.rankIndependentClient) panel.querySelector('h2').textContent = '쏠림율(키움)';
+        window.RankSupplyGuide?.attach(panel, 'concentration', broker || 'kiwoom');
         if (!kis) document.addEventListener('click', event => {
             if (window.rankIndependentClient || window.rankCandleSyncing) return;
             const button = event.target.closest?.('.rank-chart-row .concentration-candle-toggle');
@@ -71,10 +77,13 @@
         const currentRate = get('concentrationCurrentRate');
         const valueWithDate = document.createElement('span'); valueWithDate.className = 'chart-value-with-date';
         currentRate.before(valueWithDate); valueWithDate.append(currentRate);
+        const currentCumulative=document.createElement('span');currentCumulative.className='concentration-current-cumulative';currentCumulative.hidden=true;valueWithDate.append(currentCumulative);
         const currentDate = document.createElement('span'); currentDate.className = 'chart-value-date concentration-value-date'; currentDate.textContent = '—';
         panel.append(currentDate);
         function positionCurrentDate() {
-            const box = panel.getBoundingClientRect(), value = currentRate.getBoundingClientRect();
+            const box = panel.getBoundingClientRect(), row=currentRate.closest('.concentration-timeframe-row');
+            if(row)valueWithDate.style.top=`${row.getBoundingClientRect().top-box.top-panel.clientTop}px`;
+            const value = currentRate.getBoundingClientRect();
             currentDate.style.right = `${box.right - panel.clientLeft - value.right}px`;
             currentDate.style.top = `${value.top - box.top - panel.clientTop - 15}px`;
         }
@@ -82,6 +91,7 @@
         const chartArea = canvas.parentElement;
         tooltip.className = 'chart-hover-info';
         chartArea.before(tooltip);
+        const cumulativeLegend=document.createElement('span');cumulativeLegend.className='concentration-cumulative-legend';cumulativeLegend.hidden=true;chartArea.append(cumulativeLegend);
         const ctx = canvas.getContext('2d');
         const candleCanvas = get('concentrationCandleCanvas');
         const candleArea = get('concentrationCandleArea');
@@ -94,16 +104,21 @@
         let candlePointerY = null;
 
         window[api('getConcentrationDisplaySettings')] = () => ({
+            chartGuideEdits: window.RankSupplyGuide?.getEdits() || {},
             candleOpen: !candleArea.hidden, mode: state.mode, interval: state.interval,
             ...(window.getRankAdrCandleOpen ? { adrCandleOpen: window.getRankAdrCandleOpen() } : {}),
             ...(window.getRankTurnoverCandleOpen ? { turnoverCandleOpen: window.getRankTurnoverCandleOpen() } : {}),
             ...(window.getRankVolatilityDisplaySettings ? { volatility: window.getRankVolatilityDisplaySettings() } : {}),
             ...(window.getRankBreadthDisplaySettings ? { breadth: window.getRankBreadthDisplaySettings() } : {}),
+            ...(window.getRankKiwoomMarketSupplyDisplaySettings ? { kiwoomMarketSupply: window.getRankKiwoomMarketSupplyDisplaySettings() } : {}),
             ...(window.getRankLsMarketSupplyDisplaySettings ? { lsMarketSupply: window.getRankLsMarketSupplyDisplaySettings() } : {}),
+            ...(window.getRankKisSupplyDisplaySettings ? { kisSupply: window.getRankKisSupplyDisplaySettings() } : {}),
+            ...(window.getRankLsSupplyDisplaySettings ? { lsSupply: window.getRankLsSupplyDisplaySettings() } : {}),
             ...(window.getRankMarketSupplyDisplaySettings ? { marketSupply: window.getRankMarketSupplyDisplaySettings() } : {}),
             ...(window.getRankSentimentDisplaySettings ? { sentiment: window.getRankSentimentDisplaySettings() } : {})
         });
         window[api('applyConcentrationDisplaySettings')] = settings => {
+            if (!kis && settings && Object.hasOwn(settings, 'chartGuideEdits')) window.RankSupplyGuide?.applyEdits(settings.chartGuideEdits);
             const nextCandleOpen = settings?.candleOpen === true;
             if(!kis && !window.rankIndependentClient)window.rankMainCandleOpen=nextCandleOpen;
             if (!kis && nextCandleOpen !== !candleArea.hidden) document.dispatchEvent(new CustomEvent('rank-candle-display', { detail: { open: nextCandleOpen } }));
@@ -120,11 +135,14 @@
                 if (!window.rankIndependentClient || settings && 'turnoverCandleOpen' in settings) window.applyRankTurnoverCandleOpen?.(window.rankIndependentClient ? settings.turnoverCandleOpen === true : nextCandleOpen);
                 if (settings && 'volatility' in settings) window.applyRankVolatilityDisplaySettings?.(window.rankIndependentClient ? settings.volatility : {...settings.volatility,candleOpen:nextCandleOpen});
                 if (settings && 'breadth' in settings) window.applyRankBreadthDisplaySettings?.(window.rankIndependentClient ? settings.breadth : {...settings.breadth,candleOpen:nextCandleOpen});
+                if (settings && 'kiwoomMarketSupply' in settings) window.applyRankKiwoomMarketSupplyDisplaySettings?.(settings.kiwoomMarketSupply);
                 if (settings && 'lsMarketSupply' in settings) window.applyRankLsMarketSupplyDisplaySettings?.(settings.lsMarketSupply);
+                if (settings && 'kisSupply' in settings) window.applyRankKisSupplySettings?.(settings.kisSupply);
+                if (settings && 'lsSupply' in settings) window.applyRankLsSupplySettings?.(settings.lsSupply);
                 if (settings && 'marketSupply' in settings) window.applyRankMarketSupplyDisplaySettings?.(settings.marketSupply);
                 if (settings && 'sentiment' in settings) window.applyRankSentimentDisplaySettings?.(window.rankIndependentClient ? settings.sentiment : {...settings.sentiment,candleOpen:nextCandleOpen});
-                if(!window.rankIndependentClient){ window.applyRankLsMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankSupplyCandleOpen?.(nextCandleOpen); window.applyRankMarketSupplyCandleOpen?.(nextCandleOpen); }
-                window.applyKisConcentrationDisplaySettings?.(settings);
+                if(!window.rankIndependentClient){ window.applyRankKiwoomMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankLsMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankSupplyCandleOpen?.(nextCandleOpen); window.applyRankKisSupplyCandleOpen?.(nextCandleOpen); window.applyRankLsSupplyCandleOpen?.(nextCandleOpen); window.applyRankMarketSupplyCandleOpen?.(nextCandleOpen); }
+                window.applyKisConcentrationDisplaySettings?.(settings); window.applyLsConcentrationDisplaySettings?.(settings);
             }
             state.hover = null; tooltip.hidden = true; candleTooltip.hidden = true;
             draw();
@@ -134,6 +152,8 @@
             if (!window.rankCandleSyncing && typeof saveAppData === 'function') saveAppData();
         }
         function updateControls() {
+            window.RankChartAxis.loadingBar(chartArea,state.busy,'쏠림율');
+            window.RankChartAxis.loadingBar(candleCanvas.parentElement,state.busy,'캔들');
             canvas.classList.toggle('is-loading', state.busy);
             candleCanvas.classList.toggle('is-loading', state.busy);
             if (state.busy || state.hover == null) candleTooltip.hidden = true;
@@ -177,11 +197,11 @@
         function candleChange(point) {
             return Number.isFinite(point.stock_change_rate) ? point.stock_change_rate : null;
         }
-        function drawHoverValue(context, plot, y, value, label) {
+        function drawHoverValue(context, plot, y, value, label, color = '#000') {
             const py=y(value), badgeY=Math.max(plot.top+10,Math.min(plot.bottom-10,py));
-            context.save();context.lineWidth=1;context.strokeStyle='#000';context.setLineDash([3,3]);
+            context.save();context.lineWidth=1;context.strokeStyle=color;context.setLineDash([3,3]);
             context.beginPath();context.moveTo(plot.left,py);context.lineTo(plot.right,py);context.stroke();context.setLineDash([]);
-            context.font='bold 11px Arial';context.fillStyle='#000';
+            context.font='bold 11px Arial';context.fillStyle=color;
             const badgeWidth=context.measureText(label).width+12,badgeX=Math.max(0,context.canvas.clientWidth-badgeWidth-4);
             context.fillRect(badgeX,badgeY-10,badgeWidth,20);
             context.fillStyle='#fff';context.textAlign='left';context.textBaseline='middle';context.fillText(label,badgeX+6,badgeY);context.restore();
@@ -263,7 +283,11 @@
             const plot = { left: 16, top: 10, right: width - 58, bottom: height - 34 };
             {const view=window.RankChartAxis.sharedRange(chartKey,state.points,p=>p.time,state.mode,state.start,state.visible,draw);state.start=view.start;state.visible=view.count ?? state.visible;}
             const points = state.points.slice(state.start, state.start + state.visible);
-            const maximum = points.reduce((max, point) => Number.isFinite(point.value) ? Math.max(max, point.value) : max, 0);
+            const cumulative=state.mode==='minute'?window.RankChartAxis.concentrationCumulative(state.points):new Map();
+            cumulativeLegend.hidden=state.mode!=='minute';
+            const latestCumulative=cumulative.get(state.points.at(-1)?.time);
+            cumulativeLegend.textContent=`1분(파랑) · 당일 누적(주황) ${Number.isFinite(latestCumulative)?latestCumulative.toFixed(1)+'%':'—'}`;
+            const maximum = points.reduce((max, point) => Math.max(max,Number.isFinite(point.value)?point.value:0,Number.isFinite(cumulative.get(point.time))?cumulative.get(point.time):0), 0);
             let tickStep = 10;
             if (maximum > 70) {
                 const target = maximum / 7;
@@ -329,6 +353,15 @@
                     connected = true;
                 });
                 ctx.stroke();
+                if(state.mode==='minute'){
+                    ctx.beginPath();ctx.strokeStyle='#ea580c';ctx.lineWidth=2;let previousDay=null,connected=false;
+                    points.forEach((p,i)=>{const value=cumulative.get(p.time),day=p.time.slice(0,8);
+                        if(!Number.isFinite(value)){connected=false;return;}
+                        if(!connected||previousDay!==day)ctx.moveTo(x(i),y(value));else ctx.lineTo(x(i),y(value));
+                        connected=true;previousDay=day;
+                    });ctx.stroke();
+                    if(state.hover!=null && Number.isFinite(cumulative.get(points[state.hover]?.time))){const value=cumulative.get(points[state.hover].time);ctx.fillStyle='#ea580c';ctx.beginPath();ctx.arc(x(state.hover),y(value),4,0,Math.PI*2);ctx.fill();}
+                }
                 ctx.restore();
                 const latest = points.at(-1);
                 if (Number.isFinite(latest?.value) && latest.time === state.points.at(-1)?.time) {
@@ -344,7 +377,7 @@
                     ctx.moveTo(x(state.hover), plot.top); ctx.lineTo(x(state.hover), plot.bottom); ctx.stroke(); ctx.setLineDash([]);
                     const point = points[state.hover];
                     if (Number.isFinite(point.value)) {
-                        drawHoverValue(ctx,plot,y,point.value,`${point.value.toFixed(2)}%`);
+                        drawHoverValue(ctx,plot,y,point.value,`${point.value.toFixed(1)}%`);
                         ctx.fillStyle = '#000';
                         ctx.beginPath(); ctx.arc(x(state.hover), y(point.value), 4, 0, Math.PI * 2); ctx.fill();
                     }
@@ -357,11 +390,28 @@
                 ctx.fillRect(left, plot.top, span, plot.bottom - plot.top);
             }
             drawCandles(points, plot, x, ratio, xLabels, boundaries);
-            const current = state.points.at(-1);
+            const lastCumulativePoint=points.findLast(p=>Number.isFinite(cumulative.get(p.time)));
+            if(state.mode==='minute' && lastCumulativePoint){
+                const value=cumulative.get(lastCumulativePoint.time);
+                drawHoverValue(ctx,plot,y,value,`${value.toFixed(1)}%`,'#ea580c');
+            }
+            const current = state.points.findLast(point=>Number.isFinite(point.value));
+            currentCumulative.hidden=state.mode!=='minute';
+            const cumulativeAtCurrent=cumulative.get(current?.time);
+            currentCumulative.textContent=`누적 ${Number.isFinite(cumulativeAtCurrent)?cumulativeAtCurrent.toFixed(1)+'%':'—'}`;
+            currentCumulative.title=current?`${current.time.slice(0,8)} ${formatTime(current.time)} 기준 당일 누적 쏠림율`:'당일 누적 자료 없음';
+
             currentRate.textContent = Number.isFinite(current?.value)
                 ? `${current.value.toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%` : '-';
             currentDate.textContent = Number.isFinite(current?.value) && /^\d{8}/.test(current.time)
                 ? `${current.time.slice(0,4)}-${current.time.slice(4,6)}-${current.time.slice(6,8)}` : '—';
+            const hovered=points[state.hover];
+            if(state.hover!=null && hovered){
+                const change=candleChange(hovered),date=`${hovered.time.slice(0,4)}-${hovered.time.slice(4,6)}-${hovered.time.slice(6,8)}`;
+                const sum=cumulative.get(hovered.time);
+                tooltip.textContent=`${date}${state.mode==='minute'?' '+formatTime(hovered.time):''} · 쏠림율 ${Number.isFinite(hovered.value)?hovered.value.toFixed(1)+'%':'—'}${state.mode==='minute'?' · 당일 누적 '+(Number.isFinite(sum)?sum.toFixed(1)+'%':'미제공'):''} · 상승률 ${Number.isFinite(change)?change.toFixed(1)+'%':'—'}`;
+                tooltip.hidden=false;
+            }else tooltip.hidden=true;
             positionCurrentDate();
             const first = points[0], last = points.at(-1);
             const periodDate = time => `${time.slice(0,4)}-${time.slice(4,6)}-${time.slice(6,8)}`;
@@ -389,7 +439,7 @@
             status.textContent = '';
             draw();
             try {
-                const response = await fetch(kis ? '/api/kis-concentration-chart' : '/api/concentration-chart', {
+                const response = await fetch(kis ? `/api/${broker}-concentration-chart` : '/api/concentration-chart', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ code: state.selection.code, mode: state.mode, interval: state.interval, cursor: append ? state.cursor : null }),
                     signal: controller.signal
@@ -645,7 +695,7 @@
             const point = points[index]; state.hover = index;
             const change = candleChange(point);
             const date = `${point.time.slice(0,4)}-${point.time.slice(4,6)}-${point.time.slice(6,8)}`;
-            const text = `${date}${state.mode === 'minute' ? ` ${formatTime(point.time)}` : ''} · 쏠림율 ${point.value == null ? '-' : `${point.value.toFixed(2)}%`} · 상승률 ${change == null ? '-' : `${change > 0 ? '+' : ''}${change.toFixed(2)}%`}`;
+            const text = `${date}${state.mode === 'minute' ? ` ${formatTime(point.time)}` : ''} · 쏠림율 ${point.value == null ? '-' : `${point.value.toFixed(1)}%`} · 상승률 ${change == null ? '-' : `${change > 0 ? '+' : ''}${change.toFixed(1)}%`}`;
             tooltip.textContent = text;
             tooltip.hidden = false;
             candleTooltip.hidden = true;

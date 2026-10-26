@@ -146,6 +146,10 @@
             info.textContent = 'i'; info.setAttribute('aria-label', 'Chart explanation');
             info.setAttribute('aria-describedby', guide.id);
             panel.querySelector('.concentration-chart-header').append(info);
+            window.RankSupplyGuide?.makeEditable(info, guide, () => {
+                const position = info.getBoundingClientRect(), parent = panel.getBoundingClientRect();
+                guide.style.top = `${position.bottom - parent.top + 8}px`; guide.classList.add('is-visible');
+            });
         }
         let guideTimer;
         const hideGuide = () => { panel.querySelectorAll('.volatility-guide').forEach(help => help.classList.remove('is-visible')); };
@@ -203,7 +207,7 @@
             latestDate.textContent = unique.length <= 1 ? unique[0] || '—'
                 : labels.map((date, i) => `${names[ids[i]]} ${date || '—'}`).join(' · ');
         }
-        const formatValue = (value, id) => breadth ? `${Math.abs(value).toLocaleString('ko-KR')}개` : `${value.toFixed(2)}${sentiment && id === 'high-yield-spread' ? '%p' : ''}`;
+        const formatValue = (value, id) => breadth ? `${Math.abs(value).toLocaleString('ko-KR')}개` : `${value.toFixed(1)}${sentiment && id === 'high-yield-spread' ? '%p' : ''}`;
         let range = 'all', data = Object.fromEntries(ids.map(id => [id, []])), dates = [], candles = [], candleKey = '', candleRequest = 0;
         let start = 0, count = null, hover = null, geometry = null, candleGeometry = null, drag = null, controller, candleController;
         let pendingRefresh = false, resizeFrame;
@@ -241,7 +245,17 @@
             hover=geometry?.visible.find(d=>window.RankChartAxis.matchesHover(d,key,breadth?breadthMode:'day')) ?? null;
             candlePointerY=null;tip.hidden=true;draw();
         });
+        function renderHoverInfo(){if(hover==null){tip.hidden=true;return;}                tip.replaceChildren(document.createTextNode(hover));
+                ids.forEach(id => {
+                    const label = document.createElement('span'); label.textContent = names[id]; label.style.color = colors[id];
+                    const selected = data[id].find(point => point.date === hover);
+                    tip.append(' · ', label, ` ${selected?.value != null ? formatValue(selected.value, id) : '—'}`);
+                });
+                const point = !candleArea.hidden && candles.find(point => point.date === hover);
+                if (point) tip.append(` · 등락율 ${point.changeRate == null ? '—' : `${point.changeRate > 0 ? '+' : ''}${point.changeRate.toFixed(1)}%`}`);
+tip.hidden=false;}
         function draw() {
+            renderHoverInfo();
             if(breadth && breadthMode==='minute' && !candleArea.hidden && !breadthPriceSchedule){breadthPriceSchedule=true;queueMicrotask(()=>{breadthPriceSchedule=false;void loadCandles();});}
             window.RankChartAxis.candleLabel(candleArea,breadth && breadthMarket==='kosdaq'?'KOSDAQ':'KOSPI');
             {const view=window.RankChartAxis.sharedRange(sentiment?'sentiment':breadth?'breadth':'volatility',dates,d=>d,breadth?breadthMode:'day',start,count,draw);start=view.start;count=view.count;}
@@ -267,7 +281,7 @@
                 const value = min + (max - min) * i / 4; ctx.beginPath(); ctx.moveTo(left, y(value)); ctx.lineTo(right, y(value)); ctx.stroke();
                 if (sentiment) {
                     ctx.fillStyle = colors['fear-greed']; ctx.textAlign = 'right'; ctx.fillText(String(value), left - 8, y(value) + 4);
-                    ctx.fillStyle = colors['high-yield-spread']; ctx.textAlign = 'left'; ctx.fillText((hyMax * i / 4).toFixed(2), right + 8, y(value) + 4);
+                    ctx.fillStyle = colors['high-yield-spread']; ctx.textAlign = 'left'; ctx.fillText((hyMax * i / 4).toFixed(1), right + 8, y(value) + 4);
                 } else ctx.fillText(breadth ? Math.round(value).toLocaleString('ko-KR') : value.toFixed(value % 1 ? 1 : 0), w - 4, y(value) + 4);
             }
             ctx.setLineDash([]);
@@ -336,7 +350,7 @@
             if (hover && indices.has(hover)) { cc.strokeStyle = '#000'; cc.setLineDash([3, 3]); cc.beginPath(); cc.moveTo(x(hover), top); cc.lineTo(x(hover), bottom); cc.stroke(); cc.setLineDash([]); }
             const hovered = rows.find(point => point.date === hover);
             const price = hovered?.close;
-            if (hover && Number.isFinite(price)) drawHoverValue(cc, { left, right, top, bottom, y }, price, price.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), '#000');
+            if (hover && Number.isFinite(price)) drawHoverValue(cc, { left, right, top, bottom, y }, price, price.toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }), '#000');
             if (drag) { cc.fillStyle = 'rgba(51,154,240,.15)'; cc.fillRect(Math.min(drag.from, drag.to), top, Math.abs(drag.to - drag.from), bottom - top); }
         }
         async function loadCandles(target) {
@@ -349,7 +363,7 @@
             const key = `${priceMarket}:${breadth ? breadthMode : 'day'}:${first}:${last}`;
             if(target && breadthPriceError)candleKey='';
             if(key===candleKey || key===breadthPricePending)return;
-            breadthPricePending=key;breadthPriceError='';
+            breadthPricePending=key;breadthPriceError='';window.RankChartAxis.loadingBar(candleArea,true,'캔들');
             candleController?.abort(); candleController = new AbortController(); const request = ++candleRequest;
             candleStatus.textContent = `${priceName} ${breadth && breadthMode==='minute'?'1분봉':'일봉'} 조회 중…`;
             try {
@@ -368,7 +382,7 @@
                 });
                 candleKey = key; candleStatus.textContent = candles.length ? result.partial ? `${priceName} · 일부 구간만 조회되었습니다.` : '' : `${priceName} 캔들 데이터 없음`; draw();
             } catch (error) { if (error.name !== 'AbortError' && request === candleRequest) {breadthPriceError=error.message;candleKey=key;candleStatus.textContent = error.message;} }
-            finally{if(request===candleRequest)breadthPricePending='';}
+            finally{if(request===candleRequest){breadthPricePending='';window.RankChartAxis.loadingBar(candleArea,false,'캔들');}}
         }
         let todayOnly = true;
         if(breadth)window.RankChartAxis.todayButton(panel,'[data-breadth-mode="minute"]',()=>breadthMode,()=>{todayOnly=true;draw();void refreshBreadth();});
@@ -376,7 +390,7 @@
             if(window.rankManagedChartRefresh && !window.rankChartRefreshStarted)return;
             if (breadthLoading) return;
             if(more){window.RankChartAxis.showHistory();todayOnly=false;}
-            breadthLoading = true;
+            breadthLoading = true;window.RankChartAxis.loadingBar(canvas.parentElement,true,'신고가·신저가');
             canvas.classList.add('is-loading'); candle.classList.add('is-loading');
             canvas.parentElement.setAttribute('aria-busy', 'true');
             const button = panel.querySelector('[data-breadth-more]'); button.disabled = true;
@@ -409,7 +423,7 @@
                 if(pendingBreadthMarket){const market=pendingBreadthMarket;pendingBreadthMarket=null;changeBreadthMarket(market);}
                 button.disabled = !breadthCursor;
                 canvas.classList.remove('is-loading'); candle.classList.remove('is-loading');
-                canvas.parentElement.setAttribute('aria-busy', 'false');
+                canvas.parentElement.setAttribute('aria-busy', 'false');window.RankChartAxis.loadingBar(canvas.parentElement,false,'신고가·신저가');
                 if (pendingBreadthMode) {
                     const mode = pendingBreadthMode; pendingBreadthMode = null;
                     panel.querySelector(`[data-breadth-mode="${mode}"]`).click();
@@ -440,7 +454,7 @@
             if(window.rankManagedChartRefresh && !window.rankChartRefreshStarted)return;
             if (riskLoading || more && !referenceCursor) return;
             if (drag) { pendingRefresh = true; return; }
-            riskLoading = true; riskMore.disabled = true;
+            riskLoading = true; riskMore.disabled = true;window.RankChartAxis.loadingBar(canvas.parentElement,true,'지표');
             controller?.abort(); const current = controller = new AbortController();
             const anchor = dates[start], followLatest = start + (count ?? dates.length) >= dates.length;
             status.textContent = '데이터 조회 중…';
@@ -478,7 +492,7 @@
                 status.textContent=[dates.length?`${first} ~ ${last} · ${dates.length}봉`:'기준 캔들 없음',...errors].join(' · ');
                 window.setRankCardConnection?.(panel,!errors.length);draw();if(referenceError && !candles.length)void loadCandles();
             } catch(error) { if(error.name!=='AbortError'){status.textContent=error.message;window.setRankCardConnection?.(panel,false);} }
-            finally { riskLoading=false;riskMore.disabled=!referenceCursor; }
+            finally { riskLoading=false;riskMore.disabled=!referenceCursor;window.RankChartAxis.loadingBar(canvas.parentElement,false,'지표'); }
         }
         window[refreshName] = () => breadth ? refreshBreadth() : refreshRisk();
         const save = () => { if (!window.rankCandleSyncing && typeof saveAppData === 'function') saveAppData(); };
@@ -513,15 +527,7 @@
                 const px = event.clientX - target.getBoundingClientRect().left;
                 if (px < geometry.left || px > geometry.right) { hover = null; tip.hidden = true; draw(); return; }
                 hover = geometry.visible.reduce((a, b) => Math.abs(geometry.x(a) - px) < Math.abs(geometry.x(b) - px) ? a : b);
-                tip.replaceChildren(document.createTextNode(hover));
-                ids.forEach(id => {
-                    const label = document.createElement('span'); label.textContent = names[id]; label.style.color = colors[id];
-                    const selected = data[id].find(point => point.date === hover);
-                    tip.append(' · ', label, ` ${selected?.value != null ? formatValue(selected.value, id) : '—'}`);
-                });
-                const point = !candleArea.hidden && candles.find(point => point.date === hover);
-                if (point) tip.append(` · 등락율 ${point.changeRate == null ? '—' : `${point.changeRate > 0 ? '+' : ''}${point.changeRate.toFixed(2)}%`}`);
-                tip.hidden = false; draw();
+                draw();
             });
             const finish = event => {
                 if (drag?.target !== target || drag.id !== event.pointerId) return;
@@ -544,6 +550,7 @@
         }
         const schedule = () => { if (!resizeFrame) resizeFrame = requestAnimationFrame(() => { resizeFrame = null; resize(); }); };
         new ResizeObserver(schedule).observe(concentration); new ResizeObserver(schedule).observe(canvas.parentElement);
+        if (breadth) window.RankSupplyGuide?.attach(panel, 'breadth', 'kiwoom');
         resize(); if(!window.rankManagedChartRefresh)window[refreshName]();
     }
     const mount = () => { initialize(); initialize(true); initialize(false, true); };

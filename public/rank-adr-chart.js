@@ -165,7 +165,7 @@
                 ctx.fillStyle = '#f97316';
                 ctx.beginPath(); ctx.arc(markerX, y(closing.adr), 4, 0, Math.PI * 2); ctx.fill();
                 ctx.textAlign = markerX > (left + right) / 2 ? 'right' : 'left';
-                ctx.fillText(`마감 ${closing.adr.toFixed(2)}%`, markerX > (left + right) / 2 ? markerX - 10 : markerX + 10, y(closing.adr) - 10);
+                ctx.fillText(`마감 ${closing.adr.toFixed(1)}%`, markerX > (left + right) / 2 ? markerX - 10 : markerX + 10, y(closing.adr) - 10);
                 ctx.textAlign = 'center';
             }
             geometry.ticks = window.RankChartAxis.eightTick(ctx,window.RankChartAxis.ticks(ctx, visiblePoints, p=>p.t, p=>x(p.t), left, right, mode),left,right,mode==='minute',window.RankChartAxis.sessionStartLabel(visiblePoints,p=>p.t));
@@ -179,7 +179,7 @@
             if (latestPoint && visiblePoints.some(p => p.t === latestPoint.t)) { ctx.fillStyle = '#f97316'; ctx.beginPath(); ctx.arc(x(latestPoint.t), y(latestPoint.adr), 4, 0, Math.PI * 2); ctx.fill(); }
             if (hover && Number.isFinite(hover.adr)) {
                 ctx.strokeStyle = '#000'; ctx.setLineDash([3,3]); ctx.beginPath(); ctx.moveTo(x(hover.t), top); ctx.lineTo(x(hover.t), bottom); ctx.stroke(); ctx.setLineDash([]);
-                drawHoverValue(ctx, geometry, hover.adr, `${hover.adr.toFixed(2)}%`, '#000');
+                drawHoverValue(ctx, geometry, hover.adr, `${hover.adr.toFixed(1)}%`, '#000');
                 ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(x(hover.t), y(hover.adr), 4, 0, Math.PI * 2); ctx.fill();
             }
             drawCandles();
@@ -231,7 +231,7 @@
                 candleCtx.strokeStyle='#000'; candleCtx.setLineDash([3,3]); candleCtx.beginPath(); candleCtx.moveTo(geometry.x(hover.t),layout.top); candleCtx.lineTo(geometry.x(hover.t),layout.bottom); candleCtx.stroke(); candleCtx.setLineDash([]);
                 const point = visible.find(p => p.t === hover.t);
                 const price = point?.close;
-                if (Number.isFinite(price)) drawHoverValue(candleCtx, candleGeometry, price, price.toLocaleString('ko-KR',{minimumFractionDigits:2,maximumFractionDigits:2}), '#000');
+                if (Number.isFinite(price)) drawHoverValue(candleCtx, candleGeometry, price, price.toLocaleString('ko-KR',{minimumFractionDigits:1,maximumFractionDigits:1}), '#000');
                 candleTip.hidden = true;
             } else candleTip.hidden = true;
             drawDrag(candleCtx, candleGeometry);
@@ -257,7 +257,7 @@
             if(target && candleRangeError)candleRangeKey='';
             if(candleRangeKey===key || candleRangePending===key)return;
             candleController?.abort();const current=candleController=new AbortController(),market=selectedMarket;
-            candleRangePending=key;candleRangeError='';
+            candleRangePending=key;candleRangeError='';window.RankChartAxis.loadingBar(candleArea,true,'캔들');
             try {
                 const response=await fetch(`/api/adr/candles?market=${market}&mode=${mode}&from=${from}&to=${to}`,{signal:current.signal});
                 const result=await response.json();if(!response.ok)throw new Error(result.error || '캔들 조회 실패');
@@ -269,7 +269,7 @@
                 candleStatus.textContent=candleRangeError || (fresh.length?'':'선택 기간 캔들 데이터 없음');
                 candleRangeKey=key;draw();
             } catch(error){if(error.name!=='AbortError' && current===candleController){candleRangeKey=key;candleRangeError=error.message;candleStatus.textContent=error.message;}}
-            finally{if(current===candleController)candleRangePending='';}
+            finally{if(current===candleController){candleRangePending='';window.RankChartAxis.loadingBar(candleArea,false,'캔들');}}
         }
         window.refreshRankAdrChart = async (more = false) => {
             if(window.rankManagedChartRefresh && !window.rankChartRefreshStarted)return;
@@ -282,7 +282,7 @@
             const current = controller, market = selectedMarket, day = dateKey(Date.now());
             const key = `rank-adr:${market}:${day}`;
             const beforeOpen = new Date(Date.now() + 9 * 3600000).getUTCHours() < 9;
-            referenceLoading = true; moreButton.disabled = true;
+            referenceLoading = true; moreButton.disabled = true;window.RankChartAxis.loadingBar(canvas.parentElement,true,'ADR');
             let referenceWarning = '';
             const oldAnchor = viewportPoints()[0]?.t;
             try {
@@ -386,7 +386,7 @@
             finally {
                 if(current===controller) {
                     if(referenceWarning){status.textContent += ` · ${referenceWarning}`;window.setRankCardConnection?.(panel,false);}
-                    referenceLoading=false;moreButton.disabled=!referenceCursor;
+                    referenceLoading=false;moreButton.disabled=!referenceCursor;window.RankChartAxis.loadingBar(canvas.parentElement,false,'ADR');
                 }
             }
         };
@@ -410,14 +410,14 @@
         });
         window.RankChartAxis.registerHover('adr',()=>mode,()=>hover?.t,key=>{
             hover=geometry?.points.find(p=>window.RankChartAxis.matchesHover(p.t,key,mode)) ?? null;
-            candlePointerY=null;tooltip.hidden=true;candleTip.hidden=true;draw();
+            candlePointerY=null;tooltip.hidden=!hover;candleTip.hidden=true;if(hover)tooltip.textContent=`${dateKey(hover.t)}${mode==='minute'?' '+timeLabel(hover.t):''} · ADR ${Number.isFinite(hover.adr)?hover.adr.toFixed(1)+'%':'—'}`;draw();
         });
         function hoverChart(event) {
             if (drag) return;
             if (!geometry) return;
             candlePointerY = event.currentTarget === candleCanvas ? event.clientY - candleCanvas.getBoundingClientRect().top : null;
             if (closing) {
-                tooltip.textContent = `${chartDay} · 마감 ADR ${closing.adr.toFixed(2)}%${closing.t ? ` · ${timeLabel(closing.t)} 기준` : ''}`;
+                tooltip.textContent = `${chartDay} · 마감 ADR ${closing.adr.toFixed(1)}%${closing.t ? ` · ${timeLabel(closing.t)} 기준` : ''}`;
                 tooltip.hidden = false;
                 return;
             }
@@ -426,7 +426,7 @@
             if (px < geometry.left || px > geometry.right) { clearHover(); return; }
             const p = geometry.points.reduce((a, b) => Math.abs(geometry.x(b.t) - px) < Math.abs(geometry.x(a.t) - px) ? b : a);
             hover = p;
-            tooltip.textContent = `${dateKey(p.t)}${mode === 'minute' ? ` ${timeLabel(p.t)}` : ''} · ADR ${Number.isFinite(p.adr)?p.adr.toFixed(2)+'%':'—'}`; tooltip.hidden = false; draw();
+            tooltip.textContent = `${dateKey(p.t)}${mode === 'minute' ? ` ${timeLabel(p.t)}` : ''} · ADR ${Number.isFinite(p.adr)?p.adr.toFixed(1)+'%':'—'}`; tooltip.hidden = false; draw();
         }
         function clearHover() { hover = null; candlePointerY = null; tooltip.hidden = true; candleTip.hidden = true; draw(); }
         [canvas, candleCanvas].forEach(c => { c.addEventListener('mousemove', hoverChart); c.addEventListener('mouseleave', clearHover); });

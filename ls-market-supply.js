@@ -239,6 +239,7 @@ function createLsMarketSupply({ directory, http, credentials, supply, now = Date
         const entries = subscriptions.filter(s => s.market === market);
         return ['LS 웹소켓 · 1분 마지막 수신값 · 미수집 구간 제외 · 금액: 백만원',
             ...entries.filter(s => !verified(s)).map(s => `${s.tr} ${s.key}: 단위·누적·시장 검증 대기, 미제공`),
+            ...entries.filter(s => verified(s)?.provisional).map(s => `${s.tr} ${s.key}: 잠정 표시 · 투자자 원본 억원 가정 · 단위·시장 검증 중`),
             ...(market.startsWith('futures') ? ['선물 프로그램 미제공', `캔들: ${market === 'futures' ? '코스피' : '코스닥'} 현물지수`] : [])];
     }
     function status(market, date) {

@@ -15,7 +15,7 @@ function program(row) {
     return arbitrage == null || nonArbitrage == null ? null : arbitrage + nonArbitrage;
 }
 function createMarketSupplyService({ directory, http, credentials, getToken, reference, supply, now = Date.now,
-    minuteProvider,
+    minuteProvider, dailyProvider,
     pause = ms => new Promise(resolve => setTimeout(resolve, ms)), log = console.warn }) {
     const store = createSupplyStore({ directory, now }), statuses = new Map();
     const { createHistoryCache, createDailyQueryCache } = require('./daily-query-cache');
@@ -72,9 +72,8 @@ function createMarketSupplyService({ directory, http, credentials, getToken, ref
                     for(const row of rows){const dt=String(row.stck_bsop_date||'');if(dt>=startDate&&dt<=endDate)receivedRows.set(dt,{...row,dt});}
                     onPage([...receivedRows.values()]);
                     if(!dates.length){
-                        partial=true;
-                        const message=`${kind==='investor'?'투자자':'프로그램'} 일부 일별 자료 미제공`;
-                        if(!errors.includes(message))errors.push(message);
+                        // A successful empty window is genuine missing history, not a transport failure.
+                        // Cache that coverage so every refresh does not repeat all empty windows.
                         // An empty program window does not prove that all older dates are unavailable.
                         if(kind==='program'){end=before(start);continue;}
                         break;
@@ -93,6 +92,7 @@ function createMarketSupplyService({ directory, http, credentials, getToken, ref
             accept(result,kind);
         }));
         if([...points.values()].some(p=>['individual','foreign','institution','program'].some(field=>p[field]==null)))notices.push('일부 일별 수급 미제공');
+        if(config.program && [...points.values()].some(p=>p.program==null))notices.push('프로그램 일부 일별 자료 미제공');
         return snapshot();
     }
     function collect() {
@@ -140,6 +140,7 @@ function createMarketSupplyService({ directory, http, credentials, getToken, ref
         if (mode === 'minute') {
             if (cursor && !/^\d{8}$/.test(cursor)) throw failure('잘못된 과거 날짜입니다.');
             if (cursor && (!Number.isFinite(timestamp(cursor)) || compact(dayKey(timestamp(cursor))) !== cursor)) throw failure('잘못된 과거 날짜입니다.');
+            minuteProvider?.flush?.();
             const minuteStore = minuteProvider?.store || store;
             const config = markets[code], dates = minuteStore.dates(config.code);
             const date = cursor ? `${cursor.slice(0,4)}-${cursor.slice(4,6)}-${cursor.slice(6,8)}` : dayKey(now());
@@ -168,8 +169,9 @@ function createMarketSupplyService({ directory, http, credentials, getToken, ref
                 has_more: Boolean(previous || price.previous), cursor: [previous, price.previous].filter(Boolean).sort().at(-1) || null, status: statuses.get(code), partial: Boolean(statuses.get(code)?.error), warnings: [...warnings(code),
                     '당일 누적 순매수대금 · 미수집 구간 제외', ...(price.error ? [price.error] : [])] };
         }
+        if (minuteProvider && !dailyProvider) throw failure('해당 증권사 일봉 수급 원천이 설정되지 않았습니다.',503);
         return cache.read(`${code}:${cursor}`,{ttl:cursor?6*3600000:60000,progressive:progressive==='1',
-            load:onProgress=>daily(code,cursor,onProgress)});
+            load:onProgress=>dailyProvider ? dailyProvider.daily(code,cursor,onProgress) : daily(code,cursor,onProgress)});
     }
     function start() {
         if (minuteProvider) return minuteProvider.start();

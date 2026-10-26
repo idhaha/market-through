@@ -1,5 +1,19 @@
 const vm=require('node:vm'),fs=require('node:fs'),test=require('node:test'),assert=require('node:assert/strict');
-function setup(){const listeners={};const sandbox={window:{},queueMicrotask:()=>{},Date:class extends Date{static now(){return Date.parse('2026-10-23T10:00:00+09:00')}},document:{addEventListener:(type,fn)=>{(listeners[type]??=[]).push(fn)}}};vm.runInNewContext(fs.readFileSync('public/rank-chart-axis.js','utf8'),sandbox);return {api:sandbox.window.RankChartAxis,listeners};}
+function setup(){const listeners={};const sandbox={window:{},queueMicrotask:()=>{},Date:class extends Date{static now(){return Date.parse('2026-10-23T10:00:00+09:00')}},document:{querySelectorAll:()=>[],addEventListener:(type,fn)=>{(listeners[type]??=[]).push(fn)}}};vm.runInNewContext(fs.readFileSync('public/rank-chart-axis.js','utf8'),sandbox);return {api:sandbox.window.RankChartAxis,listeners};}
+test('live minute view recovers a zero count and grows after the opening bars arrive without a mode change',()=>{
+ const {api}=setup();
+ const range=(id,dates,start,count)=>api.sharedRange(id,dates,v=>v,'minute',start,count,()=>{});
+ for(const id of ['concentration','marketSupply','lsMarketSupply','adr','breadth']){
+  assert.equal(range(id,[],0,null).count,0);
+  const first=['2026-10-23 09:00'];
+  assert.equal(range(id,first,0,0).count,1);
+  // A separate async loader/draw may register the rows before the response
+  // restores its previous empty viewport. Recover even with previous.size>0.
+  assert.equal(range(id,first,0,0).count,1);
+  const next=[...first,'2026-10-23 09:01','2026-10-23 09:02'];
+  assert.equal(range(id,next,0,1).count,3);
+ }
+});
 for(const mode of ['day','minute'])test(`${mode}: zoom and scroll share timestamps even with missing records`,()=>{
  const {api,listeners}=setup();const dates=Array.from({length:30},(_,i)=>mode==='day'?`2026-10-${String(i+1).padStart(2,'0')}`:`2026-10-23 09:${String(i).padStart(2,'0')}`),sparse=dates.filter((_,i)=>i%3===0);
  const range=(id,values,start,count)=>api.sharedRange(id,values,v=>v,mode,start,count,()=>{});

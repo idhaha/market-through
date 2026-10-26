@@ -44,7 +44,7 @@
     const minuteCharts=new Map();
     const viewports=new Map();
     let viewportSource=null,viewportBefore=null;
-    const viewportPanels={lsMarketSupply:'rankLsMarketSupplyChartPanel',concentration:'concentrationChartPanel',kisConcentration:'kisConcentrationChartPanel',supply:'rankSupplyChartPanel',marketSupply:'rankMarketSupplyChartPanel',breadth:'rankBreadthChartPanel',turnover:'rankTurnoverChartPanel',adr:'rankAdrChartPanel',volatility:'rankVolatilityChartPanel',sentiment:'rankSentimentChartPanel'};
+    const viewportPanels={lsConcentration:'lsConcentrationChartPanel',kisTurnover:'rankKisTurnoverChartPanel',lsTurnover:'rankLsTurnoverChartPanel',kiwoomMarketSupply:'rankKiwoomMarketSupplyChartPanel',kisSupply:'rankKisSupplyChartPanel',lsSupply:'rankLsSupplyChartPanel',lsMarketSupply:'rankLsMarketSupplyChartPanel',concentration:'concentrationChartPanel',kisConcentration:'kisConcentrationChartPanel',supply:'rankSupplyChartPanel',marketSupply:'rankMarketSupplyChartPanel',breadth:'rankBreadthChartPanel',turnover:'rankTurnoverChartPanel',adr:'rankAdrChartPanel',volatility:'rankVolatilityChartPanel',sentiment:'rankSentimentChartPanel'};
     const hoverCharts=new Map();
     function hoverKey(value,mode) { return value==null?null:dateParts(value).slice(0,mode==='minute'?16:10); }
     function registerHover(id,getMode,getValue,apply) { hoverCharts.set(id,{getMode,getValue,apply}); }
@@ -100,8 +100,8 @@
         scheduleHistoryButtons();
     }
     function showToday(){resetHistoryWork();viewports.delete('minute');historyMode=false;sharedCutoff=new Date(Date.now()+9*3600000).toISOString().slice(0,10)+' 08:00';rangeRevision++;for(const chart of minuteCharts.values())chart.applied=undefined;notifyCharts();}
-    const refreshOrder=['concentration','supply','marketSupply','breadth','turnover','adr','sentiment','volatility','kisConcentration','lsMarketSupply'];
-    const refreshMethods={lsMarketSupply:'refreshRankLsMarketSupplyChart',concentration:'refreshConcentrationChart',kisConcentration:'refreshKisConcentrationChart',supply:'refreshRankSupplyChart',marketSupply:'refreshRankMarketSupplyChart',breadth:'refreshRankBreadthChart',turnover:'refreshRankTurnoverChart',adr:'refreshRankAdrChart',sentiment:'refreshRankSentimentChart',volatility:'refreshRankVolatilityChart'};
+    const refreshOrder=['concentration','supply','marketSupply','breadth','turnover','adr','sentiment','volatility','kisConcentration','lsMarketSupply','kisSupply','lsSupply','kiwoomMarketSupply','lsConcentration','kisTurnover','lsTurnover'];
+    const refreshMethods={lsConcentration:'refreshLsConcentrationChart',kisTurnover:'refreshRankKisTurnoverChart',lsTurnover:'refreshRankLsTurnoverChart',kiwoomMarketSupply:'refreshRankKiwoomMarketSupplyChart',kisSupply:'refreshRankKisSupplyChart',lsSupply:'refreshRankLsSupplyChart',lsMarketSupply:'refreshRankLsMarketSupplyChart',concentration:'refreshConcentrationChart',kisConcentration:'refreshKisConcentrationChart',supply:'refreshRankSupplyChart',marketSupply:'refreshRankMarketSupplyChart',breadth:'refreshRankBreadthChart',turnover:'refreshRankTurnoverChart',adr:'refreshRankAdrChart',sentiment:'refreshRankSentimentChart',volatility:'refreshRankVolatilityChart'};
     function refreshCharts({skipConcentration=false}={}) {
         window.rankChartRefreshStarted=true;
         const pending=[];
@@ -290,7 +290,11 @@
         const index=values.findIndex(v=>dateParts(getDate(v)).slice(0,length)>=effective);
         const rangeStart=index<0?values.length:index,size=values.length-rangeStart;
         const changed=chart.applied!==effective || chart.revision!==rangeRevision || (size>0 && !previous?.size) || previous?.mode!==mode;chart.applied=effective;chart.size=size;chart.revision=rangeRevision;
-        const visible=changed?size:Math.min(count ?? values.length,size);
+        // A blank pre-open draw leaves count=0. In the default live view the
+        // available session must grow with incoming bars, rather than retaining
+        // that empty (or first-bar-only) count until the mode is toggled.
+        const liveRange=!viewports.has(mode) && viewportSource!==id;
+        const visible=changed || liveRange?size:Math.min(count ?? values.length,size);
         return viewportRange(chart,changed?rangeStart:Math.max(rangeStart,Math.min(start,values.length-visible)),visible);
     }
     function sessionRange(values,getDate,depth=0) {
@@ -558,5 +562,34 @@
             if(mode==='day' || mode==='minute')synchronizeMode(mode);
         },true);
     }
-    window.RankChartAxis={restoreHistoryRange,marketChoice,validCandle,candleLabel,selectViewport,plotBounds,registerHover,synchronizeHover,matchesHover,updateSlider,scrollViewport,synchronizeViewport,refreshOrder,refreshCharts,registerHistoryLoader,requestHistory,showHistory,showToday,sharedRange,dailyDomain,minuteDomain,ticks,todayRange,limitToday,sessionRange,limitSessions,sessionX,eightTick,sessionStartLabel,candleLayout,todayButton};
+    function loadingBar(area, busy, label = '지표') {
+        if (!area) return;
+        area.setAttribute('aria-busy', String(!!busy));
+        let bar=area.querySelector(':scope > .rank-chart-loading');
+        if (!bar && busy) {
+            bar=document.createElement('div');bar.className='efriend-loading-overlay rank-chart-loading';
+            bar.setAttribute('role','progressbar');bar.innerHTML='<span class="efriend-loading-spinner"></span><b></b>';area.append(bar);
+        }
+        if(bar){bar.hidden=!busy;bar.setAttribute('aria-label',`${label} 조회 중`);bar.querySelector('b').textContent=`${label} 조회 중…`;}
+    }
+    function intradayGap(a,b,close=1200) {
+        if(!a || !b || b-a<=60000)return false;
+        const x=new Date(a+32400000),y=new Date(b+32400000);
+        return x.toISOString().slice(0,10)===y.toISOString().slice(0,10)
+            && x.getUTCHours()*60+x.getUTCMinutes()>=480
+            && y.getUTCHours()*60+y.getUTCMinutes()<=close;
+    }
+    function concentrationCumulative(points) {
+        const result=new Map();let day,stock=0,market=0,stockReady=false,marketReady=false;
+        for(const p of [...points].sort((a,b)=>String(a.time).localeCompare(String(b.time)))){
+            const d=p.time.slice(0,8),clock=p.time.slice(8,12);
+            if(d!==day){day=d;stock=market=0;stockReady=marketReady=false;}
+            if(clock==='0800')stockReady=true;if(clock==='0900')marketReady=true;
+            if(Number.isFinite(p.stock_turnover))stock+=p.stock_turnover;else stockReady=false;
+            if(clock>='0900'){if(Number.isFinite(p.market_turnover))market+=p.market_turnover;else marketReady=false;}
+            result.set(p.time,Object.hasOwn(p,'cumulative_value')?p.cumulative_value:stockReady&&marketReady&&market>0?stock/market*100:null);
+        }
+        return result;
+    }
+    window.RankChartAxis={concentrationCumulative,loadingBar,intradayGap,restoreHistoryRange,marketChoice,validCandle,candleLabel,selectViewport,plotBounds,registerHover,synchronizeHover,matchesHover,updateSlider,scrollViewport,synchronizeViewport,refreshOrder,refreshCharts,registerHistoryLoader,requestHistory,showHistory,showToday,sharedRange,dailyDomain,minuteDomain,ticks,todayRange,limitToday,sessionRange,limitSessions,sessionX,eightTick,sessionStartLabel,candleLayout,todayButton};
 })();

@@ -47,13 +47,20 @@
         if (!response.ok || !data.success) throw Object.assign(new Error(data.error || '수급 조회 실패'), { status: response.status });
         return data;
     }
-    function initialize() {
+    function initialize(broker = '') {
+        if (broker && window.rankIndependentClient) return;
+        const suffix = broker === 'kis' ? 'KisSupply' : broker === 'ls' ? 'LsSupply' : 'Supply';
+        const panelId = `rank${suffix}ChartPanel`, axisId = broker ? `${broker}Supply` : 'supply';
+        const api = name => name.replace('Supply', suffix);
+        const eventName = name => broker ? name.replace('rank-supply', `rank-${broker}-supply`) : name;
+        const endpoint = broker ? `/api/${broker}-supply/chart` : '/api/supply/chart';
+        const selectionKey = broker ? `rank${suffix}SelectedV1` : 'rankSupplySelectedV1';
         const breadth = document.getElementById('rankBreadthChartPanel'), row = window.rankIndependentClient ? document.getElementById('tab_rank') : breadth?.closest('.rank-chart-row');
-        if (!row || document.getElementById('rankSupplyChartPanel')) return;
+        if (!row || document.getElementById(panelId)) return;
         const panel = document.createElement('section');
-        panel.id = 'rankSupplyChartPanel'; panel.className = 'panel rank-adr-panel rank-supply-panel';
+        panel.id = panelId; panel.className = 'panel rank-adr-panel rank-supply-panel' + (broker ? ' rank-broker-supply-panel' : '');
         panel.setAttribute('aria-label', '종목별 수급 차트');
-        panel.innerHTML = `<div class="concentration-chart-header"><h2>종목 수급</h2><button type="button" data-action="add-stock" aria-haspopup="dialog" aria-expanded="false">+ 종목 추가</button></div>
+        panel.innerHTML = `<div class="concentration-chart-header"><h2>종목 수급${broker === 'kis' ? '(한투)' : broker === 'ls' ? '(LS)' : window.rankIndependentClient ? '' : '(키움)'}</h2><button type="button" data-action="add-stock" aria-haspopup="dialog" aria-expanded="false">+ 종목 추가</button></div>
             <div class="rank-adr-controls"><select class="supply-stock-select" aria-label="수급 종목 선택"></select><button type="button" data-mode="day" class="active" aria-pressed="true">일봉</button><button type="button" data-mode="minute" aria-pressed="false">1분봉(누적)</button>
             <button type="button" class="concentration-candle-toggle" aria-expanded="false">캔들차트</button></div>
             <div class="supply-legend">${series.map(s => `<button type="button" data-series="${s}" aria-label="${names[s]} 표시" title="${names[s]} 표시 전환" aria-pressed="true" style="color:${colors[s]}"><span>${Array.from(names[s])[0]}</span><output>—</output></button>`).join('')}</div>
@@ -62,6 +69,7 @@
             <div class="concentration-chart-footer rank-adr-zoom"><input type="range" min="0" max="0" value="0" aria-label="수급 과거 구간 이동" disabled><div class="concentration-controls"><button type="button" aria-label="수급 차트 축소">−</button><button type="button" aria-label="수급 차트 확대">+</button></div></div>
             <button type="button" data-action="more" class="concentration-icon-button" title="과거 데이터 더 불러오기" aria-label="과거 데이터 더 불러오기"><svg width="28" height="28" viewBox="0 0 34 34" shape-rendering="crispEdges" aria-hidden="true"><rect x="1" y="1" width="32" height="32" fill="#ededed"/><path d="M10 5v20" stroke="#737373" stroke-width="2"/><rect x="6" y="9" width="9" height="12" fill="#505050"/><path d="M22 5v20" stroke="#c0c0c0" stroke-width="2"/><rect x="18" y="9" width="9" height="12" fill="#969696"/><path d="M25 21v10M21 26h10" stroke="#444444" stroke-width="4"/></svg></button><p class="rank-adr-status" role="status"></p>`;
         row.append(panel);
+        window.RankSupplyGuide?.attach(panel, 'stock', broker || 'kiwoom');
         panel.querySelector('.rank-adr-controls').append(panel.querySelector('.supply-legend'));
         const latestDate = document.createElement('span'); latestDate.className = 'supply-latest-date'; latestDate.textContent = '—';
         panel.querySelector('.supply-legend').prepend(latestDate);
@@ -75,6 +83,7 @@
         stockSelect.addEventListener('change', () => { if (stockSelect.value) choose(stockSelect.value); });
         addButton.addEventListener('click', openPicker);
         let config = { stocks: [], archive: [], revision: 0 }, selected = '', mode = 'day', cursor = null, hasMore = false, loading = false, historyLoaded = false;
+        let flowLoading=false;
         const minuteDays = new Set(), candleCache = new Map(), priceHistory = new Map();
         let priceCursor = null, candleLoading = false;
         let points = [], candles = [], start = 0, count = null, hover = null, drag = null, geometry;
@@ -82,13 +91,14 @@
         let showCandles = false, candleMessage = '', chartMessage = '', configError = '';
         const visibleSeries = new Set(series);
         const selectionStorage=window.rankIndependentClient?sessionStorage:localStorage;
-        try { selected = selectionStorage.getItem('rankSupplySelectedV1') || ''; } catch {}
-        function remember() { try { selectionStorage.setItem('rankSupplySelectedV1', selected); } catch {} }
+        try { selected = selectionStorage.getItem(selectionKey) || ''; } catch {}
+        function remember() { try { selectionStorage.setItem(selectionKey, selected); } catch {} }
         function setStatus() { status.textContent = [configError, chartMessage, candleMessage].filter(Boolean).join(' · '); status.title = status.textContent; }
         const settings = () => ({ selected, mode, showCandles, visibleSeries: [...visibleSeries] });
-        function publish() { document.dispatchEvent(new CustomEvent('rank-supply-state', { detail: settings() })); }
-        window.getRankSupplyState = () => ({ ...settings(), config, points, candles, cursor, hasMore, priceCursor, minuteDays: [...minuteDays], priceHistory: [...priceHistory], chartMessage, connection: window.getRankCardConnectionState?.(panel) });
-        window.applyRankSupplySettings = (value, fetchData = true) => {
+        window[api('getRankSupplyDisplaySettings')] = settings;
+        function publish() { if (broker) { try { localStorage.setItem(`${panelId}Settings`, JSON.stringify(settings())); } catch {} } document.dispatchEvent(new CustomEvent(eventName('rank-supply-state'), { detail: settings() })); }
+        window[api('getRankSupplyState')] = () => ({ ...settings(), config, points, candles, cursor, hasMore, priceCursor, minuteDays: [...minuteDays], priceHistory: [...priceHistory], chartMessage, connection: window.getRankCardConnectionState?.(panel) });
+        window[api('applyRankSupplySettings')] = (value, fetchData = true) => {
             if (!value || !['day', 'minute'].includes(value.mode)) return;
             const changed = selected !== value.selected || mode !== value.mode;
             if (changed) { controller?.abort(); candleController?.abort(); ++revision; ++candleRevision; loading = candleLoading = false; selected = value.selected || ''; mode = value.mode; clearView(); remember(); }
@@ -99,10 +109,10 @@
             panel.querySelectorAll('[data-mode]').forEach(b => { b.classList.toggle('active', b.dataset.mode === mode); b.setAttribute('aria-pressed', String(b.dataset.mode === mode)); });
             paintStocks(); resize(); if (changed && fetchData) void load();
         };
-        window.applyRankSupplyState = value => {
+        window[api('applyRankSupplyState')] = value => {
             if (!value?.config || !Array.isArray(value.points)) return;
             const same = value.selected === selected && value.mode === mode;
-            config = value.config; window.applyRankSupplySettings(value, false);
+            config = value.config; window[api('applyRankSupplySettings')](value, false);
             points = mergeFlow(same ? points : [], value.points);
             candles = [...new Map([...(same ? candles : []), ...(value.candles || [])].map(p => [p.t, p])).values()].sort((a,b) => a.t - b.t);
             if (!historyLoaded) { cursor = value.cursor; hasMore = !!value.hasMore; priceCursor = value.priceCursor; }
@@ -113,6 +123,10 @@
             if (value.connection && typeof value.connection.ok === 'boolean') window.setRankCardConnection?.(panel, value.connection.ok, value.connection.at);
         };
         panel.addEventListener('click', event => { if (event.target.closest('[data-mode], [data-series], .concentration-candle-toggle')) queueMicrotask(publish); });
+        if (broker) {
+            panel.addEventListener('change', () => { if (typeof saveAppData === 'function') saveAppData(); });
+            panel.addEventListener('click', event => { if (event.target.closest('[data-mode],[data-series]') && typeof saveAppData === 'function') queueMicrotask(() => saveAppData()); });
+        }
         stockSelect.addEventListener('change', () => queueMicrotask(publish));
         function clearView() {
             todayOnly=true;
@@ -129,17 +143,19 @@
             context.font = '12px Inter, sans-serif'; return { w, h };
         }
         function draw() {
+            window.RankChartAxis.loadingBar(canvas.parentElement,flowLoading,'수급');
+            window.RankChartAxis.loadingBar(candleArea,candleLoading,'캔들');
             window.RankChartAxis.candleLabel(candleArea,config.archive.find(stock=>stock.code===selected)?.name || selected);
             const { w, h } = surface(canvas, ctx);
-            {const view=window.RankChartAxis.sharedRange('supply',points,p=>p.t,mode,start,count,draw);start=view.start;count=view.count;}
+            {const view=window.RankChartAxis.sharedRange(axisId,points,p=>p.t,mode,start,count,draw);start=view.start;count=view.count;}
             const n = Math.min(points.length, count ?? points.length);
             start = Math.max(0, Math.min(start, points.length - n));
             const rows = displayFlow(points, mode).slice(start, start + n), indices = new Map(rows.map((p, i) => [p.t, i]));
-            const {left,right}=window.RankChartAxis.plotBounds('supply',w,12,w-82), top = 10, bottom = h - 34;
+            const {left,right}=window.RankChartAxis.plotBounds(axisId,w,12,w-82), top = 10, bottom = h - 34;
             const sessionX=window.RankChartAxis.sessionX(rows,p=>p.t,left,right,mode==='minute',mode==='day');
             const x = t => sessionX?sessionX(t):left + indices.get(t) / Math.max(1, n - 1) * (right - left);
             slider.max = String(points.length - n); slider.value = String(start); slider.disabled = n >= points.length;
-            window.RankChartAxis.updateSlider('supply',slider);
+            window.RankChartAxis.updateSlider(axisId,slider);
             panel.querySelector('[aria-label="수급 차트 확대"]').disabled = n <= 10;
             panel.querySelector('[aria-label="수급 차트 축소"]').disabled = n >= points.length;
             more.hidden = false; more.disabled = !selected || !(hasMore || mode === 'minute' && priceCursor) || loading || mode === 'minute' && candleLoading;
@@ -200,6 +216,9 @@
                 button.querySelector('output').textContent = last ? format(last[s]) : points.length ? '미제공' : '—';
                 button.querySelector('output').title = last ? `${dayKey(last.t)} ${clock(last.t)} 기준` : '관측값 없음';
                 button.querySelector('output').style.color = colors[s];
+                let stamp=button.querySelector('.supply-observed-time');
+                if(!stamp){stamp=document.createElement('small');stamp.className='supply-observed-time';button.append(stamp);}
+                stamp.textContent=mode==='minute' && last ? clock(last.t) : '';
                 if (!visibleSeries.has(s)) return;
                 if (mode === 'day') {
                     const lane=lanes.get(s), positions=rows.map(p=>x(p.t));
@@ -215,6 +234,14 @@
                     if (!previous || gap) ctx.moveTo(x(p.t), y(p[s])); else ctx.lineTo(x(p.t), y(p[s]));
                     previous = p;
                 }); ctx.stroke();
+                if(mode==='minute'){
+                    ctx.save();ctx.setLineDash([3,4]);ctx.beginPath();let observed;
+                    rows.forEach(p=>{if(!Number.isFinite(p[s]))return;
+                        if(observed && window.RankChartAxis.intradayGap(observed.t,p.t,1200)){
+                            ctx.moveTo(x(observed.t),y(observed[s]));ctx.lineTo(x(p.t),y(p[s]));
+                        }observed=p;
+                    });ctx.stroke();ctx.restore();
+                }
                 rows.forEach(p => {
                     if (!Number.isFinite(p[s]) || p[s] === 0) return;
                     if (p.t === last?.t || p.t === hover || rows.length === 1) {
@@ -329,10 +356,10 @@
             } catch (error) { if (error.name !== 'AbortError' && id === candleRevision) candleMessage = '캔들 조회 실패'; }
             if (id === candleRevision) {
                 candleLoading = false; setStatus(); draw(); publish();
-                if (refreshPending && !refreshing && !loading && !drag) { refreshPending = false; void window.refreshRankSupplyChart(); }
+                if (refreshPending && !refreshing && !loading && !drag) { refreshPending = false; void window[api('refreshRankSupplyChart')](); }
             }
         }
-        window.RankChartAxis.registerHover('supply',()=>mode,()=>hover,key=>{
+        window.RankChartAxis.registerHover(axisId,()=>mode,()=>hover,key=>{
             hover=geometry?.rows.find(p=>window.RankChartAxis.matchesHover(p.t,key,mode))?.t ?? null;
             info.hidden=true;draw();
         });
@@ -346,12 +373,12 @@
             candleController?.abort(); ++candleRevision; candleLoading = false;
             if (!selected) { loading = false; clearView(); chartMessage = '+ 종목 추가에서 최대 5종목을 지정하세요.'; setStatus(); return; }
             if(append){window.RankChartAxis.showHistory();todayOnly=false;}
-            loading = true; chartMessage = append ? '과거 수급 조회 중…' : '수급 조회 중…'; setStatus(); draw();
+            loading = true; flowLoading=true; chartMessage = append ? '과거 수급 조회 중…' : '수급 조회 중…'; setStatus(); draw();
             try {
                 let firstResponse=true;
                 do {
                 const params = new URLSearchParams({ code: selected, mode, ...(mode === 'day' ? { progressive: '1' } : {}), ...(append ? { cursor: nextCursor } : {}) });
-                const result = await request(`/api/supply/chart?${params}`, { signal: current.signal });
+                const result = await request(`${endpoint}?${params}`, { signal: current.signal });
                 if (id !== revision) return;
                 const followLatest = start + Math.min(points.length, count ?? points.length) >= points.length, oldAnchor = points[start]?.t;
                 const fresh = (result.points || []).filter(p => Number.isFinite(p.t));
@@ -367,7 +394,7 @@
                         minuteDays.add(day);
                         if(day===result.date)continue;
                         const params=new URLSearchParams({code:selected,mode:'minute',date:day});
-                        const past=await request(`/api/supply/chart?${params}`,{signal:current.signal});
+                        const past=await request(`${endpoint}?${params}`,{signal:current.signal});
                         if(id!==revision)return;
                         points=mergeFlow(points,(past.points || []).filter(p=>Number.isFinite(p.t)));
                     }
@@ -387,8 +414,9 @@
                 const warnings = (result.warnings || []).filter(text => !text.startsWith('1분마다 관측한 당일 누적 순매수수량'));
                 chartMessage = `${hasFlow ? message : '수급 기록 없음'}${warnings.length ? ` · ${warnings.join(' · ')}` : ''}${result.status?.error && result.date === dayKey(Date.now()) ? ` · ${result.status.error}` : ''}`;
                 if(result.pending)chartMessage=hasFlow?`${chartMessage} · 추가 조회 중…`:'가격 수신 · 수급 조회 중…';
-                window.setRankCardConnection?.(panel, !result.warnings?.some(text => /실패|오류/.test(text)));
+                window.setRankCardConnection?.(panel, !result.status?.error && !result.warnings?.some(text => /실패|오류/.test(text)));
                 hover = null; info.hidden = true; setStatus(); draw();
+                flowLoading=!!result.pending;draw();
                 if (showCandles || mode === 'minute') await loadCandles();
                 publish();
                 firstResponse=false;
@@ -403,12 +431,12 @@
             }
             finally {
                 if (id === revision) {
-                    loading = false; draw(); publish();
-                    if (refreshPending && !refreshing && !drag) { refreshPending = false; void window.refreshRankSupplyChart(); }
+                    loading = false; flowLoading=false; draw(); publish();
+                    if (refreshPending && !refreshing && !drag) { refreshPending = false; void window[api('refreshRankSupplyChart')](); }
                 }
             }
         }
-        window.refreshRankSupplyChart = async () => {
+        window[api('refreshRankSupplyChart')] = async () => {
             if(window.rankManagedChartRefresh && !window.rankChartRefreshStarted)return;
             if (drag || refreshing || loading || candleLoading) { refreshPending = true; return; }
             refreshing = true; refreshPending = false;
@@ -417,7 +445,7 @@
                 if (!config.archive.some(stock => stock.code === selected)) { selected = config.stocks[0]?.code || ''; clearView(); remember(); }
                 paintStocks(); await load(false,mode==='minute'?window.RankChartAxis.minuteDomain():null);
             } catch (error) { configError = `수집 종목 조회 실패: ${error.message}`; setStatus(); }
-            finally { refreshing = false; if (refreshPending && !drag) { refreshPending = false; void window.refreshRankSupplyChart(); } }
+            finally { refreshing = false; if (refreshPending && !drag) { refreshPending = false; void window[api('refreshRankSupplyChart')](); } }
         };
         function zoom(factor, anchor = .5) {
             if (!points.length) return;
@@ -434,7 +462,7 @@
             panel.querySelectorAll('[data-mode]').forEach(b => { b.classList.toggle('active', b === button); b.setAttribute('aria-pressed', String(b === button)); });
             load();
         }));
-        window.RankChartAxis.registerHistoryLoader('supply',()=>load(true),()=>loading || candleLoading,()=>({hasMore:!!selected && (hasMore || mode==='minute' && !!priceCursor),cursor:[cursor,priceCursor].join(':')}));
+        window.RankChartAxis.registerHistoryLoader(axisId,()=>load(true),()=>loading || candleLoading,()=>({hasMore:!!selected && (hasMore || mode==='minute' && !!priceCursor),cursor:[cursor,priceCursor].join(':')}));
         more.addEventListener('click', () => window.RankChartAxis.requestHistory(mode));
         panel.querySelectorAll('[data-series]').forEach(button => button.addEventListener('click', () => {
             const field = button.dataset.series;
@@ -467,17 +495,17 @@
                 if (c.hasPointerCapture(event.pointerId)) c.releasePointerCapture(event.pointerId);
                 if (Math.abs(previous.to - previous.from) > 10) {
                     if (previous.to < previous.from) { start = 0; count = null; }
-                    window.RankChartAxis.selectViewport('supply', (previous.from-geometry.left)/(geometry.right-geometry.left), (previous.to-geometry.left)/(geometry.right-geometry.left));
+                    window.RankChartAxis.selectViewport(axisId, (previous.from-geometry.left)/(geometry.right-geometry.left), (previous.to-geometry.left)/(geometry.right-geometry.left));
                 }
-                draw(); if (refreshPending) window.refreshRankSupplyChart();
+                draw(); if (refreshPending) window[api('refreshRankSupplyChart')]();
             });
-            const cancel = () => { if (drag?.surface === c) { drag = null; draw(); if (refreshPending) window.refreshRankSupplyChart(); } };
+            const cancel = () => { if (drag?.surface === c) { drag = null; draw(); if (refreshPending) window[api('refreshRankSupplyChart')](); } };
             c.addEventListener('pointercancel', cancel); c.addEventListener('lostpointercapture', cancel);
             c.addEventListener('pointerleave', () => { if (!drag) { hover = null; info.hidden = true; draw(); } });
         });
         const picker = document.createElement('dialog'); picker.className = 'supply-stock-dialog'; picker.hidden = true;
-        picker.setAttribute('aria-labelledby', 'supplyPickerTitle');
-        picker.innerHTML = '<h2 id="supplyPickerTitle">수급 종목 추가·삭제</h2><p>최대 5종목 · 삭제해도 저장한 기록은 유지됩니다.</p><ul class="supply-picker-stocks"></ul><form class="supply-search"><label>종목명 또는 코드 <input type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="supplyStockSuggestions" autocomplete="off" maxlength="80" required></label><button type="submit">추가</button><button type="button" data-close>닫기</button></form><div id="supplyStockSuggestions" class="supply-suggestions" role="listbox" aria-label="종목 검색 결과" hidden></div><p role="status"></p><details class="supply-archive-menu"><summary>보관 기록</summary><div></div></details>';
+        picker.setAttribute('aria-labelledby', `${panelId}PickerTitle`);
+        picker.innerHTML = `<h2 id="${panelId}PickerTitle">수급 종목 추가·삭제</h2><p>최대 5종목 · 삭제해도 저장한 기록은 유지됩니다.</p><ul class="supply-picker-stocks"></ul><form class="supply-search"><label>종목명 또는 코드 <input type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${panelId}StockSuggestions" autocomplete="off" maxlength="80" required></label><button type="submit">추가</button><button type="button" data-close>닫기</button></form><div id="${panelId}StockSuggestions" class="supply-suggestions" role="listbox" aria-label="종목 검색 결과" hidden></div><p role="status"></p><details class="supply-archive-menu"><summary>보관 기록</summary><div></div></details>`;
         document.body.append(picker);
         let searchTimer, searchRevision = 0, saving = false, searchRows = [], activeSuggestion = -1, lastSuggestionQuery = '';
         const pickerStatus = picker.querySelector('[role="status"]'), search = picker.querySelector('input');
@@ -527,14 +555,14 @@
                     body: JSON.stringify({ codes, revision: config.revision }) });
                 pickerStatus.textContent = ''; picker.close(); picker.hidden = true; ++searchRevision; clearTimeout(searchTimer);
                 if (selected !== nextSelected) choose(nextSelected);
-                else { paintStocks(); void window.refreshRankSupplyChart(); }
+                else { paintStocks(); void window[api('refreshRankSupplyChart')](); }
             } catch (error) {
                 picker.hidden = false; pickerStatus.textContent = error.message;
                 if (error.status === 409) {
                     try { config = await request('/api/supply/watchlist', { cache: 'no-store' }); pickerStatus.textContent = '다른 창의 최신 종목을 불러왔습니다. 다시 추가하거나 제외하세요.'; }
                     catch { pickerStatus.textContent = '최신 설정 조회 실패 · 조회 후 다시 시도하세요.'; }
                 }
-            } finally { saving = false; paintStocks(); }
+            } finally { saving = false; paintStocks(); document.dispatchEvent(new Event('rank-supply-watchlist')); }
         }
         async function addStock(stock) {
             if (saving) return;
@@ -558,7 +586,7 @@
                     searchRows = result.stocks;
                     suggestions.replaceChildren(...searchRows.map((stock, index) => {
                         const button = document.createElement('button'); button.type = 'button'; button.textContent = stock.name + ' (' + stock.code + ')'; button.disabled = saving;
-                        button.id = 'supply-stock-option-' + index; button.setAttribute('role', 'option'); button.setAttribute('aria-selected', 'false'); button.tabIndex = -1;
+                        button.id = panelId + '-stock-option-' + index; button.setAttribute('role', 'option'); button.setAttribute('aria-selected', 'false'); button.tabIndex = -1;
                         button.addEventListener('mousedown', event => event.preventDefault());
                         button.addEventListener('click', () => addStock(stock)); return button;
                     }));
@@ -593,7 +621,7 @@
         picker.addEventListener('cancel', event => { if (saving) event.preventDefault(); });
         picker.addEventListener('close', () => { picker.hidden = true; ++searchRevision; clearTimeout(searchTimer); clearSuggestions(); paintStocks(); });
         const reference = document.getElementById('concentrationChartPanel') || breadth;
-        window.applyRankSupplyCandleOpen = open => {
+        window[api('applyRankSupplyCandleOpen')] = open => {
             showCandles=open===true;candleArea.hidden=!showCandles;
             panel.querySelector('.concentration-candle-toggle').setAttribute('aria-expanded',String(showCandles));
             if(showCandles)void loadCandles();else{candleMessage='';setStatus();}
@@ -615,11 +643,14 @@
         }
         new ResizeObserver(resize).observe(reference); new ResizeObserver(draw).observe(canvas.parentElement);
         new ResizeObserver(resize).observe(panel.querySelector('.rank-adr-controls'));
-        document.addEventListener('visibilitychange', () => { if (!document.hidden) window.refreshRankSupplyChart(); });
-        window.addEventListener('online', window.refreshRankSupplyChart);
-        if(!window.rankIndependentClient && typeof window.rankMainCandleOpen==='boolean')window.applyRankSupplyCandleOpen(window.rankMainCandleOpen);
-        resize(); document.dispatchEvent(new Event('rank-supply-ready'));
-        if (!window.rankIndependentClient && !window.rankManagedChartRefresh) window.refreshRankSupplyChart();
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) window[api('refreshRankSupplyChart')](); });
+        window.addEventListener('online', window[api('refreshRankSupplyChart')]);
+        if(!window.rankIndependentClient && typeof window.rankMainCandleOpen==='boolean')window[api('applyRankSupplyCandleOpen')](window.rankMainCandleOpen);
+        if (broker) { try { window[api('applyRankSupplySettings')](JSON.parse(localStorage.getItem(`${panelId}Settings`)), false); } catch {} }
+        document.addEventListener('rank-supply-watchlist', () => { void window[api('refreshRankSupplyChart')](); });
+        resize(); document.dispatchEvent(new Event(eventName('rank-supply-ready')));
+        if (!window.rankIndependentClient && !window.rankManagedChartRefresh) window[api('refreshRankSupplyChart')]();
     }
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initialize, { once: true }); else initialize();
+    const initializeAll = () => { initialize(); initialize('kis'); initialize('ls'); };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initializeAll, { once: true }); else initializeAll();
 })();

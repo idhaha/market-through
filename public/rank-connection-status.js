@@ -1,10 +1,13 @@
 (() => {
     const states = new Map();
     const cardSources = [
+        ['#lsConcentrationChartPanel','LS(거래대금)·키움(가격)'], ['#rankKisTurnoverChartPanel','한투(거래대금)·키움(가격)'], ['#rankLsTurnoverChartPanel','LS(거래대금)·키움(가격)'],
+        ['#rankKiwoomMarketSupplyChartPanel', '키움'],
+        ['#rankKisSupplyChartPanel', '한투(수급)·키움(가격)'], ['#rankLsSupplyChartPanel', 'LS(수급)·키움(가격)'],
         ['#transactionTable', '키움'], ['#stockTable', '키움'],
         ['#efriendStockTable', '한투'], ['#watchlistTable', '키움'],
         ['#concentrationChartPanel', '키움'], ['#kisConcentrationChartPanel', '한투'], ['#rankAdrChartPanel', 'jusikbot'],
-        ['#rankTurnoverChartPanel', '키움'], ['#rankSupplyChartPanel', '키움'], ['#rankMarketSupplyChartPanel', '한투'], ['#rankLsMarketSupplyChartPanel', 'LS(분봉)·한투(일봉)·키움(가격)'],
+        ['#rankTurnoverChartPanel', '키움'], ['#rankSupplyChartPanel', '키움'], ['#rankMarketSupplyChartPanel', '한투'], ['#rankLsMarketSupplyChartPanel', 'LS(수급)·키움(가격)'],
         ['#rankVolatilityChartPanel', 'jusikbot'], ['#rankBreadthChartPanel', '키움'],
         ['#rankSentimentChartPanel', 'jusikbot']
     ];

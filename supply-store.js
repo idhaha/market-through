@@ -6,7 +6,7 @@ const validCode = code => /^[0-9A-Za-z]{6}$/.test(code);
 const fields = ['individual', 'foreign', 'institution', 'program'];
 const failure = (message, status = 400) => Object.assign(new Error(message), { status });
 
-function createSupplyStore({ directory, now = Date.now }) {
+function createSupplyStore({ directory, now = Date.now, fields: valueFields = fields }) {
     const configFile = path.join(directory, 'watchlist.json');
     function atomicBytes(filename, bytes) {
         fs.mkdirSync(path.dirname(filename), { recursive: true });
@@ -66,13 +66,13 @@ function createSupplyStore({ directory, now = Date.now }) {
         if (!Number.isFinite(t) || t <= 0 || t > now()) throw failure('잘못된 수집 시각입니다.');
         const day = dayKey(t), rows = points(code, day), byTime = new Map(rows.map(row => [row.t, row]));
         const next = { ...(byTime.get(t) || {}), t };
-        for (const field of fields) {
+        for (const field of valueFields) {
             if (Number.isSafeInteger(point[field])) {
                 next[field] = point[field];
                 next[`${field}_at`] = point[`${field}_at`] ?? point.t;
             }
         }
-        if (!fields.some(field => Number.isSafeInteger(next[field]))) return;
+        if (!valueFields.some(field => Number.isSafeInteger(next[field]))) return;
         byTime.set(t, next);
         const filename = path.join(stockDirectory(code), `${day}.json`);
         const data = [...byTime.values()].sort((a, b) => a.t - b.t);

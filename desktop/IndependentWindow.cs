@@ -47,6 +47,10 @@ internal sealed class IndependentForm : Form {
     string current;
     string allowed;
     bool ready, exiting;
+    Rectangle preferredBounds;
+    bool movingBounds;
+    string displayLayout;
+    DateTime layoutChangedAt = DateTime.MinValue;
     readonly System.Windows.Forms.Timer boundsRecovery = new System.Windows.Forms.Timer { Interval = 2000 };
     NamedPipeServerStream serverPipe;
     readonly JavaScriptSerializer json = new JavaScriptSerializer();
@@ -57,9 +61,10 @@ internal sealed class IndependentForm : Form {
         Text = "MarketThrough 독립창"; Font = new Font("맑은 고딕", 9F); FormBorderStyle = FormBorderStyle.Sizable; BackColor = Color.FromArgb(210, 218, 230);
         MinimumSize = new Size(320, 160); Size = new Size(1250, 800); StartPosition = FormStartPosition.Manual;
         Directory.CreateDirectory(folder); RestoreBoundsFromDisk();
+        displayLayout = GetDisplayLayout();
         web.Dock = DockStyle.Fill; Controls.Add(web);
         Activated += delegate { QueueBoundsRecovery(); };
-        ResizeEnd += delegate { EnsureVisibleBounds(); };
+        ResizeEnd += delegate { movingBounds = false; RememberBounds(); EnsureVisibleBounds(); };
         Microsoft.Win32.SystemEvents.DisplaySettingsChanged += DisplaySettingsChanged;
         boundsRecovery.Tick += delegate { if (Visible && Control.MouseButtons == MouseButtons.None && !Capture) EnsureVisibleBounds(); };
         Disposed += delegate { boundsRecovery.Dispose(); Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= DisplaySettingsChanged; };
@@ -105,6 +110,7 @@ internal sealed class IndependentForm : Form {
                         Width = Math.Max(MinimumSize.Width, Math.Min(area.Width, previousSize.Width + (int)Math.Round(dw * (double)previousClientSize.Width / vw)));
                         Height = Math.Max(MinimumSize.Height, Math.Min(area.Height, previousSize.Height + (int)Math.Round(dh * (double)previousClientSize.Height / vh)));
                         Left = Math.Max(area.Left, Math.Min(Left, area.Right - Width)); Top = Math.Max(area.Top, Math.Min(Top, area.Bottom - Height));
+                        RememberBounds();
                         web.CoreWebView2.ExecuteScriptAsync("window.dispatchEvent(new Event('rank-native-resize-complete'))");
                     }
                 };
@@ -117,7 +123,7 @@ internal sealed class IndependentForm : Form {
             NotifyClose();
             exiting = true; if (serverPipe != null) serverPipe.Dispose();
             try {
-                var bounds = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
+                var bounds = preferredBounds;
                 File.WriteAllText(Path.Combine(folder, "bounds.json"), json.Serialize(new int[] { bounds.X, bounds.Y, bounds.Width, bounds.Height }));
                 if (ready) web.CoreWebView2.ExecuteScriptAsync("window.dispatchEvent(new Event('pagehide'))");
             } catch { }
@@ -154,16 +160,29 @@ internal sealed class IndependentForm : Form {
     void RestoreBoundsFromDisk() {
         var area = Screen.PrimaryScreen.WorkingArea;
         Bounds = new Rectangle(area.Left + 30, area.Top + 30, Math.Min(1250, area.Width), Math.Min(800, area.Height));
+        preferredBounds = Bounds;
         try {
             var values = json.Deserialize<int[]>(File.ReadAllText(Path.Combine(folder, "bounds.json")));
             var saved = new Rectangle(values[0], values[1], Math.Max(320, values[2]), Math.Max(160, values[3]));
+            preferredBounds = saved;
             var screen = Screen.FromRectangle(saved).WorkingArea;
             saved.Width = Math.Min(saved.Width, screen.Width); saved.Height = Math.Min(saved.Height, screen.Height);
             saved.X = Math.Max(screen.Left, Math.Min(saved.X, screen.Right - saved.Width)); saved.Y = Math.Max(screen.Top, Math.Min(saved.Y, screen.Bottom - saved.Height)); Bounds = saved;
         } catch { }
     }
     void EnsureVisibleBounds() {
-        if (WindowState != FormWindowState.Normal) return;
+        if (WindowState != FormWindowState.Normal || movingBounds) return;
+        string layout = GetDisplayLayout();
+        if (layout != displayLayout) { displayLayout = layout; layoutChangedAt = DateTime.UtcNow; }
+        // Remote display changes can arrive in several steps. Never adopt their
+        // temporary window coordinates as the user's chosen placement.
+        if ((DateTime.UtcNow - layoutChangedAt).TotalSeconds < 4) return;
+        foreach (var screen in Screen.AllScreens) {
+            if (screen.WorkingArea.Contains(preferredBounds)) {
+                if (Bounds != preferredBounds) Bounds = preferredBounds;
+                return;
+            }
+        }
         var bounds = Bounds;
         var area = Screen.FromRectangle(bounds).WorkingArea;
         var caption = new Rectangle(bounds.Left, bounds.Top, bounds.Width, SystemInformation.CaptionHeight + SystemInformation.FrameBorderSize.Height);
@@ -175,10 +194,26 @@ internal sealed class IndependentForm : Form {
         bounds.Y = Math.Max(area.Top, Math.Min(bounds.Y, area.Bottom - bounds.Height));
         Bounds = bounds;
     }
+    void RememberBounds() {
+        if (WindowState == FormWindowState.Normal) preferredBounds = Bounds;
+    }
+    static string GetDisplayLayout() {
+        var screens = Array.ConvertAll(Screen.AllScreens, screen => screen.DeviceName + ":" + screen.Bounds + ":" + screen.WorkingArea);
+        Array.Sort(screens, StringComparer.Ordinal);
+        return string.Join("|", screens);
+    }
+    protected override void WndProc(ref Message message) {
+        if (message.Msg == 0x0231) movingBounds = true; // WM_ENTERSIZEMOVE
+        base.WndProc(ref message);
+    }
     void QueueBoundsRecovery() {
         if (exiting || IsDisposed || !IsHandleCreated) return;
         try { BeginInvoke(new Action(delegate { if (!IsDisposed && !exiting) EnsureVisibleBounds(); })); }
         catch (InvalidOperationException) { }
     }
-    void DisplaySettingsChanged(object sender, EventArgs e) { QueueBoundsRecovery(); }
+    void DisplaySettingsChanged(object sender, EventArgs e) {
+        if (exiting || IsDisposed || !IsHandleCreated) return;
+        try { BeginInvoke(new Action(delegate { layoutChangedAt = DateTime.UtcNow; EnsureVisibleBounds(); })); }
+        catch (InvalidOperationException) { }
+    }
 }

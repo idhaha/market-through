@@ -236,11 +236,60 @@ const lsMarketSupplyProvider = require('./ls-market-supply').createLsMarketSuppl
 });
 const lsMarketSupplyService = require('./market-supply-service').createMarketSupplyService({
     directory: path.join(__dirname, 'data', 'ls-market-supply'), minuteProvider: lsMarketSupplyProvider,
+    dailyProvider: require('./ls-market-daily').createLsMarketDaily({http:axios,getToken:()=>lsMarketSupplyProvider.accessToken(),reference:chartReferenceService}),
     reference: chartReferenceService, supply: supplyService
 });
+const kiwoomMarketSupplyProvider = require('./kiwoom-market-supply').createKiwoomMarketSupply({
+    directory: path.join(__dirname, 'data', 'kiwoom-market-supply'), http: axios,
+    getToken: () => getAccessToken(process.env.KIWOOM_APPKEY, process.env.KIWOOM_SECRETKEY),
+    reference: chartReferenceService, supply: supplyService
+});
+const kiwoomMarketSupplyService = require('./market-supply-service').createMarketSupplyService({
+    directory: path.join(__dirname, 'data', 'kiwoom-market-supply'), minuteProvider: kiwoomMarketSupplyProvider,
+    dailyProvider: kiwoomMarketSupplyProvider, reference: chartReferenceService, supply: supplyService
+});
+app.get('/api/kiwoom-market-supply/chart', async (req, res) => {
+    try { res.set('Cache-Control', 'no-store').json(await kiwoomMarketSupplyService.query(req.query)); }
+    catch (error) { res.status(error.status || 502).json({ success: false, error: error.message }); }
+});
+const { createBrokerStockSupply } = require('./broker-stock-supply');
+const kisStockSupplyService = createBrokerStockSupply({
+    broker: 'kis', directory: path.join(__dirname, 'data', 'kis-supply'), http: kisHttp, supply: supplyService,
+    credentials: () => ({ domain: (process.env.EFRIEND_DOMAIN || '').trim(), appKey: (process.env.EFRIEND_APPKEY || '').trim(), secretKey: (process.env.EFRIEND_SECRETKEY || '').trim() }),
+    getToken: () => getEfriendAccessToken((process.env.EFRIEND_DOMAIN || '').trim(), (process.env.EFRIEND_APPKEY || '').trim(), (process.env.EFRIEND_SECRETKEY || '').trim())
+});
+const lsStockSupplyService = createBrokerStockSupply({
+    broker: 'ls', directory: path.join(__dirname, 'data', 'ls-supply'), http: axios, supply: supplyService,
+    credentials: () => ({}), getToken: () => lsMarketSupplyProvider.accessToken()
+});
+const { createBrokerTurnoverData } = require('./broker-turnover-data');
+const kisTurnoverData = createBrokerTurnoverData({ broker: 'kis', directory: path.join(__dirname,'data','kis-turnover'),
+    transport: kisStockSupplyService, kisMarketAmounts: input => kisConcentrationChartService.marketAmounts(input) });
+const lsTurnoverData = createBrokerTurnoverData({ broker: 'ls', directory: path.join(__dirname,'data','ls-turnover'),
+    transport: lsStockSupplyService, http: axios, getToken: () => lsMarketSupplyProvider.accessToken() });
+const { createBrokerComparisonService } = require('./broker-comparison-service');
+const kisComparisonService = createBrokerComparisonService({ broker:'kis', data:kisTurnoverData, turnoverReference:turnoverService });
+const lsComparisonService = createBrokerComparisonService({ broker:'ls', data:lsTurnoverData, turnoverReference:turnoverService,
+    concentrationReference:createConcentrationChartService({ axios:indexHttp, getAccessToken, marketCache }) });
+for (const [broker,service] of [['kis',kisComparisonService],['ls',lsComparisonService]]) {
+    app.get(`/api/${broker}-turnover/chart`, async (req,res) => {
+        try { res.set('Cache-Control','no-store').json(await service.turnover(req.query)); }
+        catch(error) { res.status(error.status || 502).json({success:false,error:error.message}); }
+    });
+}
+app.post('/api/ls-concentration-chart',async(req,res)=>{
+    try { res.set('Cache-Control','no-store').json(await lsComparisonService.concentration(req.body,req.authUser.email)); }
+    catch(error) { res.status(error.status || 502).json({success:false,error:error.message}); }
+});
+for (const [broker, service] of [['kis', kisStockSupplyService], ['ls', lsStockSupplyService]]) {
+    app.get(`/api/${broker}-supply/chart`, async (req, res) => {
+        try { res.set('Cache-Control', 'no-store').json(await service.query(req.query)); }
+        catch (error) { res.status(error.status || 502).json({ success: false, error: error.message }); }
+    });
+}
 app.get('/api/ls-market-supply/chart', async (req, res) => {
     try {
-        const result = req.query.mode === 'minute' ? await lsMarketSupplyService.query(req.query) : await marketSupplyService.query(req.query);
+        const result = await lsMarketSupplyService.query(req.query);
         res.set('Cache-Control', 'no-store').json(result);
     } catch (error) { res.status(error.status || 502).json({ success: false, error: error.message }); }
 });
@@ -2962,7 +3011,12 @@ async function requestEfriendAccessToken(domain, appKey, secretKey) {
 
 app.listen(PORT, () => {
     supplyService.start();
+    kisStockSupplyService.start();
+    lsStockSupplyService.start();
+    kisTurnoverData.start();
+    lsTurnoverData.start();
     marketSupplyService.start();
+    kiwoomMarketSupplyService.start();
     lsMarketSupplyService.start();
     kisConcentrationChartService.start();
     breadthService.start();

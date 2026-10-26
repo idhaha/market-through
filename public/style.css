@@ -73,16 +73,16 @@
 .rank-chart-row .rank-adr-controls { padding-right:4px; box-sizing:border-box; }
 .rank-chart-row .concentration-timeframe-row { padding-right:4px; box-sizing:border-box; }
 .rank-chart-row .concentration-header-actions { flex:1; }
-.rank-chart-row :is(#concentrationCurrentRate,#kisConcentrationCurrentRate) { margin-left:auto; }
+.rank-chart-row :is(#concentrationCurrentRate,#kisConcentrationCurrentRate,#lsConcentrationCurrentRate) { margin-left:auto; }
 .rank-chart-row .rank-adr-panel output,
-.rank-chart-row :is(#concentrationCurrentRate,#kisConcentrationCurrentRate) { font-family:inherit; font-size:16px; font-weight:700; color:#339af0; font-variant-numeric:tabular-nums; max-width:100%; min-width:0; }
+.rank-chart-row :is(#concentrationCurrentRate,#kisConcentrationCurrentRate,#lsConcentrationCurrentRate) { font-family:inherit; font-size:16px; font-weight:700; color:#339af0; font-variant-numeric:tabular-nums; max-width:100%; min-width:0; }
 .rank-chart-row .concentration-chart-summary, .rank-chart-row .concentration-header-actions { min-width:0; max-width:100%; }
 .rank-chart-row .rank-adr-controls output { flex-shrink:1; overflow-wrap:anywhere; white-space:normal; }
 .turnover-hover-info { min-height:24px; flex-shrink:0; font-size:12px; line-height:24px; color:var(--text-primary); }
 .turnover-hover-info[hidden] { display:block; visibility:hidden; }
 .chart-hover-info,
-:is(#concentrationTooltip,#kisConcentrationTooltip).chart-hover-info { position:static; display:block; height:24px; min-height:24px; flex-shrink:0; line-height:24px; margin:0; padding:0; max-width:100%; font-size:12px; color:var(--text-primary); background:transparent; border-radius:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none; }
-.chart-hover-info[hidden], :is(#concentrationTooltip,#kisConcentrationTooltip).chart-hover-info[hidden] { display:block; visibility:hidden; }
+:is(#concentrationTooltip,#kisConcentrationTooltip,#lsConcentrationTooltip).chart-hover-info { position:static; display:block; height:24px; min-height:24px; flex-shrink:0; line-height:24px; margin:0; padding:0; max-width:100%; font-size:12px; color:var(--text-primary); background:transparent; border-radius:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none; }
+.chart-hover-info[hidden], :is(#concentrationTooltip,#kisConcentrationTooltip,#lsConcentrationTooltip).chart-hover-info[hidden] { display:block; visibility:hidden; }
 .concentration-charts-column > .concentration-chart-area { height:calc(var(--concentration-chart-height) - 24px); }
 .rank-adr-panel { width: var(--concentration-base-width, 570px); max-width: calc(100vw - 50px); margin-top: 20px; display: flex; flex-direction: column; box-sizing: border-box; }
 .rank-adr-area { flex: 1; min-height: 280px; position: relative; }
@@ -123,21 +123,21 @@
 #tab_rank tr[data-chart-code]:focus-visible { outline: 2px solid #ea580c; outline-offset: 2px; }
 .concentration-chart-summary { display: flex; align-items: baseline; gap: 8px; margin-left: auto; white-space: nowrap; }
 .concentration-chart-title { font-size: 13px; color: var(--text-muted); }
-:is(#concentrationCurrentRate,#kisConcentrationCurrentRate) { min-width: 0; max-width:100%; text-align: right; font-size: 16px; font-weight: 700; color: #339af0; font-variant-numeric: tabular-nums; }
+:is(#concentrationCurrentRate,#kisConcentrationCurrentRate,#lsConcentrationCurrentRate) { min-width: 0; max-width:100%; text-align: right; font-size: 16px; font-weight: 700; color: #339af0; font-variant-numeric: tabular-nums; }
 .concentration-status:empty { display: none; }
 .concentration-status { position: absolute; top: 0; left: 16px; right: 58px; z-index: 1; color: var(--text-muted); font-size: 12px; margin: 0; }
 .concentration-chart-layout { display: flex; align-items: stretch; gap: 16px; }
 .concentration-chart-area { position: relative; height: var(--concentration-chart-height); flex: 1; min-width: 0; }
-:is(#concentrationCanvas,#kisConcentrationCanvas) { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: pan-y; }
-:is(#concentrationCanvas,#kisConcentrationCanvas).is-loading { filter: blur(2px); opacity: .75; pointer-events: none; }
+:is(#concentrationCanvas,#kisConcentrationCanvas,#lsConcentrationCanvas) { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: pan-y; }
+:is(#concentrationCanvas,#kisConcentrationCanvas,#lsConcentrationCanvas).is-loading { filter: blur(2px); opacity: .75; pointer-events: none; }
 #rankBreadthChartPanel canvas.is-loading { filter: blur(2px); opacity: .75; pointer-events: none; }
 .concentration-tooltip { position: absolute; top: 8px; padding: 6px 10px; background: #0f172a; color: white;
     border-radius: 4px; font-size: 12px; pointer-events: none; white-space: nowrap; }
 .concentration-chart-footer { display: flex; column-gap: 16px; row-gap: 8px; align-items: center; margin-top: 8px; }
-:is(#concentrationPeriod,#kisConcentrationPeriod) { color: var(--text-muted); font-size: 12px; min-width: 0; }
+:is(#concentrationPeriod,#kisConcentrationPeriod,#lsConcentrationPeriod) { color: var(--text-muted); font-size: 12px; min-width: 0; }
 .concentration-chart-footer { flex-wrap: wrap; }
-:is(#concentrationPeriod,#kisConcentrationPeriod) { flex: 0 0 100%; order: 3; }
-:is(#concentrationMore,#kisConcentrationMore) { padding: 0; border: 0; border-radius: 0; background: transparent; }
+:is(#concentrationPeriod,#kisConcentrationPeriod,#lsConcentrationPeriod) { flex: 0 0 100%; order: 3; }
+:is(#concentrationMore,#kisConcentrationMore,#lsConcentrationMore) { padding: 0; border: 0; border-radius: 0; background: transparent; }
 @media (max-width: 700px) {
     .concentration-chart-panel { padding: 12px; }
     .concentration-chart-header { gap: 6px; }
@@ -145,25 +145,25 @@
     .concentration-chart-header .concentration-controls button { min-width: 26px; padding: 0 5px; }
     .concentration-chart-footer { gap: 8px; }
 }
-:is(#concentrationRange,#kisConcentrationRange) { flex: 1; accent-color: #64748b; min-width: 100px; }
-:is(#concentrationRange,#kisConcentrationRange), .rank-adr-zoom input[type="range"] {
+:is(#concentrationRange,#kisConcentrationRange,#lsConcentrationRange) { flex: 1; accent-color: #64748b; min-width: 100px; }
+:is(#concentrationRange,#kisConcentrationRange,#lsConcentrationRange), .rank-adr-zoom input[type="range"] {
     appearance: none; -webkit-appearance: none; background: transparent; height: 20px; cursor: pointer;
 }
-:is(#concentrationRange,#kisConcentrationRange)::-webkit-slider-runnable-track, .rank-adr-zoom input[type="range"]::-webkit-slider-runnable-track {
+:is(#concentrationRange,#kisConcentrationRange,#lsConcentrationRange)::-webkit-slider-runnable-track, .rank-adr-zoom input[type="range"]::-webkit-slider-runnable-track {
     height: 4px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-panel);
 }
-:is(#concentrationRange,#kisConcentrationRange)::-webkit-slider-thumb, .rank-adr-zoom input[type="range"]::-webkit-slider-thumb {
+:is(#concentrationRange,#kisConcentrationRange,#lsConcentrationRange)::-webkit-slider-thumb, .rank-adr-zoom input[type="range"]::-webkit-slider-thumb {
     appearance: none; -webkit-appearance: none; width: 16px; height: 16px; margin-top: -7px; border: 0; border-radius: 50%; background: #64748b;
 }
-:is(#concentrationRange,#kisConcentrationRange)::-moz-range-track, .rank-adr-zoom input[type="range"]::-moz-range-track {
+:is(#concentrationRange,#kisConcentrationRange,#lsConcentrationRange)::-moz-range-track, .rank-adr-zoom input[type="range"]::-moz-range-track {
     height: 4px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-panel);
 }
-:is(#concentrationRange,#kisConcentrationRange)::-moz-range-progress, .rank-adr-zoom input[type="range"]::-moz-range-progress { background: transparent; }
-:is(#concentrationRange,#kisConcentrationRange)::-moz-range-thumb, .rank-adr-zoom input[type="range"]::-moz-range-thumb {
+:is(#concentrationRange,#kisConcentrationRange,#lsConcentrationRange)::-moz-range-progress, .rank-adr-zoom input[type="range"]::-moz-range-progress { background: transparent; }
+:is(#concentrationRange,#kisConcentrationRange,#lsConcentrationRange)::-moz-range-thumb, .rank-adr-zoom input[type="range"]::-moz-range-thumb {
     width: 16px; height: 16px; border: 0; border-radius: 50%; background: #64748b;
 }
-:is(#concentrationRange,#kisConcentrationRange):disabled, .rank-adr-zoom input[type="range"]:disabled { cursor: default; opacity: .45; }
-:is(#concentrationRange,#kisConcentrationRange):focus-visible, .rank-adr-zoom input[type="range"]:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 3px; border-radius: 4px; }
+:is(#concentrationRange,#kisConcentrationRange,#lsConcentrationRange):disabled, .rank-adr-zoom input[type="range"]:disabled { cursor: default; opacity: .45; }
+:is(#concentrationRange,#kisConcentrationRange,#lsConcentrationRange):focus-visible, .rank-adr-zoom input[type="range"]:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 3px; border-radius: 4px; }
 .concentration-chart-footer .concentration-controls { margin-left: auto; }
 #tab_rank tr[data-chart-code] { cursor: pointer; }
 #tab_rank tr.concentration-selected td { background: #fff7ed; }
@@ -2549,18 +2549,18 @@ body.modal-open {
 .concentration-candle-toggle { display: inline-flex; align-items: center; height: 30px; margin: 0; border: 1px solid var(--border-color); border-radius: 4px; padding: 5px 10px; background: var(--bg-primary); color: var(--text-secondary); cursor: pointer; font-size: 12px; }
 .concentration-candle-area { position: relative; height: var(--concentration-chart-height); }
 .concentration-candle-area[hidden] { display: none; }
-:is(#concentrationCandleCanvas,#kisConcentrationCandleCanvas) { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: pan-y; }
-:is(#concentrationCandleCanvas,#kisConcentrationCandleCanvas).is-loading { filter: blur(2px); opacity: .75; pointer-events: none; }
+:is(#concentrationCandleCanvas,#kisConcentrationCandleCanvas,#lsConcentrationCandleCanvas) { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: pan-y; }
+:is(#concentrationCandleCanvas,#kisConcentrationCandleCanvas,#lsConcentrationCandleCanvas).is-loading { filter: blur(2px); opacity: .75; pointer-events: none; }
 
 .concentration-charts-column .concentration-tooltip { max-width: calc(100% - 16px); white-space: normal; overflow-wrap: anywhere; }
 
-:is(#concentrationTooltip,#kisConcentrationTooltip), :is(#concentrationCandleTooltip,#kisConcentrationCandleTooltip) { position: absolute; z-index: 2; pointer-events: none; display: inline-block; margin: 0; padding: 4px 8px; max-width: 100%; background: var(--bg-panel); color: var(--text-primary); font-size: 12px; white-space: normal; }
-:is(#concentrationTooltip,#kisConcentrationTooltip)[hidden], :is(#concentrationCandleTooltip,#kisConcentrationCandleTooltip)[hidden] { display: none; }
+:is(#concentrationTooltip,#kisConcentrationTooltip,#lsConcentrationTooltip), :is(#concentrationCandleTooltip,#kisConcentrationCandleTooltip,#lsConcentrationCandleTooltip) { position: absolute; z-index: 2; pointer-events: none; display: inline-block; margin: 0; padding: 4px 8px; max-width: 100%; background: var(--bg-panel); color: var(--text-primary); font-size: 12px; white-space: normal; }
+:is(#concentrationTooltip,#kisConcentrationTooltip,#lsConcentrationTooltip)[hidden], :is(#concentrationCandleTooltip,#kisConcentrationCandleTooltip,#lsConcentrationCandleTooltip)[hidden] { display: none; }
 
 .concentration-header-actions { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
 
 
-:is(#concentrationCurrentRate,#kisConcentrationCurrentRate) { position: static; min-width: 0; text-align: right; white-space: normal; overflow-wrap:anywhere; }
+:is(#concentrationCurrentRate,#kisConcentrationCurrentRate,#lsConcentrationCurrentRate) { position: static; min-width: 0; text-align: right; white-space: normal; overflow-wrap:anywhere; }
 .chart-value-with-date { position:relative; display:inline-flex; align-items:center; margin-left:auto; min-width:0; flex-shrink:0; }
 .chart-value-date { position:absolute; bottom:100%; right:0; white-space:nowrap; font-size:11px; line-height:15px; font-weight:400; color:var(--text-muted); }
 .concentration-chart-panel { position:relative; }
@@ -2575,9 +2575,9 @@ body.modal-open {
 .concentration-timeframe-row .concentration-candle-toggle { white-space: nowrap; }
 
 .concentration-stock-picker { position: relative; }
-:is(#concentrationStockSuggestions,#kisConcentrationStockSuggestions) { position: absolute; top: 100%; left: 0; z-index: 50; width: 300px; max-width: calc(100vw - 50px); max-height: 280px; overflow-y: auto; background: var(--bg-panel, #fff); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 5px; box-shadow: 0 4px 12px #0002; }
-:is(#concentrationStockSuggestions,#kisConcentrationStockSuggestions) [role="option"] { padding: 8px 10px; cursor: pointer; font-size: 13px; }
-:is(#concentrationStockSuggestions,#kisConcentrationStockSuggestions) [role="option"]:hover, :is(#concentrationStockSuggestions,#kisConcentrationStockSuggestions) [aria-selected="true"] { background: #ea580c22; }
+:is(#concentrationStockSuggestions,#kisConcentrationStockSuggestions,#lsConcentrationStockSuggestions) { position: absolute; top: 100%; left: 0; z-index: 50; width: 300px; max-width: calc(100vw - 50px); max-height: 280px; overflow-y: auto; background: var(--bg-panel, #fff); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 5px; box-shadow: 0 4px 12px #0002; }
+:is(#concentrationStockSuggestions,#kisConcentrationStockSuggestions,#lsConcentrationStockSuggestions) [role="option"] { padding: 8px 10px; cursor: pointer; font-size: 13px; }
+:is(#concentrationStockSuggestions,#kisConcentrationStockSuggestions,#lsConcentrationStockSuggestions) [role="option"]:hover, :is(#concentrationStockSuggestions,#kisConcentrationStockSuggestions,#lsConcentrationStockSuggestions) [aria-selected="true"] { background: #ea580c22; }
 .us-links-container { max-width: 100%; padding: 20px; color: #1f2937; background: #fff; }
 .us-help, .us-status { font-size: 13px; color: #64748b; margin: 10px 0; }
 .us-status { min-height: 20px; }
@@ -2678,7 +2678,7 @@ body.modal-open {
 
 /* Align actual text baselines, including native input text and radio labels. */
 .concentration-chart-header { align-items: baseline; }
-.concentration-chart-header h2, :is(#concentrationChartTitle,#kisConcentrationChartTitle) { display: block; height: 32px; margin: 0; padding: 0; line-height: 32px; font-family: inherit; }
+.concentration-chart-header h2, :is(#concentrationChartTitle,#kisConcentrationChartTitle,#lsConcentrationChartTitle) { display: block; height: 32px; margin: 0; padding: 0; line-height: 32px; font-family: inherit; }
 .concentration-stock-picker { display: block; height: 32px; line-height: 32px; }
 .concentration-stock-input { box-sizing: border-box; height: 32px; margin: 0; padding: 0 6px; border: 0; line-height: 32px; font-family: inherit; vertical-align: baseline; }
 .concentration-market { display: block; height: 32px; margin: 0; padding: 0; line-height: 32px; font-family: inherit; }
@@ -2759,7 +2759,7 @@ body.modal-open {
 .rank-chart-row .rank-adr-controls { min-height: 40px; align-items: center; }
 .rank-chart-row .rank-adr-controls { margin: 10px 0 0; }
 .rank-chart-row .chart-hover-info,
-.rank-chart-row :is(#concentrationTooltip,#kisConcentrationTooltip).chart-hover-info,
+.rank-chart-row :is(#concentrationTooltip,#kisConcentrationTooltip,#lsConcentrationTooltip).chart-hover-info,
 .rank-chart-row .turnover-hover-info {
     position: static;
     display: block;
@@ -2778,7 +2778,7 @@ body.modal-open {
     pointer-events: none;
 }
 .rank-chart-row .chart-hover-info[hidden],
-.rank-chart-row :is(#concentrationTooltip,#kisConcentrationTooltip).chart-hover-info[hidden],
+.rank-chart-row :is(#concentrationTooltip,#kisConcentrationTooltip,#lsConcentrationTooltip).chart-hover-info[hidden],
 .rank-chart-row .turnover-hover-info[hidden] { display: block; visibility: hidden; }
 .rank-chart-row .concentration-charts-column > .concentration-chart-area,
 .rank-chart-row .rank-adr-area {
@@ -2791,7 +2791,7 @@ body.modal-open {
 /* Equal title/control heights keep the three plot origins aligned. */
 .rank-chart-row .concentration-chart-header { align-items: center; }
 .rank-chart-row .rank-adr-panel > .concentration-chart-header { height:36px; min-height:36px; flex-wrap:nowrap; }
-.rank-chart-row :is(#concentrationChartTitle,#kisConcentrationChartTitle) { height:36px; line-height:36px; }
+.rank-chart-row :is(#concentrationChartTitle,#kisConcentrationChartTitle,#lsConcentrationChartTitle) { height:36px; line-height:36px; }
 .rank-chart-row .concentration-timeframe-row { align-self: stretch; }
 .rank-chart-row .rank-turnover-panel .turnover-legend { line-height: 18px; gap: 2px; }
 
@@ -2974,7 +2974,7 @@ body { height:100dvh; min-height:0; overflow:hidden; display:flex; flex-directio
 .rank-card-footer { display:flex; align-items:center; gap:12px; margin-top:8px; min-height:18px; flex:0 0 18px; min-width:0; }
 .rank-card-messages { display:flex; gap:8px; flex:1; min-width:0; overflow:hidden; }
 .rank-card-footer .rank-card-source { flex:0 0 auto; margin:0; white-space:nowrap; }
-.rank-card-messages > :is(.rank-adr-status,:is(#concentrationPeriod,#kisConcentrationPeriod),:is(#concentrationStatus,#kisConcentrationStatus),.rank-history-notice,.rank-selection-history-notice) { position:static; flex:0 1 auto; order:initial; margin:0; min-width:0; font-size:12px; line-height:18px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text-muted); }
+.rank-card-messages > :is(.rank-adr-status,:is(#concentrationPeriod,#kisConcentrationPeriod,#lsConcentrationPeriod),:is(#concentrationStatus,#kisConcentrationStatus,#lsConcentrationStatus),.rank-history-notice,.rank-selection-history-notice) { position:static; flex:0 1 auto; order:initial; margin:0; min-width:0; font-size:12px; line-height:18px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text-muted); }
 .rank-card-messages:has(:is(.rank-history-notice,.rank-selection-history-notice):not([hidden])) > :not(.rank-history-notice,.rank-selection-history-notice) { display:none; }
 .rank-chart-row { --chart-plot-height:286px; }
 
@@ -3010,3 +3010,94 @@ body { height:100dvh; min-height:0; overflow:hidden; display:flex; flex-directio
 
 /* Comparison card follows every existing trading card. */
 .rank-chart-row > .rank-ls-market-supply-panel { grid-column:auto; grid-row:auto; order:100; }
+
+.rank-chart-row > .rank-broker-supply-panel { grid-column:auto; grid-row:auto; }
+
+/* Broker comparison: the final two desktop rows, stocks then markets. */
+.rank-chart-row > #rankSupplyChartPanel { grid-column:1; grid-row:4; order:100; }
+.rank-chart-row > #rankKisSupplyChartPanel { grid-column:2; grid-row:4; order:101; }
+.rank-chart-row > #rankLsSupplyChartPanel { grid-column:3; grid-row:4; order:102; }
+.rank-chart-row > #rankKiwoomMarketSupplyChartPanel { grid-column:1; grid-row:5; order:200; }
+.rank-chart-row > #rankMarketSupplyChartPanel { grid-column:2; grid-row:5; order:201; }
+.rank-chart-row > #rankLsMarketSupplyChartPanel { grid-column:3; grid-row:5; order:202; }
+@media(max-width:700px) {
+ .rank-chart-row > :is(#rankSupplyChartPanel,#rankKisSupplyChartPanel,#rankLsSupplyChartPanel,#rankKiwoomMarketSupplyChartPanel,#rankMarketSupplyChartPanel,#rankLsMarketSupplyChartPanel) { grid-column:1; grid-row:auto; }
+}
+
+/* Data explanations use the same information icon as the CNN card. */
+.rank-data-guide-card { position:relative; }
+.rank-data-guide-card .concentration-chart-header { padding-right:34px; }
+.rank-data-guide-card .chart-info-button { position:absolute; top:14px; right:14px; width:20px; height:20px; padding:0; border:1px solid #94a3b8; border-radius:50%; background:var(--bg-panel,#fff); color:#64748b; font:600 13px/18px Georgia,serif; cursor:help; z-index:3; }
+.rank-data-guide-card .chart-info-button:focus-visible { outline:2px solid var(--accent-primary,#339af0); outline-offset:3px; }
+.supply-data-guide { z-index:30; text-align:left; }
+.supply-data-guide[hidden] { display:none!important; }
+.supply-data-guide .supply-source-list { display:grid; grid-template-columns:80px minmax(0,1fr); column-gap:10px; row-gap:8px; margin:12px 0; }
+.supply-data-guide dt { font-weight:600; }
+.supply-data-guide dd { margin:0; overflow-wrap:anywhere; }
+.supply-data-guide [role=tabpanel]:focus-visible { outline:2px solid #93b4ed; outline-offset:2px; }
+@media(max-width:700px) { .supply-data-guide .supply-source-list { grid-template-columns:64px minmax(0,1fr); } }
+
+.chart-guide-custom-text { white-space:pre-wrap; overflow-wrap:anywhere; }
+.chart-guide-editor { width:min(760px,calc(100vw - 32px)); max-height:90dvh; padding:22px; box-sizing:border-box; overflow:auto; border:1px solid var(--border-color,#dbe3ed); border-radius:12px; background:var(--bg-panel,#fff); color:var(--text-primary,#1f2937); }
+.chart-guide-editor::backdrop { background:#0006; }
+.chart-guide-editor form { display:flex; flex-direction:column; gap:10px; }
+.chart-guide-editor h2 { margin:0; font-size:18px; }
+.chart-guide-editor p { margin:0; font-size:12px; line-height:1.6; }
+.chart-guide-editor label { font-size:13px; font-weight:600; }
+.chart-guide-editor textarea { width:100%; min-height:220px; height:48dvh; max-height:55dvh; padding:12px; box-sizing:border-box; resize:vertical; border:1px solid var(--border-color,#cbd5e1); border-radius:6px; background:var(--bg-panel,#fff); color:inherit; font-size:13px; line-height:1.7; font-family:inherit; }
+.chart-guide-editor .chart-guide-editor-context,.chart-guide-editor .chart-guide-editor-hint { color:var(--text-muted,#64748b); }
+.chart-guide-editor [role=status] { color:#c2410c; }
+.chart-guide-editor-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.chart-guide-editor-actions span { flex:1; }
+.chart-guide-editor button { padding:7px 12px; border:1px solid var(--border-color,#cbd5e1); border-radius:6px; background:var(--bg-secondary,#f8fafc); color:inherit; font:inherit; font-size:13px; cursor:pointer; }
+.chart-guide-editor button[type=submit] { background:#2563eb; border-color:#2563eb; color:#fff; }
+.chart-guide-editor :is(button,textarea):focus-visible { outline:2px solid #339af0; outline-offset:2px; }
+
+/* Three-broker comparison rows below the existing tables. */
+.rank-chart-row > #concentrationChartPanel { grid-column:1; grid-row:1; order:0; }
+.rank-chart-row > #kisConcentrationChartPanel { grid-column:2; grid-row:1; order:1; }
+.rank-chart-row > #lsConcentrationChartPanel { grid-column:3; grid-row:1; order:2; }
+.rank-chart-row > #rankTurnoverChartPanel { grid-column:1; grid-row:2; order:10; }
+.rank-chart-row > #rankKisTurnoverChartPanel { grid-column:2; grid-row:2; order:11; }
+.rank-chart-row > #rankLsTurnoverChartPanel { grid-column:3; grid-row:2; order:12; }
+.rank-chart-row > #rankSupplyChartPanel { grid-column:1; grid-row:3; order:20; }
+.rank-chart-row > #rankKisSupplyChartPanel { grid-column:2; grid-row:3; order:21; }
+.rank-chart-row > #rankLsSupplyChartPanel { grid-column:3; grid-row:3; order:22; }
+.rank-chart-row > #rankKiwoomMarketSupplyChartPanel { grid-column:1; grid-row:4; order:30; }
+.rank-chart-row > #rankMarketSupplyChartPanel { grid-column:2; grid-row:4; order:31; }
+.rank-chart-row > #rankLsMarketSupplyChartPanel { grid-column:3; grid-row:4; order:32; }
+.rank-chart-row > #rankAdrChartPanel { grid-column:2; grid-row:5; order:41; }
+.rank-chart-row > #rankBreadthChartPanel { grid-column:1; grid-row:5; order:40; }
+.rank-chart-row > #rankVolatilityChartPanel { grid-column:3; grid-row:5; order:42; }
+.rank-chart-row > #rankSentimentChartPanel { grid-column:1; grid-row:6; order:43; }
+:is(#lsConcentrationChartPanel) .chart-hover-info { position:static; height:24px; min-height:24px; line-height:24px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+@media(max-width:700px) {
+ .rank-chart-row > .panel { grid-column:1!important; grid-row:auto!important; }
+}
+
+/* Each chart area reports its own in-flight request. */
+.rank-adr-area,.rank-adr-candle-area,.concentration-chart-area,.concentration-candle-area { position:relative; }
+.supply-observed-time { font-size:10px;font-weight:400;color:var(--text-muted);margin-left:4px; }
+
+.turnover-observed-time { font-size:10px;font-weight:400;color:var(--text-muted);margin-left:4px; }
+
+/* Distinguish guide section titles from explanatory text. */
+.volatility-guide h3 { font-weight:800; line-height:1.5; }
+.volatility-guide h4 { margin:20px 0 8px; padding:5px 8px; border-left:3px solid #64748b; background:#f1f5f9; color:#0f172a; font-size:13px; font-weight:800; line-height:1.5; }
+.supply-data-guide dt { font-weight:700; color:#0f172a; }
+
+/* Reuse the table loading circle for each independent chart request. */
+.rank-chart-loading { display:grid; z-index:5; pointer-events:none; }
+.rank-chart-loading[hidden] { display:none; }
+.rank-chart-loading b { font-size:12px; font-weight:600; color:var(--text-primary); }
+
+.concentration-cumulative-legend { position:absolute;top:0;left:16px;z-index:1;font-size:11px;color:#ea580c;background:var(--bg-panel);pointer-events:none; }
+.concentration-cumulative-legend[hidden] { display:none; }
+
+.concentration-current-cumulative { margin-left:8px;font-size:14px;font-weight:700;color:#ea580c;white-space:nowrap; }
+.concentration-current-cumulative[hidden] { display:none; }
+
+/* Two value rows float over the controls without changing plot layout. */
+.concentration-chart-panel .chart-value-with-date { position:absolute;right:24px;display:grid;grid-template-columns:auto;justify-items:end;gap:2px;line-height:18px;z-index:2; }
+.concentration-chart-panel .concentration-current-cumulative { margin-left:0; }
+.supply-observed-time,.turnover-observed-time { display:none; }

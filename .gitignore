@@ -77,3 +77,11 @@ user_settings_manualsaved_*.json
 data/auth-private/
 
 data/ls-market-supply/
+
+data/kis-supply/
+data/ls-supply/
+
+data/kiwoom-market-supply/
+
+data/ls-turnover/
+data/kis-turnover/

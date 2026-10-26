@@ -131,7 +131,11 @@ function createKisConcentrationChartService({ reference, http, credentials, getT
         const id = `${code}:${day}`;
         let saved = stockDays.get(id);
         if (!saved) { saved = { rows: new Map(), earliest: null, at: now() }; stockDays.set(id, saved); }
-        let cursor = last;
+        const latest=[...saved.rows.keys()].map(k=>k.slice(8)).sort().at(-1);
+        const historical=day!==new Date(now()+32400000).toISOString().slice(0,10).replaceAll('-','');
+        if(saved.earliest && saved.earliest<=first && latest>=last && (historical || now()-saved.at<10000)) {saved.at=now();return saved.rows;}
+        let cursor = historical && saved.earliest && latest>=last ? clock(minute(day+saved.earliest)-1) : last;
+
         for (let page=0;page<10;page++) {
             const rows = await get('FHKST03010230', 'inquire-time-dailychartprice', {
                 FID_COND_MRKT_DIV_CODE:'UN', FID_INPUT_ISCD:code, FID_INPUT_DATE_1:day, FID_INPUT_HOUR_1:cursor,
@@ -211,15 +215,37 @@ function createKisConcentrationChartService({ reference, http, credentials, getT
             const denominator=base.mode==='day'?(rawMarket==null?null:rawMarket*1000000):indexAmounts.get(point.time)??null;
             const valid=numerator!=null && denominator>0;
             if(!valid)missing++;
-            return {...point,stock_turnover:numerator,market_turnover:denominator,
+            const cumulativeStock=base.mode==='minute'?amount(stocks.get(point.time)?.acml_tr_pbmn):null;
+            const rawCumulativeIndex=base.mode==='minute'?amount(indices.get(point.time)?.acml_tr_pbmn):null;
+            const cumulativeMarket=rawCumulativeIndex===null?null:rawCumulativeIndex*1000000;
+            return {...point,cumulative_value:cumulativeStock!==null&&cumulativeMarket>0?cumulativeStock/cumulativeMarket*100:null,
+                stock_turnover_cumulative:cumulativeStock,market_turnover_cumulative:cumulativeMarket,stock_turnover:numerator,market_turnover:denominator,
                 stock_turnover_million:numerator==null?null:numerator/1000000,market_turnover_million:denominator==null?null:denominator/1000000,
                 value:valid?numerator/denominator*100:null};
         });
+        const requestedDays = new Set(dates);
+        const hasRequestedIndex = [...indices.keys()].some(key => requestedDays.has(key.slice(0,8)));
+        const latestIndexDay = [...indices.keys()].map(key => key.slice(0,8)).sort().at(-1);
+        const notice = base.mode === 'minute' && !hasRequestedIndex
+            ? `한투 업종 거래대금 미제공${latestIndexDay ? ` (최근 ${latestIndexDay.slice(0,4)}-${latestIndexDay.slice(4,6)}-${latestIndexDay.slice(6,8)})` : ''} · 쏠림율 계산 대기 · 가격 캔들은 표시합니다.`
+            : missing ? '한투 거래대금 미제공 구간은 결측으로 표시합니다.' : '';
         return {...base,points,source:'한투',calculation:base.mode==='day'?'KIS stock acml_tr_pbmn / (KIS index acml_tr_pbmn * 1000000) * 100'
             :'delta(KIS UN stock acml_tr_pbmn) / (delta(KIS index acml_tr_pbmn) * 1000000) * 100',
-            notice:missing?'한투 거래대금 미제공 구간은 결측으로 표시합니다.':'',
+            notice,
             warnings:['종목은 통합시장(UN), 업종의 통합 집계 범위는 미확인입니다.']};
     }
-    return {query,collect,start,stop};
+    async function marketAmounts({ market, mode, dates }) {
+        const code = market === 'kosdaq' ? '1001' : '0001';
+        if (!dates.length) return [];
+        let values;
+        if (mode === 'day') values = await daily('FHKUP03500100','inquire-daily-indexchartprice',code,dates[0],dates.at(-1),false);
+        else {
+            const fresh = await get('FHKUP03500200','inquire-time-indexchartprice',indexParams(code));
+            saveIndex(code, fresh); values = readIndex(code,dates);
+            for (const row of fresh) values.set(row.stck_bsop_date+row.stck_cntg_hour,row);
+        }
+        return [...values.values()];
+    }
+    return {query,collect,start,stop,marketAmounts};
 }
 module.exports={createKisConcentrationChartService,differences};

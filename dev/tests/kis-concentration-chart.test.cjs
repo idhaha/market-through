@@ -28,6 +28,7 @@ function fixture(directory,overrides={}){
 test('minute amounts use UN stock won and index million-won deltas; candles/grid/history are unchanged',async()=>{
  const f=fixture();const r=await f.service.query({code:'005930',mode:'minute',interval:1},'user');
  assert.equal(r.points[0].value,null);assert.equal(r.points[1].value,10);assert.equal(r.points[2].value,10);
+ assert.equal(r.points[1].cumulative_value,2.5);assert.equal(r.points[1].stock_turnover_cumulative,3000000);assert.equal(r.points[1].market_turnover_cumulative,120000000);
  assert.equal(r.points[1].stock_turnover,2000000);assert.equal(r.points[1].market_turnover,20000000);
  assert.equal(r.points[1].stock_price,200);assert.equal(r.cursor,'bound-cursor');assert.equal(r.has_more,true);
  assert.equal(f.calls.find(c=>c.url.endsWith('inquire-time-dailychartprice')).config.params.FID_COND_MRKT_DIV_CODE,'UN');
@@ -122,4 +123,13 @@ test('temporary KIS rate limit recovers the actual daily concentration after del
  f.options.http.get=async(...args)=>{if(++calls===1)return{data:{rt_cd:'1',msg_cd:'EGW00201',msg1:'초당 거래건수 초과'}};return original(...args);};
  const result=await f.service.query({code:'000660',mode:'day'},'user');
  assert.equal(result.partial,undefined);assert.equal(result.points[0].value,20);assert.equal(result.source,'한투');assert.equal(calls,3);
+});
+
+
+test('already covered historical stock minutes survive the short HTTP cache expiry',async()=>{
+ let at=Date.parse('2026-10-27T00:00:00+09:00');const f=fixture(undefined,{now:()=>at});
+ f.options.reference.query=async()=>({success:true,market:'K',mode:'minute',points:['20261023135400','20261023135500'].map(time=>({time,value:0,stock_price:200}))});
+ await f.service.query({code:'005930',mode:'minute'},'user');
+ const count=()=>f.calls.filter(c=>c.url.endsWith('inquire-time-dailychartprice')).length;
+ assert.equal(count(),1);at+=15000;await f.service.query({code:'005930',mode:'minute'},'user');assert.equal(count(),1);
 });

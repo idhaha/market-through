@@ -24,10 +24,10 @@ test('KIS copy shares selection, modes, candles, viewport, refresh and original 
   });
   for(const file of ['rank-connection-status.js','rank-chart-axis.js','concentration-chart.js'])await page.addScriptTag({path:path.resolve(__dirname,'../../public',file)});
   await page.evaluate(()=>document.dispatchEvent(new Event('DOMContentLoaded')));
-  assert.equal(await page.$eval('#kisConcentrationChartTitle',e=>e.textContent),'쏠림율[한투]');
+  assert.equal(await page.$eval('#kisConcentrationChartTitle',e=>e.textContent),'쏠림율(한투)');
   await page.waitForFunction(()=>document.querySelector('#kisConcentrationChartPanel .rank-card-source'));
   assert.equal(await page.$eval('#kisConcentrationChartPanel .rank-card-source',e=>e.textContent),'출처: 한투');
-  const placement=await page.evaluate(()=>{const a=document.getElementById('rankSentimentChartPanel').getBoundingClientRect(),b=document.getElementById('kisConcentrationChartPanel').getBoundingClientRect();return{a:a.x,b:b.x,topA:a.top,topB:b.top};});
+  const placement=await page.evaluate(()=>{const a=document.getElementById('concentrationChartPanel').getBoundingClientRect(),b=document.getElementById('kisConcentrationChartPanel').getBoundingClientRect();return{a:a.x,b:b.x,topA:a.top,topB:b.top};});
   assert.ok(placement.b>placement.a);assert.equal(placement.topA,placement.topB);
   await page.evaluate(()=>window.selectRankChartStock({code:'005930',name:'삼성전자',market:'K'}));
   await page.waitForFunction(()=>window.getKisRankChartState?.().points.length===60&&!window.getKisRankChartState().busy);

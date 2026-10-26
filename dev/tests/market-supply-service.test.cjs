@@ -119,3 +119,13 @@ test('empty program date window does not hide available older history',async t=>
     assert.equal(result.points[3].program,-9);
     assert.ok(result.warnings.some(text=>text.includes('프로그램 일부 일별 자료 미제공')));
 });
+
+
+test('successful empty program history is cached and not traversed again on each refresh',async t=>{
+ const dates=['20240507','20250507','20261023'],anchor=dates.map(dt=>({t:timestamp(dt),close:100}));
+ const {service,calls,setTime}=fixture(t,async(id,params)=>id==='FHPTJ04040000'?dates.map(stck_bsop_date=>({stck_bsop_date,frgn_ntby_tr_pbmn:'1'})):[],true,'101500',anchor);
+ await service.query({code:'kospi'});const n=calls.length;assert.ok(n>20);
+ setTime(timestamp(day,'101510'));await service.query({code:'kospi'});assert.equal(calls.length,n,'Empty successful old ranges are cached');
+ setTime(timestamp(day,'101610'));await service.query({code:'kospi'});
+ const later=calls.slice(n).filter(c=>c.headers.tr_id==='FHPPG04600001');assert.ok(later.length>0);assert.ok(later.every(c=>c.params.FID_INPUT_DATE_1>=dates.at(-2)),'Only mutable recent window is revisited');
+});
