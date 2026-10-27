@@ -462,6 +462,7 @@ window.handleCredentialResponse = async function (response) {
         });
         const result = await loginResponse.json();
         if (!loginResponse.ok || !result.success) throw new Error(result.error || 'Google 로그인에 실패했습니다.');
+        window.RankChartCache?.invalidateIdentity();
         localStorage.removeItem('user_session');
         location.reload();
     } catch (error) {
@@ -6137,6 +6138,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             await fetch('/api/auth/logout', { method: 'POST' });
         } finally {
+            window.RankChartCache?.invalidateIdentity();
             localStorage.removeItem('user_session');
             location.reload();
         }

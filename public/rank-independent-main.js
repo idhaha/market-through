@@ -52,11 +52,15 @@
                 document.body.append(link); link.click(); link.remove();
             } catch (error) { message.textContent = error.message; }
         }
+        function chartMetadata(state){
+            if(!state)return state;
+            const {points,candles,priceHistory,minuteDays,...metadata}=state;return metadata;
+        }
         function snapshot() {
             const cell = document.querySelector('#transactionBody tr[data-chart-code] td');
             const style = cell && getComputedStyle(cell);
-            return { tableConnection: window.getRankCardConnectionState?.('#transactionTable'), chartConnection: window.getRankCardConnectionState?.('#concentrationChartPanel'), tableConnected: window.getRankCardConnection?.('#transactionTable') === true, chartConnected: window.getRankCardConnection?.('#concentrationChartPanel') === true, rows: document.getElementById('transactionBody').innerHTML, chart: window.getRankChartState?.(), display: window.getConcentrationDisplaySettings?.(),
-                supply: window.getRankSupplyState?.(),
+            return { tableConnection: window.getRankCardConnectionState?.('#transactionTable'), chartConnection: window.getRankCardConnectionState?.('#concentrationChartPanel'), tableConnected: window.getRankCardConnection?.('#transactionTable') === true, chartConnected: window.getRankCardConnection?.('#concentrationChartPanel') === true, rows: document.getElementById('transactionBody').innerHTML, chart: chartMetadata(window.getRankChartState?.()), display: window.getConcentrationDisplaySettings?.(),
+                supply: chartMetadata(window.getRankSupplyState?.()),
                 refreshStatus: { time: document.getElementById('lastUpdate')?.textContent || '-', text: document.getElementById('statusText')?.textContent || '대기 중' },
                 typography: { rootFontSize: getComputedStyle(document.documentElement).fontSize, family: getComputedStyle(document.body).fontFamily,
                     pixelRatio: devicePixelRatio, cellFont: style?.fontSize, cellPadding: style && parseFloat(style.paddingTop), rowHeight: cell?.parentElement.getBoundingClientRect().height },

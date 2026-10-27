@@ -4,7 +4,7 @@ const fs = require('node:fs'), os = require('node:os'), path = require('node:pat
 const {EventEmitter} = require('node:events');
 const {createLsMarketSupply, subscriptions, sourceTime} = require('../../ls-market-supply');
 const {timestamp} = require('../../supply-service');
-function fixture(t, validated = true) {
+function fixture(t, validated = true, options = {}) {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ls-supply-'));
     let time = timestamp('20261023', '101000');
     const checks = Object.fromEntries(subscriptions.map(s => [`${s.tr}:${s.key}`, {
@@ -17,7 +17,7 @@ function fixture(t, validated = true) {
         send(text) {this.sent.push(JSON.parse(text));}
         close() {this.emit('close');}
     }
-    const provider = createLsMarketSupply({directory,now:()=>time,WebSocket:Socket,
+    const provider = createLsMarketSupply({directory,now:()=>time,WebSocket:Socket,...options,
         supply:{confirmMarket:async()=>true},credentials:()=>({appKey:'private-key',secretKey:'private-secret'}),
         http:{post:async(url)=>{calls.push(url);if(url.endsWith('/token'))return {data:{access_token:'private-token',expires_in:3600}};return {data:{rsp_cd:'00000',t1602OutBlock1:[]}};}}});
     t.after(()=>{provider.stop();fs.rmSync(directory,{recursive:true,force:true});});
@@ -63,4 +63,15 @@ test('reconnection has backoff, stop prevents late authentication from opening a
     f.provider.stop();assert.ok(!JSON.stringify(f.provider.status('kospi','2026-10-23')).includes('private'));
     const p=createLsMarketSupply({directory:f.directory,http:{post:async()=>{throw {config:{secret:'private-secret'}};}},credentials:()=>({appKey:'private-key',secretKey:'private-secret'}),supply:{}});
     await assert.rejects(p.accessToken(),{message:'LS 접근토큰 발급 실패'});
+});
+
+
+test('deployed cash market defaults work without private validation files, while futures stay unverified',async t=>{
+ const f=fixture(t,false,{validationDefaults:require('../../ls-market-validation')}),p=f.provider;await p.collect();
+ p.receive(message('UBT','U001','10100000',{upcode:'001',msval1:'2',msval2:'-3',msval3:'1'}));
+ p.receive(message('UPM','U0','101000',{upcode:'001',tval:'-7'}));
+ f.setTime(timestamp('20261023','101100'));p.flush();
+ const point=p.store.points('KOSPI0','2026-10-23')[0];assert.equal(point.individual,200);assert.equal(point.foreign,-300);assert.equal(point.program,-7);
+ assert.ok(p.warnings('futures').some(w=>w.includes('검증')));
+ fs.writeFileSync(path.join(f.directory,'validation.json'),JSON.stringify({'UBT:U001':null}));assert.ok(p.warnings('kospi').some(w=>w.includes('UBT')));
 });

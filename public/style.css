@@ -3101,3 +3101,17 @@ body { height:100dvh; min-height:0; overflow:hidden; display:flex; flex-directio
 .concentration-chart-panel .chart-value-with-date { position:absolute;right:24px;display:grid;grid-template-columns:auto;justify-items:end;gap:2px;line-height:18px;z-index:2; }
 .concentration-chart-panel .concentration-current-cumulative { margin-left:0; }
 .supply-observed-time,.turnover-observed-time { display:none; }
+
+/* Temporary broker choices: title-row colour only; all comparison cards remain. */
+:is(#concentrationChartPanel:has([data-chart-mode="day"].active),
+#lsConcentrationChartPanel:has([data-chart-mode="minute"].active),
+#rankTurnoverChartPanel:has([data-mode="day"].active),
+#rankLsTurnoverChartPanel:has([data-mode="minute"].active),
+#rankSupplyChartPanel:has([data-mode="day"].active),
+#rankKisSupplyChartPanel:has([data-mode="minute"].active),
+#rankLsMarketSupplyChartPanel:has([data-mode="day"].active),
+#rankKiwoomMarketSupplyChartPanel:has([data-mode="minute"].active),
+#rankMarketSupplyChartPanel:has([data-mode="minute"].active):has(input[value^="futures"]:checked)) > .concentration-chart-header {
+    background: linear-gradient(to bottom, #fff59d 0 34px, transparent 34px);
+    border-radius: 4px;
+}

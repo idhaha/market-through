@@ -17,7 +17,7 @@
     }
     const displayFlow = source => source;
     async function request(url, options) {
-        const response = await fetch(url, options), data = await response.json();
+        const response = await (window.RankChartCache?.fetch || fetch)(url, options), data = await response.json();
         if (!response.ok || !data.success) throw Object.assign(new Error(data.error || '수급 조회 실패'), { status: response.status });
         return data;
     }
@@ -298,7 +298,7 @@
             candleController?.abort();const current=candleController=new AbortController(),id=++candleRevision;
             candleRangePending=key;candleLoading=true;draw();
             try{
-                const response=await fetch(`/api/adr/candles?market=${market}&mode=minute&from=${from}&to=${to}`,{signal:current.signal});
+                const response=await (window.RankChartCache?.fetch || fetch)(`/api/adr/candles?market=${market}&mode=minute&from=${from}&to=${to}`,{signal:current.signal});
                 const result=await response.json();
                 if(!response.ok)throw new Error(result.error || '시장 가격 조회 실패');
                 if(id!==candleRevision)return;

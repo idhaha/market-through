@@ -232,6 +232,7 @@ const marketSupplyService = require('./market-supply-service').createMarketSuppl
 });
 const lsMarketSupplyProvider = require('./ls-market-supply').createLsMarketSupply({
     directory: path.join(__dirname, 'data', 'ls-market-supply'), http: axios, supply: supplyService,
+    validationDefaults: require('./ls-market-validation'),
     credentials: () => ({ appKey: (process.env.LS_APPKEY || '').trim(), secretKey: (process.env.LS_SECRETKEY || '').trim() })
 });
 const lsMarketSupplyService = require('./market-supply-service').createMarketSupplyService({

@@ -19,7 +19,7 @@ function sourceTime(value, received) {
 }
 
 function createLsMarketSupply({ directory, http, credentials, supply, now = Date.now,
-    WebSocket = require('ws'), log = console.warn }) {
+    WebSocket = require('ws'), log = console.warn, validationDefaults = {} }) {
     // Raw source amounts are retained separately. Only verified conversions reach the chart.
     const raw = createSupplyStore({ directory: path.join(directory, 'raw'), now });
     const pending = new Map(), states = new Map();
@@ -27,8 +27,8 @@ function createLsMarketSupply({ directory, http, credentials, supply, now = Date
     let connectionError = '', confirmedDay = '', lastFlush = 0, lastArchive = 0;
     let recoveryTask;
     function validation() {
-        try { return JSON.parse(fs.readFileSync(path.join(directory, 'validation.json'), 'utf8')); }
-        catch { return {}; }
+        try { return { ...validationDefaults, ...JSON.parse(fs.readFileSync(path.join(directory, 'validation.json'), 'utf8')) }; }
+        catch { return { ...validationDefaults }; }
     }
     function verified(entry, checks = validation()) {
         const item = checks[`${entry.tr}:${entry.key}`];

@@ -3,6 +3,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=requ
 const html=fs.readFileSync('public/index.html','utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'').replace(/<link\b[^>]*>/gi,'');
 const t=Date.parse('2026-10-23T09:00:00+09:00'),p={t,open:2500,high:2510,low:2490,close:2505};
 await page.route('http://market-page.test/**',route=>{const url=new URL(route.request().url());
+if(url.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:'chart-test@example.test'}}});
 if(['/api/concentration-chart','/api/kis-concentration-chart','/api/ls-concentration-chart'].includes(url.pathname)){
  const input=route.request().postDataJSON(),ratio=url.pathname.includes('ls-')?30:url.pathname.includes('kis-')?20:10;
  return route.fulfill({json:{success:true,mode:input.mode,market:'K',points:[{time:input.mode==='minute'?'20261023090000':'20261023',value:ratio,stock_price:100,stock_open:99,stock_high:101,stock_low:98}],warnings:[],has_more:false}});
@@ -10,7 +11,7 @@ if(['/api/concentration-chart','/api/kis-concentration-chart','/api/ls-concentra
 if(['/api/kis-turnover/chart','/api/ls-turnover/chart'].includes(url.pathname))return route.fulfill({json:{success:true,markets:{kospi:[{...p,market_turnover:url.pathname.includes('ls-')?3e12:2e12}],kosdaq:[{...p,market_turnover:1e12}]},warnings:[],has_more:false}});
 if(['/api/market-supply/chart','/api/ls-market-supply/chart','/api/kiwoom-market-supply/chart'].includes(url.pathname))return route.fulfill({json:{success:true,points:[{t,foreign:100,program:-50,institution:40,individual:-90}],candles:[p],warnings:[],has_more:false}});if(['/api/kis-supply/chart','/api/ls-supply/chart'].includes(url.pathname))return route.fulfill({json:{success:true,points:[{t,foreign:100,institution:-30,program:url.pathname.includes('kis')?200:300,...(url.pathname.includes('ls')?{individual:-70}:{})}],candles:[p],warnings:[],has_more:false,date:'2026-10-23',available_dates:['2026-10-23']}});if(url.pathname==='/api/supply/watchlist')return route.fulfill({json:{success:true,stocks:[{code:'005930',name:'삼성전자'}],archive:[{code:'005930',name:'삼성전자'}],revision:1}});if(url.pathname==='/api/chart-reference')return route.fulfill({json:{points:[p],has_more:false}});if(url.pathname.startsWith('/api/'))return route.fulfill({json:{success:true,points:[p],markets:{kospi:[p],kosdaq:[p]},dates:['2026-10-23'],series:{highs:{points:[]},lows:{points:[]},vix:{points:[]},vkospi:{points:[]},'fear-greed':{points:[]},'high-yield-spread':{points:[]}},warnings:[],has_more:false}});return route.fulfill({contentType:'text/html',body:html});});
 await page.goto('http://market-page.test/');await page.addStyleTag({content:fs.readFileSync('public/style.css','utf8')+'#loginOverlay{display:none!important}#tabContents,#tab_rank{display:block!important}'});
-for(const file of ['rank-chart-axis.js','rank-supply-guide.js','concentration-chart.js','rank-adr-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js','rank-connection-status.js'])await page.addScriptTag({path:'public/'+file});
+for(const file of ['rank-chart-cache.js','rank-chart-axis.js','rank-supply-guide.js','concentration-chart.js','rank-adr-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js','rank-connection-status.js'])await page.addScriptTag({path:'public/'+file});
 await page.evaluate(()=>document.dispatchEvent(new Event('DOMContentLoaded')));await page.waitForFunction(()=>document.querySelector('#rankMarketSupplyChartPanel .rank-adr-status').textContent.includes('일별 순매수대금'));
 const measure=()=>page.evaluate(()=>[...document.querySelectorAll('.rank-chart-row>.panel')].map(panel=>{const c=panel.querySelector('canvas'),r=panel.getBoundingClientRect(),b=c.getBoundingClientRect();return {id:panel.id,x:r.x,y:r.y,offset:b.y-r.y,height:b.height,bottom:r.bottom,footer:panel.querySelector('.rank-card-footer')?.getBoundingClientRect().bottom};}));
 await page.waitForTimeout(150);const layout=await measure();assert.equal(layout.length,16);const market=layout.find(p=>p.id==='rankMarketSupplyChartPanel'),supply=layout.find(p=>p.id==='rankSupplyChartPanel');assert.equal(market.height,supply.height);assert.ok(Math.abs(market.offset-supply.offset)<2,JSON.stringify(layout));assert.ok(market.footer<=market.bottom+2,JSON.stringify(market));
@@ -53,12 +54,13 @@ await page.locator('#lsConcentrationChartPanel').screenshot({path:'dev/output/ls
 await page.locator('#rankLsTurnoverChartPanel').screenshot({path:'dev/output/ls-turnover-card.png'});
 const comparisonIds=['concentrationChartPanel','kisConcentrationChartPanel','lsConcentrationChartPanel','rankTurnoverChartPanel','rankKisTurnoverChartPanel','rankLsTurnoverChartPanel','rankSupplyChartPanel','rankKisSupplyChartPanel','rankLsSupplyChartPanel','rankKiwoomMarketSupplyChartPanel','rankMarketSupplyChartPanel','rankLsMarketSupplyChartPanel'];
 const comparison=await page.evaluate(ids=>ids.map(id=>{const p=document.getElementById(id),r=p.getBoundingClientRect();return {id,x:r.x,y:r.y,bottom:r.bottom,title:p.querySelector('h2').textContent};}),comparisonIds);
-assert.deepEqual(comparison.map(p=>p.title),['쏠림율(키움)','쏠림율(한투)','쏠림율(LS)','거래대금(키움)','거래대금(한투)','거래대금(LS)','종목 수급(키움)','종목 수급(한투)','종목 수급(LS)','시장 수급(키움)','시장 수급(한투)','시장 수급(LS)']);
+assert.deepEqual(comparison.map(p=>p.title),['쏠림율(키움)','쏠림율(한투)','쏠림율(LS)','시장 거래대금(키움)','시장 거래대금(한투)','시장 거래대금(LS)','종목 수급(키움)','종목 수급(한투)','종목 수급(LS)','시장 수급(키움)','시장 수급(한투)','시장 수급(LS)']);
 for(let i=0;i<12;i+=3){assert.equal(comparison[i].y,comparison[i+1].y);assert.equal(comparison[i+1].y,comparison[i+2].y);assert.ok(comparison[i].x<comparison[i+1].x&&comparison[i+1].x<comparison[i+2].x);if(i)assert.ok(comparison[i].y>=Math.max(...comparison.slice(i-3,i).map(p=>p.bottom)));}
 assert.ok((await measure()).filter(p=>!comparisonIds.includes(p.id)).every(p=>p.y>=comparison[9].bottom));
 await page.evaluate(()=>window.applyRankKiwoomMarketSupplyDisplaySettings({selected:'kosdaq',mode:'minute',visibleSeries:['program']}));
 assert.equal(await page.evaluate(()=>window.getRankMarketSupplyDisplaySettings().selected),'kospi');
 assert.equal(await page.locator('#rankKiwoomMarketSupplyChartPanel input[type=radio]').count(),2);
+await page.waitForFunction(()=>document.querySelector('#rankKiwoomMarketSupplyChartPanel [data-series=program] output')?.textContent==='-0.5억원');
 assert.equal(await page.locator('#rankKiwoomMarketSupplyChartPanel [data-series=program] output').textContent(),'-0.5억원');
 await page.locator('#rankSupplyChartPanel').screenshot({path:'dev/output/comparison-stock-card.png'});
 await page.locator('#rankKiwoomMarketSupplyChartPanel').screenshot({path:'dev/output/comparison-market-card.png'});
@@ -127,7 +129,7 @@ await editButton.focus();await page.keyboard.press('F2');assert.equal(await edit
 await editDialog.screenshot({path:'dev/output/chart-guide-editor.png'});await page.keyboard.press('Escape');assert.equal(await editDialog.isVisible(),false);
 const cnn=page.locator('#rankSentimentChartPanel .chart-info-button');await cnn.dblclick();assert.equal(await editDialog.isVisible(),true);assert.ok((await editDialog.locator('.chart-guide-editor-context').innerText()).includes('CNN'));await editDialog.getByRole('button',{name:'취소',exact:true}).click();
 await page.reload();
-for(const file of ['rank-chart-axis.js','rank-supply-guide.js','concentration-chart.js','rank-adr-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js','rank-connection-status.js'])await page.addScriptTag({path:'public/'+file});
+for(const file of ['rank-chart-cache.js','rank-chart-axis.js','rank-supply-guide.js','concentration-chart.js','rank-adr-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js','rank-connection-status.js'])await page.addScriptTag({path:'public/'+file});
 await page.addStyleTag({content:fs.readFileSync('public/style.css','utf8')+'#loginOverlay{display:none!important}#tabContents,#tab_rank{display:block!important}'});
 await page.evaluate(()=>document.dispatchEvent(new Event('DOMContentLoaded')));
 assert.equal(await page.evaluate(k=>window.RankSupplyGuide.getEdits()[k],editKey),custom);
@@ -146,6 +148,8 @@ assert.ok(helpWidth.scroll<=helpWidth.width+1,JSON.stringify(helpWidth));assert.
 await page.keyboard.press('Escape');
 // Regression: source labels follow late observations, and flow/candle requests have distinct indicators.
 await page.setViewportSize({width:2400,height:1100});
+// The following checks deliberately hold network requests, independently of cache replay.
+await page.evaluate(()=>{window.RankChartCache=undefined;});
 let releaseFlow,releaseCandle;
 const flowGate=new Promise(resolve=>releaseFlow=resolve),candleGate=new Promise(resolve=>releaseCandle=resolve);
 await page.route('**/api/ls-market-supply/chart?**',async route=>{

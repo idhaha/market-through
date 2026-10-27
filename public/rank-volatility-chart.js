@@ -369,7 +369,7 @@ tip.hidden=false;}
             try {
                 const minute = breadth && breadthMode === 'minute';
                 const from = new Date(Date.parse(`${first}T00:00:00Z`) - (minute ? 0 : 35 * 86400000)).toISOString().slice(0, 10).replaceAll('-', '');
-                const response = await fetch(`/api/adr/candles?market=${priceMarket}&mode=${minute ? 'minute' : 'day'}&from=${from}&to=${last.replaceAll('-', '')}`, { signal: candleController.signal });
+                const response = await (window.RankChartCache?.fetch || fetch)(`/api/adr/candles?market=${priceMarket}&mode=${minute ? 'minute' : 'day'}&from=${from}&to=${last.replaceAll('-', '')}`, { signal: candleController.signal });
                 const result = await response.json(); if (!response.ok) throw new Error(result.error || `${priceName} 캔들 조회 실패`);
                 if (request !== candleRequest) return;
                 const freshCandles = (Array.isArray(result.points) ? result.points : []).filter(point => ['t', 'open', 'high', 'low', 'close'].every(key => point[key] != null && Number.isFinite(Number(point[key])))).map(point => ({ ...point, date: minute ? new Date(Number(point.t) + 9 * 3600000).toISOString().slice(0,16).replace('T', ' ') : dateKey(Number(point.t)) })).sort((a, b) => a.t - b.t);
@@ -398,7 +398,7 @@ tip.hidden=false;}
             try {
                 const cursors = more ? [breadthCursor] : [...new Set(['', ...breadthPages.keys()])];
                 for (const cursor of cursors) {
-                    const response = await fetch(`/api/risk/breadth?market=${breadthMarket}&mode=${breadthMode}&cursor=${encodeURIComponent(cursor || '')}`);
+                    const response = await (window.RankChartCache?.fetch || fetch)(`/api/risk/breadth?market=${breadthMarket}&mode=${breadthMode}&cursor=${encodeURIComponent(cursor || '')}`);
                     const result = await response.json(); if (!response.ok) throw new Error(result.error || '신고저가 조회 실패');
                     breadthPages.set(cursor || '', result);
                 }
@@ -463,7 +463,7 @@ tip.hidden=false;}
                 let referenceError = '';
                 try {
                     for (const cursor of keys) {
-                        const response = await fetch(`/api/chart-reference?mode=day&market=kospi&cursor=${encodeURIComponent(cursor || '')}`, {signal:current.signal});
+                        const response = await (window.RankChartCache?.fetch || fetch)(`/api/chart-reference?mode=day&market=kospi&cursor=${encodeURIComponent(cursor || '')}`, {signal:current.signal});
                         const body = await response.text();
                         let page;
                         try { page = JSON.parse(body); } catch { throw new Error('기준 캔들 API 미반영 · 서버 업데이트·재시작 필요'); }
@@ -475,7 +475,7 @@ tip.hidden=false;}
                     if (error.name === 'AbortError') throw error;
                     referenceError = error.message;
                 }
-                const response = await fetch(`/api/risk/${sentiment ? 'sentiment' : 'volatility'}?range=all`, {signal:current.signal});
+                const response = await (window.RankChartCache?.fetch || fetch)(`/api/risk/${sentiment ? 'sentiment' : 'volatility'}?range=all`, {signal:current.signal});
                 const result = await response.json(); if (!response.ok) throw new Error(result.error || '지표 조회 실패');
                 if (current !== controller) return;
                 candles = [...new Map([...referencePages.values()].flatMap(p=>p.points || []).map(p=>[p.date,p])).values()].sort((a,b)=>a.t-b.t);

@@ -43,7 +43,7 @@
         });
     }
     async function request(url, options) {
-        const response = await fetch(url, options), data = await response.json();
+        const response = await (window.RankChartCache?.fetch || fetch)(url, options), data = await response.json();
         if (!response.ok || !data.success) throw Object.assign(new Error(data.error || '수급 조회 실패'), { status: response.status });
         return data;
     }
@@ -314,10 +314,14 @@
             stockSelect.disabled = saving || !stockSelect.options.length; addButton.disabled = saving; addButton.setAttribute('aria-expanded', String(!picker.hidden));
             paintArchive();
         }
-        function choose(code) {
+        document.addEventListener('rank-stock-supply-selection', event => {
+            if (!window.rankIndependentClient && config.archive.some(stock => stock.code === event.detail?.code)) choose(event.detail.code, false);
+        });
+        function choose(code, broadcast = true) {
             if (selected === code) return;
             const restoreWindow=mode==='minute'?window.RankChartAxis.minuteDomain():null;
             selected = code; remember(); clearView(); paintStocks();
+            if (broadcast && !window.rankIndependentClient) document.dispatchEvent(new CustomEvent('rank-stock-supply-selection', { detail: { code } }));
             if(restoreWindow && restoreWindow.first.slice(0,10)<dayKey(Date.now()))todayOnly=false;
             void load(false,restoreWindow);
         }

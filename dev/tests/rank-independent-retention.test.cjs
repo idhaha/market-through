@@ -22,3 +22,11 @@ const changedSupply = call('/api/rank-independent/peer/:id', synced).result.snap
 assert.equal(changedSupply.selected, '035420', 'Delayed candle setting cannot overwrite a newer stock selection');
 assert.equal(changedSupply.showCandles, undefined, 'Candle visibility is local to each window');
 console.log('PASS supply setting updates only the fields changed by the independent window');
+
+const compactTicket=call('/api/rank-independent').result;
+call('/api/rank-independent/:id/owner',{...compactTicket,body:{snapshot:{rows:'table-data',chart:{selection:{code:'005930'},mode:'minute',points:Array.from({length:3600},(_,i)=>({time:i,value:i}))},supply:{selected:'005930',mode:'minute',points:[{t:1,individual:1}],candles:[{t:1,close:10}]}}}});
+const full=call('/api/rank-independent/peer/:id',{...compactTicket}).result;
+const compact=call('/api/rank-independent/peer/:id',{...compactTicket,body:{compact:true}}).result;
+assert.equal(full.snapshot.chart.points.length,3600);assert.equal(compact.snapshot.chart.points,undefined);assert.equal(compact.snapshot.supply.candles,undefined);assert.equal(compact.snapshot.chart.selection.code,'005930');assert.equal(compact.snapshot.rows,'table-data');
+assert.ok(JSON.stringify(compact).length<JSON.stringify(full).length/10);assert.match(compact.cacheScope,/^[a-f0-9]{64}$/);assert.ok(!compact.cacheScope.includes('owner@test'));
+console.log('PASS compact native snapshots retain metadata and omit unused chart history');

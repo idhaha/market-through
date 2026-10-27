@@ -4,7 +4,7 @@
     const rawFetch = window.fetch.bind(window), params = new URLSearchParams(location.hash.slice(1));
     const id = params.get('id'), token = params.get('token');
     history.replaceState(null, '', location.pathname);
-    let version = -1, relayEpoch = null, lastSnapshot, closed = false, serverRefresh = null, receivedAt = 0, serverAge = 0, transportFailed = false;
+    let version = -1, relayEpoch = null, lastSnapshot, closed = false, serverRefresh = null, receivedAt = 0, serverAge = 0, transportFailed = false, renderFailed = false;
     const pending = new Map(), outgoing = [], acknowledgements = [];
     const enqueue = value => { const id = crypto.randomUUID(); outgoing.push({ id, ...value }); return id; };
     window.saveAppData = () => {};
@@ -53,10 +53,10 @@
                 setTimeout(()=>initializeCharts(lastSnapshot||snapshot),0);
                 return;
             }
-            chartsInitialized=true;
             // Seed the stock once; subsequent snapshots never replace local chart state.
             if(snapshot.chart?.selection)window.selectRankChartStock?.({...snapshot.chart.selection,market:snapshot.chart.market?.includes('코스피')?'K':'Q'});
             void window.refreshRankSupplyChart?.();
+            chartsInitialized=true;
         }
         function refreshLocalCharts() {
             void window.refreshConcentrationChart?.();
@@ -318,9 +318,9 @@
         function paintFreshness() {
             if (!serverRefresh) return;
             const age = serverAge + Date.now() - receivedAt;
-            const delayed = transportFailed || serverRefresh.error || !serverRefresh.data || age > serverRefresh.interval + 90000;
+            const delayed = transportFailed || renderFailed || serverRefresh.error || !serverRefresh.data || age > serverRefresh.interval + 90000;
             document.getElementById('independentStatusText').textContent = delayed ? '갱신 지연' : '완료';
-            if (delayed) status.textContent = '갱신 지연 · 마지막 데이터를 표시하고 있습니다.';
+            if (delayed) status.textContent = renderFailed ? '독립창 화면 갱신 오류 · 마지막 데이터를 표시하고 있습니다.' : '갱신 지연 · 마지막 데이터를 표시하고 있습니다.';
         }
         function applyServerRefresh(info) {
             transportFailed = false; serverRefresh = info; receivedAt = Date.now();
@@ -350,8 +350,10 @@
         async function tick() {
             if (closed) return;
             const nextCommand = outgoing.shift(), acks = acknowledgements.splice(0);
+            let stage='transport',responseStatus=null;
             try {
-                const response = await peer({ version, epoch: relayEpoch, command: nextCommand, acks, pinned: true });
+                const response = await peer({ version, compact: true, epoch: relayEpoch, command: nextCommand, acks, pinned: true });
+                responseStatus=response.status;
                 if ([401, 404].includes(response.status)) {
                     document.querySelectorAll('#tab_rank .panel').forEach(panel => window.setRankCardConnection?.(panel, false));
                     version = -1;
@@ -361,14 +363,25 @@
                 }
                 if (!response.ok) throw new Error('연결 실패');
                 const result = await response.json();
+                transportFailed=false;renderFailed=false;stage='render';
+                if(/^[a-f0-9]{64}$/.test(result.cacheScope||''))window.rankIndependentCacheScope=result.cacheScope;
                 relayEpoch = result.epoch || null;
                 if (nextCommand?.id === supplySettingsPending) supplySettingsPending = null;
                 for (const reply of result.replies || []) { pending.get(reply.id)?.resolve(reply); pending.delete(reply.id); acknowledgements.push(reply.id); }
-                if (result.snapshot) { version = result.version; apply(result.snapshot); }
+                if (result.snapshot) { apply(result.snapshot);version=result.version; }
                 else if (deferredSnapshot && !pending.size && !supplySettingsPending) apply(lastSnapshot);
                 status.textContent = '';
                 if (result.serverRefresh) applyServerRefresh(result.serverRefresh);
-            } catch (error) { transportFailed = true; document.querySelectorAll('#tab_rank .panel').forEach(panel => window.setRankCardConnection?.(panel, false)); if (nextCommand) outgoing.unshift(nextCommand); acknowledgements.unshift(...acks); status.textContent = '서버 연결 재시도 중 · 갱신 지연'; document.getElementById('independentStatusText').textContent = '갱신 지연'; }
+                renderFailed=false;delete window.rankIndependentLastFailure;status.title='';
+            } catch (error) {
+                transportFailed=stage==='transport';renderFailed=stage==='render';
+                window.rankIndependentLastFailure={stage,status:responseStatus,error:renderFailed?String(error.message).replace(/[A-Za-z0-9_-]{32,}/g,'[redacted]').slice(0,160):error.name};
+                document.querySelectorAll('#tab_rank .panel').forEach(panel => window.setRankCardConnection?.(panel, false));
+                if(nextCommand && transportFailed)outgoing.unshift(nextCommand);acknowledgements.unshift(...acks);
+                status.textContent=renderFailed?'독립창 화면 갱신 오류 · 재시도 중':[401,404].includes(responseStatus)?'독립창 연결 만료 · 메인 페이지 새로고침 후 독립창 버튼으로 다시 열어주세요':`서버 연결 재시도 중${responseStatus?' (HTTP '+responseStatus+')':''} · 갱신 지연`;
+                status.title=renderFailed?window.rankIndependentLastFailure.error:status.textContent;
+                document.getElementById('independentStatusText').textContent='갱신 지연';
+            }
             finally { if (!closed) setTimeout(tick, transportFailed ? 1000 : outgoing.length ? 50 : 500); }
         }
         if (!/^[a-f0-9]{32}$/.test(id || '') || !/^[a-f0-9]{64}$/.test(token || '')) { status.textContent = '메인 페이지의 독립창 버튼으로 실행하세요.'; closed = true; return; }

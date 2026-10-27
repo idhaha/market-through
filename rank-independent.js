@@ -51,6 +51,11 @@ function createRankIndependentRelay({ now = Date.now, refresh, request, schedule
         }, 1000);
         timer.unref?.();
     }
+    function compactState(state){
+        if(!state)return state;
+        const {points,candles,priceHistory,minuteDays,...metadata}=state;return metadata;
+    }
+    function compactSnapshot(snapshot){return snapshot?{...snapshot,chart:compactState(snapshot.chart),supply:compactState(snapshot.supply)}:snapshot;}
     async function executeRequest(channel, command) {
         channel.requests = (channel.requests || 0) + 1;
         try {
@@ -190,7 +195,10 @@ function createRankIndependentRelay({ now = Date.now, refresh, request, schedule
                 }
             }
             const replies = Object.values(channel.replies);
-            res.json({ epoch: channel.epoch, version: channel.version, snapshot: req.body.epoch === channel.epoch && Number(req.body.version) === channel.version ? null : channel.snapshot, replies, serverRefresh: refresh ? { data: channel.data, interval: intervalFor(channel), error: channel.error, serverNow: now() } : null });
+            const compact=req.body.compact===true;
+            const snapshot=req.body.epoch===channel.epoch&&Number(req.body.version)===channel.version?null:channel.snapshot;
+            const data=compact&&channel.data?{...channel.data,chart:compactState(channel.data.chart),peerChart:compactState(channel.data.peerChart),supply:compactState(channel.data.supply),peerSupply:compactState(channel.data.peerSupply)}:channel.data;
+            res.json({cacheScope:hash('rank-chart-cache:'+channel.owner),epoch:channel.epoch,version:channel.version,snapshot:compact?compactSnapshot(snapshot):snapshot,replies,serverRefresh:refresh?{data,interval:intervalFor(channel),error:channel.error,serverNow:now()}:null});
         });
     }
     return { mount };

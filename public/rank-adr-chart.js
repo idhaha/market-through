@@ -259,7 +259,7 @@
             candleController?.abort();const current=candleController=new AbortController(),market=selectedMarket;
             candleRangePending=key;candleRangeError='';window.RankChartAxis.loadingBar(candleArea,true,'캔들');
             try {
-                const response=await fetch(`/api/adr/candles?market=${market}&mode=${mode}&from=${from}&to=${to}`,{signal:current.signal});
+                const response=await (window.RankChartCache?.fetch || fetch)(`/api/adr/candles?market=${market}&mode=${mode}&from=${from}&to=${to}`,{signal:current.signal});
                 const result=await response.json();if(!response.ok)throw new Error(result.error || '캔들 조회 실패');
                 if(current!==candleController || market!==selectedMarket)return;
                 const fresh=(result.points || []).filter(p=>Number.isFinite(p.t));
@@ -289,7 +289,7 @@
                 const keys = more ? [referenceCursor] : [...new Set(['', ...referencePages.keys()])];
                 try {
                     for (const cursor of keys) {
-                        const response = await fetch(`/api/chart-reference?mode=${mode}&market=${market}&cursor=${encodeURIComponent(cursor || '')}`,{signal:current.signal});
+                        const response = await (window.RankChartCache?.fetch || fetch)(`/api/chart-reference?mode=${mode}&market=${market}&cursor=${encodeURIComponent(cursor || '')}`,{signal:current.signal});
                         const body = await response.text();
                         let page;
                         try { page = JSON.parse(body); } catch { throw new Error('기준 캔들 API 미반영 · 서버 업데이트·재시작 필요'); }
@@ -307,7 +307,7 @@
                 if(more){viewStart=0;viewCount=null;}
                 else if(viewCount!=null)viewStart=Math.max(0,referencePoints.findIndex(p=>p.t>=oldAnchor));
                 if (mode === 'day') {
-                    const response = await fetch(`/api/adr/history?market=${market}&range=${range}`, { signal: current.signal });
+                    const response = await (window.RankChartCache?.fetch || fetch)(`/api/adr/history?market=${market}&range=${range}`, { signal: current.signal });
                     const data = await response.json(); if (!response.ok) throw new Error('ADR 일별 조회 실패');
                     if (current !== controller) return;
                     points = (Array.isArray(data.series) ? data.series : []).filter(p => /^\d{4}-\d{2}-\d{2}$/.test(p.date) && p.adr != null && Number.isFinite(Number(p.adr))).map(p => ({ t: Date.parse(`${p.date}T09:00:00+09:00`), adr: Number(p.adr) })).filter(p=>!referencePoints.length || p.t>=referencePoints[0].t && p.t<=referencePoints.at(-1).t).sort((a,b) => a.t-b.t);
@@ -319,7 +319,7 @@
                     status.textContent = referencePoints.length ? `${dateKey(referencePoints[0].t)} ~ ${dateKey(referencePoints.at(-1).t)} · ${referencePoints.length}봉${points.length ? '' : ' · ADR 데이터 없음'}` : points.length ? `${dateKey(points[0].t)} ~ ${dateKey(points.at(-1).t)} · 지표 자료 표시 중` : '일별 데이터 없음';
                     draw(); loadCandles(); return;
                 }
-                const response = await fetch(`/api/adr/today?market=${market}`, { signal: current.signal });
+                const response = await (window.RankChartCache?.fetch || fetch)(`/api/adr/today?market=${market}`, { signal: current.signal });
                 if (!response.ok) throw new Error('조회 실패');
                 const data = await response.json();
                 if (current !== controller) return;

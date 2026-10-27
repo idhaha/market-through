@@ -439,7 +439,7 @@
             status.textContent = '';
             draw();
             try {
-                const response = await fetch(kis ? `/api/${broker}-concentration-chart` : '/api/concentration-chart', {
+                const response = await (window.RankChartCache?.fetch || fetch)(kis ? `/api/${broker}-concentration-chart` : '/api/concentration-chart', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ code: state.selection.code, mode: state.mode, interval: state.interval, cursor: append ? state.cursor : null }),
                     signal: controller.signal
@@ -550,7 +550,7 @@
             lastSuggestionQuery = query;
             suggestionTimer = setTimeout(async () => {
                 try {
-                    const response = await fetch(`/api/concentration-stocks?q=${encodeURIComponent(query)}`);
+                    const response = await (window.RankChartCache?.fetch || fetch)(`/api/concentration-stocks?q=${encodeURIComponent(query)}`);
                     const result = await response.json();
                     if (version !== suggestionVersion || suggestionQuery() !== query || document.activeElement !== name) return;
                     if (!response.ok || !result.success) throw new Error(result.error || '종목 검색 실패');
@@ -597,7 +597,7 @@
             const version = ++lookupVersion;
             if (!query) { status.textContent = '종목명 또는 종목코드를 입력하세요.'; return; }
             try {
-                const response = await fetch(`/api/concentration-stock?q=${encodeURIComponent(query)}`);
+                const response = await (window.RankChartCache?.fetch || fetch)(`/api/concentration-stock?q=${encodeURIComponent(query)}`);
                 const result = await response.json();
                 if (version !== lookupVersion || name.value.trim() !== query) return;
                 if (!response.ok || !result.success) throw new Error(result.error || '종목 조회 실패');
