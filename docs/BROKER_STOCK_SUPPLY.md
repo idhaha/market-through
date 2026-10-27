@@ -40,3 +40,5 @@
 실제 삼성전자 600봉(2024-05-07~2026-10-26)에서 한투·LS의 개인·외국인·기관·프로그램 모두 600개 유효값을 확인했다. 첫 전체 조회 실측은 한투 약15.5초, LS 약49초였으며 호출 제한 대기와 당일 원천 응답에 따라 달라진다. 결과는 로컬 dev/output/stock-history-full-validation.json에 기록한다. 상주 수집기 추가·운영 서버 재시작은 하지 않았다.
 
 2026-10-27 장중 확인: 삼성전자/하이닉스 t1717 통합 당일 행은 투자자 수량 및 단가 필드가 모두0으로 반환됐고 전일 행은 유효한 비영값이었다. 원천 응답만으로 당일 실제 순매수0과 미집계0을 구분할 수 없어 실제 체결 수급0으로 확정하지 않는다. 한투 삼성전자 분봉 저장에는 외국인/기관 가집계가 존재했고 개인은 미제공이다. 세부 근거는 비공개 dev/output/ls-stock-investor-probe.json 및 supply-runtime-compare.json에 있다.
+
+2026-10-27 한투 시장수급 선물 일봉 검토: 공식 포털 /apiservice-apiservice?/uapi/domestic-stock/v1/quotations/inquire-investor-daily-by-market (FHPTJ04040000)의 FID_INPUT_ISCD_1 지원 설명은 KSP/KSQ이고 두 업종코드 필드도 코스피/코스닥 업종분류코드다. 20261026/20261027 실응답에서 현물 KSP/0001은 각각300행, 선물 K2I/F001 및 KQI/F002는 모두 정상처리 빈 배열이었다. 일봉 선물 제공이 확인되지 않아 키움·한투 카드에 선물 일봉 선택을 추가하지 않았다. 기존 분봉 선택은 유지. 근거는 dev/output/kis-futures-daily-probe.json 및 kis-official-api-page.txt.

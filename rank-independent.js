@@ -188,7 +188,7 @@ function createRankIndependentRelay({ now = Date.now, refresh, request, schedule
                         channel.generation++; channel.nextRefresh = 0; channel.version++;
                     }
                     if (command.type === 'refresh') { channel.generation++; channel.nextRefresh = 0; }
-                    if (command.type === 'request' && request && /^\/api\/(?:concentration-(chart|stock|stocks)|supply\/(watchlist|chart|candles))(\?|$)/.test(command.path || '')) executeRequest(channel, command);
+                    if (command.type === 'request' && request && /^\/api\/(?:concentration-(chart|stock|stocks)|ls-concentration-chart|kis-supply\/chart|supply\/(watchlist|chart|candles))(\?|$)/.test(command.path || '')) executeRequest(channel, command);
                     else channel.commands.push(command);
                     channel.commandIds.add(id);
                     while (channel.commandIds.size > 128) channel.commandIds.delete(channel.commandIds.values().next().value);

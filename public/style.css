@@ -33,6 +33,10 @@
 .rank-supply-panel .supply-legend { position:relative; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:2px 12px; margin:0 0 0 auto; width:max-content; min-width:110px; max-width:200px; flex:0 1 auto; }
 .rank-supply-panel .supply-latest-date { position:absolute; bottom:100%; right:0; white-space:nowrap; font-size:11px; line-height:15px; font-weight:400; color:var(--text-muted); }
 .rank-supply-panel .supply-legend button { display:flex; align-items:center; gap:4px; min-width:0; border:0; padding:0; background:transparent; font-size:12px; line-height:17px; }
+.rank-supply-panel .supply-legend [data-series="program"] { grid-column:1; grid-row:2; }
+.rank-supply-panel .supply-legend [data-series="foreign"] { grid-column:1; grid-row:1; }
+.rank-supply-panel .supply-legend [data-series="institution"] { grid-column:2; grid-row:1; }
+.rank-supply-panel .supply-legend [data-series="individual"] { grid-column:2; grid-row:2; }
 .rank-chart-row .rank-supply-panel .supply-legend output { margin-left:auto; color:inherit; font-size:13px; font-variant-numeric:tabular-nums; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .supply-legend button[aria-pressed="false"] { opacity:.3; }
 .rank-supply-panel .rank-adr-controls { flex-wrap:nowrap; }
@@ -3094,7 +3098,7 @@ body { height:100dvh; min-height:0; overflow:hidden; display:flex; flex-directio
 .concentration-cumulative-legend { position:absolute;top:0;left:16px;z-index:1;font-size:11px;color:#ea580c;background:var(--bg-panel);pointer-events:none; }
 .concentration-cumulative-legend[hidden] { display:none; }
 
-.concentration-current-cumulative { margin-left:8px;font-size:14px;font-weight:700;color:#ea580c;white-space:nowrap; }
+.concentration-current-cumulative { margin-left:8px;font-size:16px;font-weight:700;color:#ea580c;white-space:nowrap; }
 .concentration-current-cumulative[hidden] { display:none; }
 
 /* Two value rows float over the controls without changing plot layout. */
@@ -3115,3 +3119,8 @@ body { height:100dvh; min-height:0; overflow:hidden; display:flex; flex-directio
     background: linear-gradient(to bottom, #fff59d 0 34px, transparent 34px);
     border-radius: 4px;
 }
+
+/* Keep the unit visible even when a long supply amount needs truncation. */
+.rank-supply-panel .supply-legend output { display:flex; justify-content:flex-end; min-width:0; }
+.rank-supply-panel .supply-legend .supply-value-number { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rank-supply-panel .supply-legend .supply-value-unit { flex-shrink:0; }

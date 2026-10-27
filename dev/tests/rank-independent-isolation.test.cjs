@@ -7,12 +7,12 @@ const { createRankIndependentRelay } = require('../../rank-independent');
 (async () => {
     const app = express(); app.use(express.json({ limit: '5mb' }));
     app.use((req, res, next) => { req.authUser = { email: 'test@example.test' }; next(); });
-    let ticket, requestCount = 0, pump;
+    let ticket, requestCount = 0, pump;const sourceRequests=[];
     app.use((req, res, next) => { if (req.path === '/api/rank-independent' && req.method === 'POST') { const send = res.json.bind(res); res.json = value => { ticket = value; return send(value); }; } next(); });
     const config = { success: true, revision: 1, stocks: [{ code: '005930', name: '삼성전자' }, { code: '000660', name: 'SK하이닉스' }], archive: [{ code: '005930', name: '삼성전자' }, { code: '000660', name: 'SK하이닉스' }] };
     const query = url => {
         if (url.pathname === '/api/supply/watchlist') return config;
-        if (url.pathname === '/api/concentration-chart')return {success:true,points:Array.from({length:20},(_,i)=>({time:'202610'+String(i+1).padStart(2,'0')+'090000',value:30+i,open:100,high:110,low:90,close:105})),has_more:false};
+        if (['/api/concentration-chart','/api/ls-concentration-chart'].includes(url.pathname))return {success:true,points:Array.from({length:20},(_,i)=>({time:'202610'+String(i+1).padStart(2,'0')+'090000',value:30+i,open:100,high:110,low:90,close:105})),has_more:false};
         const points = Array.from({ length: 20 }, (_, i) => ({ t: Date.UTC(2026, 9, 1 + i), individual: i, foreign: -i, institution: i * 2, program: i * 3, open: 100, high: 110, low: 90, close: 105 }));
         return { success: true, points: url.pathname === '/api/supply/chart' && url.searchParams.get('mode') === 'minute' ? [] : points, candles: points, cursor: url.searchParams.has('cursor') ? null : '20260930', has_more: !url.searchParams.has('cursor') };
     };
@@ -23,7 +23,7 @@ const { createRankIndependentRelay } = require('../../rank-independent');
             return { items: [], chart: snapshot.chart, supply };
         },
         request: async command => {
-            requestCount++;
+            requestCount++;sourceRequests.push({path:command.path,mode:command.body?.mode});
             if (command.path === '/api/supply/watchlist' && command.method === 'PUT') {
                 assert.equal(command.body.revision, config.revision);
                 config.stocks = config.archive.filter(stock => command.body.codes.includes(stock.code)); config.revision++;
@@ -46,6 +46,7 @@ const { createRankIndependentRelay } = require('../../rank-independent');
         const context = await browser.newContext({ viewport: { width: 1200, height: 1200 } });
         const main = await context.newPage(), child = await context.newPage(), errors = [];
         main.on('pageerror', e => errors.push(e.message)); child.on('pageerror', e => errors.push(e.message));
+        await context.route(/https:\/\/(fonts\.googleapis\.com|fonts\.gstatic\.com)/,route=>route.abort());
         await main.goto(origin + '/main');
         await main.waitForFunction(()=>window.getRankSupplyState?.().points.length===20);
         await main.evaluate(()=>selectRankChartStock({code:'005930',name:'삼성전자',market:'K'}));
@@ -73,9 +74,16 @@ const { createRankIndependentRelay } = require('../../rank-independent');
         assert.equal(await child.evaluate(()=>getRankSupplyState().selected),'000660');
         assert.equal(await child.evaluate(()=>getRankChartState().selection.code),'000660');
         assert.equal(await child.evaluate(()=>getRankSupplyState().mode),'minute');
+        assert.ok(sourceRequests.some(r=>r.path==='/api/ls-concentration-chart'&&r.mode==='minute'));
+        assert.ok(sourceRequests.some(r=>r.path.startsWith('/api/kis-supply/chart?')&&r.path.includes('mode=minute')));
+        assert.equal(await child.locator('#concentrationChartPanel h2').innerText(),'쏠림율(LS)');
+        assert.equal(await child.locator('#rankSupplyChartPanel h2').innerText(),'종목 수급(한투)');
         const mainDomainBeforeChildZoom=await main.evaluate(()=>window.RankChartAxis.dailyDomain());
         await child.locator('[data-chart-mode="day"]').click();
         await child.waitForFunction(()=>getRankSupplyState().mode==='day' && getRankChartState().mode==='day');
+        await child.waitForFunction(()=>document.querySelector('#concentrationChartPanel h2').textContent==='쏠림율(키움)'&&document.querySelector('#rankSupplyChartPanel h2').textContent==='종목 수급(키움)');
+        assert.ok(sourceRequests.some(r=>r.path==='/api/concentration-chart'&&r.mode==='day'));
+        assert.ok(sourceRequests.some(r=>r.path.startsWith('/api/supply/chart?')&&r.path.includes('mode=day')));
         await child.locator('#rankSupplyChartPanel .concentration-controls button:last-child').click();
         await child.waitForFunction(()=>window.RankChartAxis.dailyDomain()?.days.length===10);
         const childDomain=await child.evaluate(()=>window.RankChartAxis.dailyDomain());

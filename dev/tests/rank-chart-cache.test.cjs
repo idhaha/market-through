@@ -39,3 +39,11 @@ test('browser chart cache retains history 16 hours, revalidates live data, exclu
  assert.equal(await page.evaluate(()=>RankChartCache.ttl),16*3600000);
  }finally{await browser.close();}
 });
+
+test('reference cache revalidation retains minute mode and does not become an all-period refresh',async()=>{
+ const browser=await chromium.launch({headless:true,channel:'msedge'});try{const page=await browser.newPage();let value=1;
+ await page.route('https://cache-mode.test/**',route=>{const u=new URL(route.request().url());if(u.pathname==='/')return route.fulfill({contentType:'text/html',body:'<html><body></body></html>'});if(u.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:'mode@example.test'}}});return route.fulfill({json:{success:true,points:[{t:1793059200000,close:value}]}});});
+ await page.goto('https://cache-mode.test/');await page.evaluate(()=>{window.now=Date.parse('2026-10-27T12:00:00+09:00');Date.now=()=>window.now;window.refreshModes=[];window.RankChartAxis={refreshCharts:options=>window.refreshModes.push(options.mode)};});await page.addScriptTag({path:'public/rank-chart-cache.js'});
+ const read=()=>page.evaluate(async()=>{const r=await RankChartCache.fetch('/api/chart-reference?mode=minute&market=kospi');return r.json();});await read();value=2;await page.evaluate(()=>window.now+=2000);await read();await page.waitForFunction(()=>window.refreshModes.length===1);assert.deepEqual(await page.evaluate(()=>window.refreshModes),['minute']);
+ }finally{await browser.close();}
+});

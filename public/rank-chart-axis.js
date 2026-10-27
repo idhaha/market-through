@@ -102,10 +102,11 @@
     function showToday(){resetHistoryWork();viewports.delete('minute');historyMode=false;sharedCutoff=new Date(Date.now()+9*3600000).toISOString().slice(0,10)+' 08:00';rangeRevision++;for(const chart of minuteCharts.values())chart.applied=undefined;notifyCharts();}
     const refreshOrder=['concentration','supply','marketSupply','breadth','turnover','adr','sentiment','volatility','kisConcentration','lsMarketSupply','kisSupply','lsSupply','kiwoomMarketSupply','lsConcentration','kisTurnover','lsTurnover'];
     const refreshMethods={lsConcentration:'refreshLsConcentrationChart',kisTurnover:'refreshRankKisTurnoverChart',lsTurnover:'refreshRankLsTurnoverChart',kiwoomMarketSupply:'refreshRankKiwoomMarketSupplyChart',kisSupply:'refreshRankKisSupplyChart',lsSupply:'refreshRankLsSupplyChart',lsMarketSupply:'refreshRankLsMarketSupplyChart',concentration:'refreshConcentrationChart',kisConcentration:'refreshKisConcentrationChart',supply:'refreshRankSupplyChart',marketSupply:'refreshRankMarketSupplyChart',breadth:'refreshRankBreadthChart',turnover:'refreshRankTurnoverChart',adr:'refreshRankAdrChart',sentiment:'refreshRankSentimentChart',volatility:'refreshRankVolatilityChart'};
-    function refreshCharts({skipConcentration=false}={}) {
+    function refreshCharts({skipConcentration=false,mode=null}={}) {
         window.rankChartRefreshStarted=true;
         const pending=[];
         for(const id of refreshOrder){
+            if(mode && minuteCharts.get(id)?.mode!==mode)continue;
             if(skipConcentration && id==='concentration')continue;
             try {const result=window[refreshMethods[id]]?.();pending.push(Promise.resolve(result));}
             catch(error){pending.push(Promise.reject(error));}
@@ -232,7 +233,9 @@
         } finally {
             if(epoch!==historyEpoch)return {advanced:false,failures:[],cancelled:true};
             historyBusy=false;
-            if(coordinated && failures.length && !hadVisibleData && !cancelled){
+            // A failed comparison source must not hide minute history already
+            // fetched by other cards, even when today's view contains data.
+            if(coordinated && failures.length && (mode==='minute' || !hadVisibleData) && !cancelled){
                 const available=participants.filter(([id])=>!failures.includes(id)).map(([id])=>minuteCharts.get(id)?.first).filter(Boolean).sort();
                 if(available.length){
                     if(!target || before && target>=before)target=available[0];

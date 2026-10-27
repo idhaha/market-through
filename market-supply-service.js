@@ -136,7 +136,7 @@ function createMarketSupplyService({ directory, http, credentials, getToken, ref
     }
     async function query({ code = 'kospi', mode = 'day', cursor = '', progressive = '' } = {}) {
         if (!Object.hasOwn(markets, code) || !['day','minute'].includes(mode) || typeof cursor !== 'string' || cursor.length > 2048
-            || (mode === 'day' && markets[code].priceMarket)) throw failure('지원하지 않는 시장 수급 조회 조건입니다.');
+            || (mode === 'day' && markets[code].priceMarket && !dailyProvider)) throw failure('지원하지 않는 시장 수급 조회 조건입니다.');
         if (mode === 'minute') {
             if (cursor && !/^\d{8}$/.test(cursor)) throw failure('잘못된 과거 날짜입니다.');
             if (cursor && (!Number.isFinite(timestamp(cursor)) || compact(dayKey(timestamp(cursor))) !== cursor)) throw failure('잘못된 과거 날짜입니다.');

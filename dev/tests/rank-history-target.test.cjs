@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
-function fixture(mode='day'){
- const jobs=[],ctx={window:{},queueMicrotask:f=>jobs.push(f)};vm.runInNewContext(fs.readFileSync('public/rank-chart-axis.js','utf8'),ctx);
+function fixture(mode='day',clock=null){
+ const jobs=[],ctx={window:{},queueMicrotask:f=>jobs.push(f)};if(clock)ctx.Date=class extends Date{static now(){return Date.parse(clock);}};vm.runInNewContext(fs.readFileSync('public/rank-chart-axis.js','utf8'),ctx);
  const api=ctx.window.RankChartAxis,states={},calls=[];
  const date=n=>`2026-10-${String(n).padStart(2,'0')}`+(mode==='minute'?' 09:00':'');
  function add(id,first,pages,kind=mode){
@@ -13,7 +13,7 @@ function fixture(mode='day'){
   },()=>false,()=>({hasMore:state.pages.length>0,cursor:state.cursor}));
  }
  const flush=()=>{let n=0;while(jobs.length){assert.ok(n++<1000);jobs.shift()();}};
- return {api,states,calls,add,flush,date,domain:()=>mode==='day'?api.dailyDomain():api.minuteDomain()};
+ return {window:ctx.window,api,states,calls,add,flush,date,domain:()=>mode==='day'?api.dailyDomain():api.minuteDomain()};
 }
 for(const mode of ['day','minute'])test(`${mode}: peers use multiple pages to reach a fixed target; exhausted source stays a gap`,async()=>{
  const f=fixture(mode);f.add('concentration',22,[18,14]);f.add('supply',22,[21,20,19,18,17]);f.add('marketSupply',22,[]);f.add('volatility',22,[10],mode==='minute'?'day':'minute');f.flush();
@@ -72,4 +72,22 @@ test('selection restoration stops when original source ends and still ensures pr
  f.api.registerHistoryLoader('adr',async()=>assert.fail('no indicator history'),()=>false,()=>({identity:'kosdaq',hasMore:false,ensureRange:async first=>target=first}));
  await f.api.restoreHistoryRange('adr',{first:f.date(18),last:f.date(23)});
  assert.equal(target,f.date(18));
+});
+
+test('minute history shows loaded older records even when a peer fails and today already has data',async()=>{
+ const f=fixture('minute','2026-10-23T12:00:00+09:00');f.add('concentration',23,[22,21]);f.add('marketSupply',23,[22]);f.states.marketSupply.fail=true;f.flush();
+ assert.equal(f.domain().first,'2026-10-23 08:00');
+ const result=await f.api.requestHistory('minute');f.flush();
+ assert.equal(result.partial,true);assert.equal(result.advanced,true);assert.equal(f.domain().first,f.date(22));assert.ok(result.failures.includes('marketSupply'));
+ f.states.marketSupply.fail=false;const retry=await f.api.requestHistory('minute');f.flush();
+ assert.equal(retry.failures.length,0);assert.equal(f.calls.filter(id=>id==='concentration').length,1);assert.equal(f.domain().first,f.date(22));
+});
+
+test('minute refresh excludes daily-only risk cards while unfiltered refresh still updates them',async()=>{
+ const f=fixture('minute');f.add('concentration',23,[],'minute');f.add('supply',23,[],'minute');f.add('sentiment',23,[],'day');f.add('volatility',23,[],'day');f.flush();
+ const calls=[];
+ // The VM's window is the receiver used by refreshCharts.
+ f.window.refreshConcentrationChart=()=>calls.push('concentration');f.window.refreshRankSupplyChart=()=>calls.push('supply');f.window.refreshRankSentimentChart=()=>calls.push('sentiment');f.window.refreshRankVolatilityChart=()=>calls.push('volatility');
+ await f.api.refreshCharts({mode:'minute'});assert.deepEqual(calls,['concentration','supply']);
+ calls.length=0;await f.api.refreshCharts();assert.deepEqual(calls,['concentration','supply','sentiment','volatility']);
 });

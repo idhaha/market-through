@@ -160,13 +160,14 @@
         let sources, note;
         if (broker === 'kiwoom') {
             sources = [...rows(people, 'REST API', '키움 ka10051 · KRX+NXT 통합'), ...rows(['프로그램'], 'REST API', minute ? '키움 ka90005 · KRX+NXT 통합' : '키움 ka90010 · KRX+NXT 통합')];
-            note = minute ? '분당 한 번 조회합니다. 투자자는 관측 시각의 당일 누적값을 쌓고, 프로그램은 API가 제공하는 원천 분 시각을 사용합니다. 현재 분은 완료 후 표시합니다.' : '기준일의 종합 업종 행과 일자별 프로그램 자료를 사용합니다. 코스피·코스닥 현물만 제공하며 선물 선택은 지원하지 않습니다.';
+            sources.push(...rows(['KOSPI선물·KOSDAQ선물 개인·외국인·기관'], 'REST API', minute?'한투 FHPTJ04030000 · 선물 프로그램 미제공':'LS t8462 · 주간(D) 일별 금액 · 선물 프로그램 미제공'));
+            note = minute ? '분당 한 번 조회합니다. 투자자는 관측 시각의 당일 누적값을 쌓고, 프로그램은 API가 제공하는 원천 분 시각을 사용합니다. 현재 분은 완료 후 표시합니다.' : '기준일의 종합 업종 행과 일자별 프로그램 자료를 사용합니다. 현물은 키움, KOSPI200·KOSDAQ150 선물은 LS t8462 주간(D) 일별 순매수대금입니다. 야간은 합산하지 않으며 선물 프로그램은 미제공입니다.';
         } else if (broker === 'ls' && minute) {
             sources = [...rows(people, '웹소켓', 'LS 현물 UBT(U001/U301) · 선물 BMT(900/901)'), ...rows(['프로그램'], '웹소켓', 'LS UPM(U0/U1) · 현물만 제공')];
             note = '계속 수신한 값 중 원천 시각 기준 분당 마지막 누적값을 사용합니다. 현물 투자자는 통합시장입니다. 프로그램은 추가 검증 안내를 유지하며, 선물 BMT의 대상·단위·누적 여부는 별도 검증 상태를 따릅니다. 선물 프로그램은 미제공입니다.';
         } else if (broker === 'ls') {
-            sources = [...rows(people,'REST API','LS t1665 · KRX+NXT 통합'),...rows(['프로그램'],'REST API','LS t1633 · KRX+NXT 통합')];
-            note = 'LS 일별 순매수대금입니다. 투자자는 수치·일별 금액(sa_08/sa_17/sa_18), 프로그램은 금액·수치·일별 전체순매수(tot3)를 사용합니다. LS 미제공 날짜는 결측이며 다른 증권사로 대체하지 않습니다.';
+            sources = [...rows(people,'REST API','현물: LS t1665 · KRX+NXT 통합 / 선물: LS t8462 · 주간(D)'),...rows(['프로그램'],'REST API','현물: LS t1633 · KRX+NXT 통합 / 선물: 미제공')];
+            note = 'LS 일별 순매수대금입니다. 투자자는 수치·일별 금액(sa_08/sa_17/sa_18), 프로그램은 금액·수치·일별 전체순매수(tot3)를 사용합니다. 선물은 t8462 주간(D) 일별 순매수대금이며 야간은 합산하지 않습니다. 선물 프로그램은 미제공입니다. LS 미제공 날짜는 결측이며 다른 증권사로 대체하지 않습니다.';
         } else {
             sources = [...rows(people, 'REST API', minute ? '한투 FHPTJ04030000' : '한투 FHPTJ04040000'), ...rows(['프로그램'], 'REST API', minute ? '한투 FHPPG04600101 · 통합' : '한투 FHPPG04600001 · 통합')];
             note = `${minute ? '분당 한 번 조회합니다. 투자자는 원천 시각이 없어 REST 관측 시각을 기록하고, 프로그램은 API의 원천 시각을 사용합니다. 선물 프로그램은 미제공입니다.' : '각 거래일의 순매수대금입니다. 일봉은 코스피·코스닥 현물만 제공합니다.'} 투자자의 KRX+NXT 통합 집계 여부는 미확인이고, 프로그램은 통합시장 자료입니다.`;
@@ -185,10 +186,10 @@
                 : '개인·외국인·기관: KRX / 프로그램: KRX+NXT 통합';
             return broker === 'ls' ? '투자자 추정치·프로그램: KRX+NXT 통합(exchgubun=U·UPH)' : '투자자·프로그램: KRX+NXT 통합(종목코드 _AL)';
         }
-        if (broker === 'kiwoom') return '현물 투자자·프로그램: KRX+NXT 통합(stex_tp=3) / 선물: 미제공';
+        if (broker === 'kiwoom') return mode === 'minute' ? '현물: 키움 KRX+NXT 통합(stex_tp=3) / 선물: 한투 별도 파생시장 · 프로그램 미제공' : '현물: 키움 KRX+NXT 통합(stex_tp=3) / 선물: LS KRX 주간(D), 야간 제외 · 프로그램 미제공';
         if (broker === 'ls') return mode === 'minute'
             ? '현물 투자자·프로그램: KRX+NXT 통합(UBT·UPM) / 선물 BMT: 별도 파생시장, 대상·단위 검증 안내 확인'
-            : '현물 투자자·프로그램: KRX+NXT 통합(exchgubun=U) / 선물 일봉: 미제공';
+            : '현물 투자자·프로그램: KRX+NXT 통합(exchgubun=U) / 선물 일봉: KRX 주간(D), 야간 제외 · 프로그램 미제공';
         return '현물 투자자: KRX+NXT 통합 여부 미확인 / 현물 프로그램: 통합(UN) / 선물: 별도 파생시장, 프로그램 미제공';
     }
     function attach(panel, kind, broker) {
@@ -206,7 +207,8 @@
             const tab = document.createElement('button'); tab.type = 'button'; tab.textContent = text; tab.dataset.guideMode = mode;
             tab.id = `${id}${mode}Tab`; tab.setAttribute('role', 'tab'); tab.setAttribute('aria-controls', `${id}${mode}`); tabs.append(tab);
             const content = document.createElement('div'); content.id = `${id}${mode}`; content.setAttribute('role', 'tabpanel'); content.setAttribute('aria-labelledby', tab.id); content.tabIndex = 0;
-            const spec = description(kind, broker, mode);
+            const selectedBroker = window.rankIndependentClient && mode === 'minute' ? kind === 'concentration' ? 'ls' : kind === 'stock' ? 'kis' : broker : broker;
+            const spec = description(kind, selectedBroker, mode);
             if(kind==='concentration' && mode==='minute')spec.extra += ' 파란 선은 해당 분의 쏠림율, 주황 선은 당일 누적 종목 거래대금 ÷ 당일 누적 시장 거래대금 ×100입니다. 분별 비율의 합계가 아닙니다. 날짜가 바뀌면 누적을 초기화하며, 장 시작 누적 자료를 확보하지 못한 구간은 미제공입니다.';
             if(kind==='concentration' && broker==='ls' && mode==='minute')spec.extra += ' LS 시장 REST의 15:30 마감봉은 사후 집계 금액이 반영될 수 있어 한투의 해당 시각 누적 차분과 값이 다를 수 있습니다. 타사 값으로 보정하지 않습니다.';
             const heading = document.createElement('h3'); heading.textContent = `${title} · ${text}`; content.append(heading);
@@ -214,10 +216,11 @@
             const summaryTitle = document.createElement('h4'); summaryTitle.textContent = '일봉·분봉 수신 방식'; content.append(summaryTitle);
             const summary = document.createElement('dl'); summary.className = 'supply-source-list chart-transport-summary';
             for (const [period, label] of [['day','일봉'],['minute','1분봉']]) {
-                const periodSpec = description(kind, broker, period);
+                const periodBroker = window.rankIndependentClient && period === 'minute' ? kind === 'concentration' ? 'ls' : kind === 'stock' ? 'kis' : broker : broker;
+                const periodSpec = description(kind, periodBroker, period);
                 const term = document.createElement('dt'); term.textContent = label;
                 const detail = document.createElement('dd');
-                detail.textContent = periodSpec.sources.map(source => `${source.label}: ${source.transport} (${source.source})`).join(' / ') + ' · 시장 범위: ' + marketScope(kind, broker, period);
+                detail.textContent = periodSpec.sources.map(source => `${source.label}: ${source.transport} (${source.source})`).join(' / ') + ' · 시장 범위: ' + marketScope(kind, periodBroker, period);
                 summary.append(term, detail);
             }
             content.append(summary);
@@ -228,7 +231,7 @@
                 const detail = document.createElement('dd'); detail.textContent = `${source.transport} · ${source.source}`; list.append(term, detail);
             }
             content.append(list);
-            for (const [label, text] of [['시장 범위', marketScope(kind, broker, mode)], ['집계·갱신', spec.note], ['캔들 출처', spec.candles], ['읽는 방법', spec.extra], ['비교 시 참고', spec.comparison || '양수는 순매수, 음수는 순매도입니다. 프로그램은 투자자 구분과 겹칠 수 있으므로 개인·외국인·기관과 더하지 않습니다. 결측·미제공 구간은 실제 0과 구별하며 임의로 채우지 않습니다.']]) {
+            for (const [label, text] of [['시장 범위', marketScope(kind, selectedBroker, mode)], ['집계·갱신', spec.note], ['캔들 출처', spec.candles], ['읽는 방법', spec.extra], ['비교 시 참고', spec.comparison || '양수는 순매수, 음수는 순매도입니다. 프로그램은 투자자 구분과 겹칠 수 있으므로 개인·외국인·기관과 더하지 않습니다. 결측·미제공 구간은 실제 0과 구별하며 임의로 채우지 않습니다.']]) {
                 const h = document.createElement('h4'), p = document.createElement('p'); h.textContent = label; p.textContent = text; content.append(h, p);
             }
             contents.push(content);

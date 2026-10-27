@@ -6,7 +6,7 @@
     if (mobile || !/Win/i.test(platform)) return;
     const rawFetch = window.fetch.bind(window);
     const inflight = new Map(), recent = new Map();
-    const allowed = path => /^\/api\/(?:concentration-(chart|stock|stocks)|supply\/(watchlist|chart|candles))(\?|$)/.test(path);
+    const allowed = path => /^\/api\/(?:concentration-(chart|stock|stocks)|ls-concentration-chart|kis-supply\/chart|supply\/(watchlist|chart|candles))(\?|$)/.test(path);
     // One query owner, including requests made on behalf of the native view.
     window.fetch = async (input, options = {}) => {
         if (typeof input !== 'string' || !allowed(input)) return rawFetch(input, options);

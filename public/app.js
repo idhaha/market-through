@@ -436,6 +436,17 @@ let accessToken = null;
 let calendar = null;
 let tokenErrorCallback = null;
 
+function openGoogleCalendar() {
+    const email = String(currentAuthUser?.email || '').trim();
+    if (!email) {
+        alert('로그인 계정을 확인한 뒤 다시 시도해 주세요.');
+        return;
+    }
+    const url = new URL('https://calendar.google.com/calendar/r');
+    url.searchParams.set('authuser', email);
+    window.open(url.toString(), '_blank', 'noopener');
+}
+
 async function acceptCalendarAccessToken(tokenResponse) {
     if (!tokenResponse?.access_token) throw new Error('Google Calendar 접근 토큰을 받지 못했습니다.');
     const profileResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {

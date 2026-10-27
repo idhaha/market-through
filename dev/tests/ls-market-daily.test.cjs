@@ -32,3 +32,15 @@ test('the actual LS HTTP route dispatches both daily and minute modes only to LS
  for(const mode of ['day','minute',undefined]){let result;const res={set(){return this;},status(){return this;},json(value){result=value;}};await route({query:{mode}},res);assert.equal(result.source,'LS');assert.equal(result.success,true);}
  assert.deepEqual(calls,['day','minute',undefined]);
 });
+
+for(const [market,asset,priceMarket] of [['futures','K2I','kospi'],['futuresKosdaq','KQI','kosdaq']])test(`LS ${market} daily uses daytime t8462 money, never cash program or contract counts`,async()=>{
+ const calls=[];const provider=createLsMarketDaily({getToken:async()=>'hidden',pause:async()=>{},reference:{query:async q=>{assert.equal(q.market,priceMarket);return{points:[{t:timestamp('20261026'),close:100},{t:timestamp('20261027'),close:101}],has_more:false};}},http:{post:async(url,body,{headers})=>{calls.push(headers.tr_cd);assert.equal(url,'https://openapi.ls-sec.co.kr:8080/futureoption/investor');assert.equal(headers.tr_cd,'t8462');assert.deepEqual(body.t8462InBlock,{tm_rng:'D',fot_clsf_cd:'F',bsc_asts_id:asset,gubun2:'1',gubun3:'1',from_date:'20261026',to_date:'20261027'});return{data:{rsp_cd:'00000',t8462OutBlock1:[{date:'20261026',sa_08:'-34',sa_17:'683',sa_18:'-636',sv_08:999},{date:'20261027',sa_08:'0',sa_17:'1',sa_18:'-1'}]}};}}});
+ const result=await provider.daily(market,'');assert.equal(result.points[0].individual,-3400);assert.equal(result.points[0].foreign,68300);assert.equal(result.points[1].individual,0);assert.ok(result.points.every(p=>p.program===undefined));assert.match(result.warnings.join(),/主間|주간/);assert.match(result.warnings.join(),/선물 프로그램 수급 미제공/);assert.deepEqual(calls,['t8462']);
+});
+
+test('LS market service permits futures day only through its explicit LS daily provider',async()=>{
+ const {createMarketSupplyService}=require('../../market-supply-service');const calls=[];
+ const service=createMarketSupplyService({directory:require('node:path').join(require('node:os').tmpdir(),'ls-futures-no-write'),minuteProvider:{store:{},flush(){}},dailyProvider:{daily:async code=>{calls.push(code);return{success:true,source:'LS',points:[{t:timestamp('20261027'),foreign:100}],warnings:['주간(D)']};}}});
+ for(const code of ['futures','futuresKosdaq']){const result=await service.query({code,mode:'day'});assert.equal(result.source,'LS');}
+ assert.deepEqual(calls,['futures','futuresKosdaq']);
+});

@@ -164,25 +164,28 @@ createRankIndependentRelay({
         let peerChart = null;
         if (snapshot.peerChart?.selection?.code) {
             const selection = snapshot.peerChart;
-            const result = await concentrationChartService.query({ code: selection.selection.code, mode: selection.mode, interval: selection.interval }, email);
+            const query = selection.mode === 'minute' ? lsComparisonService.concentration : concentrationChartService.query;
+            const result = await query({ code: selection.selection.code, mode: selection.mode, interval: selection.interval }, email);
             if (!result.success) throw new Error(result.error || '독립창 차트 조회 실패');
             peerChart = { ...selection, points: result.points, cursor: result.cursor, hasMore: result.has_more, busy: false, status: '조회 완료' };
         }
-        const refreshSupply = async state => {
+        const refreshSupply = async (state, peer = false) => {
             if (!state) return null;
             const config = supplyService.summary();
             const selected = config.archive.some(stock => stock.code === state.selected) ? state.selected : config.stocks[0]?.code || '';
             if (!selected) return { ...state, config, selected, points: [], candles: [] };
-            const result = await supplyService.query({ code: selected, mode: state.mode });
+            const result = await (peer && state.mode === 'minute' ? kisStockSupplyService : supplyService).query({ code: selected, mode: state.mode });
             const prices = state.mode === 'day' ? { points: result.candles || [] } : await supplyService.candles({ code: selected, mode: state.mode });
             return { ...state, config, selected, points: result.points, candles: prices.points, cursor: result.cursor, hasMore: result.has_more,
                 priceCursor: prices.cursor, minuteDays: prices.date ? [prices.date] : [], priceHistory: prices.date ? [[prices.date, prices.cursor || null]] : [], chartMessage: result.warnings?.join(' · ') || '', connection: { ok: !result.warnings?.some(text => /실패|오류/.test(text)), at: Date.now() } };
         };
-        const supply = await refreshSupply(snapshot.supply), peerSupply = await refreshSupply(snapshot.peerSupply);
+        const supply = await refreshSupply(snapshot.supply), peerSupply = await refreshSupply(snapshot.peerSupply, true);
         return { items: data.items, chart, peerChart, supply, peerSupply };
     },
     request: async (command, email) => {
         const url = new URL(command.path, 'http://localhost');
+        if (url.pathname === '/api/ls-concentration-chart') return lsComparisonService.concentration(command.body || {}, email);
+        if (url.pathname === '/api/kis-supply/chart') return kisStockSupplyService.query(Object.fromEntries(url.searchParams));
         if (url.pathname === '/api/concentration-chart') return concentrationChartService.query(command.body || {}, email);
         if (url.pathname === '/api/concentration-stock') return { success: true, stock: await concentrationChartService.resolveStock(url.searchParams.get('q')) };
         if (url.pathname === '/api/concentration-stocks') return { success: true, stocks: concentrationChartService.searchStocks(url.searchParams.get('q')) };

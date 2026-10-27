@@ -1,0 +1,46 @@
+const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=require('playwright');
+(async()=>{const browser=await chromium.launch({headless:true,channel:'msedge'});try{const page=await browser.newPage({viewport:{width:2400,height:1100}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+const html=fs.readFileSync('public/index.html','utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'').replace(/<link\b[^>]*>/gi,'');
+const marketRequests=[];page.on('request',r=>{const u=new URL(r.url());if(u.pathname.endsWith('market-supply/chart'))marketRequests.push(u.pathname+'?'+u.searchParams.toString());});
+const t=Date.parse('2026-10-23T09:00:00+09:00'),p={t,open:2500,high:2510,low:2490,close:2505};
+await page.route('http://market-page.test/**',route=>{const url=new URL(route.request().url());
+if(url.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:'chart-test@example.test'}}});
+if(['/api/concentration-chart','/api/kis-concentration-chart','/api/ls-concentration-chart'].includes(url.pathname)){
+ const input=route.request().postDataJSON(),ratio=url.pathname.includes('ls-')?30:url.pathname.includes('kis-')?20:10;
+ return route.fulfill({json:{success:true,mode:input.mode,market:'K',points:[{time:input.mode==='minute'?'20261023090000':'20261023',value:ratio,stock_price:100,stock_open:99,stock_high:101,stock_low:98}],warnings:[],has_more:false}});
+}
+if(['/api/kis-turnover/chart','/api/ls-turnover/chart'].includes(url.pathname))return route.fulfill({json:{success:true,markets:{kospi:[{...p,market_turnover:url.pathname.includes('ls-')?3e12:2e12}],kosdaq:[{...p,market_turnover:1e12}]},warnings:[],has_more:false}});
+if(['/api/market-supply/chart','/api/ls-market-supply/chart','/api/kiwoom-market-supply/chart'].includes(url.pathname))return route.fulfill({json:{success:true,points:[{t,foreign:100,program:-50,institution:40,individual:-90}],candles:[p],warnings:[],has_more:false}});if(['/api/kis-supply/chart','/api/ls-supply/chart'].includes(url.pathname))return route.fulfill({json:{success:true,points:[{t,foreign:100,institution:-30,program:url.pathname.includes('kis')?200:300,...(url.pathname.includes('ls')?{individual:-70}:{})}],candles:[p],warnings:[],has_more:false,date:'2026-10-23',available_dates:['2026-10-23']}});if(url.pathname==='/api/supply/watchlist')return route.fulfill({json:{success:true,stocks:[{code:'005930',name:'삼성전자'},{code:'000660',name:'SK하이닉스'}],archive:[{code:'005930',name:'삼성전자'},{code:'000660',name:'SK하이닉스'}],revision:1}});if(url.pathname==='/api/chart-reference')return route.fulfill({json:{points:[p],has_more:false}});if(url.pathname.startsWith('/api/'))return route.fulfill({json:{success:true,points:[p],markets:{kospi:[p],kosdaq:[p]},dates:['2026-10-23'],series:{highs:{points:[]},lows:{points:[]},vix:{points:[]},vkospi:{points:[]},'fear-greed':{points:[]},'high-yield-spread':{points:[]}},warnings:[],has_more:false}});return route.fulfill({contentType:'text/html',body:html});});
+await page.goto('http://market-page.test/');await page.addStyleTag({content:fs.readFileSync('public/style.css','utf8')+'#loginOverlay{display:none!important}#tabContents,#tab_rank{display:block!important}'});
+for(const file of ['rank-chart-cache.js','rank-chart-axis.js','rank-supply-guide.js','concentration-chart.js','rank-adr-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js','rank-connection-status.js'])await page.addScriptTag({path:'public/'+file});
+await page.evaluate(()=>document.dispatchEvent(new Event('DOMContentLoaded')));await page.waitForFunction(()=>document.querySelector('#rankMarketSupplyChartPanel .rank-adr-status').textContent.includes('일별 순매수대금'));
+
+await page.waitForFunction(()=>[...document.querySelectorAll('.supply-stock-select')].length===3&&[...document.querySelectorAll('.supply-stock-select')].every(e=>e.options.length===2));
+for(const id of ['rankSupplyChartPanel','rankKisSupplyChartPanel','rankLsSupplyChartPanel']){await page.locator('#'+id+' .supply-stock-select').selectOption('000660');await page.waitForFunction(()=>[...document.querySelectorAll('.supply-stock-select')].every(e=>e.value==='000660'));await page.locator('#'+id+' .supply-stock-select').selectOption('005930');await page.waitForFunction(()=>[...document.querySelectorAll('.supply-stock-select')].every(e=>e.value==='005930'));}
+for(const id of ['rankTurnoverChartPanel','rankKisTurnoverChartPanel','rankLsTurnoverChartPanel'])assert.match(await page.locator('#'+id+' h2').innerText(),/^시장 거래대금/);
+await page.locator('#rankKiwoomMarketSupplyChartPanel [data-mode="minute"]').click();
+for(const code of ['futures','futuresKosdaq']){
+ await page.locator('#rankKiwoomMarketSupplyChartPanel input[value="'+code+'"]').check();
+ await page.waitForFunction(code=>document.querySelector('#rankKiwoomMarketSupplyChartPanel .rank-adr-status').textContent.includes('한투(선물)'),code);
+ await page.waitForTimeout(100);
+ assert.ok(marketRequests.some(u=>u.startsWith('/api/market-supply/chart?')&&u.includes('code='+code)));
+ assert.ok(!marketRequests.some(u=>u.startsWith('/api/kiwoom-market-supply/chart?')&&u.includes('code='+code)));
+ assert.equal(await page.locator('#rankKiwoomMarketSupplyChartPanel [data-series="program"]').isDisabled(),true);
+}
+await page.locator('#rankKiwoomMarketSupplyChartPanel input[value="kosdaq"]').check();await page.waitForTimeout(100);assert.ok(marketRequests.some(u=>u.startsWith('/api/kiwoom-market-supply/chart?')&&u.includes('code=kosdaq')));
+await page.locator('#rankKiwoomMarketSupplyChartPanel [data-mode="day"]').click();
+for(const code of ['futures','futuresKosdaq']){
+ await page.locator('#rankKiwoomMarketSupplyChartPanel input[value="'+code+'"]').check();await page.waitForTimeout(150);
+ assert.ok(marketRequests.some(u=>u.startsWith('/api/ls-market-supply/chart?')&&u.includes('code='+code)&&u.includes('mode=day')));
+ assert.ok(!marketRequests.some(u=>u.startsWith('/api/market-supply/chart?')&&u.includes('code='+code)&&u.includes('mode=day')));
+ assert.equal(await page.locator('#rankKiwoomMarketSupplyChartPanel [data-series="program"]').isDisabled(),true);
+}
+await page.locator('#rankKiwoomMarketSupplyChartPanel input[value="kosdaq"]').check();await page.waitForTimeout(100);
+assert.ok(marketRequests.some(u=>u.startsWith('/api/kiwoom-market-supply/chart?')&&u.includes('code=kosdaq')&&u.includes('mode=day')));
+for(const code of ['futures','futuresKosdaq']){await page.locator('#rankLsMarketSupplyChartPanel input[value="'+code+'"]').check();await page.waitForTimeout(100);assert.ok(marketRequests.some(u=>u.startsWith('/api/ls-market-supply/chart?')&&u.includes('code='+code)&&u.includes('mode=day')));assert.equal(await page.locator('#rankLsMarketSupplyChartPanel [data-series="program"]').isDisabled(),true);}
+await page.locator('#rankLsMarketSupplyChartPanel input[value="kospi"]').check();
+// Verify the visual rule for every mode/market combination without network timing affecting it.
+await page.locator('#rankMarketSupplyChartPanel [data-mode=minute]').click();
+const result=await page.evaluate(()=>{const ids=['concentrationChartPanel','kisConcentrationChartPanel','lsConcentrationChartPanel','rankTurnoverChartPanel','rankKisTurnoverChartPanel','rankLsTurnoverChartPanel','rankSupplyChartPanel','rankKisSupplyChartPanel','rankLsSupplyChartPanel','rankKiwoomMarketSupplyChartPanel','rankMarketSupplyChartPanel','rankLsMarketSupplyChartPanel'];const check=mode=>{for(const id of ids){const p=document.getElementById(id);p.querySelectorAll('[data-mode],[data-chart-mode]').forEach(b=>b.classList.toggle('active',(b.dataset.mode||b.dataset.chartMode)===mode));}return ids.filter(id=>getComputedStyle(document.querySelector('#'+id+' > .concentration-chart-header')).backgroundImage.includes('255, 245, 157'));};const day=check('day'),minute=check('minute');const radio=document.querySelector('#rankMarketSupplyChartPanel input[value="futures"]');radio.checked=true;const future=getComputedStyle(document.querySelector('#rankMarketSupplyChartPanel > .concentration-chart-header')).backgroundImage;return {day,minute,future,cards:document.querySelectorAll('.rank-chart-row>.panel').length};});
+assert.deepEqual(result.day,['concentrationChartPanel','rankTurnoverChartPanel','rankSupplyChartPanel','rankLsMarketSupplyChartPanel']);assert.deepEqual(result.minute,['lsConcentrationChartPanel','rankLsTurnoverChartPanel','rankKisSupplyChartPanel','rankKiwoomMarketSupplyChartPanel']);assert.ok(result.future.includes('255, 245, 157'));assert.equal(result.cards,16);assert.deepEqual(errors,[]);console.log('Broker title choices and three-way stock selection passed');
+}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

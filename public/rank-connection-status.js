@@ -13,7 +13,8 @@
     ];
     const getPanel = target => typeof target === 'string' ? document.querySelector(target)?.closest('.panel') : target?.closest('.panel');
     function paint(panel, state) {
-        const source = cardSources.find(([selector]) => panel.matches(selector) || panel.querySelector(selector))?.[1];
+        let source = cardSources.find(([selector]) => panel.matches(selector) || panel.querySelector(selector))?.[1];
+        if(window.rankIndependentClient){const minute=!!panel.querySelector('[data-mode=minute].active,[data-chart-mode=minute].active');if(panel.id==='concentrationChartPanel')source=minute?'LS(거래대금)·키움(가격)':'키움';if(panel.id==='rankSupplyChartPanel')source=minute?'한투(수급)·키움(가격)':'키움';const credit=panel.querySelector('.rank-card-source');if(credit && credit.textContent!=='출처: '+source)credit.textContent='출처: '+source;}
         if (source && !panel.querySelector('.rank-card-source')) {
             const credit = document.createElement('p');
             credit.className = 'rank-card-source';

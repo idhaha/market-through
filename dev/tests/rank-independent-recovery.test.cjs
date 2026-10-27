@@ -41,6 +41,7 @@ const { createRankIndependentRelay } = require('../../rank-independent');
     try {
         const main = await browser.newPage(), child = await browser.newPage(), errors = [];
         main.on('pageerror', e => errors.push(e.message)); child.on('pageerror', e => errors.push(e.message));
+        await child.route(/https:\/\/(fonts\.googleapis\.com|fonts\.gstatic\.com)/,route=>route.abort());
         await main.goto(origin + '/main'); await main.getByRole('button', { name: '독립창', exact: true }).click();
         await child.goto(`${origin}/rank-independent.html#id=${ticket.id}&token=${ticket.token}`);
         await child.waitForFunction(() => document.getElementById('transactionBody').textContent.includes('before'));

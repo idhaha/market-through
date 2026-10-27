@@ -21,7 +21,7 @@
         });
     }
     window.fetch = async (input, options = {}) => {
-        if (typeof input !== 'string' || !/^\/api\/(?:concentration-(chart|stock|stocks)|supply\/(watchlist|chart|candles))(\?|$)/.test(input)) return rawFetch(input, options);
+        if (typeof input !== 'string' || !/^\/api\/(?:concentration-(chart|stock|stocks)|ls-concentration-chart|kis-supply\/chart|supply\/(watchlist|chart|candles))(\?|$)/.test(input)) return rawFetch(input, options);
         const result = await command({ type: 'request', path: input, method: options.method || 'GET', body: options.body ? JSON.parse(options.body) : null,
             selection: window.getRankChartState?.()?.selection, pinned: true }, options.signal);
         return new Response(result.body, { status: result.status, headers: { 'Content-Type': 'application/json' } });

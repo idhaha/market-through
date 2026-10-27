@@ -91,7 +91,6 @@
         const chartArea = canvas.parentElement;
         tooltip.className = 'chart-hover-info';
         chartArea.before(tooltip);
-        const cumulativeLegend=document.createElement('span');cumulativeLegend.className='concentration-cumulative-legend';cumulativeLegend.hidden=true;chartArea.append(cumulativeLegend);
         const ctx = canvas.getContext('2d');
         const candleCanvas = get('concentrationCandleCanvas');
         const candleArea = get('concentrationCandleArea');
@@ -197,10 +196,10 @@
         function candleChange(point) {
             return Number.isFinite(point.stock_change_rate) ? point.stock_change_rate : null;
         }
-        function drawHoverValue(context, plot, y, value, label, color = '#000') {
+        function drawHoverValue(context, plot, y, value, label, color = '#000', showLine = true) {
             const py=y(value), badgeY=Math.max(plot.top+10,Math.min(plot.bottom-10,py));
             context.save();context.lineWidth=1;context.strokeStyle=color;context.setLineDash([3,3]);
-            context.beginPath();context.moveTo(plot.left,py);context.lineTo(plot.right,py);context.stroke();context.setLineDash([]);
+            if(showLine){context.beginPath();context.moveTo(plot.left,py);context.lineTo(plot.right,py);context.stroke();}context.setLineDash([]);
             context.font='bold 11px Arial';context.fillStyle=color;
             const badgeWidth=context.measureText(label).width+12,badgeX=Math.max(0,context.canvas.clientWidth-badgeWidth-4);
             context.fillRect(badgeX,badgeY-10,badgeWidth,20);
@@ -268,6 +267,7 @@
             saveDisplaySettings();
         });
         function draw() {
+            if(window.rankIndependentClient)panel.querySelector('h2').textContent=state.mode==='minute'?'쏠림율(LS)':'쏠림율(키움)';
             window.RankChartAxis.candleLabel(candleArea,state.selection?.name || state.selection?.code || '');
             if (!kis && !window.rankIndependentClient) document.dispatchEvent(new Event('rank-chart-state'));
             const width = chartArea.clientWidth;
@@ -284,9 +284,6 @@
             {const view=window.RankChartAxis.sharedRange(chartKey,state.points,p=>p.time,state.mode,state.start,state.visible,draw);state.start=view.start;state.visible=view.count ?? state.visible;}
             const points = state.points.slice(state.start, state.start + state.visible);
             const cumulative=state.mode==='minute'?window.RankChartAxis.concentrationCumulative(state.points):new Map();
-            cumulativeLegend.hidden=state.mode!=='minute';
-            const latestCumulative=cumulative.get(state.points.at(-1)?.time);
-            cumulativeLegend.textContent=`1분(파랑) · 당일 누적(주황) ${Number.isFinite(latestCumulative)?latestCumulative.toFixed(1)+'%':'—'}`;
             const maximum = points.reduce((max, point) => Math.max(max,Number.isFinite(point.value)?point.value:0,Number.isFinite(cumulative.get(point.time))?cumulative.get(point.time):0), 0);
             let tickStep = 10;
             if (maximum > 70) {
@@ -393,7 +390,7 @@
             const lastCumulativePoint=points.findLast(p=>Number.isFinite(cumulative.get(p.time)));
             if(state.mode==='minute' && lastCumulativePoint){
                 const value=cumulative.get(lastCumulativePoint.time);
-                drawHoverValue(ctx,plot,y,value,`${value.toFixed(1)}%`,'#ea580c');
+                drawHoverValue(ctx,plot,y,value,`${value.toFixed(1)}%`,'#ea580c',false);
             }
             const current = state.points.findLast(point=>Number.isFinite(point.value));
             currentCumulative.hidden=state.mode!=='minute';
@@ -439,7 +436,7 @@
             status.textContent = '';
             draw();
             try {
-                const response = await (window.RankChartCache?.fetch || fetch)(kis ? `/api/${broker}-concentration-chart` : '/api/concentration-chart', {
+                const response = await (window.RankChartCache?.fetch || fetch)(kis ? `/api/${broker}-concentration-chart` : window.rankIndependentClient && state.mode === 'minute' ? '/api/ls-concentration-chart' : '/api/concentration-chart', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ code: state.selection.code, mode: state.mode, interval: state.interval, cursor: append ? state.cursor : null }),
                     signal: controller.signal

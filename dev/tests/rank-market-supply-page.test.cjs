@@ -59,9 +59,9 @@ for(let i=0;i<12;i+=3){assert.equal(comparison[i].y,comparison[i+1].y);assert.eq
 assert.ok((await measure()).filter(p=>!comparisonIds.includes(p.id)).every(p=>p.y>=comparison[9].bottom));
 await page.evaluate(()=>window.applyRankKiwoomMarketSupplyDisplaySettings({selected:'kosdaq',mode:'minute',visibleSeries:['program']}));
 assert.equal(await page.evaluate(()=>window.getRankMarketSupplyDisplaySettings().selected),'kospi');
-assert.equal(await page.locator('#rankKiwoomMarketSupplyChartPanel input[type=radio]').count(),2);
-await page.waitForFunction(()=>document.querySelector('#rankKiwoomMarketSupplyChartPanel [data-series=program] output')?.textContent==='-0.5억원');
-assert.equal(await page.locator('#rankKiwoomMarketSupplyChartPanel [data-series=program] output').textContent(),'-0.5억원');
+assert.equal(await page.locator('#rankKiwoomMarketSupplyChartPanel input[type=radio]').count(),4);
+await page.waitForFunction(()=>document.querySelector('#rankKiwoomMarketSupplyChartPanel [data-series=program] output')?.textContent==='-1억원');
+assert.equal(await page.locator('#rankKiwoomMarketSupplyChartPanel [data-series=program] output').textContent(),'-1억원');
 await page.locator('#rankSupplyChartPanel').screenshot({path:'dev/output/comparison-stock-card.png'});
 await page.locator('#rankKiwoomMarketSupplyChartPanel').screenshot({path:'dev/output/comparison-market-card.png'});
 
@@ -165,7 +165,7 @@ assert.deepEqual(spinner,{width:'36px',height:'36px',animation:'efriend-spin'});
 await page.evaluate(()=>window.applyRankLsMarketSupplyCandleOpen?.(true));
 releaseFlow();
 await page.waitForFunction(()=>document.querySelector('#rankLsMarketSupplyChartPanel [data-series=individual] .supply-observed-time')?.textContent==='19:59');
-assert.equal(await page.locator('#rankLsMarketSupplyChartPanel [data-series=individual] output').textContent(),'+0.2억원');
+assert.equal(await page.locator('#rankLsMarketSupplyChartPanel [data-series=individual] output').textContent(),'+0억원');
 await flowBar.waitFor({state:'hidden'});
 await page.locator('#rankLsMarketSupplyChartPanel .rank-adr-candle-area .rank-chart-loading').waitFor({state:'visible'});
 // The helper does not bridge overnight or post-close intervals.
@@ -189,7 +189,7 @@ await page.evaluate(()=>{
  {time:'20261026090100',value:20,cumulative_value:50,stock_price:101}]});
  RankChartAxis.registerHover('test-cumulative-hover',()=> 'minute',()=> '20261026090000',()=>{});RankChartAxis.synchronizeHover('test-cumulative-hover');
 });
-assert.match(await page.locator('#lsConcentrationChartPanel .concentration-cumulative-legend').innerText(),/당일 누적.*50.0%/);
+assert.equal(await page.locator('.concentration-cumulative-legend').count(),0);
 assert.match(await page.locator('#lsConcentrationTooltip').innerText(),/당일 누적 40.0%/);
 assert.ok(await page.evaluate(()=>window.cumulativeStrokes>0));
 assert.equal(await page.locator('#lsConcentrationChartPanel .concentration-current-cumulative').innerText(),'누적 50.0%');

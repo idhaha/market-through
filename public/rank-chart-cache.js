@@ -39,7 +39,7 @@
     }
     function response(data){return new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json','X-MarketThrough-Chart-Cache':'hit'}});}
     function throwIfAborted(signal){if(signal?.aborted)throw new DOMException('The operation was aborted.','AbortError');}
-    function notify(url){document.dispatchEvent(new CustomEvent('rank-chart-cache-updated',{detail:{path:url.pathname}}));}
+    function notify(url){document.dispatchEvent(new CustomEvent('rank-chart-cache-updated',{detail:{path:url.pathname,mode:url.searchParams.get('mode')}}));}
     async function request(input,options={}){
         const url=new URL(typeof input==='string'?input:input.url,location.href),method=(options.method||'GET').toUpperCase();
         if(url.origin!==location.origin||!routes.test(url.pathname)||!['GET','POST'].includes(method))return nativeFetch(input,options);
@@ -90,5 +90,10 @@
         '/api/adr/candles':'__allCharts','/api/chart-reference':'__allCharts',
         '/api/adr/today':'refreshRankAdrChart','/api/adr/history':'refreshRankAdrChart','/api/risk/breadth':'refreshRankBreadthChart','/api/risk/sentiment':'refreshRankSentimentChart','/api/risk/volatility':'refreshRankVolatilityChart'
     };
-    const timers=new Map();document.addEventListener('rank-chart-cache-updated',event=>{const name=refreshers[event.detail.path];if(!name||timers.has(name))return;timers.set(name,setTimeout(()=>{timers.delete(name);void Promise.resolve(name==='__allCharts'?window.RankChartAxis?.refreshCharts?.():window[name]?.()).catch(()=>{});},100));});
+    const timers=new Map();document.addEventListener('rank-chart-cache-updated',event=>{
+        const name=window.rankIndependentClient && event.detail.path==='/api/ls-concentration-chart'?'refreshConcentrationChart':window.rankIndependentClient && event.detail.path==='/api/kis-supply/chart'?'refreshRankSupplyChart':refreshers[event.detail.path];
+        const mode=event.detail.mode==='minute'?'minute':'day',key=name==='__allCharts'?name+':'+mode:name;
+        if(!name||timers.has(key))return;
+        timers.set(key,setTimeout(()=>{timers.delete(key);void Promise.resolve(name==='__allCharts'?window.RankChartAxis?.refreshCharts?.({mode}):window[name]?.()).catch(()=>{});},100));
+    });
 })();

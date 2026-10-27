@@ -155,7 +155,7 @@
                 ctx.fillStyle = labelColor; ctx.textAlign = 'right'; ctx.fillText(v, w - 4, y(v) + 4);
             }
             for (const [v, color] of [[80, '#ff6b6b'], [100, '#ff6b6b'], [120, '#ff6b6b']]) {
-                ctx.strokeStyle = gridColor; ctx.setLineDash([3, 5]); ctx.beginPath(); ctx.moveTo(left, y(v)); ctx.lineTo(right, y(v)); ctx.stroke();
+                ctx.save(); ctx.strokeStyle = v === 100 ? '#64748b' : gridColor; ctx.lineWidth = v === 100 ? 1.5 : 1; ctx.setLineDash(v === 100 ? [] : [3, 5]); ctx.beginPath(); ctx.moveTo(left, y(v)); ctx.lineTo(right, y(v)); ctx.stroke(); ctx.restore();
                 ctx.fillStyle = color; ctx.textAlign = 'right'; ctx.fillText(v, w - 4, y(v) + 4);
             }
             ctx.setLineDash([]); ctx.fillStyle = getComputedStyle(panel).getPropertyValue('--text-muted');

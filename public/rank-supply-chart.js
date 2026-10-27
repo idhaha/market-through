@@ -63,7 +63,7 @@
         panel.innerHTML = `<div class="concentration-chart-header"><h2>종목 수급${broker === 'kis' ? '(한투)' : broker === 'ls' ? '(LS)' : window.rankIndependentClient ? '' : '(키움)'}</h2><button type="button" data-action="add-stock" aria-haspopup="dialog" aria-expanded="false">+ 종목 추가</button></div>
             <div class="rank-adr-controls"><select class="supply-stock-select" aria-label="수급 종목 선택"></select><button type="button" data-mode="day" class="active" aria-pressed="true">일봉</button><button type="button" data-mode="minute" aria-pressed="false">1분봉(누적)</button>
             <button type="button" class="concentration-candle-toggle" aria-expanded="false">캔들차트</button></div>
-            <div class="supply-legend">${series.map(s => `<button type="button" data-series="${s}" aria-label="${names[s]} 표시" title="${names[s]} 표시 전환" aria-pressed="true" style="color:${colors[s]}"><span>${Array.from(names[s])[0]}</span><output>—</output></button>`).join('')}</div>
+            <div class="supply-legend">${series.map(s => `<button type="button" data-series="${s}" aria-label="${names[s]} 표시" title="${names[s]} 표시 전환" aria-pressed="true" style="color:${colors[s]}"><span>${Array.from(names[s])[0]}</span><output><span class="supply-value-number">—</span><span class="supply-value-unit"></span></output></button>`).join('')}</div>
             <div class="chart-hover-info" hidden></div><div class="rank-adr-area"><canvas role="img" aria-label="개인 외국인 기관 프로그램 순매수수량 차트"></canvas></div>
             <div class="rank-adr-candle-area" hidden><canvas role="img" aria-label="선택 종목 가격 캔들차트"></canvas></div>
             <div class="concentration-chart-footer rank-adr-zoom"><input type="range" min="0" max="0" value="0" aria-label="수급 과거 구간 이동" disabled><div class="concentration-controls"><button type="button" aria-label="수급 차트 축소">−</button><button type="button" aria-label="수급 차트 확대">+</button></div></div>
@@ -143,6 +143,7 @@
             context.font = '12px Inter, sans-serif'; return { w, h };
         }
         function draw() {
+            if(window.rankIndependentClient)panel.querySelector('h2').textContent=mode==='minute'?'종목 수급(한투)':'종목 수급(키움)';
             window.RankChartAxis.loadingBar(canvas.parentElement,flowLoading,'수급');
             window.RankChartAxis.loadingBar(candleArea,candleLoading,'캔들');
             window.RankChartAxis.candleLabel(candleArea,config.archive.find(stock=>stock.code===selected)?.name || selected);
@@ -194,13 +195,14 @@
                     const values=rows.map(p=>p[field]).filter(Number.isFinite);
                     const extent=Math.max(1,...values.map(Math.abs));
                     lanes.set(field,{zero,y:value=>zero-value/extent*(laneHeight/2-9)});
-                    ctx.strokeStyle='#b8c1cc';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(left,zero);ctx.lineTo(right,zero);ctx.stroke();
+                    ctx.save();ctx.strokeStyle='#64748b';ctx.lineWidth=1.5;ctx.setLineDash([]);ctx.beginPath();ctx.moveTo(left,zero);ctx.lineTo(right,zero);ctx.stroke();ctx.restore();
                     ctx.fillStyle=colors[field];ctx.textAlign='right';ctx.save();ctx.textBaseline='middle';ctx.fillText(names[field],w-4,zero);ctx.restore();
                 });
             } else grid(ctx, w, min, max, y);
             boundaries(ctx,top,bottom);
             if (mode !== 'day' && values.length) {
-                ctx.strokeStyle = '#94a3b8'; ctx.beginPath(); ctx.moveTo(left, y(0)); ctx.lineTo(right, y(0)); ctx.stroke();
+                ctx.save();ctx.strokeStyle='#64748b';ctx.lineWidth=1.5;ctx.setLineDash([]);ctx.beginPath();ctx.moveTo(left,y(0));ctx.lineTo(right,y(0));ctx.stroke();
+                ctx.fillStyle='#64748b';ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText('0',right+4,y(0));ctx.restore();
             }
             const ticks = window.RankChartAxis.eightTick(ctx,window.RankChartAxis.ticks(ctx, rows, p=>p.t, p=>x(p.t), left, right, mode),left,right,mode==='minute',window.RankChartAxis.sessionStartLabel(rows,p=>p.t));
             function timeAxis(context, height) {
@@ -213,8 +215,10 @@
             latestDate.textContent = latestDates.length > 1 ? `${latestDates[0]} ~ ${latestDates.at(-1)}` : latestDates[0] || '—';
             series.forEach(s => {
                 const button = panel.querySelector(`[data-series="${s}"]`), last = points.findLast(point => Number.isFinite(point[s]));
-                button.querySelector('output').textContent = last ? format(last[s]) : points.length ? '미제공' : '—';
-                button.querySelector('output').title = last ? `${dayKey(last.t)} ${clock(last.t)} 기준` : '관측값 없음';
+                const label=last ? format(last[s]) : points.length ? '미제공' : '—', unit=label.match(/(억원|천주|주)$/)?.[0] || '';
+                button.querySelector('.supply-value-number').textContent=unit ? label.slice(0,-unit.length) : label;
+                button.querySelector('.supply-value-unit').textContent=unit;
+                button.querySelector('output').title = last ? `${label} · ${dayKey(last.t)} ${clock(last.t)} 기준` : '관측값 없음';
                 button.querySelector('output').style.color = colors[s];
                 let stamp=button.querySelector('.supply-observed-time');
                 if(!stamp){stamp=document.createElement('small');stamp.className='supply-observed-time';button.append(stamp);}
@@ -382,7 +386,7 @@
                 let firstResponse=true;
                 do {
                 const params = new URLSearchParams({ code: selected, mode, ...(mode === 'day' ? { progressive: '1' } : {}), ...(append ? { cursor: nextCursor } : {}) });
-                const result = await request(`${endpoint}?${params}`, { signal: current.signal });
+                const result = await request(`${window.rankIndependentClient && mode === 'minute' ? '/api/kis-supply/chart' : endpoint}?${params}`, { signal: current.signal });
                 if (id !== revision) return;
                 const followLatest = start + Math.min(points.length, count ?? points.length) >= points.length, oldAnchor = points[start]?.t;
                 const fresh = (result.points || []).filter(p => Number.isFinite(p.t));
@@ -398,7 +402,7 @@
                         minuteDays.add(day);
                         if(day===result.date)continue;
                         const params=new URLSearchParams({code:selected,mode:'minute',date:day});
-                        const past=await request(`${endpoint}?${params}`,{signal:current.signal});
+                        const past=await request(`${window.rankIndependentClient && mode === 'minute' ? '/api/kis-supply/chart' : endpoint}?${params}`,{signal:current.signal});
                         if(id!==revision)return;
                         points=mergeFlow(points,(past.points || []).filter(p=>Number.isFinite(p.t)));
                     }
