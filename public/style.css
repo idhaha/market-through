@@ -77,16 +77,16 @@
 .rank-chart-row .rank-adr-controls { padding-right:4px; box-sizing:border-box; }
 .rank-chart-row .concentration-timeframe-row { padding-right:4px; box-sizing:border-box; }
 .rank-chart-row .concentration-header-actions { flex:1; }
-.rank-chart-row :is(#concentrationCurrentRate,#kisConcentrationCurrentRate,#lsConcentrationCurrentRate) { margin-left:auto; }
+.rank-chart-row :is(#concentrationCurrentRate,#kisConcentrationCurrentRate,#lsConcentrationCurrentRate,#combinedConcentrationCurrentRate) { margin-left:auto; }
 .rank-chart-row .rank-adr-panel output,
-.rank-chart-row :is(#concentrationCurrentRate,#kisConcentrationCurrentRate,#lsConcentrationCurrentRate) { font-family:inherit; font-size:16px; font-weight:700; color:#339af0; font-variant-numeric:tabular-nums; max-width:100%; min-width:0; }
+.rank-chart-row :is(#concentrationCurrentRate,#kisConcentrationCurrentRate,#lsConcentrationCurrentRate,#combinedConcentrationCurrentRate) { font-family:inherit; font-size:16px; font-weight:700; color:#339af0; font-variant-numeric:tabular-nums; max-width:100%; min-width:0; }
 .rank-chart-row .concentration-chart-summary, .rank-chart-row .concentration-header-actions { min-width:0; max-width:100%; }
 .rank-chart-row .rank-adr-controls output { flex-shrink:1; overflow-wrap:anywhere; white-space:normal; }
 .turnover-hover-info { min-height:24px; flex-shrink:0; font-size:12px; line-height:24px; color:var(--text-primary); }
 .turnover-hover-info[hidden] { display:block; visibility:hidden; }
 .chart-hover-info,
-:is(#concentrationTooltip,#kisConcentrationTooltip,#lsConcentrationTooltip).chart-hover-info { position:static; display:block; height:24px; min-height:24px; flex-shrink:0; line-height:24px; margin:0; padding:0; max-width:100%; font-size:12px; color:var(--text-primary); background:transparent; border-radius:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none; }
-.chart-hover-info[hidden], :is(#concentrationTooltip,#kisConcentrationTooltip,#lsConcentrationTooltip).chart-hover-info[hidden] { display:block; visibility:hidden; }
+:is(#concentrationTooltip,#kisConcentrationTooltip,#lsConcentrationTooltip,#combinedConcentrationTooltip).chart-hover-info { position:static; display:block; height:24px; min-height:24px; flex-shrink:0; line-height:24px; margin:0; padding:0; max-width:100%; font-size:12px; color:var(--text-primary); background:transparent; border-radius:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none; }
+.chart-hover-info[hidden], :is(#concentrationTooltip,#kisConcentrationTooltip,#lsConcentrationTooltip,#combinedConcentrationTooltip).chart-hover-info[hidden] { display:block; visibility:hidden; }
 .concentration-charts-column > .concentration-chart-area { height:calc(var(--concentration-chart-height) - 24px); }
 .rank-adr-panel { width: var(--concentration-base-width, 570px); max-width: calc(100vw - 50px); margin-top: 20px; display: flex; flex-direction: column; box-sizing: border-box; }
 .rank-adr-area { flex: 1; min-height: 280px; position: relative; }
@@ -127,21 +127,21 @@
 #tab_rank tr[data-chart-code]:focus-visible { outline: 2px solid #ea580c; outline-offset: 2px; }
 .concentration-chart-summary { display: flex; align-items: baseline; gap: 8px; margin-left: auto; white-space: nowrap; }
 .concentration-chart-title { font-size: 13px; color: var(--text-muted); }
-:is(#concentrationCurrentRate,#kisConcentrationCurrentRate,#lsConcentrationCurrentRate) { min-width: 0; max-width:100%; text-align: right; font-size: 16px; font-weight: 700; color: #339af0; font-variant-numeric: tabular-nums; }
+:is(#concentrationCurrentRate,#kisConcentrationCurrentRate,#lsConcentrationCurrentRate,#combinedConcentrationCurrentRate) { min-width: 0; max-width:100%; text-align: right; font-size: 16px; font-weight: 700; color: #339af0; font-variant-numeric: tabular-nums; }
 .concentration-status:empty { display: none; }
 .concentration-status { position: absolute; top: 0; left: 16px; right: 58px; z-index: 1; color: var(--text-muted); font-size: 12px; margin: 0; }
 .concentration-chart-layout { display: flex; align-items: stretch; gap: 16px; }
 .concentration-chart-area { position: relative; height: var(--concentration-chart-height); flex: 1; min-width: 0; }
-:is(#concentrationCanvas,#kisConcentrationCanvas,#lsConcentrationCanvas) { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: pan-y; }
-:is(#concentrationCanvas,#kisConcentrationCanvas,#lsConcentrationCanvas).is-loading { filter: blur(2px); opacity: .75; pointer-events: none; }
+:is(#concentrationCanvas,#kisConcentrationCanvas,#lsConcentrationCanvas,#combinedConcentrationCanvas) { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: pan-y; }
+:is(#concentrationCanvas,#kisConcentrationCanvas,#lsConcentrationCanvas,#combinedConcentrationCanvas).is-loading { filter: blur(2px); opacity: .75; pointer-events: none; }
 #rankBreadthChartPanel canvas.is-loading { filter: blur(2px); opacity: .75; pointer-events: none; }
 .concentration-tooltip { position: absolute; top: 8px; padding: 6px 10px; background: #0f172a; color: white;
     border-radius: 4px; font-size: 12px; pointer-events: none; white-space: nowrap; }
 .concentration-chart-footer { display: flex; column-gap: 16px; row-gap: 8px; align-items: center; margin-top: 8px; }
-:is(#concentrationPeriod,#kisConcentrationPeriod,#lsConcentrationPeriod) { color: var(--text-muted); font-size: 12px; min-width: 0; }
+:is(#concentrationPeriod,#kisConcentrationPeriod,#lsConcentrationPeriod,#combinedConcentrationPeriod) { color: var(--text-muted); font-size: 12px; min-width: 0; }
 .concentration-chart-footer { flex-wrap: wrap; }
-:is(#concentrationPeriod,#kisConcentrationPeriod,#lsConcentrationPeriod) { flex: 0 0 100%; order: 3; }
-:is(#concentrationMore,#kisConcentrationMore,#lsConcentrationMore) { padding: 0; border: 0; border-radius: 0; background: transparent; }
+:is(#concentrationPeriod,#kisConcentrationPeriod,#lsConcentrationPeriod,#combinedConcentrationPeriod) { flex: 0 0 100%; order: 3; }
+:is(#concentrationMore,#kisConcentrationMore,#lsConcentrationMore,#combinedConcentrationMore) { padding: 0; border: 0; border-radius: 0; background: transparent; }
 @media (max-width: 700px) {
     .concentration-chart-panel { padding: 12px; }
     .concentration-chart-header { gap: 6px; }
@@ -149,25 +149,25 @@
     .concentration-chart-header .concentration-controls button { min-width: 26px; padding: 0 5px; }
     .concentration-chart-footer { gap: 8px; }
 }
-:is(#concentrationRange,#kisConcentrationRange,#lsConcentrationRange) { flex: 1; accent-color: #64748b; min-width: 100px; }
-:is(#concentrationRange,#kisConcentrationRange,#lsConcentrationRange), .rank-adr-zoom input[type="range"] {
+:is(#concentrationRange,#kisConcentrationRange,#lsConcentrationRange,#combinedConcentrationRange) { flex: 1; accent-color: #64748b; min-width: 100px; }
+:is(#concentrationRange,#kisConcentrationRange,#lsConcentrationRange,#combinedConcentrationRange), .rank-adr-zoom input[type="range"] {
     appearance: none; -webkit-appearance: none; background: transparent; height: 20px; cursor: pointer;
 }
-:is(#concentrationRange,#kisConcentrationRange,#lsConcentrationRange)::-webkit-slider-runnable-track, .rank-adr-zoom input[type="range"]::-webkit-slider-runnable-track {
+:is(#concentrationRange,#kisConcentrationRange,#lsConcentrationRange,#combinedConcentrationRange)::-webkit-slider-runnable-track, .rank-adr-zoom input[type="range"]::-webkit-slider-runnable-track {
     height: 4px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-panel);
 }
-:is(#concentrationRange,#kisConcentrationRange,#lsConcentrationRange)::-webkit-slider-thumb, .rank-adr-zoom input[type="range"]::-webkit-slider-thumb {
+:is(#concentrationRange,#kisConcentrationRange,#lsConcentrationRange,#combinedConcentrationRange)::-webkit-slider-thumb, .rank-adr-zoom input[type="range"]::-webkit-slider-thumb {
     appearance: none; -webkit-appearance: none; width: 16px; height: 16px; margin-top: -7px; border: 0; border-radius: 50%; background: #64748b;
 }
-:is(#concentrationRange,#kisConcentrationRange,#lsConcentrationRange)::-moz-range-track, .rank-adr-zoom input[type="range"]::-moz-range-track {
+:is(#concentrationRange,#kisConcentrationRange,#lsConcentrationRange,#combinedConcentrationRange)::-moz-range-track, .rank-adr-zoom input[type="range"]::-moz-range-track {
     height: 4px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-panel);
 }
-:is(#concentrationRange,#kisConcentrationRange,#lsConcentrationRange)::-moz-range-progress, .rank-adr-zoom input[type="range"]::-moz-range-progress { background: transparent; }
-:is(#concentrationRange,#kisConcentrationRange,#lsConcentrationRange)::-moz-range-thumb, .rank-adr-zoom input[type="range"]::-moz-range-thumb {
+:is(#concentrationRange,#kisConcentrationRange,#lsConcentrationRange,#combinedConcentrationRange)::-moz-range-progress, .rank-adr-zoom input[type="range"]::-moz-range-progress { background: transparent; }
+:is(#concentrationRange,#kisConcentrationRange,#lsConcentrationRange,#combinedConcentrationRange)::-moz-range-thumb, .rank-adr-zoom input[type="range"]::-moz-range-thumb {
     width: 16px; height: 16px; border: 0; border-radius: 50%; background: #64748b;
 }
-:is(#concentrationRange,#kisConcentrationRange,#lsConcentrationRange):disabled, .rank-adr-zoom input[type="range"]:disabled { cursor: default; opacity: .45; }
-:is(#concentrationRange,#kisConcentrationRange,#lsConcentrationRange):focus-visible, .rank-adr-zoom input[type="range"]:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 3px; border-radius: 4px; }
+:is(#concentrationRange,#kisConcentrationRange,#lsConcentrationRange,#combinedConcentrationRange):disabled, .rank-adr-zoom input[type="range"]:disabled { cursor: default; opacity: .45; }
+:is(#concentrationRange,#kisConcentrationRange,#lsConcentrationRange,#combinedConcentrationRange):focus-visible, .rank-adr-zoom input[type="range"]:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 3px; border-radius: 4px; }
 .concentration-chart-footer .concentration-controls { margin-left: auto; }
 #tab_rank tr[data-chart-code] { cursor: pointer; }
 #tab_rank tr.concentration-selected td { background: #fff7ed; }
@@ -2553,18 +2553,18 @@ body.modal-open {
 .concentration-candle-toggle { display: inline-flex; align-items: center; height: 30px; margin: 0; border: 1px solid var(--border-color); border-radius: 4px; padding: 5px 10px; background: var(--bg-primary); color: var(--text-secondary); cursor: pointer; font-size: 12px; }
 .concentration-candle-area { position: relative; height: var(--concentration-chart-height); }
 .concentration-candle-area[hidden] { display: none; }
-:is(#concentrationCandleCanvas,#kisConcentrationCandleCanvas,#lsConcentrationCandleCanvas) { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: pan-y; }
-:is(#concentrationCandleCanvas,#kisConcentrationCandleCanvas,#lsConcentrationCandleCanvas).is-loading { filter: blur(2px); opacity: .75; pointer-events: none; }
+:is(#concentrationCandleCanvas,#kisConcentrationCandleCanvas,#lsConcentrationCandleCanvas,#combinedConcentrationCandleCanvas) { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: pan-y; }
+:is(#concentrationCandleCanvas,#kisConcentrationCandleCanvas,#lsConcentrationCandleCanvas,#combinedConcentrationCandleCanvas).is-loading { filter: blur(2px); opacity: .75; pointer-events: none; }
 
 .concentration-charts-column .concentration-tooltip { max-width: calc(100% - 16px); white-space: normal; overflow-wrap: anywhere; }
 
-:is(#concentrationTooltip,#kisConcentrationTooltip,#lsConcentrationTooltip), :is(#concentrationCandleTooltip,#kisConcentrationCandleTooltip,#lsConcentrationCandleTooltip) { position: absolute; z-index: 2; pointer-events: none; display: inline-block; margin: 0; padding: 4px 8px; max-width: 100%; background: var(--bg-panel); color: var(--text-primary); font-size: 12px; white-space: normal; }
-:is(#concentrationTooltip,#kisConcentrationTooltip,#lsConcentrationTooltip)[hidden], :is(#concentrationCandleTooltip,#kisConcentrationCandleTooltip,#lsConcentrationCandleTooltip)[hidden] { display: none; }
+:is(#concentrationTooltip,#kisConcentrationTooltip,#lsConcentrationTooltip,#combinedConcentrationTooltip), :is(#concentrationCandleTooltip,#kisConcentrationCandleTooltip,#lsConcentrationCandleTooltip,#combinedConcentrationCandleTooltip) { position: absolute; z-index: 2; pointer-events: none; display: inline-block; margin: 0; padding: 4px 8px; max-width: 100%; background: var(--bg-panel); color: var(--text-primary); font-size: 12px; white-space: normal; }
+:is(#concentrationTooltip,#kisConcentrationTooltip,#lsConcentrationTooltip,#combinedConcentrationTooltip)[hidden], :is(#concentrationCandleTooltip,#kisConcentrationCandleTooltip,#lsConcentrationCandleTooltip,#combinedConcentrationCandleTooltip)[hidden] { display: none; }
 
 .concentration-header-actions { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
 
 
-:is(#concentrationCurrentRate,#kisConcentrationCurrentRate,#lsConcentrationCurrentRate) { position: static; min-width: 0; text-align: right; white-space: normal; overflow-wrap:anywhere; }
+:is(#concentrationCurrentRate,#kisConcentrationCurrentRate,#lsConcentrationCurrentRate,#combinedConcentrationCurrentRate) { position: static; min-width: 0; text-align: right; white-space: normal; overflow-wrap:anywhere; }
 .chart-value-with-date { position:relative; display:inline-flex; align-items:center; margin-left:auto; min-width:0; flex-shrink:0; }
 .chart-value-date { position:absolute; bottom:100%; right:0; white-space:nowrap; font-size:11px; line-height:15px; font-weight:400; color:var(--text-muted); }
 .concentration-chart-panel { position:relative; }
@@ -2579,9 +2579,9 @@ body.modal-open {
 .concentration-timeframe-row .concentration-candle-toggle { white-space: nowrap; }
 
 .concentration-stock-picker { position: relative; }
-:is(#concentrationStockSuggestions,#kisConcentrationStockSuggestions,#lsConcentrationStockSuggestions) { position: absolute; top: 100%; left: 0; z-index: 50; width: 300px; max-width: calc(100vw - 50px); max-height: 280px; overflow-y: auto; background: var(--bg-panel, #fff); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 5px; box-shadow: 0 4px 12px #0002; }
-:is(#concentrationStockSuggestions,#kisConcentrationStockSuggestions,#lsConcentrationStockSuggestions) [role="option"] { padding: 8px 10px; cursor: pointer; font-size: 13px; }
-:is(#concentrationStockSuggestions,#kisConcentrationStockSuggestions,#lsConcentrationStockSuggestions) [role="option"]:hover, :is(#concentrationStockSuggestions,#kisConcentrationStockSuggestions,#lsConcentrationStockSuggestions) [aria-selected="true"] { background: #ea580c22; }
+:is(#concentrationStockSuggestions,#kisConcentrationStockSuggestions,#lsConcentrationStockSuggestions,#combinedConcentrationStockSuggestions) { position: absolute; top: 100%; left: 0; z-index: 50; width: 300px; max-width: calc(100vw - 50px); max-height: 280px; overflow-y: auto; background: var(--bg-panel, #fff); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 5px; box-shadow: 0 4px 12px #0002; }
+:is(#concentrationStockSuggestions,#kisConcentrationStockSuggestions,#lsConcentrationStockSuggestions,#combinedConcentrationStockSuggestions) [role="option"] { padding: 8px 10px; cursor: pointer; font-size: 13px; }
+:is(#concentrationStockSuggestions,#kisConcentrationStockSuggestions,#lsConcentrationStockSuggestions,#combinedConcentrationStockSuggestions) [role="option"]:hover, :is(#concentrationStockSuggestions,#kisConcentrationStockSuggestions,#lsConcentrationStockSuggestions,#combinedConcentrationStockSuggestions) [aria-selected="true"] { background: #ea580c22; }
 .us-links-container { max-width: 100%; padding: 20px; color: #1f2937; background: #fff; }
 .us-help, .us-status { font-size: 13px; color: #64748b; margin: 10px 0; }
 .us-status { min-height: 20px; }
@@ -2682,7 +2682,7 @@ body.modal-open {
 
 /* Align actual text baselines, including native input text and radio labels. */
 .concentration-chart-header { align-items: baseline; }
-.concentration-chart-header h2, :is(#concentrationChartTitle,#kisConcentrationChartTitle,#lsConcentrationChartTitle) { display: block; height: 32px; margin: 0; padding: 0; line-height: 32px; font-family: inherit; }
+.concentration-chart-header h2, :is(#concentrationChartTitle,#kisConcentrationChartTitle,#lsConcentrationChartTitle,#combinedConcentrationChartTitle) { display: block; height: 32px; margin: 0; padding: 0; line-height: 32px; font-family: inherit; }
 .concentration-stock-picker { display: block; height: 32px; line-height: 32px; }
 .concentration-stock-input { box-sizing: border-box; height: 32px; margin: 0; padding: 0 6px; border: 0; line-height: 32px; font-family: inherit; vertical-align: baseline; }
 .concentration-market { display: block; height: 32px; margin: 0; padding: 0; line-height: 32px; font-family: inherit; }
@@ -2763,7 +2763,7 @@ body.modal-open {
 .rank-chart-row .rank-adr-controls { min-height: 40px; align-items: center; }
 .rank-chart-row .rank-adr-controls { margin: 10px 0 0; }
 .rank-chart-row .chart-hover-info,
-.rank-chart-row :is(#concentrationTooltip,#kisConcentrationTooltip,#lsConcentrationTooltip).chart-hover-info,
+.rank-chart-row :is(#concentrationTooltip,#kisConcentrationTooltip,#lsConcentrationTooltip,#combinedConcentrationTooltip).chart-hover-info,
 .rank-chart-row .turnover-hover-info {
     position: static;
     display: block;
@@ -2782,7 +2782,7 @@ body.modal-open {
     pointer-events: none;
 }
 .rank-chart-row .chart-hover-info[hidden],
-.rank-chart-row :is(#concentrationTooltip,#kisConcentrationTooltip,#lsConcentrationTooltip).chart-hover-info[hidden],
+.rank-chart-row :is(#concentrationTooltip,#kisConcentrationTooltip,#lsConcentrationTooltip,#combinedConcentrationTooltip).chart-hover-info[hidden],
 .rank-chart-row .turnover-hover-info[hidden] { display: block; visibility: hidden; }
 .rank-chart-row .concentration-charts-column > .concentration-chart-area,
 .rank-chart-row .rank-adr-area {
@@ -2795,7 +2795,7 @@ body.modal-open {
 /* Equal title/control heights keep the three plot origins aligned. */
 .rank-chart-row .concentration-chart-header { align-items: center; }
 .rank-chart-row .rank-adr-panel > .concentration-chart-header { height:36px; min-height:36px; flex-wrap:nowrap; }
-.rank-chart-row :is(#concentrationChartTitle,#kisConcentrationChartTitle,#lsConcentrationChartTitle) { height:36px; line-height:36px; }
+.rank-chart-row :is(#concentrationChartTitle,#kisConcentrationChartTitle,#lsConcentrationChartTitle,#combinedConcentrationChartTitle) { height:36px; line-height:36px; }
 .rank-chart-row .concentration-timeframe-row { align-self: stretch; }
 .rank-chart-row .rank-turnover-panel .turnover-legend { line-height: 18px; gap: 2px; }
 
@@ -2978,7 +2978,7 @@ body { height:100dvh; min-height:0; overflow:hidden; display:flex; flex-directio
 .rank-card-footer { display:flex; align-items:center; gap:12px; margin-top:8px; min-height:18px; flex:0 0 18px; min-width:0; }
 .rank-card-messages { display:flex; gap:8px; flex:1; min-width:0; overflow:hidden; }
 .rank-card-footer .rank-card-source { flex:0 0 auto; margin:0; white-space:nowrap; }
-.rank-card-messages > :is(.rank-adr-status,:is(#concentrationPeriod,#kisConcentrationPeriod,#lsConcentrationPeriod),:is(#concentrationStatus,#kisConcentrationStatus,#lsConcentrationStatus),.rank-history-notice,.rank-selection-history-notice) { position:static; flex:0 1 auto; order:initial; margin:0; min-width:0; font-size:12px; line-height:18px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text-muted); }
+.rank-card-messages > :is(.rank-adr-status,:is(#concentrationPeriod,#kisConcentrationPeriod,#lsConcentrationPeriod,#combinedConcentrationPeriod),:is(#concentrationStatus,#kisConcentrationStatus,#lsConcentrationStatus,#combinedConcentrationStatus),.rank-history-notice,.rank-selection-history-notice) { position:static; flex:0 1 auto; order:initial; margin:0; min-width:0; font-size:12px; line-height:18px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text-muted); }
 .rank-card-messages:has(:is(.rank-history-notice,.rank-selection-history-notice):not([hidden])) > :not(.rank-history-notice,.rank-selection-history-notice) { display:none; }
 .rank-chart-row { --chart-plot-height:286px; }
 
@@ -3074,7 +3074,7 @@ body { height:100dvh; min-height:0; overflow:hidden; display:flex; flex-directio
 .rank-chart-row > #rankBreadthChartPanel { grid-column:1; grid-row:5; order:40; }
 .rank-chart-row > #rankVolatilityChartPanel { grid-column:3; grid-row:5; order:42; }
 .rank-chart-row > #rankSentimentChartPanel { grid-column:1; grid-row:6; order:43; }
-:is(#lsConcentrationChartPanel) .chart-hover-info { position:static; height:24px; min-height:24px; line-height:24px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+:is(#lsConcentrationChartPanel,#combinedConcentrationChartPanel) .chart-hover-info { position:static; height:24px; min-height:24px; line-height:24px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 @media(max-width:700px) {
  .rank-chart-row > .panel { grid-column:1!important; grid-row:auto!important; }
 }
@@ -3124,3 +3124,13 @@ body { height:100dvh; min-height:0; overflow:hidden; display:flex; flex-directio
 .rank-supply-panel .supply-legend output { display:flex; justify-content:flex-end; min-width:0; }
 .rank-supply-panel .supply-legend .supply-value-number { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .rank-supply-panel .supply-legend .supply-value-unit { flex-shrink:0; }
+
+/* Trading charts follow the three ranking tables. */
+.rank-chart-row > #combinedConcentrationChartPanel { grid-column:1; grid-row:1; order:0; }
+.rank-chart-row > #rankCombinedSupplyChartPanel { grid-column:2; grid-row:1; order:1; }
+.rank-chart-row > #rankCombinedMarketSupplyChartPanel { grid-column:3; grid-row:1; order:2; }
+.rank-chart-row > #rankBreadthChartPanel { grid-column:1; grid-row:2; order:3; }
+.rank-chart-row > #rankAdrChartPanel { grid-column:2; grid-row:2; order:4; }
+.rank-chart-row > #rankCombinedTurnoverChartPanel { grid-column:3; grid-row:2; order:5; }
+.rank-chart-row > #rankVolatilityChartPanel { grid-column:1; grid-row:3; order:6; }
+.rank-chart-row > #rankSentimentChartPanel { grid-column:2; grid-row:3; order:7; }

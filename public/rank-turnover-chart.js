@@ -2,7 +2,8 @@
     'use strict';
     function initialize(broker = '') {
         if (broker && window.rankIndependentClient) return;
-        const suffix = broker === 'kis' ? 'KisTurnover' : broker === 'ls' ? 'LsTurnover' : 'Turnover';
+        const combined = broker === 'combined';
+        const suffix = combined ? 'CombinedTurnover' : broker === 'kis' ? 'KisTurnover' : broker === 'ls' ? 'LsTurnover' : 'Turnover';
         const panelId = `rank${suffix}ChartPanel`,axisId = broker ? `${broker}Turnover` : 'turnover';
         const api = name => name.replace('Turnover',suffix);
         const endpoint = broker ? `/api/${broker}-turnover/chart` : '/api/turnover/chart';
@@ -10,7 +11,7 @@
         if (!adr || document.getElementById(panelId)) return;
         const panel = document.createElement('section');
         panel.id = panelId; panel.className = 'panel rank-adr-panel rank-turnover-panel';
-        panel.innerHTML = `<div class="concentration-chart-header"><h2>시장 거래대금(${broker === 'kis' ? '한투' : broker === 'ls' ? 'LS' : '키움'})</h2><div class="rank-market-choice" role="radiogroup" aria-label="거래대금 시장 선택"><label><input type="radio" name="rank-${axisId}-market" value="kospi" checked>KOSPI</label><label><input type="radio" name="rank-${axisId}-market" value="kosdaq">KOSDAQ</label></div><div class="turnover-legend"><span data-market="kospi"><span>● KOSPI</span><output data-latest="kospi">—</output></span><span data-market="kosdaq"><span>● KOSDAQ</span><output data-latest="kosdaq">—</output></span></div></div><div class="rank-adr-controls"><button type="button" data-mode="day" class="active">일</button><button type="button" data-mode="minute">1분봉</button><button type="button" data-more class="concentration-icon-button" aria-label="거래대금 과거 추가조회" title="과거 데이터 더 불러오기" disabled>▥+</button><button type="button" class="concentration-candle-toggle" aria-expanded="false">캔들차트</button></div><div class="turnover-hover-info" aria-live="off"></div><div class="rank-adr-area"><canvas role="img" aria-label="코스피 코스닥 거래대금 차트"></canvas><div class="concentration-tooltip" hidden></div></div><div class="rank-adr-candle-area" hidden><canvas role="img" aria-label="선택 시장 지수 캔들차트"></canvas></div><div class="concentration-chart-footer rank-adr-zoom"><input type="range" min="0" max="0" value="0" aria-label="거래대금 과거 구간 이동" disabled><div class="concentration-controls"><button type="button" aria-label="거래대금 차트 축소">−</button><button type="button" aria-label="거래대금 차트 확대">+</button></div></div><p role="status" class="rank-adr-status"></p>`;
+        panel.innerHTML = `<div class="concentration-chart-header"><h2>시장 거래대금${combined ? '' : '(' + (broker === 'kis' ? '한투' : broker === 'ls' ? 'LS' : '키움') + ')'}</h2><div class="rank-market-choice" role="radiogroup" aria-label="거래대금 시장 선택"><label><input type="radio" name="rank-${axisId}-market" value="kospi" checked>KOSPI</label><label><input type="radio" name="rank-${axisId}-market" value="kosdaq">KOSDAQ</label></div><div class="turnover-legend"><span data-market="kospi"><span>● KOSPI</span><output data-latest="kospi">—</output></span><span data-market="kosdaq"><span>● KOSDAQ</span><output data-latest="kosdaq">—</output></span></div></div><div class="rank-adr-controls"><button type="button" data-mode="day" class="active">일</button><button type="button" data-mode="minute">1분봉</button><button type="button" data-more class="concentration-icon-button" aria-label="거래대금 과거 추가조회" title="과거 데이터 더 불러오기" disabled>▥+</button><button type="button" class="concentration-candle-toggle" aria-expanded="false">캔들차트</button></div><div class="turnover-hover-info" aria-live="off"></div><div class="rank-adr-area"><canvas role="img" aria-label="코스피 코스닥 거래대금 차트"></canvas><div class="concentration-tooltip" hidden></div></div><div class="rank-adr-candle-area" hidden><canvas role="img" aria-label="선택 시장 지수 캔들차트"></canvas></div><div class="concentration-chart-footer rank-adr-zoom"><input type="range" min="0" max="0" value="0" aria-label="거래대금 과거 구간 이동" disabled><div class="concentration-controls"><button type="button" aria-label="거래대금 차트 축소">−</button><button type="button" aria-label="거래대금 차트 확대">+</button></div></div><p role="status" class="rank-adr-status"></p>`;
         adr.closest('.rank-chart-row').append(panel);
         window.RankSupplyGuide?.attach(panel, 'turnover', broker || 'kiwoom');
         panel.querySelector('.rank-adr-controls').append(panel.querySelector('.turnover-legend'));
@@ -197,7 +198,7 @@
             try {
                 const keys = more ? [cursor] : [...new Set(['', ...loadedPages.keys()])];
                 for (const key of keys) {
-                    const response = await (window.RankChartCache?.fetch || fetch)(`${endpoint}?mode=${mode}&cursor=${encodeURIComponent(key || '')}`, {signal:current.signal});
+                    const response = await (window.RankChartCache?.fetch || fetch)(`${combined ? mode === 'minute' ? '/api/ls-turnover/chart' : '/api/turnover/chart' : endpoint}?mode=${mode}&cursor=${encodeURIComponent(key || '')}`, {signal:current.signal});
                     const result = await response.json();
                     if (!response.ok) throw new Error(result.error || '거래대금 조회 실패');
                     if (current !== controller) return;
@@ -214,8 +215,9 @@
                 if (more) { start = 0; count = null; }
                 else if (count != null) start = followLatest ? Math.max(0,dates.length-count) : Math.max(0,dates.findIndex(t=>t>=anchor));
                 hover = null; tip.hidden = true;
-                const warnings = pages.flatMap(p=>p.warnings || []);
-                status.textContent = [dates.length ? `${dateKey(dates[0])} ~ ${dateKey(dates.at(-1))}` : '데이터 없음', mode === 'minute' ? broker ? '1분 누적 거래대금 · 웹소켓 우선, REST 보완' : '1분 누적 거래대금은 지수×거래량 기반 추정값' : '당일 거래대금은 누적값', ...warnings].join(' · ');
+                const rawWarnings = pages.flatMap(p=>p.warnings || []);
+                const warnings = window.RankSupplyGuide?.loadingWarnings(panel, mode, rawWarnings) || rawWarnings;
+                status.textContent = [dates.length ? `${dateKey(dates[0])} ~ ${dateKey(dates.at(-1))}` : '데이터 없음', ...warnings].join(' · ');
                 window.setRankCardConnection?.(panel, !warnings.some(text=>/실패|오류/.test(text)));
             } catch(error) {
                 if (error.name !== 'AbortError') { status.textContent = `${error.message}${dates.length ? ' · 이전 데이터 표시' : ''} · 다음 갱신 때 재시도`; window.setRankCardConnection?.(panel,false); }
@@ -225,6 +227,7 @@
             }
         }
         window[api('refreshRankTurnoverChart')] = () => load();
+        window[api('getRankTurnoverState')] = () => ({mode,selectedMarket,markets:data,cursor,loading});
         window.RankChartAxis.registerHistoryLoader(axisId,()=>load(true),()=>loading,()=>({hasMore:!!cursor,cursor}));
         moreButton.addEventListener('click',()=>window.RankChartAxis.requestHistory(mode));
         panel.querySelectorAll('[data-mode]').forEach(button=>button.addEventListener('click',()=>{
@@ -279,8 +282,13 @@
         [canvas,candle].forEach(c=>{
             c.addEventListener('mousemove',event=>{if(drag || !geometry?.visible.length)return;candlePointerY=c===candle?event.clientY-candle.getBoundingClientRect().top:null;const px=event.clientX-c.getBoundingClientRect().left;if(px<geometry.left||px>geometry.right)return;hover=geometry.visible.reduce((a,b)=>Math.abs(geometry.x(a)-px)<Math.abs(geometry.x(b)-px)?a:b);draw();});c.addEventListener('mouseleave',()=>{hover=null;candlePointerY=null;tip.hidden=true;draw();});});
         function resize(){const base=Number.parseFloat(adr.style.getPropertyValue('--rank-adr-base-height')) || 450;panel.style.height=`${base+(candleArea.hidden?0:280)}px`;draw();}
-        new ResizeObserver(resize).observe(adr);new ResizeObserver(draw).observe(canvas.parentElement);resize();if(!window.rankManagedChartRefresh)window[api('refreshRankTurnoverChart')]();
+        let resizeFrame = 0;
+        function scheduleResize() {
+            if (resizeFrame) return;
+            resizeFrame = requestAnimationFrame(() => { resizeFrame = 0; resize(); });
+        }
+        new ResizeObserver(scheduleResize).observe(adr);new ResizeObserver(scheduleResize).observe(canvas.parentElement);resize();if(!window.rankManagedChartRefresh)window[api('refreshRankTurnoverChart')]();
     }
-    const mount = () => { initialize(); initialize('kis'); initialize('ls'); };
+    const mount = () => { if(window.rankIndependentClient)initialize();else initialize('combined'); };
     if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount();
 })();

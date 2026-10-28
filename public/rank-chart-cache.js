@@ -91,7 +91,20 @@
         '/api/adr/today':'refreshRankAdrChart','/api/adr/history':'refreshRankAdrChart','/api/risk/breadth':'refreshRankBreadthChart','/api/risk/sentiment':'refreshRankSentimentChart','/api/risk/volatility':'refreshRankVolatilityChart'
     };
     const timers=new Map();document.addEventListener('rank-chart-cache-updated',event=>{
-        const name=window.rankIndependentClient && event.detail.path==='/api/ls-concentration-chart'?'refreshConcentrationChart':window.rankIndependentClient && event.detail.path==='/api/kis-supply/chart'?'refreshRankSupplyChart':refreshers[event.detail.path];
+        const name=(window.rankIndependentClient || !window.refreshLsConcentrationChart) && event.detail.path==='/api/ls-concentration-chart'?'refreshConcentrationChart':window.rankIndependentClient && event.detail.path==='/api/kis-supply/chart'?'refreshRankSupplyChart':refreshers[event.detail.path];
+        if(!window.rankIndependentClient && ['/api/turnover/chart','/api/ls-turnover/chart'].includes(event.detail.path)){
+            const state=window.getRankCombinedTurnoverState?.(),combinedKey='combinedTurnover';
+            if(state && (state.mode==='minute'?'/api/ls-turnover/chart':'/api/turnover/chart')===event.detail.path && !timers.has(combinedKey))timers.set(combinedKey,setTimeout(()=>{timers.delete(combinedKey);void Promise.resolve(window.refreshRankCombinedTurnoverChart?.()).catch(()=>{});},100));
+        }
+        if(!window.rankIndependentClient && ['/api/supply/chart','/api/kis-supply/chart'].includes(event.detail.path)){
+            const state=window.getRankCombinedSupplyState?.(),combinedKey='combinedSupply';
+            if(state && (state.mode==='minute'?'/api/kis-supply/chart':'/api/supply/chart')===event.detail.path && !timers.has(combinedKey))timers.set(combinedKey,setTimeout(()=>{timers.delete(combinedKey);void Promise.resolve(window.refreshRankCombinedSupplyChart?.()).catch(()=>{});},100));
+        }
+        if(!window.rankIndependentClient && ['/api/ls-market-supply/chart','/api/kiwoom-market-supply/chart','/api/market-supply/chart'].includes(event.detail.path)){
+            const state=window.getRankCombinedMarketSupplyDisplaySettings?.(),key='combinedMarketSupply';
+            const path=state?.mode==='day'?'/api/ls-market-supply/chart':state?.selected?.startsWith('futures')?'/api/market-supply/chart':'/api/kiwoom-market-supply/chart';
+            if(state && path===event.detail.path && !timers.has(key))timers.set(key,setTimeout(()=>{timers.delete(key);void Promise.resolve(window.refreshRankCombinedMarketSupplyChart?.()).catch(()=>{});},100));
+        }
         const mode=event.detail.mode==='minute'?'minute':'day',key=name==='__allCharts'?name+':'+mode:name;
         if(!name||timers.has(key))return;
         timers.set(key,setTimeout(()=>{timers.delete(key);void Promise.resolve(name==='__allCharts'?window.RankChartAxis?.refreshCharts?.({mode}):window[name]?.()).catch(()=>{});},100));

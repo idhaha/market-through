@@ -1,7 +1,7 @@
 (() => {
     'use strict';
     function initialize() {
-        const concentration = document.getElementById('concentrationChartPanel');
+        const concentration = (document.getElementById('concentrationChartPanel') || document.getElementById('combinedConcentrationChartPanel'));
         if (!concentration || concentration.dataset.adrInitialized) return;
         concentration.dataset.adrInitialized = 'true';
         let row = concentration.closest('.rank-chart-row');
@@ -467,7 +467,7 @@
             resizeFrame = null;
             const size = concentration.getBoundingClientRect();
             if (size.width > 0 && size.height > 0) {
-                const candle = document.getElementById('concentrationCandleArea');
+                const candle = concentration.querySelector('.concentration-candle-area');
                 const candleHeight = candle && !candle.hidden ? candle.getBoundingClientRect().height : 0;
                 const baseHeight = size.height - candleHeight;
                 panel.style.setProperty('--rank-adr-base-height', `${baseHeight}px`);

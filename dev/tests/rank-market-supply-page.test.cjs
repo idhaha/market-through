@@ -14,7 +14,7 @@ await page.goto('http://market-page.test/');await page.addStyleTag({content:fs.r
 for(const file of ['rank-chart-cache.js','rank-chart-axis.js','rank-supply-guide.js','concentration-chart.js','rank-adr-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js','rank-connection-status.js'])await page.addScriptTag({path:'public/'+file});
 await page.evaluate(()=>document.dispatchEvent(new Event('DOMContentLoaded')));await page.waitForFunction(()=>document.querySelector('#rankMarketSupplyChartPanel .rank-adr-status').textContent.includes('일별 순매수대금'));
 const measure=()=>page.evaluate(()=>[...document.querySelectorAll('.rank-chart-row>.panel')].map(panel=>{const c=panel.querySelector('canvas'),r=panel.getBoundingClientRect(),b=c.getBoundingClientRect();return {id:panel.id,x:r.x,y:r.y,offset:b.y-r.y,height:b.height,bottom:r.bottom,footer:panel.querySelector('.rank-card-footer')?.getBoundingClientRect().bottom};}));
-await page.waitForTimeout(150);const layout=await measure();assert.equal(layout.length,16);const market=layout.find(p=>p.id==='rankMarketSupplyChartPanel'),supply=layout.find(p=>p.id==='rankSupplyChartPanel');assert.equal(market.height,supply.height);assert.ok(Math.abs(market.offset-supply.offset)<2,JSON.stringify(layout));assert.ok(market.footer<=market.bottom+2,JSON.stringify(market));
+await page.waitForTimeout(150);const layout=await measure();assert.equal(layout.length,18);const market=layout.find(p=>p.id==='rankMarketSupplyChartPanel'),supply=layout.find(p=>p.id==='rankSupplyChartPanel');assert.equal(market.height,supply.height);assert.ok(Math.abs(market.offset-supply.offset)<2,JSON.stringify(layout));assert.ok(market.footer<=market.bottom+2,JSON.stringify(market));
 await page.locator('#rankMarketSupplyChartPanel .concentration-candle-toggle').click();await page.waitForTimeout(100);assert.equal(await page.locator('#rankMarketSupplyChartPanel .rank-adr-candle-area').isVisible(),true);assert.equal(await page.locator('#rankSupplyChartPanel .rank-adr-candle-area').isVisible(),true);
 await page.locator('#rankMarketSupplyChartPanel .concentration-candle-toggle').click();await page.waitForTimeout(100);
 const ls=page.locator('#rankLsMarketSupplyChartPanel');
@@ -69,7 +69,7 @@ assert.equal(await page.evaluate(()=>{const ids=[...document.querySelectorAll('[
 await page.waitForTimeout(100);
 await ls.screenshot({path:'dev/output/ls-market-supply-card.png'});
 await page.evaluate(()=>document.querySelectorAll('*').forEach(e=>{if(e.scrollLeft)e.scrollLeft=0;}));
-await page.screenshot({path:'dev/output/market-supply-full-page.png',fullPage:true});assert.equal(await page.locator('.supply-info-button').count(),13);
+await page.screenshot({path:'dev/output/market-supply-full-page.png',fullPage:true});assert.equal(await page.locator('.supply-info-button').count(),15);
 await page.evaluate(t=>{RankChartAxis.registerHover('test-shared-hover',()=> 'day',()=>t,()=>{});RankChartAxis.synchronizeHover('test-shared-hover');},t);
 assert.equal(await page.locator('#lsConcentrationTooltip').isVisible(),true);
 assert.match(await page.locator('#lsConcentrationTooltip').innerText(),/30.0%/);
@@ -196,4 +196,4 @@ assert.equal(await page.locator('#lsConcentrationChartPanel .concentration-curre
 const valueRows=await page.locator('#lsConcentrationChartPanel').evaluate(e=>{const a=e.querySelector('#lsConcentrationCurrentRate').getBoundingClientRect(),b=e.querySelector('.concentration-current-cumulative').getBoundingClientRect();return {firstBottom:a.bottom,secondTop:b.top,position:getComputedStyle(e.querySelector('.chart-value-with-date')).position,date:e.querySelector('.concentration-value-date').textContent};});
 assert.ok(valueRows.secondTop>=valueRows.firstBottom);assert.equal(valueRows.position,'absolute');assert.ok(!valueRows.date.includes(':'));
 await page.locator('#lsConcentrationChartPanel').screenshot({path:'dev/output/ls-concentration-cumulative.png'});
-assert.deepEqual(errors,[]);console.log('Full page: 16 cards in 3 columns, aligned plot heights/start, footer containment, shared candle toggle passed.');}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});
+assert.deepEqual(errors,[]);console.log('Full page: 18 cards in 3 columns, aligned plot heights/start, footer containment, shared candle toggle passed.');}finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

@@ -11,35 +11,22 @@
     };
 
     document.addEventListener('DOMContentLoaded', () => {
-        const original = document.getElementById('concentrationChartPanel');
-        if (original && !window.rankIndependentClient && original.closest('.rank-chart-row')) {
-            for (const [prefix,label] of [['kisConcentration','한투'],['lsConcentration','LS']]) {
-                const copy = original.cloneNode(true);
-                for (const element of [copy, ...copy.querySelectorAll('*')]) {
-                    for (const attr of ['id', 'aria-controls', 'aria-describedby']) {
-                        const value = element.getAttribute(attr);
-                        if (value) element.setAttribute(attr, value.replaceAll('concentration', prefix));
-                    }
-                }
-                copy.querySelector('h2').textContent = `쏠림율(${label})`;
-                copy.querySelectorAll('.rank-card-source,.rank-connection-dot').forEach(element => element.remove());
-                copy.setAttribute('aria-label', `쏠림율(${label}) 차트`);
-                copy.querySelector('#'+prefix+'More').setAttribute('data-action', 'more');
-                copy.querySelector('#'+prefix+'Period').classList.add('concentration-period');
-                original.closest('.rank-chart-row').append(copy);
-            }
-        }
-        initialize();
-        if (document.getElementById('kisConcentrationChartPanel')) initialize('kis');
-        if (document.getElementById('lsConcentrationChartPanel')) initialize('ls');
+        if(window.rankIndependentClient){initialize();return;}
+        const panel=document.getElementById('concentrationChartPanel');
+        if(!panel)return;
+        for(const element of [panel,...panel.querySelectorAll('*')])for(const attr of ['id','aria-controls','aria-describedby']){const value=element.getAttribute(attr);if(value)element.setAttribute(attr,value.replaceAll('concentration','combinedConcentration'));}
+        panel.querySelector('h2').textContent='쏠림율';panel.setAttribute('aria-label','쏠림율 차트');
+        panel.querySelector('#combinedConcentrationMore').setAttribute('data-action','more');panel.querySelector('#combinedConcentrationPeriod').classList.add('concentration-period');
+        initialize('combined');
+        window.getCombinedRankChartState=window.getRankChartState;
     });
     function initialize(broker = '') {
-        const kis = !!broker, prefix = broker === 'ls' ? 'lsConcentration' : 'kisConcentration';
+        const combined = broker === 'combined', kis = !!broker && !combined, prefix = combined ? 'combinedConcentration' : broker === 'ls' ? 'lsConcentration' : 'kisConcentration';
         const state = { selection: null, mode: 'day', interval: 1, points: [], cursor: null,
             hasMore: false, busy: false, visible: 0, start: 0, request: 0, controller: null, hover: null, drag: null };
-        const chartKey = kis ? prefix : 'concentration';
-        const get = id => document.getElementById(kis ? id.replace(/^concentration/, prefix) : id);
-        const api = name => kis ? name.replace('Concentration', broker === 'ls' ? 'LsConcentration' : 'KisConcentration').replace('RankChart', broker === 'ls' ? 'LsRankChart' : 'KisRankChart') : name;
+        const chartKey = broker ? prefix : 'concentration';
+        const get = id => document.getElementById(broker ? id.replace(/^concentration/, prefix) : id);
+        const api = name => kis ? name.replace('Concentration', combined ? 'CombinedConcentration' : broker === 'ls' ? 'LsConcentration' : 'KisConcentration').replace('RankChart', combined ? 'CombinedRankChart' : broker === 'ls' ? 'LsRankChart' : 'KisRankChart') : name;
         let refreshPending = false, refreshTimer = null;
         function flushRefresh() {
             if (!refreshPending || state.busy || state.drag || (typeof isCapturing !== 'undefined' && isCapturing) || refreshTimer) return;
@@ -47,7 +34,7 @@
         }
         const panel = get('concentrationChartPanel');
         if (!panel) return;
-        if (!kis && !window.rankIndependentClient) panel.querySelector('h2').textContent = '쏠림율(키움)';
+        if (!kis && !window.rankIndependentClient) panel.querySelector('h2').textContent = combined ? '쏠림율' : '쏠림율(키움)';
         window.RankSupplyGuide?.attach(panel, 'concentration', broker || 'kiwoom');
         if (!kis) document.addEventListener('click', event => {
             if (window.rankIndependentClient || window.rankCandleSyncing) return;
@@ -106,17 +93,21 @@
             chartGuideEdits: window.RankSupplyGuide?.getEdits() || {},
             candleOpen: !candleArea.hidden, mode: state.mode, interval: state.interval,
             ...(window.getRankAdrCandleOpen ? { adrCandleOpen: window.getRankAdrCandleOpen() } : {}),
+            ...(!kis && window.getRankCombinedTurnoverCandleOpen ? { combinedTurnoverCandleOpen: window.getRankCombinedTurnoverCandleOpen() } : {}),
             ...(window.getRankTurnoverCandleOpen ? { turnoverCandleOpen: window.getRankTurnoverCandleOpen() } : {}),
             ...(window.getRankVolatilityDisplaySettings ? { volatility: window.getRankVolatilityDisplaySettings() } : {}),
             ...(window.getRankBreadthDisplaySettings ? { breadth: window.getRankBreadthDisplaySettings() } : {}),
+            ...(window.getRankCombinedMarketSupplyDisplaySettings ? { combinedMarketSupply: window.getRankCombinedMarketSupplyDisplaySettings() } : {}),
             ...(window.getRankKiwoomMarketSupplyDisplaySettings ? { kiwoomMarketSupply: window.getRankKiwoomMarketSupplyDisplaySettings() } : {}),
             ...(window.getRankLsMarketSupplyDisplaySettings ? { lsMarketSupply: window.getRankLsMarketSupplyDisplaySettings() } : {}),
+            ...(window.getRankCombinedSupplyDisplaySettings ? { combinedSupply: window.getRankCombinedSupplyDisplaySettings() } : {}),
             ...(window.getRankKisSupplyDisplaySettings ? { kisSupply: window.getRankKisSupplyDisplaySettings() } : {}),
             ...(window.getRankLsSupplyDisplaySettings ? { lsSupply: window.getRankLsSupplyDisplaySettings() } : {}),
             ...(window.getRankMarketSupplyDisplaySettings ? { marketSupply: window.getRankMarketSupplyDisplaySettings() } : {}),
             ...(window.getRankSentimentDisplaySettings ? { sentiment: window.getRankSentimentDisplaySettings() } : {})
         });
         window[api('applyConcentrationDisplaySettings')] = settings => {
+            if(combined && settings?.combinedConcentration)settings={...settings,...settings.combinedConcentration};
             if (!kis && settings && Object.hasOwn(settings, 'chartGuideEdits')) window.RankSupplyGuide?.applyEdits(settings.chartGuideEdits);
             const nextCandleOpen = settings?.candleOpen === true;
             if(!kis && !window.rankIndependentClient)window.rankMainCandleOpen=nextCandleOpen;
@@ -134,13 +125,16 @@
                 if (!window.rankIndependentClient || settings && 'turnoverCandleOpen' in settings) window.applyRankTurnoverCandleOpen?.(window.rankIndependentClient ? settings.turnoverCandleOpen === true : nextCandleOpen);
                 if (settings && 'volatility' in settings) window.applyRankVolatilityDisplaySettings?.(window.rankIndependentClient ? settings.volatility : {...settings.volatility,candleOpen:nextCandleOpen});
                 if (settings && 'breadth' in settings) window.applyRankBreadthDisplaySettings?.(window.rankIndependentClient ? settings.breadth : {...settings.breadth,candleOpen:nextCandleOpen});
+                if (settings && 'combinedMarketSupply' in settings) window.applyRankCombinedMarketSupplyDisplaySettings?.(settings.combinedMarketSupply);
                 if (settings && 'kiwoomMarketSupply' in settings) window.applyRankKiwoomMarketSupplyDisplaySettings?.(settings.kiwoomMarketSupply);
                 if (settings && 'lsMarketSupply' in settings) window.applyRankLsMarketSupplyDisplaySettings?.(settings.lsMarketSupply);
+                if (settings && 'combinedSupply' in settings) window.applyRankCombinedSupplySettings?.(settings.combinedSupply);
                 if (settings && 'kisSupply' in settings) window.applyRankKisSupplySettings?.(settings.kisSupply);
                 if (settings && 'lsSupply' in settings) window.applyRankLsSupplySettings?.(settings.lsSupply);
                 if (settings && 'marketSupply' in settings) window.applyRankMarketSupplyDisplaySettings?.(settings.marketSupply);
                 if (settings && 'sentiment' in settings) window.applyRankSentimentDisplaySettings?.(window.rankIndependentClient ? settings.sentiment : {...settings.sentiment,candleOpen:nextCandleOpen});
-                if(!window.rankIndependentClient){ window.applyRankKiwoomMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankLsMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankSupplyCandleOpen?.(nextCandleOpen); window.applyRankKisSupplyCandleOpen?.(nextCandleOpen); window.applyRankLsSupplyCandleOpen?.(nextCandleOpen); window.applyRankMarketSupplyCandleOpen?.(nextCandleOpen); }
+                if(!window.rankIndependentClient){ window.applyRankKiwoomMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankCombinedMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankLsMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankSupplyCandleOpen?.(nextCandleOpen); window.applyRankKisSupplyCandleOpen?.(nextCandleOpen); window.applyRankCombinedSupplyCandleOpen?.(nextCandleOpen); window.applyRankLsSupplyCandleOpen?.(nextCandleOpen); window.applyRankMarketSupplyCandleOpen?.(nextCandleOpen); }
+                window.applyRankCombinedTurnoverCandleOpen?.(settings?.combinedTurnoverCandleOpen ?? nextCandleOpen);
                 window.applyKisConcentrationDisplaySettings?.(settings); window.applyLsConcentrationDisplaySettings?.(settings);
             }
             state.hover = null; tooltip.hidden = true; candleTooltip.hidden = true;
@@ -436,7 +430,7 @@
             status.textContent = '';
             draw();
             try {
-                const response = await (window.RankChartCache?.fetch || fetch)(kis ? `/api/${broker}-concentration-chart` : window.rankIndependentClient && state.mode === 'minute' ? '/api/ls-concentration-chart' : '/api/concentration-chart', {
+                const response = await (window.RankChartCache?.fetch || fetch)(combined ? state.mode === 'minute' ? '/api/ls-concentration-chart' : '/api/concentration-chart' : kis ? `/api/${broker}-concentration-chart` : window.rankIndependentClient && state.mode === 'minute' ? '/api/ls-concentration-chart' : '/api/concentration-chart', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ code: state.selection.code, mode: state.mode, interval: state.interval, cursor: append ? state.cursor : null }),
                     signal: controller.signal

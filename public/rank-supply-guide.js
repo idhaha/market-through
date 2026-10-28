@@ -207,16 +207,16 @@
             const tab = document.createElement('button'); tab.type = 'button'; tab.textContent = text; tab.dataset.guideMode = mode;
             tab.id = `${id}${mode}Tab`; tab.setAttribute('role', 'tab'); tab.setAttribute('aria-controls', `${id}${mode}`); tabs.append(tab);
             const content = document.createElement('div'); content.id = `${id}${mode}`; content.setAttribute('role', 'tabpanel'); content.setAttribute('aria-labelledby', tab.id); content.tabIndex = 0;
-            const selectedBroker = window.rankIndependentClient && mode === 'minute' ? kind === 'concentration' ? 'ls' : kind === 'stock' ? 'kis' : broker : broker;
+            const selectedBroker = broker==='combined' && kind==='market' ? mode==='minute'?'kiwoom':'ls' : broker==='combined' ? mode==='minute'?(kind==='stock'?'kis':'ls'):'kiwoom' : window.rankIndependentClient && mode === 'minute' ? kind === 'concentration' ? 'ls' : kind === 'stock' ? 'kis' : broker : broker;
             const spec = description(kind, selectedBroker, mode);
             if(kind==='concentration' && mode==='minute')spec.extra += ' 파란 선은 해당 분의 쏠림율, 주황 선은 당일 누적 종목 거래대금 ÷ 당일 누적 시장 거래대금 ×100입니다. 분별 비율의 합계가 아닙니다. 날짜가 바뀌면 누적을 초기화하며, 장 시작 누적 자료를 확보하지 못한 구간은 미제공입니다.';
-            if(kind==='concentration' && broker==='ls' && mode==='minute')spec.extra += ' LS 시장 REST의 15:30 마감봉은 사후 집계 금액이 반영될 수 있어 한투의 해당 시각 누적 차분과 값이 다를 수 있습니다. 타사 값으로 보정하지 않습니다.';
+            if(kind==='concentration' && selectedBroker==='ls' && mode==='minute')spec.extra += ' LS 시장 REST의 15:30 마감봉은 사후 집계 금액이 반영될 수 있어 한투의 해당 시각 누적 차분과 값이 다를 수 있습니다. 타사 값으로 보정하지 않습니다.';
             const heading = document.createElement('h3'); heading.textContent = `${title} · ${text}`; content.append(heading);
             const unit = document.createElement('p'); unit.className = 'sentiment-guide-note'; unit.textContent = spec.unit; content.append(unit);
             const summaryTitle = document.createElement('h4'); summaryTitle.textContent = '일봉·분봉 수신 방식'; content.append(summaryTitle);
             const summary = document.createElement('dl'); summary.className = 'supply-source-list chart-transport-summary';
             for (const [period, label] of [['day','일봉'],['minute','1분봉']]) {
-                const periodBroker = window.rankIndependentClient && period === 'minute' ? kind === 'concentration' ? 'ls' : kind === 'stock' ? 'kis' : broker : broker;
+                const periodBroker = broker==='combined' && kind==='market' ? period==='minute'?'kiwoom':'ls' : broker==='combined' ? period==='minute'?(kind==='stock'?'kis':'ls'):'kiwoom' : window.rankIndependentClient && period === 'minute' ? kind === 'concentration' ? 'ls' : kind === 'stock' ? 'kis' : broker : broker;
                 const periodSpec = description(kind, periodBroker, period);
                 const term = document.createElement('dt'); term.textContent = label;
                 const detail = document.createElement('dd');
@@ -234,6 +234,10 @@
             for (const [label, text] of [['시장 범위', marketScope(kind, selectedBroker, mode)], ['집계·갱신', spec.note], ['캔들 출처', spec.candles], ['읽는 방법', spec.extra], ['비교 시 참고', spec.comparison || '양수는 순매수, 음수는 순매도입니다. 프로그램은 투자자 구분과 겹칠 수 있으므로 개인·외국인·기관과 더하지 않습니다. 결측·미제공 구간은 실제 0과 구별하며 임의로 채우지 않습니다.']]) {
                 const h = document.createElement('h4'), p = document.createElement('p'); h.textContent = label; p.textContent = text; content.append(h, p);
             }
+            const notes = document.createElement('section'); notes.hidden = true;
+            const notesTitle = document.createElement('h4'); notesTitle.textContent = '원천 자료 참고';
+            const notesText = document.createElement('p'); notesText.dataset.loadingNotes = mode;
+            notes.append(notesTitle, notesText); content.append(notes);
             contents.push(content);
         }
         guide.append(tabs, ...contents); panel.append(button, guide);
@@ -270,5 +274,17 @@
         select('day');
         makeEditable(button, guide, () => { pinned = true; show(); });
     }
-    window.RankSupplyGuide = { attach, makeEditable, getEdits: () => ({ ...edits }), applyEdits };
+    function loadingWarnings(panel, mode, warnings = []) {
+        const runtime = [], notes = [];
+        for (const text of warnings.flatMap(text => String(text).split(/\s+·\s+/))) {
+            const incident = /실패|오류|초과|지연|재시도|조회 한도|원천 0 응답|일부.*(?:자료|구간|조회|미제공)|과거.*(?:미완료|미확보)|누락/.test(text);
+            const explanatory = /출처:|표시 단위|금액:|^캔들|^가격 캔들|통합|KRX|NXT|웹소켓|REST|관측한|누적값|원천 분 시각|추정치|추가 검증 중|^장중 개인 미제공|비정기 갱신|선물 프로그램.*미제공|수집 이전/.test(text);
+            (explanatory && !incident ? notes : runtime).push(text);
+        }
+        const guide = document.getElementById(panel.id + 'Guide');
+        const content = guide?.querySelector('[data-loading-notes="' + mode + '"]');
+        if (content) { content.textContent = notes.join(' · '); content.parentElement.hidden = !notes.length; }
+        return runtime;
+    }
+    window.RankSupplyGuide = { loadingWarnings, attach, makeEditable, getEdits: () => ({ ...edits }), applyEdits };
 })();

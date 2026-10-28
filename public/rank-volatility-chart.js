@@ -60,7 +60,7 @@
         const panelId = sentiment ? 'rankSentimentChartPanel' : breadth ? 'rankBreadthChartPanel' : 'rankVolatilityChartPanel';
         const refreshName = sentiment ? 'refreshRankSentimentChart' : breadth ? 'refreshRankBreadthChart' : 'refreshRankVolatilityChart';
         const displayName = sentiment ? 'RankSentimentDisplaySettings' : breadth ? 'RankBreadthDisplaySettings' : 'RankVolatilityDisplaySettings';
-        const concentration = document.getElementById('concentrationChartPanel');
+        const concentration = (document.getElementById('concentrationChartPanel') || document.getElementById('combinedConcentrationChartPanel'));
         if (!concentration || document.getElementById(panelId)) return;
         const panel = document.createElement('section');
         panel.id = panelId; panel.className = 'panel rank-adr-panel rank-volatility-panel';
@@ -544,7 +544,7 @@ tip.hidden=false;}
             target.addEventListener('wheel', event => { if (!dates.length || !geometry || drag || !event.deltaY) return; const px = event.clientX - target.getBoundingClientRect().left; if (px < geometry.left || px > geometry.right) return; event.preventDefault(); zoom(event.deltaY < 0 ? .8 : 1.25, (px - geometry.left) / (geometry.right - geometry.left)); }, { passive: false });
         });
         function resize() {
-            const base = concentration.getBoundingClientRect().height - (document.getElementById('concentrationCandleArea')?.hidden === false ? document.getElementById('concentrationCandleArea').getBoundingClientRect().height : 0);
+            const base = concentration.getBoundingClientRect().height - (concentration.querySelector('.concentration-candle-area')?.hidden === false ? concentration.querySelector('.concentration-candle-area').getBoundingClientRect().height : 0);
             if (base > 0) panel.style.height = `${base + (candleArea.hidden ? 0 : 280)}px`;
             draw();
         }

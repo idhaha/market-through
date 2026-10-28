@@ -49,18 +49,19 @@
     }
     function initialize(broker = '') {
         if (broker && window.rankIndependentClient) return;
-        const suffix = broker === 'kis' ? 'KisSupply' : broker === 'ls' ? 'LsSupply' : 'Supply';
+        const combined = broker === 'combined';
+        const suffix = combined ? 'CombinedSupply' : broker === 'kis' ? 'KisSupply' : broker === 'ls' ? 'LsSupply' : 'Supply';
         const panelId = `rank${suffix}ChartPanel`, axisId = broker ? `${broker}Supply` : 'supply';
         const api = name => name.replace('Supply', suffix);
         const eventName = name => broker ? name.replace('rank-supply', `rank-${broker}-supply`) : name;
-        const endpoint = broker ? `/api/${broker}-supply/chart` : '/api/supply/chart';
+        const endpoint = combined ? '/api/supply/chart' : broker ? `/api/${broker}-supply/chart` : '/api/supply/chart';
         const selectionKey = broker ? `rank${suffix}SelectedV1` : 'rankSupplySelectedV1';
         const breadth = document.getElementById('rankBreadthChartPanel'), row = window.rankIndependentClient ? document.getElementById('tab_rank') : breadth?.closest('.rank-chart-row');
         if (!row || document.getElementById(panelId)) return;
         const panel = document.createElement('section');
         panel.id = panelId; panel.className = 'panel rank-adr-panel rank-supply-panel' + (broker ? ' rank-broker-supply-panel' : '');
         panel.setAttribute('aria-label', '종목별 수급 차트');
-        panel.innerHTML = `<div class="concentration-chart-header"><h2>종목 수급${broker === 'kis' ? '(한투)' : broker === 'ls' ? '(LS)' : window.rankIndependentClient ? '' : '(키움)'}</h2><button type="button" data-action="add-stock" aria-haspopup="dialog" aria-expanded="false">+ 종목 추가</button></div>
+        panel.innerHTML = `<div class="concentration-chart-header"><h2>종목 수급${combined ? '' : broker === 'kis' ? '(한투)' : broker === 'ls' ? '(LS)' : window.rankIndependentClient ? '' : '(키움)'}</h2><button type="button" data-action="add-stock" aria-haspopup="dialog" aria-expanded="false">+ 종목 추가</button></div>
             <div class="rank-adr-controls"><select class="supply-stock-select" aria-label="수급 종목 선택"></select><button type="button" data-mode="day" class="active" aria-pressed="true">일봉</button><button type="button" data-mode="minute" aria-pressed="false">1분봉(누적)</button>
             <button type="button" class="concentration-candle-toggle" aria-expanded="false">캔들차트</button></div>
             <div class="supply-legend">${series.map(s => `<button type="button" data-series="${s}" aria-label="${names[s]} 표시" title="${names[s]} 표시 전환" aria-pressed="true" style="color:${colors[s]}"><span>${Array.from(names[s])[0]}</span><output><span class="supply-value-number">—</span><span class="supply-value-unit"></span></output></button>`).join('')}</div>
@@ -386,7 +387,7 @@
                 let firstResponse=true;
                 do {
                 const params = new URLSearchParams({ code: selected, mode, ...(mode === 'day' ? { progressive: '1' } : {}), ...(append ? { cursor: nextCursor } : {}) });
-                const result = await request(`${window.rankIndependentClient && mode === 'minute' ? '/api/kis-supply/chart' : endpoint}?${params}`, { signal: current.signal });
+                const result = await request(`${(combined || window.rankIndependentClient) && mode === 'minute' ? '/api/kis-supply/chart' : endpoint}?${params}`, { signal: current.signal });
                 if (id !== revision) return;
                 const followLatest = start + Math.min(points.length, count ?? points.length) >= points.length, oldAnchor = points[start]?.t;
                 const fresh = (result.points || []).filter(p => Number.isFinite(p.t));
@@ -402,7 +403,7 @@
                         minuteDays.add(day);
                         if(day===result.date)continue;
                         const params=new URLSearchParams({code:selected,mode:'minute',date:day});
-                        const past=await request(`${window.rankIndependentClient && mode === 'minute' ? '/api/kis-supply/chart' : endpoint}?${params}`,{signal:current.signal});
+                        const past=await request(`${(combined || window.rankIndependentClient) && mode === 'minute' ? '/api/kis-supply/chart' : endpoint}?${params}`,{signal:current.signal});
                         if(id!==revision)return;
                         points=mergeFlow(points,(past.points || []).filter(p=>Number.isFinite(p.t)));
                     }
@@ -418,8 +419,9 @@
                 const hasFlow = points.some(point => series.some(field => Number.isFinite(point[field])));
                 const periodPoints=mode==='minute' && todayOnly?points.filter(p=>dayKey(p.t)===dayKey(Date.now())):points;
                 const period = periodPoints.length ? `${dayKey(periodPoints[0].t)}${dayKey(periodPoints[0].t) === dayKey(periodPoints.at(-1).t) ? '' : ' ~ ' + dayKey(periodPoints.at(-1).t)}` : '당일 자료 없음';
-                const message = mode === 'minute' ? `${period} · 1분 누적 · 미수집 구간 제외` : `일별 순매수수량 · ${points.length.toLocaleString()}봉 · 단위: 주/천주`;
-                const warnings = (result.warnings || []).filter(text => !text.startsWith('1분마다 관측한 당일 누적 순매수수량'));
+                const message = mode === 'minute' ? `${period}` : `일별 순매수수량 · ${points.length.toLocaleString()}봉`;
+                let warnings = (result.warnings || []).filter(text => !text.startsWith('1분마다 관측한 당일 누적 순매수수량'));
+                warnings = window.RankSupplyGuide?.loadingWarnings(panel, mode, warnings) || warnings;
                 chartMessage = `${hasFlow ? message : '수급 기록 없음'}${warnings.length ? ` · ${warnings.join(' · ')}` : ''}${result.status?.error && result.date === dayKey(Date.now()) ? ` · ${result.status.error}` : ''}`;
                 if(result.pending)chartMessage=hasFlow?`${chartMessage} · 추가 조회 중…`:'가격 수신 · 수급 조회 중…';
                 window.setRankCardConnection?.(panel, !result.status?.error && !result.warnings?.some(text => /실패|오류/.test(text)));
@@ -628,7 +630,7 @@
         picker.querySelector('[data-close]').addEventListener('click', closePicker);
         picker.addEventListener('cancel', event => { if (saving) event.preventDefault(); });
         picker.addEventListener('close', () => { picker.hidden = true; ++searchRevision; clearTimeout(searchTimer); clearSuggestions(); paintStocks(); });
-        const reference = document.getElementById('concentrationChartPanel') || breadth;
+        const reference = (document.getElementById('concentrationChartPanel') || document.getElementById('combinedConcentrationChartPanel')) || breadth;
         window[api('applyRankSupplyCandleOpen')] = open => {
             showCandles=open===true;candleArea.hidden=!showCandles;
             panel.querySelector('.concentration-candle-toggle').setAttribute('aria-expanded',String(showCandles));
@@ -649,8 +651,13 @@
             const controlExtra = Math.max(0, panel.querySelector('.rank-adr-controls').getBoundingClientRect().height - 40);
             panel.style.height = `${base + controlExtra + (showCandles ? 280 : 0)}px`; draw();
         }
-        new ResizeObserver(resize).observe(reference); new ResizeObserver(draw).observe(canvas.parentElement);
-        new ResizeObserver(resize).observe(panel.querySelector('.rank-adr-controls'));
+        let resizeFrame = 0;
+        function scheduleResize() {
+            if (resizeFrame) return;
+            resizeFrame = requestAnimationFrame(() => { resizeFrame = 0; resize(); });
+        }
+        new ResizeObserver(scheduleResize).observe(reference); new ResizeObserver(scheduleResize).observe(canvas.parentElement);
+        new ResizeObserver(scheduleResize).observe(panel.querySelector('.rank-adr-controls'));
         document.addEventListener('visibilitychange', () => { if (!document.hidden) window[api('refreshRankSupplyChart')](); });
         window.addEventListener('online', window[api('refreshRankSupplyChart')]);
         if(!window.rankIndependentClient && typeof window.rankMainCandleOpen==='boolean')window[api('applyRankSupplyCandleOpen')](window.rankMainCandleOpen);
@@ -659,6 +666,6 @@
         resize(); document.dispatchEvent(new Event(eventName('rank-supply-ready')));
         if (!window.rankIndependentClient && !window.rankManagedChartRefresh) window[api('refreshRankSupplyChart')]();
     }
-    const initializeAll = () => { initialize(); initialize('kis'); initialize('ls'); };
+    const initializeAll = () => { if (window.rankIndependentClient) initialize(); else initialize('combined'); };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initializeAll, { once: true }); else initializeAll();
 })();
