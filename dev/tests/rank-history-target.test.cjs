@@ -91,3 +91,9 @@ test('minute refresh excludes daily-only risk cards while unfiltered refresh sti
  await f.api.refreshCharts({mode:'minute'});assert.deepEqual(calls,['concentration','supply']);
  calls.length=0;await f.api.refreshCharts();assert.deepEqual(calls,['concentration','supply','sentiment','volatility']);
 });
+
+test('minute: a failing leading source must not prevent stock supply history from loading',async()=>{
+ const f=fixture('minute');f.add('concentration',23,[22]);f.add('combinedSupply',23,[22,21]);f.states.concentration.fail=true;f.flush();
+ const result=await f.api.requestHistory('minute');f.flush();
+ assert.ok(f.calls.includes('combinedSupply'));assert.equal(result.advanced,true);assert.equal(f.domain().first,f.date(22));
+});

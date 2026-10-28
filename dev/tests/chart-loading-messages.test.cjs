@@ -25,5 +25,7 @@ const mobile=await page.evaluate(ids=>ids.flat().map(id=>{const r=document.getEl
 for(let i=1;i<mobile.length;i++){assert.equal(mobile[i].left,mobile[0].left);assert.ok(mobile[i].top>=mobile[i-1].bottom);}
 const split=await page.evaluate(()=>{const panel=document.getElementById('rankCombinedMarketSupplyChartPanel');const messages=RankSupplyGuide.loadingWarnings(panel,'minute',['키움 KRX+NXT 통합 · 표시 단위: 억원','투자자는 1분마다 관측한 누적값','과거 조회 실패: 요청 시간 초과','일부 구간 미제공']);return{messages,notes:document.querySelector('#'+panel.id+'Guide [data-loading-notes="minute"]').textContent};});
 assert.deepEqual(split.messages,['과거 조회 실패: 요청 시간 초과','일부 구간 미제공']);assert.match(split.notes,/표시 단위: 억원/);assert.match(split.notes,/관측한 누적값/);
+const concentrationNotes=await page.evaluate(()=>{const panel=document.getElementById('combinedConcentrationChartPanel');return {messages:RankSupplyGuide.loadingWarnings(panel,'minute',['LS 거래대금 미제공 구간은 결측 · 가격 캔들은 키움 자료','한투 거래대금 조회 실패: 시간 초과']),notes:document.querySelector('#'+panel.id+'Guide [data-loading-notes="minute"]').textContent};});
+assert.deepEqual(concentrationNotes.messages,['한투 거래대금 조회 실패: 시간 초과']);assert.match(concentrationNotes.notes,/미제공 구간은 결측/);assert.match(concentrationNotes.notes,/가격 캔들은 키움 자료/);
 assert.deepEqual(errors,[]);console.log('PASS trading chart desktop rows and mobile order; eight retained cards');
 }finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

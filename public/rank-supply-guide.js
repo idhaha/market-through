@@ -277,8 +277,9 @@
     function loadingWarnings(panel, mode, warnings = []) {
         const runtime = [], notes = [];
         for (const text of warnings.flatMap(text => String(text).split(/\s+·\s+/))) {
-            const incident = /실패|오류|초과|지연|재시도|조회 한도|원천 0 응답|일부.*(?:자료|구간|조회|미제공)|과거.*(?:미완료|미확보)|누락/.test(text);
-            const explanatory = /출처:|표시 단위|금액:|^캔들|^가격 캔들|통합|KRX|NXT|웹소켓|REST|관측한|누적값|원천 분 시각|추정치|추가 검증 중|^장중 개인 미제공|비정기 갱신|선물 프로그램.*미제공|수집 이전/.test(text);
+            const policy = /미제공 구간은.*결측|가격 캔들은|^가격 캔들/.test(text);
+            const incident = !policy && /실패|오류|초과|지연|재시도|조회 한도|원천 0 응답|일부.*(?:자료|구간|조회|미제공)|과거.*(?:미완료|미확보)|누락/.test(text);
+            const explanatory = policy || /출처:|표시 단위|금액:|^캔들|^가격 캔들|통합|KRX|NXT|웹소켓|REST|관측한|누적값|원천 분 시각|추정치|추가 검증 중|^장중 개인 미제공|비정기 갱신|선물 프로그램.*미제공|수집 이전/.test(text);
             (explanatory && !incident ? notes : runtime).push(text);
         }
         const guide = document.getElementById(panel.id + 'Guide');

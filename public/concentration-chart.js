@@ -35,7 +35,7 @@
         const panel = get('concentrationChartPanel');
         if (!panel) return;
         if (!kis && !window.rankIndependentClient) panel.querySelector('h2').textContent = combined ? '쏠림율' : '쏠림율(키움)';
-        window.RankSupplyGuide?.attach(panel, 'concentration', broker || 'kiwoom');
+        window.RankSupplyGuide?.attach(panel, 'concentration', window.rankIndependentClient ? 'combined' : broker || 'kiwoom');
         if (!kis) document.addEventListener('click', event => {
             if (window.rankIndependentClient || window.rankCandleSyncing) return;
             const button = event.target.closest?.('.rank-chart-row .concentration-candle-toggle');
@@ -261,7 +261,7 @@
             saveDisplaySettings();
         });
         function draw() {
-            if(window.rankIndependentClient)panel.querySelector('h2').textContent=state.mode==='minute'?'쏠림율(LS)':'쏠림율(키움)';
+            if(window.rankIndependentClient)panel.querySelector('h2').textContent='쏠림율';
             window.RankChartAxis.candleLabel(candleArea,state.selection?.name || state.selection?.code || '');
             if (!kis && !window.rankIndependentClient) document.dispatchEvent(new Event('rank-chart-state'));
             const width = chartArea.clientWidth;
@@ -459,9 +459,12 @@
                 market.textContent = result.market === 'K' ? '코스피' : '코스닥';
                 window.setRankCardConnection?.('#' + chartKey + 'ChartPanel', !result.partial);
                 const valid = state.points.filter(point => point.value != null).length;
+                const notices = window.RankSupplyGuide?.loadingWarnings(panel, state.mode, result.notice ? [result.notice] : []) || (result.notice ? [result.notice] : []);
+                const loadNotice = notices.join(' · ');
+                const missing = state.points.length - valid;
                 status.textContent = result.history_pending ? '시장 과거 데이터가 더 필요합니다. 추가 조회 버튼을 눌러 주세요.'
-                    : result.partial && result.notice ? result.notice : !state.points.length ? '표시할 데이터가 없습니다.' : !valid ? '같은 날짜·시간의 시장 거래대금이 없어 계산할 수 없습니다.'
-                    : result.notice || '';
+                    : result.partial && loadNotice ? loadNotice : !state.points.length ? '표시할 데이터가 없습니다.' : !valid ? '같은 날짜·시간의 시장 거래대금이 없어 계산할 수 없습니다.'
+                    : loadNotice || (missing ? `시장 거래대금 ${missing.toLocaleString()}개 시점 누락 · 쏠림율 계산 불가` : '');
             } catch (error) {
                 if (request !== state.request || error.name === 'AbortError') return;
                 state.historyError=error.message;

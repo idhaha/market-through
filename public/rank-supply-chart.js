@@ -70,7 +70,7 @@
             <div class="concentration-chart-footer rank-adr-zoom"><input type="range" min="0" max="0" value="0" aria-label="수급 과거 구간 이동" disabled><div class="concentration-controls"><button type="button" aria-label="수급 차트 축소">−</button><button type="button" aria-label="수급 차트 확대">+</button></div></div>
             <button type="button" data-action="more" class="concentration-icon-button" title="과거 데이터 더 불러오기" aria-label="과거 데이터 더 불러오기"><svg width="28" height="28" viewBox="0 0 34 34" shape-rendering="crispEdges" aria-hidden="true"><rect x="1" y="1" width="32" height="32" fill="#ededed"/><path d="M10 5v20" stroke="#737373" stroke-width="2"/><rect x="6" y="9" width="9" height="12" fill="#505050"/><path d="M22 5v20" stroke="#c0c0c0" stroke-width="2"/><rect x="18" y="9" width="9" height="12" fill="#969696"/><path d="M25 21v10M21 26h10" stroke="#444444" stroke-width="4"/></svg></button><p class="rank-adr-status" role="status"></p>`;
         row.append(panel);
-        window.RankSupplyGuide?.attach(panel, 'stock', broker || 'kiwoom');
+        window.RankSupplyGuide?.attach(panel, 'stock', window.rankIndependentClient ? 'combined' : broker || 'kiwoom');
         panel.querySelector('.rank-adr-controls').append(panel.querySelector('.supply-legend'));
         const latestDate = document.createElement('span'); latestDate.className = 'supply-latest-date'; latestDate.textContent = '—';
         panel.querySelector('.supply-legend').prepend(latestDate);
@@ -144,7 +144,7 @@
             context.font = '12px Inter, sans-serif'; return { w, h };
         }
         function draw() {
-            if(window.rankIndependentClient)panel.querySelector('h2').textContent=mode==='minute'?'종목 수급(한투)':'종목 수급(키움)';
+            if(window.rankIndependentClient)panel.querySelector('h2').textContent='종목 수급';
             window.RankChartAxis.loadingBar(canvas.parentElement,flowLoading,'수급');
             window.RankChartAxis.loadingBar(candleArea,candleLoading,'캔들');
             window.RankChartAxis.candleLabel(candleArea,config.archive.find(stock=>stock.code===selected)?.name || selected);

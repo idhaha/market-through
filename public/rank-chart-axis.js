@@ -187,22 +187,22 @@
             if(coordinated){
                 for(const [id] of participants){try{await ensureReady(historyLoaders.get(id));}catch{failures.push(id);}}
                 // One leading page establishes a fixed target; peers catch up to it.
-                if(!target && !failures.length){
+                if(!target && (!failures.length || mode==='minute')){
                     const leaders=[...participants].sort(([a],[b])=>(minuteCharts.get(a)?.first || '').localeCompare(minuteCharts.get(b)?.first || ''));
                     for(const [id] of leaders){
-                        const loader=historyLoaders.get(id);if(!loader.state?.().hasMore)continue;
+                        const loader=historyLoaders.get(id);if(failures.includes(id) || !loader.state?.().hasMore)continue;
                         try{
                             let pages=0;
                             while(loader.state().hasMore && (!target || target>=before)){
                                 if(++pages>80)throw new Error('과거 조회 페이지 한도 도달');
                                 await step(id);target=minuteCharts.get(id)?.first;
                             }
-                        }catch{failures.push(id);break;}
+                        }catch{failures.push(id);if(cancelled || mode!=='minute')break;continue;}
                         if(target && target<before)break;
                     }
                     if(!target)target=before || participants.map(([id])=>minuteCharts.get(id)?.first).filter(Boolean).sort()[0];
                 }
-                if(target && !failures.length){
+                if(target && (!failures.length || mode==='minute')){
                     for(const [id] of participants){
                         const loader=historyLoaders.get(id);let pages=0;
                         try{
@@ -214,7 +214,7 @@
                         }catch{failures.push(id);}
                     }
                 }
-                if(target && !failures.length){
+                if(target && (!failures.length || mode==='minute')){
                     for(const [id] of participants){
                         const loader=historyLoaders.get(id),ensure=loader.state?.().ensureRange;
                         if(ensure)try{await ensure(target);await ensureReady(loader);if(loader.state?.().error)throw new Error(loader.state().error);}catch{failures.push(id);}
