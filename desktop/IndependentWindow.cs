@@ -10,12 +10,13 @@ using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
 internal static class Program {
-    internal const string Identity = "MarketThrough.Rank.Independent.v1";
+    internal static string Identity = "MarketThrough.Rank.Independent.v1";
     [STAThread] static void Main(string[] args) {
         Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
         string url;
         try { url = Validate(args.Length > 0 ? args[0] : ""); }
         catch (Exception error) { MessageBox.Show(error.Message, "독립창"); return; }
+        if (new Uri(url).AbsolutePath == "/quick-note.html") Identity = "MarketThrough.Note.Independent.v1";
         bool created;
         using (var mutex = new Mutex(true, "Local\\" + Identity, out created)) {
             if (!created) {
@@ -35,8 +36,9 @@ internal static class Program {
         string url = Uri.UnescapeDataString(query.Substring(4)); var target = new Uri(url);
         string[] allowed = File.ReadAllLines(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "server-origin.txt"));
         bool trusted = Array.Exists(allowed, address => address.Trim().TrimEnd('/') == target.GetLeftPart(UriPartial.Authority));
-        if (!trusted || target.AbsolutePath != "/rank-independent.html" || target.Query.Length != 0 || target.UserInfo.Length != 0
-            || !System.Text.RegularExpressions.Regex.IsMatch(target.Fragment, "^#id=[a-f0-9]{32}&token=[a-f0-9]{64}$")) throw new Exception("허용되지 않은 독립창 서버 주소입니다.");
+        bool note = target.AbsolutePath == "/quick-note.html";
+        if (!trusted || (!note && target.AbsolutePath != "/rank-independent.html") || target.Query.Length != 0 || target.UserInfo.Length != 0
+            || !System.Text.RegularExpressions.Regex.IsMatch(target.Fragment, note ? "^#token=[a-f0-9]{64}$" : "^#id=[a-f0-9]{32}&token=[a-f0-9]{64}$")) throw new Exception("허용되지 않은 독립창 서버 주소입니다.");
         return url;
     }
 }
@@ -46,7 +48,9 @@ internal sealed class IndependentForm : Form {
     readonly string initial;
     string current;
     string allowed;
+    readonly string pagePath;
     bool ready, exiting;
+    bool noteDirty;
     Rectangle preferredBounds;
     bool movingBounds;
     string displayLayout;
@@ -56,9 +60,11 @@ internal sealed class IndependentForm : Form {
     readonly JavaScriptSerializer json = new JavaScriptSerializer();
     internal IndependentForm(string url) : this(url, null) { }
     internal IndependentForm(string url, string stateDirectory) {
-        folder = stateDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MarketThrough", "State");
+        pagePath = new Uri(url).AbsolutePath;
+        folder = stateDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MarketThrough", "State", pagePath == "/quick-note.html" ? "Note" : "");
         initial = url; current = url; allowed = new Uri(url).GetLeftPart(UriPartial.Authority);
         Text = "MarketThrough 독립창"; Font = new Font("맑은 고딕", 9F); FormBorderStyle = FormBorderStyle.Sizable; BackColor = Color.FromArgb(210, 218, 230);
+        if (pagePath == "/quick-note.html") Text = "MarketThrough 노트";
         MinimumSize = new Size(320, 160); Size = new Size(1250, 800); StartPosition = FormStartPosition.Manual;
         Directory.CreateDirectory(folder); RestoreBoundsFromDisk();
         displayLayout = GetDisplayLayout();
@@ -85,15 +91,17 @@ internal sealed class IndependentForm : Form {
                     }
                 };
                 web.CoreWebView2.NavigationStarting += delegate(object sender, CoreWebView2NavigationStartingEventArgs e) {
-                    Uri next; if (!Uri.TryCreate(e.Uri, UriKind.Absolute, out next) || next.GetLeftPart(UriPartial.Authority) != allowed || next.AbsolutePath != "/rank-independent.html") e.Cancel = true;
+                    Uri next; if (!Uri.TryCreate(e.Uri, UriKind.Absolute, out next) || next.GetLeftPart(UriPartial.Authority) != allowed || next.AbsolutePath != pagePath) e.Cancel = true;
                     else TopMost = false;
                 };
                 web.CoreWebView2.WebMessageReceived += delegate(object sender, CoreWebView2WebMessageReceivedEventArgs e) {
                     Uri source;
-                    if (!Uri.TryCreate(e.Source, UriKind.Absolute, out source) || source.GetLeftPart(UriPartial.Authority) != allowed || source.AbsolutePath != "/rank-independent.html") return;
+                    if (!Uri.TryCreate(e.Source, UriKind.Absolute, out source) || source.GetLeftPart(UriPartial.Authority) != allowed || source.AbsolutePath != pagePath) return;
                     string message;
                     try { message = e.TryGetWebMessageAsString(); } catch { return; }
                     if (message == "connection-ended") Close();
+                    else if (message.StartsWith("note-dirty:") && pagePath == "/quick-note.html") noteDirty = message == "note-dirty:true";
+                    else if (message == "note-close" && pagePath == "/quick-note.html") Close();
                     else if (message == "topmost:true") TopMost = true;
                     else if (message == "topmost:false") TopMost = false;
                     else if (message.StartsWith("page-scale:")) {
@@ -118,7 +126,8 @@ internal sealed class IndependentForm : Form {
                 var thread = new Thread(Listen); thread.IsBackground = true; thread.Start();
             } catch (Exception error) { MessageBox.Show("WebView2를 초기화할 수 없습니다. 독립창 앱을 다시 설치하세요.\n" + error.Message, "독립창"); Close(); }
         };
-        FormClosing += delegate {
+        FormClosing += delegate(object sender, FormClosingEventArgs e) {
+            if (pagePath == "/quick-note.html" && noteDirty && MessageBox.Show(this, "저장하지 않은 변경 내용을 버리고 닫을까요?", "노트", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) { e.Cancel = true; return; }
             boundsRecovery.Stop();
             NotifyClose();
             exiting = true; if (serverPipe != null) serverPipe.Dispose();
@@ -137,9 +146,11 @@ internal sealed class IndependentForm : Form {
                     using (var reader = new StreamReader(serverPipe)) { url = reader.ReadLine(); }
                     if (url != null && !exiting) BeginInvoke(new Action(delegate {
                         try { Program.Validate("marketthrough://open?url=" + Uri.EscapeDataString(url));
+                            if (new Uri(url).AbsolutePath != pagePath || new Uri(url).GetLeftPart(UriPartial.Authority) != allowed) return;
                             NotifyClose(); current = url; allowed = new Uri(url).GetLeftPart(UriPartial.Authority);
                             WindowState = FormWindowState.Normal; TopMost = false; EnsureVisibleBounds(); Show(); BringToFront(); Activate();
-                            web.CoreWebView2.Navigate(url);
+                            if (pagePath == "/quick-note.html") web.CoreWebView2.ExecuteScriptAsync("window.refreshNativeNoteCredentials(" + json.Serialize(new Uri(url).Fragment.Substring(7)) + ")");
+                            else web.CoreWebView2.Navigate(url);
                         } catch { }
                     }));
                 }
@@ -147,6 +158,7 @@ internal sealed class IndependentForm : Form {
         }
     }
     void NotifyClose() {
+        if (pagePath == "/quick-note.html") return;
         try {
             var target = new Uri(current); var values = target.Fragment.TrimStart('#').Split('&');
             string id = values[0].Substring(3), token = values[1].Substring(6);

@@ -41,6 +41,8 @@ desktop/dist/
 user_settings.json
 autosaved_user_settings.json
 user_settings.memo-backup.json
+user_settings.quick-note.json
+user_settings.quick-note.json.*.tmp
 user_settings.json.*.tmp
 autosaved_user_settings.json.*.tmp
 user_settings.memo-backup.json.*.tmp

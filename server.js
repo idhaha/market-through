@@ -112,6 +112,7 @@ const authSessionStore = createSessionStore({
 });
 
 // 미들웨어 설정
+const quickNoteGrants = new Map();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -137,6 +138,16 @@ app.use('/api', (req, res, next) => {
     if (req.method === 'OPTIONS' || ['/auth/login', '/auth/session', '/auth/logout'].includes(req.path)) return next();
     // This single endpoint uses a short-lived, scoped capability instead of browser cookies.
     if (req.method === 'POST' && /^\/rank-independent\/peer\/[a-f0-9]{32}$/.test(req.path)) return next();
+    if (req.path === '/quick-note' && ['GET', 'POST'].includes(req.method) && req.headers['x-note-token']) {
+        const token = req.headers['x-note-token'];
+        const grant = quickNoteGrants.get(token);
+        if (!grant || grant.expiresAt < Date.now() || !getSessionFromRequest({ headers: { cookie: grant.cookie } })) {
+            quickNoteGrants.delete(token);
+            return res.status(401).json({ success: false, error: '메인 화면에서 노트 아이콘을 다시 눌러 연결하세요.' });
+        }
+        grant.connected = true;
+        return next();
+    }
     const session = getSessionFromRequest(req);
     if (!session) return res.status(401).json({ success: false, error: '로그인이 필요합니다.' });
     req.authUser = session;
@@ -2669,6 +2680,52 @@ app.get('/api/fred', async (req, res) => {
  */
 const SETTINGS_FILE = migrateSettingsNames(__dirname);
 const MEMO_BACKUP_FILE = path.join(__dirname, 'user_settings.memo-backup.json');
+const QUICK_NOTE_FILE = path.join(__dirname, 'user_settings.quick-note.json');
+
+app.post('/api/quick-note/window', (req, res) => {
+    for (const [key, grant] of quickNoteGrants) if (grant.expiresAt < Date.now()) quickNoteGrants.delete(key);
+    if (quickNoteGrants.size >= 1000) return res.status(429).json({ success: false });
+    const token = crypto.randomBytes(32).toString('hex');
+    quickNoteGrants.set(token, { cookie: req.headers.cookie, expiresAt: Date.now() + 86400000, connected: false });
+    res.json({ success: true, token });
+});
+app.post('/api/quick-note/window-status', (req, res) => {
+    const grant = quickNoteGrants.get(req.body?.token);
+    res.json({ success: true, connected: !!grant?.connected });
+});
+
+function readQuickNote() {
+    return fs.existsSync(QUICK_NOTE_FILE)
+        ? JSON.parse(fs.readFileSync(QUICK_NOTE_FILE, 'utf8'))
+        : { text: null, revision: 0 };
+}
+
+app.get('/api/quick-note', (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try { res.json({ success: true, ...readQuickNote() }); }
+    catch { res.status(500).json({ success: false, error: '노트를 불러오지 못했습니다.' }); }
+});
+
+app.post('/api/quick-note', (req, res) => {
+    const { text, revision, delta = null } = req.body || {};
+    if (typeof text !== 'string' || text.length > 1000000 || !Number.isSafeInteger(revision) || revision < 0) {
+        return res.status(400).json({ success: false, error: '올바른 노트 내용과 버전이 필요합니다. (최대 100만 자)' });
+    }
+    try {
+        const current = readQuickNote();
+        if (current.revision !== revision) {
+            return res.status(409).json({ success: false, error: '다른 창에서 노트가 변경되었습니다. 작성 내용을 복사한 후 새로고침하세요.' });
+        }
+        if (delta !== null && (!Array.isArray(delta?.ops) || JSON.stringify(delta).length > 12000000 || delta.ops.some(op =>
+            typeof op?.insert !== 'string' && !(op?.insert && Object.keys(op.insert).length === 1 &&
+                typeof op.insert.image === 'string' && /^(https?:\/\/|data:image\/(png|jpeg|gif|webp);base64,)/i.test(op.insert.image))))) {
+            return res.status(400).json({ success: false, error: '올바른 노트 서식이 필요합니다.' });
+        }
+        const note = { text, delta, revision: current.revision + 1, updatedAt: Date.now() };
+        writeJsonAtomically(QUICK_NOTE_FILE, note);
+        res.json({ success: true, ...note });
+    } catch { res.status(500).json({ success: false, error: '노트를 서버에 저장하지 못했습니다.' }); }
+});
 const BACKUP_NAME_PATTERN = /^(user_settings_manualsaved|user_settings_autosaved|manualsaved_user_settings|autosaved_user_settings|full_backup)_\d{8}_\d{6}_\d{3}\.json$/;
 
 function getBackupPath(filename) {
