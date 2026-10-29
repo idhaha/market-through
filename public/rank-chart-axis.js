@@ -116,6 +116,21 @@
     }
     const pendingHistoryTargets=new Map();
     function registerHistoryLoader(id,load,busy=()=>false,state){historyLoaders.set(id,{load,busy,state});}
+    // Keep related cards serial, while at most three independent lanes catch up.
+    async function historyPeers(participants,mode,work){
+        const lanes=new Map();
+        for(const [id] of participants){
+            const lane=id.startsWith('kis') || id==='combinedSupply' && mode==='minute' ? 'kis'
+                : id.startsWith('ls') || id==='combinedConcentration' && mode==='minute' ? 'ls'
+                : ['sentiment','volatility'].includes(id) ? 'external' : 'kiwoom';
+            if(!lanes.has(lane))lanes.set(lane,[]);
+            lanes.get(lane).push(id);
+        }
+        const pending=[...lanes.values()];
+        await Promise.all(Array.from({length:Math.min(3,pending.length)},async()=>{
+            while(pending.length)for(const id of pending.shift())await work(id);
+        }));
+    }
     const selectionRestores=new Map();
     async function restoreHistoryRange(id,range){
         if(!range?.first)return;
@@ -154,6 +169,12 @@
     async function requestHistory(mode='minute') {
         if(historyBusy)return;
         const epoch=historyEpoch;
+        const metrics={mode,startedAt:Date.now(),cards:{}};
+        const timed=async(id,kind,work)=>{
+            const card=metrics.cards[id] ||= {pages:0,loadMs:0,rangeMs:0};
+            const started=Date.now();if(kind==='loadMs')card.pages++;
+            try{return await work();}finally{card[kind]+=Date.now()-started;}
+        };
         let before=mode==='day'?dailyCutoff:sharedCutoff;
         historyBusy=true;scheduleHistoryButtons();
         const participants=[...minuteCharts.entries()].filter(([id,c])=>c.mode===mode && historyLoaders.has(id)).sort(([a],[b])=>(refreshOrder.indexOf(a)<0?99:refreshOrder.indexOf(a))-(refreshOrder.indexOf(b)<0?99:refreshOrder.indexOf(b)));
@@ -169,7 +190,7 @@
         let target=pendingHistoryTargets.get(mode), cancelled=false,showAvailable=false;
         const ensureReady=async loader=>{
             const deadline=Date.now()+20000;
-            while(loader.busy() && Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,50));
+            while(loader.busy() && epoch===historyEpoch && Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,50));
             if(epoch!==historyEpoch){cancelled=true;throw new Error('조회 주기 변경');}
             if(loader.busy())throw new Error('조회 대기 시간 초과');
         };
@@ -177,7 +198,7 @@
             const loader=historyLoaders.get(id);await ensureReady(loader);
             if(minuteCharts.get(id)?.mode!==mode){cancelled=true;throw new Error('조회 주기 변경');}
             const old=minuteCharts.get(id)?.first, cursor=loader.state?.().cursor,progress=loader.state?.().progress;
-            await loader.load();await ensureReady(loader);
+            await timed(id,'loadMs',()=>loader.load());await ensureReady(loader);
             if(minuteCharts.get(id)?.mode!==mode){cancelled=true;throw new Error('조회 주기 변경');}
             const state=loader.state?.();
             if(state?.error)throw new Error(state.error);
@@ -185,7 +206,7 @@
         };
         try {
             if(coordinated){
-                for(const [id] of participants){try{await ensureReady(historyLoaders.get(id));}catch{failures.push(id);}}
+                await historyPeers(participants,mode,async id=>{try{await ensureReady(historyLoaders.get(id));}catch{failures.push(id);}});
                 // One leading page establishes a fixed target; peers catch up to it.
                 if(!target && (!failures.length || mode==='minute')){
                     const leaders=[...participants].sort(([a],[b])=>(minuteCharts.get(a)?.first || '').localeCompare(minuteCharts.get(b)?.first || ''));
@@ -203,7 +224,8 @@
                     if(!target)target=before || participants.map(([id])=>minuteCharts.get(id)?.first).filter(Boolean).sort()[0];
                 }
                 if(target && (!failures.length || mode==='minute')){
-                    for(const [id] of participants){
+                    await historyPeers(participants,mode,async id=>{
+                        if(cancelled || failures.includes(id))return;
                         const loader=historyLoaders.get(id);let pages=0;
                         try{
                             while(!minuteCharts.get(id)?.first || minuteCharts.get(id).first>target){
@@ -212,13 +234,14 @@
                                 await step(id);
                             }
                         }catch{failures.push(id);}
-                    }
+                    });
                 }
                 if(target && (!failures.length || mode==='minute')){
-                    for(const [id] of participants){
+                    await historyPeers(participants,mode,async id=>{
+                        if(cancelled || failures.includes(id))return;
                         const loader=historyLoaders.get(id),ensure=loader.state?.().ensureRange;
-                        if(ensure)try{await ensure(target);await ensureReady(loader);if(loader.state?.().error)throw new Error(loader.state().error);}catch{failures.push(id);}
-                    }
+                        if(ensure)try{await ensureReady(loader);await timed(id,'rangeMs',()=>ensure(target));await ensureReady(loader);if(loader.state?.().error)throw new Error(loader.state().error);}catch{failures.push(id);}
+                    });
                 }
                 if(failures.length && target && !cancelled)pendingHistoryTargets.set(mode,target);
                 else pendingHistoryTargets.delete(mode);
@@ -232,6 +255,10 @@
                 } catch(error){failures.push(id);}
             }
         } finally {
+            metrics.totalMs=Date.now()-metrics.startedAt;
+            metrics.cancelled=epoch!==historyEpoch || cancelled;
+            metrics.failures=[...new Set(failures)];
+            window.rankHistoryMetrics=metrics;
             if(epoch!==historyEpoch)return {advanced:false,failures:[],cancelled:true};
             historyBusy=false;
             // A failed comparison source must not hide minute history already
@@ -272,7 +299,7 @@
             notice.textContent=showAvailable?'일부 차트 조회 실패 · 확보한 과거 자료를 표시합니다.':advanced && !exhausted.length?'':failures.length?'일부 차트의 과거 조회가 완료되지 않아 기존 표시 기간을 유지합니다.':exhausted.length?'일부 차트는 원천 과거 자료가 끝나 해당 구간을 결측으로 표시합니다.':'공통으로 표시할 더 이전 자료가 없어 기존 표시 기간을 유지합니다.';
             notice.hidden=advanced && !failures.length && !exhausted.length;
         }
-        return {advanced,failures,exhausted,target,partial:showAvailable};
+        return {advanced,failures,exhausted,target,partial:showAvailable,metrics};
     }
     function sharedRange(id,values,getDate,mode,start,count,draw) {
         scheduleHistoryButtons();
@@ -281,6 +308,11 @@
         const length=mode==='day'?10:16;
         const first=values.length?dateParts(getDate(values[0])).slice(0,length):'';
         const last=values.length?dateParts(getDate(values.at(-1))).slice(0,length):'';
+        // Snapshot the old shared domain before registering the incoming tail.
+        // Only a view already touching its right edge follows; past views stay fixed.
+        const following=!historyBusy && !viewportSource && previous?.mode===mode && last>previous.last && viewports.has(mode)
+            ? sliderRange(mode) : null;
+        const atLatest=following && viewports.get(mode).last>=following.domain.last;
         const days=[...new Set(values.map(v=>dateParts(getDate(v)).slice(0,10)))].sort();
         const signature=`${mode}:${first}:${last}:${days.join(',')}`;
         const chart={id,dates:values.map(v=>dateParts(getDate(v)).slice(0,length)),signature,mode,first,last,days,draw,applied:previous?.applied,revision:previous?.revision};minuteCharts.set(id,chart);
@@ -288,6 +320,13 @@
         const today=new Date(Date.now()+9*3600000).toISOString().slice(0,10)+' 08:00';
         const candidate=historyMode && starts.length?starts.sort().at(-1):today;
         const cutoff=historyBusy ? (sharedCutoff || today) : historyMode && sharedCutoff && candidate>sharedCutoff ? sharedCutoff : candidate;
+        if(atLatest){
+            const domain=sliderDomain(mode),viewport=viewports.get(mode);
+            if(domain && domain.last>viewport.last){
+                const end=domain.position(domain.last);
+                viewports.set(mode,{first:domain.at(Math.max(0,end-following.span)),last:domain.last});
+            }
+        }
         if(cutoff!==sharedCutoff || previous?.signature!==signature){sharedCutoff=cutoff;notifyCharts();}
         if(mode!=='minute' && !(mode==='day' && dailyHistory && dailyCutoff))return viewportRange(chart,start,count);
         const effective=mode==='day'?dailyCutoff:cutoff;

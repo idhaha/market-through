@@ -3,6 +3,7 @@ function createKisHttp({ http, pause = ms => new Promise(resolve => setTimeout(r
     let queue = Promise.resolve();
     return {
         ...http,
+        quotationRateLimited: true,
         get(url, options) {
             const parsed = new URL(url);
             if (!parsed.pathname.startsWith('/uapi/')) return http.get(url, options);

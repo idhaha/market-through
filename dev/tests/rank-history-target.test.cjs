@@ -1,4 +1,32 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
+
+test('history overlaps independent lanes, serializes peers and commits one shared period after completion',async()=>{
+ const f=fixture();f.add('concentration',22,[18]);
+ const ids=['supply','marketSupply','kisConcentration','kisSupply','lsSupply','sentiment'];
+ let active=0,maxActive=0;const busy=new Set(),started=[],release=[];
+ for(const id of ids){
+  f.add(id,22,[18]);const state=f.states[id];
+  const lane=id.startsWith('kis')?'kis':id.startsWith('ls')?'ls':id==='sentiment'?'external':'kiwoom';
+  f.api.registerHistoryLoader(id,async()=>{
+   assert.ok(!busy.has(lane));busy.add(lane);active++;maxActive=Math.max(maxActive,active);started.push(id);
+   await new Promise(resolve=>release.push(resolve));
+   state.first=18;state.cursor++;state.pages=[];state.draw();active--;busy.delete(lane);
+  },()=>false,()=>({hasMore:state.pages.length>0,cursor:state.cursor}));
+ }
+ f.flush();const old=f.domain().first;let done=false;
+ const pending=f.api.requestHistory('day').then(result=>{done=true;return result;});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(active,3);assert.equal(started.length,3);assert.equal(f.domain().first,old);
+ for(let rounds=0;!done;rounds++){
+  assert.ok(rounds<30,'history must finish after all loaders are released');
+  release.splice(0).forEach(resolve=>resolve());await new Promise(resolve=>setImmediate(resolve));
+ }
+ const result=await pending;f.flush();
+ assert.equal(maxActive,3);assert.equal(started.length,ids.length);assert.equal(result.failures.length,0);
+ assert.equal(f.domain().first,f.date(18));assert.equal(result.target,f.date(18));
+ assert.equal(result.metrics.cards.supply.pages,1);assert.equal(result.metrics.cards.concentration.pages,1);
+ assert.equal(f.window.rankHistoryMetrics,result.metrics);assert.ok(result.metrics.totalMs>=0);
+});
 function fixture(mode='day',clock=null){
  const jobs=[],ctx={window:{},queueMicrotask:f=>jobs.push(f)};if(clock)ctx.Date=class extends Date{static now(){return Date.parse(clock);}};vm.runInNewContext(fs.readFileSync('public/rank-chart-axis.js','utf8'),ctx);
  const api=ctx.window.RankChartAxis,states={},calls=[];

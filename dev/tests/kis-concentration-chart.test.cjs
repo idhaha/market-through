@@ -50,6 +50,26 @@ test('daily uses actual amounts and never falls back to a price-times-volume est
  const f=fixture();const r=await f.service.query({code:'005930',mode:'day'},'user');
  assert.equal(r.points[0].value,20);assert.equal(r.points[0].stock_turnover,20000000);assert.equal(r.points[0].market_turnover,100000000);
 });
+
+test('historical HTTP pages outlive ten seconds while current-day pages refresh',async()=>{
+ for(const historical of [true,false]){
+  let at=Date.parse(historical?'2026-10-24T12:00:00+09:00':'2026-10-23T12:00:00+09:00');
+  const f=fixture(undefined,{now:()=>at});
+  await f.service.query({code:'005930',mode:'day'},'user');const first=f.calls.length;
+  at+=11000;await f.service.query({code:'005930',mode:'day'},'user');
+  assert.equal(f.calls.length,historical?first:first*2);
+  if(historical){at+=30*60000;await f.service.query({code:'005930',mode:'day'},'user');assert.equal(f.calls.length,first*2);}
+ }
+});
+
+test('managed KIS transport removes only the redundant service cooldown',async()=>{
+ for(const managed of [true,false]){
+  const waits=[],f=fixture(undefined,{pause:async ms=>waits.push(ms)});
+  f.options.http.quotationRateLimited=managed;
+  await f.service.query({code:'005930',mode:'day'},'user');
+  assert.equal(waits.filter(ms=>ms===350).length,managed?0:f.calls.length);
+ }
+});
 test('API failures do not expose axios configuration or credentials',async()=>{
  const f=fixture();f.options.http.get=async()=>{throw{isAxiosError:true,config:{appkey:'SECRET'},code:'ECONNRESET'};};
  const result=await f.service.query({code:'005930',mode:'minute'},'user');

@@ -422,7 +422,7 @@
                 const message = mode === 'minute' ? `${period}` : `일별 순매수수량 · ${points.length.toLocaleString()}봉`;
                 let warnings = (result.warnings || []).filter(text => !text.startsWith('1분마다 관측한 당일 누적 순매수수량'));
                 warnings = window.RankSupplyGuide?.loadingWarnings(panel, mode, warnings) || warnings;
-                chartMessage = `${hasFlow ? message : '수급 기록 없음'}${warnings.length ? ` · ${warnings.join(' · ')}` : ''}${result.status?.error && result.date === dayKey(Date.now()) ? ` · ${result.status.error}` : ''}`;
+                chartMessage = `${hasFlow ? message : '수급 기록 없음'}${warnings.length ? ` · ${warnings.join(' · ')}` : ''}${result.status?.error && mode === 'minute' ? ` · ${result.status.error}` : ''}`;
                 if(result.pending)chartMessage=hasFlow?`${chartMessage} · 추가 조회 중…`:'가격 수신 · 수급 조회 중…';
                 window.setRankCardConnection?.(panel, !result.status?.error && !result.warnings?.some(text => /실패|오류/.test(text)));
                 hover = null; info.hidden = true; setStatus(); draw();

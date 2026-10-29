@@ -70,3 +70,17 @@ test('progressive daily shares one job and exposes prices and investors while pr
  release();const done=await f.service.query({code:'005930',mode:'day'});
  assert.equal(done.points[0].program,-40);
 });
+
+test('KIS appkey duplicate rejection without subscription TR is surfaced and retries slowly',async t=>{
+ const f=fixture(t);f.service.start();await f.service.collect();const socket=f.sockets[0];socket.open();
+ socket.emit('message',JSON.stringify({header:{tr_id:'(null)'},body:{rt_cd:'9',msg1:'ALREADY IN USE appkey'}}));
+ assert.match(f.service.status.error,/앱키.*중복/);assert.equal(socket.readyState,3);
+ f.setTime(instant+5000);await f.service.collect();assert.equal(f.sockets.length,1);
+ f.setTime(instant+61000);await f.service.collect();assert.equal(f.sockets.length,2);
+});
+
+test('Oracle-priority setting disables local KIS socket while REST collection remains enabled',async t=>{
+ const previous=process.env.KIS_STOCK_REALTIME_ENABLED;process.env.KIS_STOCK_REALTIME_ENABLED='false';
+ try{const f=fixture(t);f.service.start();await f.service.collect();assert.equal(f.sockets.length,0);assert.ok(f.calls.some(c=>c.url.endsWith('investor-trend-estimate')));assert.match(f.service.status.websocket,/중지/);}
+ finally{if(previous===undefined)delete process.env.KIS_STOCK_REALTIME_ENABLED;else process.env.KIS_STOCK_REALTIME_ENABLED=previous;}
+});

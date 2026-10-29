@@ -66,8 +66,8 @@
 .supply-suggestions[hidden] { display:none; }
 .supply-suggestions [aria-selected="true"] { background:#e0f2fe; border-color:#339af0; }
 
-.rank-chart-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: start; }
-.rank-chart-row > .panel { width: 100%; min-width: 0; max-width: none; box-sizing: border-box; }
+.rank-chart-row { --rank-card-gap: 20px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--rank-card-gap); margin-top: var(--rank-card-gap); align-items: start; }
+.rank-chart-row > .panel { width: 100%; min-width: 0; max-width: none; margin-top: 0; box-sizing: border-box; }
 .turnover-legend { display:flex; gap:14px; font-size:12px; margin-bottom:6px; flex-shrink:0; }
 .rank-turnover-panel .turnover-legend { display:flex; flex-direction:column; gap:2px; margin:0 0 0 auto; min-width:0; max-width:100%; text-align:right; }
 .turnover-legend > [data-market] { display:grid; grid-template-columns:70px minmax(0,1fr); align-items:baseline; gap:6px; min-width:0; white-space:nowrap; }

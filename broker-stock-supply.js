@@ -179,6 +179,7 @@ function createBrokerStockSupply({ broker, directory, http, credentials, getToke
         const old = socket; socket = null; generation++; connecting = false; outstanding = null; subscribed.clear(); streamSubscriptions.clear();
         old?.terminate();
         status.websocket = '재연결 대기'; status.error = error;
+        console.warn('[StockSupplyConnection]', JSON.stringify({ broker, event: 'disconnect', reason: error }));
         nextConnect = now() + Math.min(60000, 2000 * 2 ** Math.min(failures++, 5));
     }
     function sync() {
@@ -200,6 +201,7 @@ function createBrokerStockSupply({ broker, directory, http, credentials, getToke
             : { header: { approval_key: auth, custtype: 'P', tr_type: removing ? '2' : '1', 'content-type': 'utf-8' }, body: { input: { tr_id: tr, tr_key: key } } }));
     }
     async function connect() {
+        if (broker === 'kis' && process.env.KIS_STOCK_REALTIME_ENABLED === 'false') { status.websocket = '실시간 수집 중지'; status.error = '한투 실시간 수집 중지: Oracle 우선 설정'; return; }
         if (stopped || connecting || socket || now() < nextConnect || !stocks().length && !streams.size) return;
         connecting = true; const revision = generation;
         try {
@@ -219,13 +221,19 @@ function createBrokerStockSupply({ broker, directory, http, credentials, getToke
                 lastMessage = now();
                 let message; try { message = JSON.parse(String(raw)); } catch {}
                 if (broker === 'kis' && message?.header?.tr_id === 'PINGPONG') { current.send(String(raw)); return; }
+                if (broker === 'kis' && String(message?.body?.rt_cd) === '9' && /ALREADY IN USE appkey/i.test(String(message.body.msg1))) {
+                    disconnect('한투 앱키 실시간 연결 중복: 다른 서버에서 사용 중');
+                    nextConnect = now() + 60000; return;
+                }
+                if (broker === 'kis' && message?.body?.msg1) console.info('[StockSupplyConnection]', JSON.stringify({broker,event:'response',tr:message.header?.tr_id,rt:message.body.rt_cd,message:String(message.body.msg1).replace(/[A-Za-z0-9_+\/=.~-]{24,}/g,'[redacted]').slice(0,160)}));
                 const ack = outstanding && (broker === 'ls' ? message?.header?.tr_cd === outstanding.tr && message?.header?.rsp_cd != null
                     : message?.header?.tr_id === outstanding.tr && message?.body?.rt_cd != null);
                 if (ack && outstanding) {
                     const success = broker === 'ls' ? ['00000', '000000', '0000', '0'].includes(String(message.header.rsp_cd)) : String(message.body.rt_cd) === '0';
                     if (!success) {
                         if (outstanding.extra) { outstanding.entry.error = '웹소켓 구독 거부 · REST 보완'; outstanding.entry.retryAt = now() + 60000; outstanding = null; sync(); return; }
-                        disconnect('프로그램 웹소켓 구독 실패'); return;
+                        const reason = String(broker === 'kis' ? message.body.msg1 || message.body.msg_cd || '' : message.header.rsp_msg || '').replace(/[A-Za-z0-9_+\/=.~-]{24,}/g, '[redacted]').slice(0,160);
+                        disconnect('프로그램 웹소켓 구독 실패' + (reason ? ': ' + reason : '')); return;
                     }
                     const responseCode = broker === 'kis' ? message.header.tr_key : null;
                     if (responseCode && responseCode.trim() !== outstanding.key.trim()) { disconnect('웹소켓 구독 응답 종목 불일치'); return; }
@@ -233,6 +241,7 @@ function createBrokerStockSupply({ broker, directory, http, credentials, getToke
                         if (outstanding.remove) streamSubscriptions.delete(outstanding.extra);
                         else { streamSubscriptions.set(outstanding.extra, outstanding.entry); outstanding.entry.error = ''; }
                     } else outstanding.remove ? subscribed.delete(outstanding.code) : subscribed.add(outstanding.code);
+                    console.info('[StockSupplyConnection]', JSON.stringify({ broker, event: 'subscribed', tr: outstanding.tr, code: outstanding.code || 'market' }));
                     outstanding = null; failures = 0; status.error = null; sync(); return;
                 }
                 try { receive(raw); } catch { status.error = '프로그램 분봉 저장 실패'; }
@@ -245,7 +254,7 @@ function createBrokerStockSupply({ broker, directory, http, credentials, getToke
             });
             current.on('pong', () => { if (socket === current) lastMessage = now(); });
             current.on('error', () => { if (socket === current) disconnect('프로그램 웹소켓 연결 실패'); });
-            current.on('close', () => { if (socket === current) disconnect('프로그램 웹소켓 연결 종료'); });
+            current.on('close', (code, reason) => { if (socket === current) disconnect('프로그램 웹소켓 연결 종료 (' + code + ') ' + String(reason || '').replace(/[A-Za-z0-9_+\/=.~-]{24,}/g,'[redacted]').slice(0,160)); });
         } catch { if (revision === generation) disconnect('프로그램 웹소켓 인증/연결 실패'); }
         finally { if (revision === generation) connecting = false; }
     }

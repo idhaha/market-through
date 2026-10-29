@@ -55,10 +55,22 @@ function createKisConcentrationChartService({ reference, http, credentials, getT
             } catch (error) {
                 // Axios error.config contains secrets. Only propagate a sanitized message.
                 throw new Error(error.response?.data?.msg1 || (error.isAxiosError ? `${tr} 통신 오류` : error.message));
-            } finally { await pause(350); }
-        }).then(rows => { entry.pending = false; entry.until = now() + 10000; return rows; }, error => { cache.delete(key); throw error; });
+            } finally { if (!http.quotationRateLimited) await pause(350); }
+        }).then(rows => {
+            entry.pending = false;
+            const today=new Date(now()+9*3600000).toISOString().slice(0,10).replaceAll('-','');
+            const end=params.FID_INPUT_DATE_2 || params.FID_INPUT_DATE_1;
+            const historical=/^\d{8}$/.test(end || '') && end<today;
+            entry.until=now()+(historical?30*60000:10000);
+            return rows;
+        }, error => { cache.delete(key); throw error; });
         queue = entry.promise.catch(() => {}); cache.set(key, entry);
         for (const [key, value] of cache) if (!value.pending && value.until <= now()) cache.delete(key);
+        while(cache.size>256){
+            const victim=[...cache].find(([,value])=>!value.pending);
+            if(!victim)break;
+            cache.delete(victim[0]);
+        }
         return entry.promise;
     }
     function readIndex(code, dates) {

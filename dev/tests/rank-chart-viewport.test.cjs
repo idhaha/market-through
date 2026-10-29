@@ -1,5 +1,32 @@
 const vm=require('node:vm'),fs=require('node:fs'),test=require('node:test'),assert=require('node:assert/strict');
 function setup(){const listeners={};const sandbox={window:{},queueMicrotask:()=>{},Date:class extends Date{static now(){return Date.parse('2026-10-23T10:00:00+09:00')}},document:{querySelectorAll:()=>[],addEventListener:(type,fn)=>{(listeners[type]??=[]).push(fn)}}};vm.runInNewContext(fs.readFileSync('public/rank-chart-axis.js','utf8'),sandbox);return {api:sandbox.window.RankChartAxis,listeners};}
+
+for(const mode of ['day','minute'])test(`${mode}: latest zoom follows new bars at constant width, with staggered sparse peers`,()=>{
+ const {api}=setup();
+ const date=i=>mode==='day'?new Date(Date.UTC(2026,8,1+i)).toISOString().slice(0,10):`2026-10-23 09:${String(i).padStart(2,'0')}`;
+ let dates=Array.from({length:30},(_,i)=>date(i));
+ const range=(id,rows)=>api.sharedRange(id,rows,v=>v,mode,0,null,()=>{});
+ const domain=()=>mode==='day'?api.dailyDomain():api.minuteDomain();
+ range('concentration',dates);range('supply',dates.filter((_,i)=>i%3===0));
+ api.selectViewport('concentration',.7,1);
+ const before=domain(),width=mode==='day'?before.days.length:before.span;
+ dates.push(date(30));range('concentration',dates);
+ assert.equal(domain().last,date(30));assert.equal(mode==='day'?domain().days.length:domain().span,width);
+ const first=domain().first;
+ // A slow response and repeated same-bar updates cannot pull the period back or shift it twice.
+ range('supply',dates.filter((_,i)=>i%3===0));range('concentration',dates);
+ assert.equal(domain().first,first);assert.equal(domain().last,date(30));
+ dates.push(date(31),date(32));range('concentration',dates);
+ assert.equal(domain().last,date(32));assert.equal(mode==='day'?domain().days.length:domain().span,width);
+ const slider={dataset:{}};api.updateSlider('supply',slider);assert.equal(slider.value,'10000');
+ // Looking at the past opts out; incoming data must not move that view.
+ api.scrollViewport('supply',0);const past=domain();
+ dates.push(date(33));range('concentration',dates);
+ assert.equal(domain().first,past.first);assert.equal(domain().last,past.last);
+ // Returning to the right edge opts back in.
+ api.scrollViewport('supply',10000);dates.push(date(34));range('concentration',dates);
+ assert.equal(domain().last,date(34));
+});
 test('live minute view recovers a zero count and grows after the opening bars arrive without a mode change',()=>{
  const {api}=setup();
  const range=(id,dates,start,count)=>api.sharedRange(id,dates,v=>v,'minute',start,count,()=>{});
