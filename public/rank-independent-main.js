@@ -29,8 +29,10 @@
         const controls = document.getElementById('rankIndependentControls');
         if (!controls) return;
         const button = document.createElement('button'); button.type = 'button'; button.textContent = '독립창'; button.className = 'btn-secondary';
-        const message = document.createElement('span'); message.setAttribute('role', 'status');
-        controls.append(button, message);
+        const statusRegion = document.createElement('span'); statusRegion.setAttribute('role', 'status');
+        const message = document.createElement('span');
+        statusRegion.append(message);
+        controls.append(button, statusRegion);
         let channel, timer, running = false, connected = false, started = 0, peerLastSeen = 0;
         let dirty = true, chartKey = '', replies = [], acknowledgements = [];
         const handled = new Set();

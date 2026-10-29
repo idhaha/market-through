@@ -8,11 +8,13 @@
         button.className = 'btn-secondary quick-note-button'; button.title = '노트 열기';
         button.setAttribute('aria-label', '노트 열기'); button.setAttribute('aria-controls', 'quickNotePanel');
         button.setAttribute('aria-expanded', 'false');
-        button.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="2" width="17" height="20" rx="2" fill="#3b82f6" stroke="#1d4ed8"/><path d="M8 3h10a1 1 0 0 1 1 1v16H8Z" fill="#eff6ff"/><path d="M3 6h3M3 11h3M3 16h3" stroke="#1e3a8a" stroke-width="2" stroke-linecap="round"/><path d="M11 7h5M11 11h5M11 15h3" stroke="#334155" stroke-width="1.5" stroke-linecap="round"/></svg>';
+        button.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="2" width="17" height="20" rx="2" fill="#facc15" stroke="#ca8a04"/><path d="M8 3h10a1 1 0 0 1 1 1v16H8Z" fill="#fef9c3"/><path d="M3 6h3M3 11h3M3 16h3" stroke="#854d0e" stroke-width="2" stroke-linecap="round"/><path d="M11 7h5M11 11h5M11 15h3" stroke="#713f12" stroke-width="1.5" stroke-linecap="round"/></svg>';
         controls.insertBefore(button, controls.querySelector('[role="status"]'));
         const native = document.body.classList.contains('quick-note-native');
         if (!native) {
-            const launchStatus = document.createElement('span'); launchStatus.setAttribute('role', 'status'); controls.append(launchStatus);
+            let statusRegion = controls.querySelector('[role="status"]');
+            if (!statusRegion) { statusRegion = document.createElement('span'); statusRegion.setAttribute('role', 'status'); controls.append(statusRegion); }
+            const launchStatus = document.createElement('span'); statusRegion.append(launchStatus);
             button.addEventListener('click', async () => {
                 if (button.disabled) return;
                 button.disabled = true;
