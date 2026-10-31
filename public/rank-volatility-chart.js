@@ -233,7 +233,7 @@
             panel.querySelector('.rank-selection-history-notice')?.remove();
             draw();void refreshBreadth().then(()=>{if(breadthMarket===market)return window.RankChartAxis.restoreHistoryRange('breadth',restoreRange);});
         }
-        let candlePointerY = null, breadthPricePending='',breadthPriceSchedule=false,breadthPriceError='';
+        let candlePointerY = null, breadthPricePending='',breadthPriceSchedule=false,breadthPriceError='',candleEnsureActive=false;
         const dateKey = t => new Date(t + 9 * 3600000).toISOString().slice(0, 10);
         function surface(target, context) {
             const w = target.clientWidth, h = target.clientHeight, dpr = window.devicePixelRatio || 1;
@@ -354,6 +354,7 @@ tip.hidden=false;}
             if (drag) { cc.fillStyle = 'rgba(51,154,240,.15)'; cc.fillRect(Math.min(drag.from, drag.to), top, Math.abs(drag.to - drag.from), bottom - top); }
         }
         async function loadCandles(target) {
+            if(candleEnsureActive && !target)return;
             if (!breadth && candles.length) { draw(); return; }
             if (candleArea.hidden || !dates.length && !(breadth && breadthMode==='minute')) return;
             const priceMarket=breadth && breadthMarket==='kosdaq'?'kosdaq':'kospi';
@@ -430,7 +431,7 @@ tip.hidden=false;}
                 }
             }
         }
-        if(breadth)window.RankChartAxis.registerHistoryLoader('breadth',()=>refreshBreadth(true),()=>breadthLoading || !!breadthPricePending,()=>({identity:breadthMarket,coverageFirst:[...breadthPages.values()].flatMap(p=>p.dates || []).sort()[0],error:breadthPriceError,hasMore:!!breadthCursor,cursor:breadthCursor,ensureRange:async target=>{await loadCandles(target);if(breadthPriceError)throw new Error(breadthPriceError);}}));
+        if(breadth)window.RankChartAxis.registerHistoryLoader('breadth',()=>refreshBreadth(true),()=>breadthLoading || !!breadthPricePending,()=>({identity:breadthMarket,coverageFirst:[...breadthPages.values()].flatMap(p=>p.dates || []).sort()[0],error:breadthPriceError,hasMore:!!breadthCursor,cursor:breadthCursor,ensureRange:async target=>{candleEnsureActive=true;try{await loadCandles(target);if(breadthPriceError)throw new Error(breadthPriceError);}finally{candleEnsureActive=false;}}}));
         panel.querySelector('[data-breadth-more]')?.addEventListener('click', () => window.RankChartAxis.requestHistory(breadthMode));
         panel.querySelectorAll('[data-breadth-mode]').forEach(button => button.addEventListener('click', () => {
             if (breadthLoading) { pendingBreadthMode = button.dataset.breadthMode; return; }

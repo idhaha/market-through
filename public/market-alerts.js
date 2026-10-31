@@ -50,15 +50,15 @@
         const title = document.createElement('h2'); title.id = 'marketAlertGuideTitle'; title.textContent = '시장경보 안내'; dialog.append(title);
         const text = (tag, value, parent) => { const node = document.createElement(tag); node.textContent = value; parent.append(node); return node; };
         text('p', '제공 자료 기준 · 표는 좌우로 스크롤할 수 있습니다.', dialog);
-        for (const [name, rows, note] of [['서킷브레이커 · 주식시장 전체 정지', guide.circuit, guide.notes[0]], ['사이드카 · 프로그램 매매 정지', guide.sidecar, guide.notes[1]]]) {
+        for (const [name, rows, note] of [['서킷브레이커 (주식시장 전체 정지)', guide.circuit, guide.notes[0]], ['사이드카 (프로그램 매매 정지)', guide.sidecar, guide.notes[1]]]) {
             text('h3', name, dialog);
             const scroll = document.createElement('div'); scroll.className = 'market-alert-table-scroll'; dialog.append(scroll);
             const table = document.createElement('table'); scroll.append(table);
             const head = table.createTHead().insertRow(); for (const label of ['단계/시장', '조건', '조치']) text('th', label, head).scope = 'col';
             const body = table.createTBody(); for (const row of rows) { const tr = body.insertRow(); for (const key of ['stage', 'condition', 'action']) text('td', row[key], tr); }
-            text('p', note, dialog);
+            text('p', note, dialog).className = 'market-alert-guide-note';
         }
-        text('p', '설명은 첨부 엑셀을 정리한 내용입니다. 실제 경보는 LS JIF의 발동·해제 통보를 따릅니다. JIF는 이벤트 시각을 제공하지 않아 화면 시각은 한국 시간 수신시각입니다.', dialog);
+        text('p', '※ 실제 경보는 LS JIF의 발동·해제 통보를 따릅니다. JIF는 이벤트 시각을 제공하지 않아 화면 시각은 한국 시간 수신시각입니다.', dialog).className = 'market-alert-guide-footnote';
         document.body.append(dialog);
         infoIcon.addEventListener('click', () => dialog.showModal());
         dialog.addEventListener('click', event => { if (event.target === dialog) { const r = dialog.getBoundingClientRect(); if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) dialog.close(); } });

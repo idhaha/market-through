@@ -61,6 +61,7 @@
         const stockSelect = window.RankChartAxis.marketChoice(combined ? (secondary ? 'combined-market-supply-secondary' : 'combined-market-supply') : isKiwoom ? 'kiwoom-market-supply' : isLs ? 'ls-market-supply' : 'market-supply',[], 'kospi','시장 수급 시장 선택');
         panel.querySelector('.concentration-chart-header h2').after(stockSelect);
         stockSelect.addEventListener('change', () => { if (stockSelect.value) choose(stockSelect.value); });
+        let flowCoverageFirst = '';
         let selected = 'kospi', mode = 'day', cursor = null, hasMore = false, loading = false, historyLoaded = false;
         let flowLoading=false;
         const minuteDays = new Set();
@@ -68,7 +69,7 @@
         let points = [], candles = [], start = 0, count = null, hover = null, drag = null, geometry;
         let controller, candleController, revision = 0, candleRevision = 0, refreshing = false, refreshPending = false;
         let showCandles = false, candleMessage = '', chartMessage = '', configError = '';
-        let candleRangeKey='', candleRangePending='', candleSchedule=false;
+        let candleRangeKey='', candleRangePending='', candleSchedule=false, candleRangeError='', candleEnsureActive=false;
         const visibleSeries = new Set(series);
         const selectionStorage=window.rankIndependentClient?sessionStorage:localStorage;
         try { selected = selectionStorage.getItem(storageKey) || 'kospi'; if (!['kospi','kosdaq','futures','futuresKosdaq'].includes(selected)) selected='kospi'; } catch {}
@@ -94,7 +95,7 @@
             todayOnly=true;
             candleRangeKey='';candleRangePending='';
             points = []; candles = []; start = 0; count = null; hover = null; info.hidden = true;
-            cursor = null; hasMore = false; historyLoaded = false;
+            cursor = null; hasMore = false; historyLoaded = false; flowCoverageFirst = '';
             minuteDays.clear();
             priceCursor = null;
             candleMessage = ''; chartMessage = ''; draw();
@@ -292,15 +293,17 @@
             visiblePoints:geometry?.rows.length || 0,visibleCandles:candles.filter(p=>geometry?.rows.some(row=>row.t===p.t) && window.RankChartAxis.validCandle(p)).length,
             first:points[0]?.t,last:points.at(-1)?.t,candleFirst:candles[0]?.t,candleLast:candles.at(-1)?.t});
         async function loadCandles(requestedRange) {
+            if(candleEnsureActive && !requestedRange)return;
             if(!showCandles || mode!=='minute')return;
             const domain=window.RankChartAxis.minuteDomain();
             const from=(requestedRange?.first || domain.first).slice(0,10).replaceAll('-',''),to=(requestedRange?.last || domain.last).slice(0,10).replaceAll('-','');
             if(!/^\d{8}$/.test(from) || !/^\d{8}$/.test(to) || from>to)return;
             const market=selected==='kosdaq'||selected==='futuresKosdaq'?'kosdaq':'kospi';
             const key=`${market}:${from}:${to}`;
+            if(requestedRange && candleRangeError)candleRangeKey='';
             if(key===candleRangeKey || key===candleRangePending)return;
             candleController?.abort();const current=candleController=new AbortController(),id=++candleRevision;
-            candleRangePending=key;candleLoading=true;draw();
+            candleRangePending=key;candleRangeError='';candleLoading=true;draw();
             try{
                 const response=await (window.RankChartCache?.fetch || fetch)(`/api/adr/candles?market=${market}&mode=minute&from=${from}&to=${to}`,{signal:current.signal});
                 const result=await response.json();
@@ -313,10 +316,11 @@
                 const anchor=points[start]?.t;
                 points=[...timeline.values()].sort((a,b)=>a.t-b.t);
                 if(count!=null && anchor!=null)start=Math.max(0,points.findIndex(p=>p.t>=anchor));
+                candleRangeError=result.partial?'가격 캔들 일부 구간만 조회됨':'';
                 candleRangeKey=key;
                 candleMessage=result.partial?'가격 캔들 일부 구간만 조회됨':incoming.some(window.RankChartAxis.validCandle)?'':'선택 기간의 가격 캔들 없음';
             }catch(error){
-                if(error.name!=='AbortError' && id===candleRevision){candleMessage=error.message;candleRangeKey=key;}
+                if(error.name!=='AbortError' && id===candleRevision){candleRangeError=error.message;candleMessage=error.message;candleRangeKey=key;}
             }finally{
                 if(id===candleRevision){candleRangePending='';candleLoading=false;setStatus();draw();}
             }
@@ -326,6 +330,12 @@
             info.hidden=true;draw();
         });
         let todayOnly = true;
+        function recordCoverage(result, requestedDay) {
+            const date = result.date || (requestedDay ? `${requestedDay.slice(0,4)}-${requestedDay.slice(4,6)}-${requestedDay.slice(6,8)}` : '');
+            const first = mode === 'minute' && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date + ' 00:00'
+                : (result.points || []).filter(p=>Number.isFinite(p.t)).map(p=>new Date(p.t+9*3600000).toISOString().slice(0,mode==='minute'?16:10).replace('T',' ')).sort()[0];
+            if(first && (!flowCoverageFirst || first<flowCoverageFirst))flowCoverageFirst=first;
+        }
         window.RankChartAxis.todayButton(panel,'[data-mode="minute"]',()=>mode,()=>{todayOnly=true;draw();void load();});
         async function load(append = false, restoreRange = null) {
             if(window.rankManagedChartRefresh && !window.rankChartRefreshStarted)return;
@@ -344,6 +354,7 @@
                 const result = await request(`${queryEndpoint}?${params}`, { signal: current.signal });
                 if (id !== revision) return;
                 const followLatest = start + Math.min(points.length, count ?? points.length) >= points.length, oldAnchor = points[start]?.t;
+                recordCoverage(result, append ? nextCursor : '');
                 const fresh = (result.points || []).filter(p => Number.isFinite(p.t));
                 points = mergeFlow(points, fresh);
                 {
@@ -357,6 +368,7 @@
                         const params=new URLSearchParams({code:selected,mode:'minute',cursor:day.replaceAll('-','')});
                         const past=await request(`${queryEndpoint}?${params}`,{signal:current.signal});
                         if(id!==revision)return;
+                        recordCoverage(past,day.replaceAll('-',''));
                         points=mergeFlow(points,(past.points || []).filter(p=>Number.isFinite(p.t)));
                         candles=[...new Map([...candles,...(past.candles || [])].map(p=>[p.t,p])).values()].sort((a,b)=>a.t-b.t);
                         if(past.cursor && past.cursor<restoreRange.first.slice(0,10).replaceAll('-',''))older.push(past.cursor);
@@ -427,7 +439,7 @@
             panel.querySelectorAll('[data-mode]').forEach(b => { b.classList.toggle('active', b === button); b.setAttribute('aria-pressed', String(b === button)); });
             load();
         }));
-        window.RankChartAxis.registerHistoryLoader(axisId,()=>load(true),()=>loading || candleLoading,()=>({identity:selected,hasMore:hasMore,cursor,ensureRange:async target=>{await loadCandles({first:target});if(/실패|일부/.test(candleMessage))throw new Error(candleMessage);}}));
+        window.RankChartAxis.registerHistoryLoader(axisId,()=>load(true),()=>loading || candleLoading,()=>({identity:selected,coverageFirst:flowCoverageFirst,hasMore:hasMore,cursor,ensureRange:async target=>{candleEnsureActive=true;try{await loadCandles({first:target});if(candleRangeError)throw new Error(candleRangeError);}finally{candleEnsureActive=false;}}}));
         more.addEventListener('click', () => window.RankChartAxis.requestHistory(mode));
         panel.querySelectorAll('[data-series]').forEach(button => button.addEventListener('click', () => {
             const field = button.dataset.series;

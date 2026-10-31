@@ -84,7 +84,7 @@
         stockSelect.addEventListener('change', () => { if (stockSelect.value) choose(stockSelect.value); });
         addButton.addEventListener('click', openPicker);
         let config = { stocks: [], archive: [], revision: 0 }, selected = '', mode = 'day', cursor = null, hasMore = false, loading = false, historyLoaded = false;
-        let flowLoading=false;
+        let flowLoading=false, flowCoverageFirst='', candleError='';
         const minuteDays = new Set(), candleCache = new Map(), priceHistory = new Map();
         let priceCursor = null, candleLoading = false;
         let points = [], candles = [], start = 0, count = null, hover = null, drag = null, geometry;
@@ -98,7 +98,7 @@
         const settings = () => ({ selected, mode, showCandles, visibleSeries: [...visibleSeries] });
         window[api('getRankSupplyDisplaySettings')] = settings;
         function publish() { if (broker) { try { localStorage.setItem(`${panelId}Settings`, JSON.stringify(settings())); } catch {} } document.dispatchEvent(new CustomEvent(eventName('rank-supply-state'), { detail: settings() })); }
-        window[api('getRankSupplyState')] = () => ({ ...settings(), config, points, candles, cursor, hasMore, priceCursor, minuteDays: [...minuteDays], priceHistory: [...priceHistory], chartMessage, connection: window.getRankCardConnectionState?.(panel) });
+        window[api('getRankSupplyState')] = () => ({ ...settings(), config, points, candles, flowCoverageFirst, cursor, hasMore, priceCursor, minuteDays: [...minuteDays], priceHistory: [...priceHistory], chartMessage, connection: window.getRankCardConnectionState?.(panel) });
         window[api('applyRankSupplySettings')] = (value, fetchData = true) => {
             if (!value || !['day', 'minute'].includes(value.mode)) return;
             const changed = selected !== value.selected || mode !== value.mode;
@@ -114,6 +114,7 @@
             if (!value?.config || !Array.isArray(value.points)) return;
             const same = value.selected === selected && value.mode === mode;
             config = value.config; window[api('applyRankSupplySettings')](value, false);
+            if(typeof value.flowCoverageFirst==='string')flowCoverageFirst=value.flowCoverageFirst;
             points = mergeFlow(same ? points : [], value.points);
             candles = [...new Map([...(same ? candles : []), ...(value.candles || [])].map(p => [p.t, p])).values()].sort((a,b) => a.t - b.t);
             if (!historyLoaded) { cursor = value.cursor; hasMore = !!value.hasMore; priceCursor = value.priceCursor; }
@@ -132,7 +133,7 @@
         function clearView() {
             todayOnly=true;
             points = []; candles = []; start = 0; count = null; hover = null; info.hidden = true;
-            cursor = null; hasMore = false; historyLoaded = false;
+            cursor = null; hasMore = false; historyLoaded = false; flowCoverageFirst=''; candleError='';
             minuteDays.clear();
             priceHistory.clear(); priceCursor = null;
             candleMessage = ''; chartMessage = ''; draw();
@@ -330,14 +331,16 @@
             if(restoreWindow && restoreWindow.first.slice(0,10)<dayKey(Date.now()))todayOnly=false;
             void load(false,restoreWindow);
         }
-        async function loadCandles() {
+        async function loadCandles(target) {
             candleController?.abort(); const current = candleController = new AbortController(), id = ++candleRevision;
-            candleMessage = '';
+            candleMessage = ''; candleError='';
             if (!selected || !showCandles && mode === 'day') { draw(); return; }
             if (mode === 'day') { draw(); return; }
             candleLoading = true; candleMessage = '캔들 조회 중…'; setStatus(); draw();
             try {
-                const days = [...minuteDays].sort(); if (!days.length) days.push('');
+                const requestedDays=new Set(minuteDays);
+                if(target){const domain=window.RankChartAxis.minuteDomain();for(const day of domain.days || [])if(day>=target.slice(0,10))requestedDays.add(day);requestedDays.add(target.slice(0,10));}
+                const days = [...requestedDays].sort(); if (!days.length) days.push('');
                 const merged = new Map(candles.map(point => [point.t, point])); let partial = false;
                 for (const day of days) {
                     const key = `${selected}:${day || dayKey(Date.now())}`;
@@ -346,12 +349,12 @@
                         const params = new URLSearchParams({ code: selected, mode, ...(day ? { date: day } : {}) });
                         result = await request(`/api/supply/candles?${params}`, { signal: current.signal });
                         if (id !== candleRevision) return;
-                        candleCache.set(key, result); if (candleCache.size > 60) candleCache.delete(candleCache.keys().next().value);
+                        if(!result.partial)candleCache.set(key, result); if (candleCache.size > 60) candleCache.delete(candleCache.keys().next().value);
                     }
                     partial ||= result.partial;
                     for (const point of result.points || []) merged.set(point.t, point);
                     const actualDay = result.date || (result.points?.length ? dayKey(result.points.at(-1).t) : day);
-                    if (actualDay) priceHistory.set(actualDay, result.has_more ? result.cursor : null);
+                    if (actualDay && !result.partial) priceHistory.set(actualDay, result.has_more ? result.cursor : null);
                 }
                 if (id !== candleRevision) return;
                 candles = [...merged.values()].sort((a,b) => a.t - b.t);
@@ -361,8 +364,9 @@
                 for (const point of points) timeline.set(point.t, point);
                 points = [...timeline.values()].sort((a,b) => a.t - b.t);
                 if (count != null) start = atEnd ? Math.max(0, points.length - count) : Math.max(0, points.findIndex(point => point.t >= anchor));
+                candleError=partial?'캔들 일부 과거 구간만 제공':'';
                 candleMessage = partial ? '캔들 일부 과거 구간만 제공' : candles.length ? '' : '가격 캔들 없음';
-            } catch (error) { if (error.name !== 'AbortError' && id === candleRevision) candleMessage = '캔들 조회 실패'; }
+            } catch (error) { if (error.name !== 'AbortError' && id === candleRevision) { candleError=error.message; candleMessage = '캔들 조회 실패'; } }
             if (id === candleRevision) {
                 candleLoading = false; setStatus(); draw(); publish();
                 if (refreshPending && !refreshing && !loading && !drag) { refreshPending = false; void window[api('refreshRankSupplyChart')](); }
@@ -390,6 +394,9 @@
                 const result = await request(`${(combined || window.rankIndependentClient) && mode === 'minute' ? '/api/kis-supply/chart' : endpoint}?${params}`, { signal: current.signal });
                 if (id !== revision) return;
                 const followLatest = start + Math.min(points.length, count ?? points.length) >= points.length, oldAnchor = points[start]?.t;
+                const coverageDate=result.date || (append && nextCursor ? `${nextCursor.slice(0,4)}-${nextCursor.slice(4,6)}-${nextCursor.slice(6,8)}` : '');
+                const coverage=mode==='minute' && coverageDate ? coverageDate+' 00:00' : (result.points || []).filter(p=>Number.isFinite(p.t)).map(p=>new Date(p.t+9*3600000).toISOString().slice(0,mode==='minute'?16:10).replace('T',' ')).sort()[0];
+                if(coverage && (!flowCoverageFirst || coverage<flowCoverageFirst))flowCoverageFirst=coverage;
                 const fresh = (result.points || []).filter(p => Number.isFinite(p.t));
                 points = mergeFlow(points, fresh);
                 if (mode === 'day') {
@@ -405,6 +412,7 @@
                         const params=new URLSearchParams({code:selected,mode:'minute',date:day});
                         const past=await request(`${(combined || window.rankIndependentClient) && mode === 'minute' ? '/api/kis-supply/chart' : endpoint}?${params}`,{signal:current.signal});
                         if(id!==revision)return;
+                        const first=day+' 00:00';if(!flowCoverageFirst || first<flowCoverageFirst)flowCoverageFirst=first;
                         points=mergeFlow(points,(past.points || []).filter(p=>Number.isFinite(p.t)));
                     }
                     const previous=(result.available_dates || []).filter(day=>day<restoreWindow.first.slice(0,10)).sort().at(-1);
@@ -472,7 +480,7 @@
             panel.querySelectorAll('[data-mode]').forEach(b => { b.classList.toggle('active', b === button); b.setAttribute('aria-pressed', String(b === button)); });
             load();
         }));
-        window.RankChartAxis.registerHistoryLoader(axisId,()=>load(true),()=>loading || candleLoading,()=>({hasMore:!!selected && (hasMore || mode==='minute' && !!priceCursor),cursor:[cursor,priceCursor].join(':')}));
+        window.RankChartAxis.registerHistoryLoader(axisId,()=>load(true),()=>loading || candleLoading,()=>({identity:selected,coverageFirst:flowCoverageFirst,ensureRange:async target=>{await loadCandles(target);if(candleError)throw new Error(candleError);},hasMore:!!selected && (hasMore || mode==='minute' && !!priceCursor),cursor:[cursor,priceCursor].join(':')}));
         more.addEventListener('click', () => window.RankChartAxis.requestHistory(mode));
         panel.querySelectorAll('[data-series]').forEach(button => button.addEventListener('click', () => {
             const field = button.dataset.series;

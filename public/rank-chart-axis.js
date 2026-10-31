@@ -142,13 +142,13 @@
         try{
             await ready();let pages=0;
             while(current()){
-                const state=loader.state(),first=state.coverageFirst || minuteCharts.get(id)?.first;
+                const state=loader.state(),first=state.coverageFirst ?? minuteCharts.get(id)?.first;
                 if(state.error)throw new Error(state.error);
                 if(first && first<=range.first || !state.hasMore)break;
                 if(++pages>80)throw new Error('과거 조회 페이지 한도 도달');
                 const previous=`${first}:${state.cursor}:${state.progress}`;
                 await loader.load();await ready();
-                const next=loader.state(),after=next.coverageFirst || minuteCharts.get(id)?.first;
+                const next=loader.state(),after=next.coverageFirst ?? minuteCharts.get(id)?.first;
                 if(next.hasMore && previous===`${after}:${next.cursor}:${next.progress}`)throw new Error('과거 조회가 진행되지 않았습니다.');
             }
             if(!current())return;
@@ -194,29 +194,30 @@
             if(epoch!==historyEpoch){cancelled=true;throw new Error('조회 주기 변경');}
             if(loader.busy())throw new Error('조회 대기 시간 초과');
         };
+        const coverageFirst=id=>historyLoaders.get(id)?.state?.().coverageFirst ?? minuteCharts.get(id)?.first;
         const step=async id=>{
             const loader=historyLoaders.get(id);await ensureReady(loader);
             if(minuteCharts.get(id)?.mode!==mode){cancelled=true;throw new Error('조회 주기 변경');}
-            const old=minuteCharts.get(id)?.first, cursor=loader.state?.().cursor,progress=loader.state?.().progress;
+            const old=coverageFirst(id), cursor=loader.state?.().cursor,progress=loader.state?.().progress;
             await timed(id,'loadMs',()=>loader.load());await ensureReady(loader);
             if(minuteCharts.get(id)?.mode!==mode){cancelled=true;throw new Error('조회 주기 변경');}
             const state=loader.state?.();
             if(state?.error)throw new Error(state.error);
-            if(minuteCharts.get(id)?.first===old && state?.hasMore && state.cursor===cursor && state.progress===progress)throw new Error('과거 조회가 진행되지 않았습니다.');
+            if(coverageFirst(id)===old && state?.hasMore && state.cursor===cursor && state.progress===progress)throw new Error('과거 조회가 진행되지 않았습니다.');
         };
         try {
             if(coordinated){
                 await historyPeers(participants,mode,async id=>{try{await ensureReady(historyLoaders.get(id));}catch{failures.push(id);}});
                 // One leading page establishes a fixed target; peers catch up to it.
                 if(!target && (!failures.length || mode==='minute')){
-                    const leaders=[...participants].sort(([a],[b])=>(minuteCharts.get(a)?.first || '').localeCompare(minuteCharts.get(b)?.first || ''));
+                    const leaders=[...participants].sort(([a],[b])=>(coverageFirst(a) || '').localeCompare(coverageFirst(b) || ''));
                     for(const [id] of leaders){
                         const loader=historyLoaders.get(id);if(failures.includes(id) || !loader.state?.().hasMore)continue;
                         try{
                             let pages=0;
                             while(loader.state().hasMore && (!target || target>=before)){
                                 if(++pages>80)throw new Error('과거 조회 페이지 한도 도달');
-                                await step(id);target=minuteCharts.get(id)?.first;
+                                await step(id);target=coverageFirst(id);
                             }
                         }catch{failures.push(id);if(cancelled || mode!=='minute')break;continue;}
                         if(target && target<before)break;
@@ -228,7 +229,7 @@
                         if(cancelled || failures.includes(id))return;
                         const loader=historyLoaders.get(id);let pages=0;
                         try{
-                            while(!minuteCharts.get(id)?.first || minuteCharts.get(id).first>target){
+                            while(!coverageFirst(id) || coverageFirst(id)>target){
                                 if(!loader.state?.().hasMore){exhausted.push(id);break;}
                                 if(++pages>80)throw new Error('과거 조회 페이지 한도 도달');
                                 await step(id);

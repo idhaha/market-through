@@ -79,7 +79,7 @@
         }
         let todayOnly = true;
         window.RankChartAxis.todayButton(panel,'[data-adr-mode="minute"]',()=>mode,()=>{todayOnly=true;draw();void window.refreshRankAdrChart();});
-        window.RankChartAxis.registerHistoryLoader('adr',()=>window.refreshRankAdrChart(true),()=>referenceLoading || !!candleRangePending,()=>({identity:selectedMarket,coverageFirst:[...referencePages.values()].flatMap(p=>p.points || []).map(p=>new Date(p.t+9*3600000).toISOString().slice(0,mode==='minute'?16:10).replace('T',' ')).sort()[0],error:candleRangeError,hasMore:!!referenceCursor,cursor:referenceCursor,ensureRange:async target=>{await loadCandles(target);if(candleRangeError)throw new Error(candleRangeError);}}));
+        window.RankChartAxis.registerHistoryLoader('adr',()=>window.refreshRankAdrChart(true),()=>referenceLoading || !!candleRangePending,()=>({identity:selectedMarket,coverageFirst:[...referencePages.values()].flatMap(p=>p.points || []).map(p=>new Date(p.t+9*3600000).toISOString().slice(0,mode==='minute'?16:10).replace('T',' ')).sort()[0],error:candleRangeError,hasMore:!!referenceCursor,cursor:referenceCursor,ensureRange:async target=>{candleEnsureActive=true;try{await loadCandles(target);if(candleRangeError)throw new Error(candleRangeError);}finally{candleEnsureActive=false;}}}));
         moreButton.addEventListener('click',()=>window.RankChartAxis.requestHistory(mode));
         function viewportPoints() {
             {const view=window.RankChartAxis.sharedRange('adr',axisPoints(),p=>p.t,mode,viewStart,viewCount,draw);viewStart=view.start;viewCount=view.count;}
@@ -245,8 +245,9 @@
             validCandles:candles.filter(window.RankChartAxis.validCandle).length,
             visiblePoints:geometry?.points.length || 0,visibleCandles:candles.filter(p=>p.t>=geometry?.start && p.t<=geometry?.end && window.RankChartAxis.validCandle(p)).length,
             first:geometry?.start,last:geometry?.end,candleFirst:candles[0]?.t,candleLast:candles.at(-1)?.t});
-        let candleRangeKey='',candleRangePending='',candleRangeSchedule=false,candleRangeError='';
+        let candleRangeKey='',candleRangePending='',candleRangeSchedule=false,candleRangeError='', candleEnsureActive=false;
         async function loadCandles(target) {
+            if(candleEnsureActive && !target)return;
             if(candleArea.hidden)return;
             if(mode==='day' && referencePoints.length){candles=referencePoints;candleStatus.textContent='';draw();return;}
             const domain=mode==='minute'?window.RankChartAxis.minuteDomain():null;

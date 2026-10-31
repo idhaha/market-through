@@ -125,3 +125,24 @@ test('minute: a failing leading source must not prevent stock supply history fro
  const result=await f.api.requestHistory('minute');f.flush();
  assert.ok(f.calls.includes('combinedSupply'));assert.equal(result.advanced,true);assert.equal(f.domain().first,f.date(22));
 });
+
+for(const id of ['combinedMarketSupply','combinedMarketSupplySecondary','combinedSupply','kisSupply','lsSupply','adr','breadth'])test(`minute: ${id} must fetch flow even when price candles already cover history`,async()=>{
+ const f=fixture('minute');f.add('concentration',22,[18]);f.add(id,18,[]);f.flush();
+ let coverage=22,cursor=0;
+ f.api.registerHistoryLoader(id,async()=>{coverage--;cursor++;},()=>false,()=>({coverageFirst:f.date(coverage),hasMore:coverage>18,cursor}));
+ const result=await f.api.requestHistory('minute');f.flush();
+ assert.equal(result.target,f.date(18));assert.equal(result.failures.length,0);assert.equal(coverage,18);assert.equal(cursor,4);
+});
+
+test('minute: flow covering the target still requires an independent price ensureRange',async()=>{
+ const f=fixture('minute');f.add('concentration',22,[18]);f.add('combinedSupply',18,[]);f.flush();let attempts=0;
+ f.api.registerHistoryLoader('combinedSupply',async()=>{throw Error('flow must not reload');},()=>false,()=>({coverageFirst:f.date(18),hasMore:false,ensureRange:async()=>{attempts++;if(attempts===1)throw Error('price source unavailable');}}));
+ const first=await f.api.requestHistory('minute');f.flush();assert.ok(first.failures.includes('combinedSupply'));
+ const second=await f.api.requestHistory('minute');f.flush();assert.equal(attempts,2);assert.equal(second.failures.length,0);
+});
+
+test('an explicitly empty source coverage must not fall back to the price timeline',async()=>{
+ const f=fixture('minute');f.add('concentration',22,[18]);f.add('combinedSupply',18,[]);f.flush();let loaded=false;
+ f.api.registerHistoryLoader('combinedSupply',async()=>{loaded=true;},()=>false,()=>({coverageFirst:loaded?f.date(18):'',hasMore:!loaded,cursor:loaded?null:'older'}));
+ const result=await f.api.requestHistory('minute');f.flush();assert.ok(loaded);assert.equal(result.failures.length,0);
+});
