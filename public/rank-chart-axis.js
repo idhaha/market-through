@@ -139,20 +139,10 @@
     }
     const pendingHistoryTargets=new Map();
     function registerHistoryLoader(id,load,busy=()=>false,state){historyLoaders.set(id,{load,busy,state});}
-    // Keep related cards serial, while at most three independent lanes catch up.
+    // Each server provider enforces its own TR limits. A slow card must not
+    // serialize other cards that only need their saved history.
     async function historyPeers(participants,mode,work){
-        const lanes=new Map();
-        for(const [id] of participants){
-            const lane=id.startsWith('kis') || id==='combinedSupply' && mode==='minute' ? 'kis'
-                : id.startsWith('ls') || id==='combinedConcentration' && mode==='minute' ? 'ls'
-                : ['sentiment','volatility'].includes(id) ? 'external' : 'kiwoom';
-            if(!lanes.has(lane))lanes.set(lane,[]);
-            lanes.get(lane).push(id);
-        }
-        const pending=[...lanes.values()];
-        await Promise.all(Array.from({length:Math.min(3,pending.length)},async()=>{
-            while(pending.length)for(const id of pending.shift())await work(id);
-        }));
+        await Promise.all(participants.map(([id])=>work(id)));
     }
     const selectionRestores=new Map();
     async function restoreHistoryRange(id,range){
@@ -230,11 +220,24 @@
         };
         try {
             if(coordinated){
-                await historyPeers(participants,mode,async id=>{try{await ensureReady(historyLoaders.get(id));}catch{failures.push(id);}});
+                if(mode!=='minute')await historyPeers(participants,mode,async id=>{try{await ensureReady(historyLoaders.get(id));}catch{failures.push(id);}});
                 // One leading page establishes a fixed target; peers catch up to it.
                 if(!target && (!failures.length || mode==='minute')){
                     const leaders=[...participants].sort(([a],[b])=>(coverageFirst(a) || '').localeCompare(coverageFirst(b) || ''));
-                    for(const [id] of leaders){
+                    if(mode==='minute'){
+                        // Start each card's first page together. Previously the
+                        // first (often concentration) card blocked every peer.
+                        await historyPeers(participants,mode,async id=>{
+                            try{
+                                const firstBeforeReady=coverageFirst(id);
+                                await ensureReady(historyLoaders.get(id));
+                                if(!historyLoaders.get(id).state?.().hasMore || coverageFirst(id)<firstBeforeReady && coverageFirst(id)<before)return;
+                                await step(id);
+                            }catch{failures.push(id);}
+                        });
+                        target=leaders.filter(([id])=>!failures.includes(id)).map(([id])=>coverageFirst(id)).find(first=>first && first<before);
+                    }
+                    for(const [id] of target?[]:leaders){
                         const loader=historyLoaders.get(id);if(failures.includes(id) || !loader.state?.().hasMore)continue;
                         try{
                             let pages=0;

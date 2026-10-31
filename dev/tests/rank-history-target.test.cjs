@@ -1,28 +1,27 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
 
-test('history overlaps independent lanes, serializes peers and commits one shared period after completion',async()=>{
+test('history starts independent cards concurrently and commits one shared period after completion',async()=>{
  const f=fixture();f.add('concentration',22,[18]);
  const ids=['supply','marketSupply','kisConcentration','kisSupply','lsSupply','sentiment'];
- let active=0,maxActive=0;const busy=new Set(),started=[],release=[];
+ let active=0,maxActive=0;const started=[],release=[];
  for(const id of ids){
   f.add(id,22,[18]);const state=f.states[id];
-  const lane=id.startsWith('kis')?'kis':id.startsWith('ls')?'ls':id==='sentiment'?'external':'kiwoom';
   f.api.registerHistoryLoader(id,async()=>{
-   assert.ok(!busy.has(lane));busy.add(lane);active++;maxActive=Math.max(maxActive,active);started.push(id);
+   active++;maxActive=Math.max(maxActive,active);started.push(id);
    await new Promise(resolve=>release.push(resolve));
-   state.first=18;state.cursor++;state.pages=[];state.draw();active--;busy.delete(lane);
+   state.first=18;state.cursor++;state.pages=[];state.draw();active--;
   },()=>false,()=>({hasMore:state.pages.length>0,cursor:state.cursor}));
  }
  f.flush();const old=f.domain().first;let done=false;
  const pending=f.api.requestHistory('day').then(result=>{done=true;return result;});
  await new Promise(resolve=>setImmediate(resolve));
- assert.equal(active,3);assert.equal(started.length,3);assert.equal(f.domain().first,old);
+ assert.equal(active,ids.length);assert.equal(started.length,ids.length);assert.equal(f.domain().first,old);
  for(let rounds=0;!done;rounds++){
   assert.ok(rounds<30,'history must finish after all loaders are released');
   release.splice(0).forEach(resolve=>resolve());await new Promise(resolve=>setImmediate(resolve));
  }
  const result=await pending;f.flush();
- assert.equal(maxActive,3);assert.equal(started.length,ids.length);assert.equal(result.failures.length,0);
+ assert.equal(maxActive,ids.length);assert.equal(started.length,ids.length);assert.equal(result.failures.length,0);
  assert.equal(f.domain().first,f.date(18));assert.equal(result.target,f.date(18));
  assert.equal(result.metrics.cards.supply.pages,1);assert.equal(result.metrics.cards.concentration.pages,1);
  assert.equal(f.window.rankHistoryMetrics,result.metrics);assert.ok(result.metrics.totalMs>=0);
@@ -43,6 +42,22 @@ function fixture(mode='day',clock=null){
  const flush=()=>{let n=0;while(jobs.length){assert.ok(n++<1000);jobs.shift()();}};
  return {window:ctx.window,api,states,calls,add,flush,date,domain:()=>mode==='day'?api.dailyDomain():api.minuteDomain()};
 }
+test('minute history starts other cards while concentration is still blocked',async()=>{
+ const f=fixture('minute','2026-10-23T12:00:00+09:00');
+ f.add('concentration',22,[18]);f.add('lsSupply',22,[18]);f.add('combinedTurnover',22,[18]);
+ let release,busy=false;const gate=new Promise(resolve=>release=resolve);
+ f.api.registerHistoryLoader('concentration',async()=>{
+  busy=true;await gate;const state=f.states.concentration;state.first=18;state.pages=[];state.cursor++;state.draw();busy=false;
+ },()=>busy,()=>({hasMore:f.states.concentration.pages.length>0,cursor:f.states.concentration.cursor}));
+ const pending=f.api.requestHistory('minute');
+ try{
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(busy,true);
+  assert.ok(f.calls.includes('lsSupply'),'Same-provider saved supply starts before concentration finishes');
+  assert.ok(f.calls.includes('combinedTurnover'),'Other cards start before concentration finishes');
+ }finally{release();}
+ const result=await pending;f.flush();assert.equal(result.failures.length,0);assert.equal(result.target,f.date(18));
+});
 for(const mode of ['day','minute'])test(`${mode}: peers use multiple pages to reach a fixed target; exhausted source stays a gap`,async()=>{
  const f=fixture(mode);f.add('concentration',22,[18,14]);f.add('supply',22,[21,20,19,18,17]);f.add('marketSupply',22,[]);f.add('volatility',22,[10],mode==='minute'?'day':'minute');f.flush();
  const r=await f.api.requestHistory(mode);f.flush();

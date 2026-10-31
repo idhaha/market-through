@@ -3,6 +3,23 @@ const {createBrokerTurnoverData,million,lsMinuteTime}=require('../../broker-turn
 const {createBrokerComparisonService}=require('../../broker-comparison-service');
 const {timestamp}=require('../../supply-service');
 const at=clock=>timestamp('20261026',clock);
+test('past stored concentration amounts bypass REST and preserve sparse minute gaps',async t=>{
+ const f=fixture(t);f.setTime(timestamp('20261028','100000'));
+ f.data.store.mergeMany('005930',[
+  {t:at('090000'),amount:1000000},{t:at('090100'),amount:3000000},{t:at('090300'),amount:5000000}
+ ]);
+ const [bars,total]=await Promise.all([f.data.amounts('005930','minute',['20261026']),f.data.amounts('005930','minute',['20261026'],true)]);
+ assert.equal(f.calls.length,0);
+ assert.equal(bars.values.get(at('090100')),2000000);
+ assert.equal(bars.values.has(at('090300')),false);
+ assert.equal(total.values.get(at('090300')),5000000);
+});
+test('LS minute concentration skips the unused Kiwoom index denominator',async()=>{
+ let received;
+ const svc=createBrokerComparisonService({broker:'ls',data:{watchStock(){},amounts:async()=>({values:new Map(),warnings:[]})},concentrationReference:{query:async input=>{received=input;return {success:true,points:[]};}}});
+ await svc.concentration({code:'000660',mode:'minute',cursor:'session'},'owner');
+ assert.equal(received.prices_only,true);assert.equal(received.cursor,'session');
+});
 function fixture(t,broker='ls',bars=[]){
  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'broker-amount-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
  let current=at('100550');const calls=[],streams=[];

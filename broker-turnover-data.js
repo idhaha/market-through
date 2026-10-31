@@ -128,10 +128,15 @@ function createBrokerTurnoverData({ broker, directory, transport, http, getToken
         return {rows:parts.flatMap(p=>p.rows).sort((a,b)=>a.t-b.t),warnings:[...new Set(parts.flatMap(p=>p.warnings))]};
     }
     async function amounts(instrument,mode,dates,cumulative=false) {
-        const data=await series(instrument,mode,dates), result=new Map();
         flush();
-        // REST history can remain cached while new completed websocket minutes arrive.
         const code=marketCodes[instrument] || instrument;
+        const savedDays=mode==='minute'?new Set(store.dates(code).map(compact)):new Set();
+        const today=compact(dayKey(now()));
+        // Past saved days are authoritative, including genuine missing minutes.
+        // Do not traverse REST history again before reading those same files.
+        const restDates=mode==='minute'?dates.filter(date=>date>=today || !savedDays.has(date)):dates;
+        const data=await series(instrument,mode,restDates), result=new Map();
+        // REST history can remain cached while new completed websocket minutes arrive.
         const ws=mode==='minute'?dates.flatMap(date=>store.points(code,`${date.slice(0,4)}-${date.slice(4,6)}-${date.slice(6,8)}`)).filter(p=>p.t<Math.floor(now()/60000)*60000):[];
         const stock=!Object.hasOwn(marketCodes,instrument),opening=stock?'080000':'090000';
         if(mode==='day')for(const p of data.rows)result.set(p.t,p.amount);
