@@ -65,7 +65,10 @@ const { createMarketAlerts } = require('../../market-alert-service');
         assert.deepEqual(await main.locator('.market-alert-info-icon').evaluate(n=>{const s=getComputedStyle(n);return [s.width,s.height,s.borderRadius,s.fontFamily];}),['20px','20px','50%','Georgia, serif']);
         await main.getByRole('button',{name:'시장경보'}).click();
         assert.match(await main.locator('dialog').innerText(),/코스닥150/);
-        assert.ok(await main.locator('dialog').evaluate(n=>n.getBoundingClientRect().width>1200));
+        assert.ok(await main.locator('dialog').evaluate(n=>{
+            const tables=[...n.querySelectorAll('table')];
+            return n.getBoundingClientRect().width-Math.max(...tables.map(t=>t.getBoundingClientRect().width))<60;
+        }),'Dialog must fit the table content rather than stretch to a fixed width');
         assert.ok(await main.locator('dialog td').evaluateAll(nodes=>nodes.every(n=>getComputedStyle(n).whiteSpace==='nowrap')));
         assert.equal(await main.locator('.market-alert-guide-note').count(),2);
         assert.ok(await main.locator('.market-alert-guide-footnote').evaluate(n=>parseFloat(getComputedStyle(n).marginTop)>=42));

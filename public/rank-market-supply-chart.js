@@ -79,12 +79,15 @@
         window[api('getRankMarketSupplyDisplaySettings')] = settings;
         window[api('applyRankMarketSupplyDisplaySettings')] = value => {
             if (!value) return;
+            const oldMarket = selected, oldMode = mode;
             if (['kospi','kosdaq','futures','futuresKosdaq'].includes(value.selected)) selected=value.selected;
             if (['day','minute'].includes(value.mode)) mode=value.mode;
             if (Array.isArray(value.visibleSeries) && value.visibleSeries.some(s=>series.includes(s))) { visibleSeries.clear();value.visibleSeries.filter(s=>series.includes(s)).forEach(s=>visibleSeries.add(s)); }
             panel.querySelectorAll('[data-series]').forEach(b=>b.setAttribute('aria-pressed',String(visibleSeries.has(b.dataset.series))));
             panel.querySelectorAll('[data-mode]').forEach(b=>{b.classList.toggle('active',b.dataset.mode===mode);b.setAttribute('aria-pressed',String(b.dataset.mode===mode));});
-            paintStocks();remember();clearView();void load();
+            paintStocks();remember();
+            if (selected === oldMarket && mode === oldMode) { draw(); return; }
+            clearView();void load();
         };
         function publish() { document.dispatchEvent(new CustomEvent(eventName('rank-market-supply-state'), { detail: settings() })); }
         panel.addEventListener('change',()=>{if(typeof saveAppData==='function')saveAppData();});
@@ -289,6 +292,8 @@
             void load(false,restoreRange).then(()=>{if(selected===code)return window.RankChartAxis.restoreHistoryRange(axisId,restoreRange);});
         }
         window[api('getMarketSupplyCandleDiagnostics')] = () => ({market:selected,mode,points:points.length,candles:candles.length,
+            flowPoints:points.filter(p=>series.some(field=>Number.isFinite(p[field]))).length,
+            visibleFlowPoints:geometry?.rows.filter(p=>series.some(field=>Number.isFinite(p[field]))).length || 0,
             validCandles:candles.filter(window.RankChartAxis.validCandle).length,
             visiblePoints:geometry?.rows.length || 0,visibleCandles:candles.filter(p=>geometry?.rows.some(row=>row.t===p.t) && window.RankChartAxis.validCandle(p)).length,
             first:points[0]?.t,last:points.at(-1)?.t,candleFirst:candles[0]?.t,candleLast:candles.at(-1)?.t});

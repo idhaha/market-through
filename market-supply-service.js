@@ -163,8 +163,11 @@ function createMarketSupplyService({ directory, http, credentials, getToken, ref
             minuteProvider?.flush?.();
             const minuteStore = minuteProvider?.store || store;
             const config = markets[code], dates = minuteStore.dates(config.code);
-            const date = cursor ? `${cursor.slice(0,4)}-${cursor.slice(4,6)}-${cursor.slice(6,8)}` : dayKey(now());
-            const index = dates.indexOf(date), previous = index > 0 ? compact(dates[index-1]) : null;
+            const today = dayKey(now());
+            const date = cursor ? `${cursor.slice(0,4)}-${cursor.slice(4,6)}-${cursor.slice(6,8)}`
+                : dates.includes(today) ? today : dates.filter(day => day <= today).at(-1) || today;
+            const earlierDate = dates.filter(day => day < date).at(-1);
+            const previous = earlierDate ? compact(earlierDate) : null;
             const price = { points: [], error: '', previous: null };
             if (date) try {
                 let next = '';

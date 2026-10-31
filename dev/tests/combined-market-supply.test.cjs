@@ -1,5 +1,6 @@
 const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=require('playwright');
 (async()=>{const browser=await chromium.launch({headless:true,channel:'msedge'});try{const page=await browser.newPage({viewport:{width:2400,height:1100}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+await page.clock.setFixedTime(new Date('2026-10-23T10:00:00+09:00'));
 const html=fs.readFileSync('public/index.html','utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'').replace(/<link\b[^>]*>/gi,'');
 const requests=[];page.on('request',r=>requests.push(new URL(r.url()).pathname));
 const t=Date.parse('2026-10-23T09:00:00+09:00'),p={t,open:2500,high:2510,low:2490,close:2505};
@@ -56,6 +57,20 @@ assert.equal(await secondary.locator('input[value=kosdaq]').isChecked(),true);as
 await page.evaluate(()=>applyConcentrationDisplaySettings({...getConcentrationDisplaySettings(),combinedMarketSupplySecondary:{selected:'kospi',mode:'day',visibleSeries:['foreign']}}));
 assert.equal(await secondary.locator('input[value=kospi]').isChecked(),true);assert.equal(await card.locator('input[value=kosdaq]').isChecked(),true);
 assert.equal(await secondary.locator('[data-series=institution]').getAttribute('aria-pressed'),'false');
+await page.evaluate(()=>applyConcentrationDisplaySettings({...getConcentrationDisplaySettings(),marketPins:['rankCombinedMarketSupplySecondaryChartPanel'],mode:'minute',combinedMarketSupply:{selected:'kospi',mode:'minute'},combinedMarketSupplySecondary:{selected:'futures',mode:'minute'}}));
+await page.waitForFunction(()=>document.querySelector('#rankCombinedMarketSupplyChartPanel [data-series=foreign] output').textContent==='+1억원' && document.querySelector('#rankCombinedMarketSupplySecondaryChartPanel [data-series=foreign] output').textContent==='+2억원');
+await page.waitForTimeout(200);
+const flowRequestCount=()=>requests.filter(path=>/\/api\/(?:kiwoom-|ls-)?market-supply\/chart$/.test(path)).length;
+const beforeCandles=flowRequestCount();
+await card.locator('.concentration-candle-toggle').click();
+await page.waitForTimeout(300);
+assert.equal(flowRequestCount(),beforeCandles,'Opening candles must not clear and reload either market flow dataset');
+assert.equal(await card.locator('[data-series=foreign] output').textContent(),'+1억원');
+assert.equal(await secondary.locator('[data-series=foreign] output').textContent(),'+2억원');
+const flowDiagnostics=await page.evaluate(()=>[getCombinedMarketSupplyCandleDiagnostics(),getCombinedMarketSupplySecondaryCandleDiagnostics()]);
+assert.ok(flowDiagnostics.every(d=>d.visibleFlowPoints>0 && d.visibleCandles>0),'Both cards must retain visible flow and candle points');
+assert.equal(await secondary.locator('input[value=futures]').isChecked(),true);
+assert.equal(await pin.getAttribute('aria-pressed'),'true','Candle display must preserve the futures pin');
 await page.setViewportSize({width:600,height:800});assert.deepEqual(await secondary.evaluate(el=>{const s=getComputedStyle(el);return [s.gridColumnStart,s.gridRowStart]}),['1','auto']);await page.setViewportSize({width:2400,height:1100});
 assert.deepEqual(errors,[]);
 await card.screenshot({path:'dev/output/combined-market-supply.png'});console.log('Combined market supply: LS daily, Kiwoom cash minute, KIS futures minute, guide, settings and right-side layout passed');

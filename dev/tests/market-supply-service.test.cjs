@@ -6,6 +6,15 @@ const path = require('node:path');
 const { createMarketSupplyService } = require('../../market-supply-service');
 const { timestamp } = require('../../supply-service');
 const day = '20261023';
+test('non-trading day query returns the latest stored futures session with an explicit source date',async t=>{
+    const {service,setTime}=fixture(t,async()=>[],false,'160000');
+    const time=timestamp(day,'154500');
+    service.store.merge('FUTURE',{t:time,foreign:7,individual:-4,institution:-3});
+    setTime(timestamp('20261024','120000'));
+    const result=await service.query({code:'futures',mode:'minute'});
+    assert.equal(result.date,'2026-10-23');
+    assert.equal(result.points.find(p=>p.t===time)?.foreign,7);
+});
 test('confirmed futures sessions continue at night and after midnight',async t=>{
     let foreign = '7';
     const {service,calls,setTime}=fixture(t,async()=>[{frgn_ntby_tr_pbmn:foreign}],true,'220000');
