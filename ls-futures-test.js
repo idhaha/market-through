@@ -92,7 +92,7 @@ function createLsFuturesTest({ http, getToken, directory, daytimeStore, dailyPro
         const file = path.join(directory, `${code}-${session}.json`), temp = file + '.tmp';
         fs.writeFileSync(temp, JSON.stringify(rows)); fs.renameSync(temp, file);
     }
-    async function load({ code, mode, session, cursor,pricesOnly }, onProgress = () => {}) {
+    async function load({ code, mode, session, cursor,pricesOnly,flowOnly }, onProgress = () => {}) {
         const cfg = assets[code], warnings = ['선물 프로그램 수급 미제공', '수급 금액 배율: 기존 LS 일봉과 동일(원본 ×100 백만원), HTS 대조 필요'];
         const tr = mode === 'day' ? 't8462' : 't8463';
         const end = cursor || compact(now());
@@ -213,6 +213,8 @@ function createLsFuturesTest({ http, getToken, directory, daytimeStore, dailyPro
         onProgress({success:true,source:'LS',session,points:[...points],candles:[],warnings:[...warnings],partial:flowFailed,
             has_more:flowHasMore,cursor:flowCursor,
             date:points.length?dayKey(points.at(-1).t):dayKey(now())});
+        if(flowOnly)return {success:true,source:'LS',session,points,candles:[],warnings,partial:flowFailed,
+            has_more:flowHasMore,cursor:flowCursor,date:points.length?dayKey(points.at(-1).t):dayKey(now())};
         let candles = [], contract = null, partial = flowFailed, priceCursor = null;
         try {
             if(mode==='minute' && cursor && session==='N')throw failure('과거 야간 가격은 날짜를 지정할 수 없어 저장 자료만 표시합니다',502);
@@ -298,7 +300,7 @@ function createLsFuturesTest({ http, getToken, directory, daytimeStore, dailyPro
         return mergeCombined(input,[...parts.values()],sessions.filter((_,i)=>results[i].status==='rejected'));
     }
     async function interactiveCombined(input, progressive) {
-        const key=`${input.code}:${input.mode}:${input.cursor}:${input.prices_only || ''}`;
+        const key=`${input.code}:${input.mode}:${input.cursor}:${input.prices_only || ''}:${input.prices || ''}`;
         let entry=combinedJobs.get(key);
         if(!entry || !entry.running && now()-entry.at>=60000){
             if(combinedJobs.size>=24)for(const [k,v] of combinedJobs)if(!v.running){combinedJobs.delete(k);break;}
@@ -318,13 +320,13 @@ function createLsFuturesTest({ http, getToken, directory, daytimeStore, dailyPro
     function query(input = {}, onProgress = () => {}) {
         const code = input.code || 'futures', mode = input.mode || 'day', session = input.session || 'U', cursor = input.cursor || '';
         if (typeof code !== 'string' || !Object.hasOwn(assets, code) || !['day', 'minute'].includes(mode) || !['D', 'N', 'U'].includes(session) || typeof cursor !== 'string' || (cursor && !validDate(cursor))) throw failure('잘못된 테스트 선물 조회 조건');
-        const pricesOnly=input.prices_only==='1';
-        if (session==='U') return interactiveCombined({code,mode,cursor,prices_only:input.prices_only},input.progressive==='1');
-        const key = `${code}:${mode}:${session}:${cursor}:${pricesOnly}`, old = cache.get(key);
+        const pricesOnly=input.prices_only==='1',flowOnly=mode==='minute' && input.prices==='0' && !pricesOnly;
+        if (session==='U') return interactiveCombined({code,mode,cursor,prices_only:input.prices_only,prices:input.prices},input.progressive==='1');
+        const key = `${code}:${mode}:${session}:${cursor}:${pricesOnly}:${flowOnly}`, old = cache.get(key);
         if (old && now() - old.at < 60000) {onProgress(old.data);return Promise.resolve(old.data);}
         if(!listeners.has(key))listeners.set(key,new Set());listeners.get(key).add(onProgress);
         if (pending.has(key)) return pending.get(key);
-        const task = load({ code, mode, session, cursor,pricesOnly },value=>{for(const listener of listeners.get(key) || [])listener(value);}).then(data => {
+        const task = load({ code, mode, session, cursor,pricesOnly,flowOnly },value=>{for(const listener of listeners.get(key) || [])listener(value);}).then(data => {
             if (cache.size >= 80) cache.delete(cache.keys().next().value);
             cache.set(key, { at: now(), data }); return data;
         }).finally(() => {pending.delete(key);listeners.delete(key);});

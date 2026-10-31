@@ -363,7 +363,7 @@
                 const updateHistory=append || !historyLoaded;
                 if(showCandles || mode==='minute')void loadCandles();
                 do {
-                const params = new URLSearchParams({ code: selected, mode, ...(mode === 'minute' && queryEndpoint==='/api/market-supply/chart' ? {prices:'0'} : {}), ...(mode === 'day' || isTest && selected.startsWith('futures') ? { progressive: '1' } : {}), ...(append ? { cursor: nextCursor } : {}) });
+                const params = new URLSearchParams({ code: selected, mode, ...(mode === 'minute' && (queryEndpoint==='/api/market-supply/chart'||queryEndpoint==='/api/ls-futures-test/chart') ? {prices:'0'} : {}), ...(mode === 'day' || isTest && selected.startsWith('futures') ? { progressive: '1' } : {}), ...(append ? { cursor: nextCursor } : {}) });
                 const result = await request(`${queryEndpoint}?${params}`, { signal: current.signal });
                 if (id !== revision) return;
                 const followLatest = start + Math.min(points.length, count ?? points.length) >= points.length, oldAnchor = points[start]?.t;
@@ -378,7 +378,7 @@
                     const older=[];
                     for(const day of restoreRange.days){
                         minuteDays.add(day);if(day===result.date)continue;
-                        const params=new URLSearchParams({code:selected,mode:'minute',cursor:day.replaceAll('-',''),...(queryEndpoint==='/api/market-supply/chart'?{prices:'0'}:{})});
+                        const params=new URLSearchParams({code:selected,mode:'minute',cursor:day.replaceAll('-',''),...((queryEndpoint==='/api/market-supply/chart'||queryEndpoint==='/api/ls-futures-test/chart')?{prices:'0'}:{})});
                         const past=await request(`${queryEndpoint}?${params}`,{signal:current.signal});
                         if(id!==revision)return;
                         recordCoverage(past,day.replaceAll('-',''));

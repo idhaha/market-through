@@ -3,6 +3,15 @@ const assert = require('node:assert/strict');
 const { createLsFuturesTest, nightPriceTime, investorTime } = require('../../ls-futures-test');
 const { timestamp } = require('../../supply-service');
 const fixedNow = timestamp('20261031', '090000');
+test('stored-only test flow never waits for or calls futures price TRs',async()=>{
+    const {service,calls}=fixture({reply:async(tr,p)=>{
+        if(tr==='t8463')return {rsp_cd:'00000',t8463OutBlock1:[{date:'20261030',time:p.tm_rng==='D'?'154500':'180000',indmsamt:'1',formsamt:'-1',sysmsamt:'0'}]};
+        assert.fail('flow-only request called price/master TR '+tr);
+    }});
+    const result=await service.query({mode:'minute',prices:'0'});
+    assert.equal(result.points.length,2);assert.equal(result.candles.length,0);
+    assert.ok(calls.every(c=>c.tr==='t8463'));
+});
 for(const code of ['futures','futuresKosdaq'])test(`${code} daily uses the main card day history and fills the same night range`,async()=>{
     const baselineCalls=[];
     const baseline={points:[
