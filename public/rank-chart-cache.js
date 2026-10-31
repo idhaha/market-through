@@ -83,6 +83,10 @@
         if(blocked.has(key))return network();
         const entry=memory.get(key)||await storage('get',key);throwIfAborted(options.signal);
         if(entry&&entry.scope===owner&&Date.now()>=entry.at&&(Date.now()-entry.at<TTL || window.TradingRefresh?.allowsUrl(url)===false)){
+            // Persisted concentration responses have no reusable server cursor.
+            // A user-initiated initial read must restore pagination even while
+            // periodic broker refresh is paused for a closed market.
+            if(body && !entry.data.cursor)return network();
             const isHistorical=method==='GET'&&historical(url);
             // Persisted POST responses deliberately have no reusable pagination cursor.
             if(!isHistorical && window.TradingRefresh?.allowsUrl(url)!==false && (Date.now()-entry.at>=1000||body&&!entry.data.cursor))void network(true).catch(()=>{});

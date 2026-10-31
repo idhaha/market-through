@@ -1,4 +1,51 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),{chromium}=require('playwright');
+test('closed-market reload preserves pagination across concentration variants and other card families',async()=>{
+ const browser=await chromium.launch({headless:true,channel:'msedge'});
+ try{
+  const page=await browser.newPage(),counts=new Map();
+  const gets=['/api/supply/chart','/api/kis-supply/chart','/api/ls-supply/chart','/api/market-supply/chart','/api/kiwoom-market-supply/chart','/api/ls-market-supply/chart','/api/turnover/chart','/api/kis-turnover/chart','/api/ls-turnover/chart','/api/chart-reference','/api/adr/candles','/api/risk/breadth','/api/risk/sentiment','/api/risk/volatility'];
+  const specs=[];
+  for(const mode of ['day','minute']){
+   for(const url of gets)specs.push({url:url+'?mode='+mode,method:'GET',cursor:'20261022'});
+   for(const url of ['/api/concentration-chart','/api/kis-concentration-chart','/api/ls-concentration-chart'])for(const prices of [false,true])specs.push({url,method:'POST',body:JSON.stringify({code:'000660',mode,interval:1,...(prices?{prices_only:true}:{})})});
+  }
+  await page.route('https://card-history.test/**',route=>{
+   const request=route.request(),url=new URL(request.url());
+   if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<html></html>'});
+   if(url.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:'cards@example.test'}}});
+   const key=url.pathname+url.search+'|'+(request.postData() || ''),n=(counts.get(key)||0)+1;counts.set(key,n);
+   return route.fulfill({json:{success:true,points:[{t:1793059200000,value:10}],cursor:request.method()==='POST'?'session-'+n:'20261022',has_more:true}});
+  });
+  const start=async()=>{await page.goto('https://card-history.test/');await page.evaluate(()=>window.TradingRefresh={allowsUrl:()=>false});await page.addScriptTag({path:'public/rank-chart-cache.js'});};
+  const read=()=>page.evaluate(async specs=>Promise.all(specs.map(async s=>{const response=await RankChartCache.fetch(s.url,{method:s.method,...(s.body?{body:s.body,headers:{'Content-Type':'application/json'}}:{})});return response.json();})),specs);
+  await start();await read();await start();const restored=await read();
+  for(let i=0;i<specs.length;i++){
+   const s=specs[i];assert.equal(restored[i].has_more,true,s.url);
+   assert.equal(restored[i].cursor,s.method==='POST'?'session-2':'20261022',s.url+' '+(s.body||''));
+  }
+  assert.equal(specs.length,40);
+  assert.equal([...counts.values()].filter(n=>n===2).length,12,'All session-bound source and candle variants restore sessions');
+  assert.equal([...counts.values()].filter(n=>n===1).length,28,'Date-based cards retain stored pagination without unnecessary closed-market requests');
+ }finally{await browser.close();}
+});
+test('closed-market reload obtains a fresh concentration cursor instead of disabling saved history',async()=>{
+ const browser=await chromium.launch({headless:true,channel:'msedge'});
+ try{
+  const page=await browser.newPage();let calls=0;
+  await page.route('https://closed-history.test/**',route=>{
+   const url=new URL(route.request().url());
+   if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<html></html>'});
+   if(url.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:'closed@example.test'}}});
+   calls++;return route.fulfill({json:{success:true,points:[{time:'20261030100000',value:10,stock_price:100}],cursor:'fresh-'+calls,has_more:true}});
+  });
+  const start=async()=>{await page.goto('https://closed-history.test/');await page.evaluate(()=>window.TradingRefresh={allowsUrl:()=>false});await page.addScriptTag({path:'public/rank-chart-cache.js'});};
+  const read=()=>page.evaluate(async()=>{const r=await RankChartCache.fetch('/api/ls-concentration-chart',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:'000660',mode:'minute',interval:1})});return r.json();});
+  await start();assert.equal((await read()).cursor,'fresh-1');
+  await start();const restored=await read();
+  assert.equal(restored.has_more,true,'A closed market must not turn persisted history into exhausted history');
+  assert.equal(restored.cursor,'fresh-2');assert.equal(calls,2);
+ }finally{await browser.close();}
+});
 test('duplicate market cards isolate cancellation and consume one shared response',async()=>{
  const browser=await chromium.launch({headless:true,channel:'msedge'});
  try{
@@ -55,8 +102,8 @@ test('browser chart cache retains history 16 hours, revalidates live data, exclu
  user='two@example.test';value=30;await page.evaluate(()=>RankChartCache.invalidateIdentity());assert.equal((await read(history)).body.points[0].value,30);assert.equal(calls.length,n+5,'A different account never gets the prior account cache');
  const post='/api/ls-concentration-chart',options={method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:'000660',mode:'minute'})};
  const first=await read(post,options);assert.ok(first.body.cursor);await start();
- const cached=await read(post,options);assert.equal(cached.body.cursor,null);assert.equal(cached.body.has_more,false,'Stored responses cannot expose expired server cursors');await page.waitForFunction(()=>window.updates>0);
- const fresh=await read(post,options);assert.ok(fresh.body.cursor);assert.notEqual(fresh.body.cursor,first.body.cursor);
+ const cached=await read(post,options);assert.ok(cached.body.cursor);assert.equal(cached.body.has_more,true,'Reload restores pagination with a new server cursor');
+ assert.notEqual(cached.body.cursor,first.body.cursor);
  const before=calls.length;await read(post,{...options,body:JSON.stringify({code:'000660',mode:'minute',cursor:'opaque'})});await read(post,{...options,body:JSON.stringify({code:'000660',mode:'minute',cursor:'opaque'})});assert.equal(calls.length,before+2,'Session-bound history requests are not persisted');
  // A pending server job must resume polling rather than repeatedly showing a stale complete snapshot.
  await page.evaluate(()=>{window.done=false;window.refreshRankLsTurnoverChart=async()=>{for(let i=0;i<5;i++){const r=await RankChartCache.fetch('/api/ls-turnover/chart?mode=minute');const d=await r.json();if(!d.pending){window.done=true;window.lastValue=d.points[0].value;return;}}};});
