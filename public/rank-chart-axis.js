@@ -404,9 +404,18 @@
         if(overnight?.mode==='minute' && overnight.first){
             const first=viewport?.first || sharedCutoff || overnight.first;
             const last=viewport?.last || active.map(c=>c.last).filter(v=>v && v>=first).sort().at(-1) || first;
-            const epoch=s=>Date.parse(s.replace(' ','T')+':00+09:00')/60000;
+            // Keep 06:01 closing observations; omit 06:02 through 07:59.
+            // Zoom and scroll use the matching inverse below.
+            const epoch=s=>{
+                const local=Date.parse(s.replace(' ','T')+':00+09:00')/60000+540;
+                const day=Math.floor(local/1440),clock=local-day*1440;
+                return day*1322+clock-Math.min(118,Math.max(0,clock-362));
+            };
             const origin=epoch(first),position=value=>epoch(dateParts(value).slice(0,16))-origin;
-            const at=n=>dateParts((origin+n)*60000);
+            const at=n=>{
+                const total=origin+n,day=Math.floor(total/1322),clock=total-day*1322;
+                return dateParts((day*1440+clock+(clock>=362?118:0)-540)*60000);
+            };
             const days=[];for(let t=Date.parse(first.slice(0,10)+'T00:00:00+09:00'),end=Date.parse(last.slice(0,10)+'T00:00:00+09:00');t<=end;t+=86400000)days.push(dateParts(t).slice(0,10));
             return {first,last,days,offset:0,span:Math.max(1,position(last)),position,at,continuous:true};
         }

@@ -1,6 +1,32 @@
 const test=require('node:test');const assert=require('node:assert/strict');const vm=require('node:vm');const fs=require('node:fs');
 const context={window:{}};vm.runInNewContext(fs.readFileSync('public/rank-chart-axis.js','utf8'),context);const {ticks}=context.window.RankChartAxis;
 const ctx={measureText:label=>({width:label.length*7})};
+test('overnight common axis omits 06:02-07:59 and preserves inverse, peer alignment and zoom',()=>{
+ const isolated={window:{},queueMicrotask:()=>{}};
+ vm.runInNewContext(fs.readFileSync('public/rank-chart-axis.js','utf8'),isolated);
+ const api=isolated.window.RankChartAxis;
+ const rows=['2026-10-30 06:00','2026-10-30 06:01','2026-10-30 08:00','2026-10-31 06:01','2026-10-31 08:00'];
+ api.sharedRange('testMarketSupply',rows,v=>v,'minute',0,null,()=>{});
+ api.sharedRange('combinedMarketSupply',rows.slice(2),v=>v,'minute',0,null,()=>{});
+ const domain=api.minuteDomain();
+ assert.equal(domain.position(rows[1]),1);
+ assert.equal(domain.position(rows[2]),2);
+ assert.equal(domain.position(rows[4]),1324);
+ for(const date of rows)assert.equal(domain.at(domain.position(date)).slice(0,16),date);
+ for(let n=0;n<=domain.span;n++){
+   const date=domain.at(n).slice(0,16);
+   assert.ok(date.slice(11)<'06:02' || date.slice(11)>='08:00');
+   assert.equal(domain.position(date),n);
+ }
+ const x=api.sessionX(rows,v=>v,0,1324,true),peer=api.sessionX(rows.slice(2),v=>v,0,1324,true);
+ assert.equal(x(rows[2]),peer(rows[2]));assert.equal(x(rows[2])-x(rows[1]),1);
+ const boundaries=api.dayBoundaryPositions(0,1324,domain);
+ assert.deepEqual(Array.from(boundaries,p=>p.x),[2,1324]);
+ api.selectViewport('testMarketSupply',1/1324,2/1324);
+ assert.equal(api.minuteDomain().first,'2026-10-30 06:01');
+ assert.equal(api.minuteDomain().last,'2026-10-30 08:00');
+ assert.equal(api.minuteDomain().span,1);
+});
 test('08:00 separators follow elapsed time, including empty days, and stay inside the viewport',()=>{
  const api=context.window.RankChartAxis;
  const origin=Date.parse('2026-10-26T10:56:00+09:00');
