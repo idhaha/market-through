@@ -296,6 +296,7 @@ tip.hidden=false;}
                 if (i && date.slice(0,length) !== visible[i-1].slice(0,length) && (!separators.length || x(date) - x(separators.at(-1)) >= 32)) separators.push(date);
             });
             const boundaries = (context, upper, lower) => {
+                if(breadth && breadthMode==='minute'){window.RankChartAxis.drawDayBoundaries(context,left,right,upper,lower);return;}
                 context.save(); context.strokeStyle = '#b8c1cc'; context.setLineDash([3,5]);
                 separators.forEach(date => { context.beginPath(); context.moveTo(x(date), upper); context.lineTo(x(date), lower); context.stroke(); }); context.restore();
             };
@@ -356,11 +357,11 @@ tip.hidden=false;}
         async function loadCandles(target) {
             if(candleEnsureActive && !target)return;
             if (!breadth && candles.length) { draw(); return; }
-            if (candleArea.hidden || !dates.length && !(breadth && breadthMode==='minute')) return;
+            if (candleArea.hidden) return;
             const priceMarket=breadth && breadthMarket==='kosdaq'?'kosdaq':'kospi';
             const priceName=priceMarket==='kosdaq'?'KOSDAQ':'KOSPI';
             const domain=breadth && breadthMode==='minute'?window.RankChartAxis.minuteDomain():null;
-            const first=(target || domain?.first || dates[0]).slice(0,10),last=(domain?.last || dates.at(-1)).slice(0,10);
+            const first=(target || domain?.first || dates[0] || dateKey(Date.now()-180*86400000)).slice(0,10),last=(domain?.last || dates.at(-1) || dateKey(Date.now())).slice(0,10);
             const key = `${priceMarket}:${breadth ? breadthMode : 'day'}:${first}:${last}`;
             if(target && breadthPriceError)candleKey='';
             if(key===candleKey || key===breadthPricePending)return;
@@ -375,7 +376,7 @@ tip.hidden=false;}
                 if (request !== candleRequest) return;
                 const freshCandles = (Array.isArray(result.points) ? result.points : []).filter(point => ['t', 'open', 'high', 'low', 'close'].every(key => point[key] != null && Number.isFinite(Number(point[key])))).map(point => ({ ...point, date: minute ? new Date(Number(point.t) + 9 * 3600000).toISOString().slice(0,16).replace('T', ' ') : dateKey(Number(point.t)) })).sort((a, b) => a.t - b.t);
                 candles=[...new Map([...candles,...freshCandles].map(p=>[p.t,p])).values()].sort((a,b)=>a.t-b.t);
-                if(breadth && breadthMode==='minute')dates=[...new Set([...dates,...freshCandles.map(p=>p.date)])].sort();
+                dates=[...new Set([...dates,...freshCandles.map(p=>p.date)])].sort();
                 breadthPriceError=result.partial?'일부 캔들 구간만 조회됨':'';
                 candles.forEach((point, index) => {
                     const previous = index > 0 ? Number(candles[index - 1].close) : null;
@@ -404,7 +405,7 @@ tip.hidden=false;}
                     breadthPages.set(cursor || '', result);
                 }
                 const pages = [...breadthPages.values()];
-                dates = [...new Set(pages.flatMap(p => p.dates || []))].sort();
+                dates = [...new Set([...pages.flatMap(p => p.dates || []),...candles.map(p=>p.date)])].sort();
                 for (const id of ids) data[id] = [...new Map(pages.flatMap(p => p.series?.[id]?.points || []).map(p => [p.date, p])).values()].sort((a,b) => a.date.localeCompare(b.date));
                 const last = pages.at(-1); breadthCursor = last?.has_more ? last.cursor : null;
                 ids.forEach(id => { const latest = data[id].find(p => p.date === dates.at(-1)); panel.querySelector(`[data-volatility="${id}"] output`).textContent = latest?.value == null ? '—' : formatValue(latest.value,id); });
@@ -417,7 +418,7 @@ tip.hidden=false;}
                 status.textContent = [shownDates.length ? `${shownDates[0]} ~ ${shownDates.at(-1)}` : breadthMode==='minute' && todayOnly ? '당일 분봉 데이터 없음' : '기준 봉 없음', pages[0]?.warning, '키움 · 250일 고저 기준 · 누락 —'].filter(Boolean).join(' · ');
                 window.setRankCardConnection?.(panel, !pages[0]?.warning);
                 if (more) { start = 0; count = null; }
-                candleKey = ''; draw(); await loadCandles();
+                candleKey = ''; draw(); void loadCandles();
             } catch (error) { status.textContent = error.message; window.setRankCardConnection?.(panel, false); }
             finally {
                 breadthLoading = false;
@@ -459,6 +460,17 @@ tip.hidden=false;}
             controller?.abort(); const current = controller = new AbortController();
             const anchor = dates[start], followLatest = start + (count ?? dates.length) >= dates.length;
             status.textContent = '데이터 조회 중…';
+            const topicJob=(async()=>{
+                const response = await (window.RankChartCache?.fetch || fetch)(`/api/risk/${sentiment ? 'sentiment' : 'volatility'}?range=all`, {signal:current.signal});
+                const result = await response.json(); if (!response.ok) throw new Error(result.error || '지표 조회 실패');
+                if(current===controller){
+                    data=Object.fromEntries(ids.map(id=>[id,(result.series?.[id]?.points || []).filter(p=>p.value!=null&&Number.isFinite(Number(p.value))).map(p=>({...p,value:Number(p.value)}))]));
+                    dates=[...new Set([...dates,...Object.values(data).flat().map(p=>p.date)])].sort();
+                    ids.forEach(id=>{const legend=panel.querySelector(`[data-volatility="${id}"]`);legend.querySelector('output').textContent=data[id].length?formatValue(data[id].at(-1).value,id):'—';});
+                    draw();
+                }
+                return {result};
+            })().catch(error=>({error}));
             try {
                 const keys = more ? [referenceCursor] : [...new Set(['', ...referencePages.keys()])];
                 let referenceError = '';
@@ -476,8 +488,10 @@ tip.hidden=false;}
                     if (error.name === 'AbortError') throw error;
                     referenceError = error.message;
                 }
-                const response = await (window.RankChartCache?.fetch || fetch)(`/api/risk/${sentiment ? 'sentiment' : 'volatility'}?range=all`, {signal:current.signal});
-                const result = await response.json(); if (!response.ok) throw new Error(result.error || '지표 조회 실패');
+                candles=[...new Map([...referencePages.values()].flatMap(p=>p.points || []).map(p=>[p.date,p])).values()].sort((a,b)=>a.t-b.t);
+                if(candles.length)dates=[...new Set([...dates,...candles.map(p=>p.date)])].sort();
+                draw();
+                const topic=await topicJob;if(topic.error)throw topic.error;const result=topic.result;
                 if (current !== controller) return;
                 candles = [...new Map([...referencePages.values()].flatMap(p=>p.points || []).map(p=>[p.date,p])).values()].sort((a,b)=>a.t-b.t);
                 dates = candles.length ? candles.map(p=>p.date) : [...new Set(ids.flatMap(id=>(result.series?.[id]?.points || []).filter(p=>p.value!=null && Number.isFinite(Number(p.value))).map(p=>p.date)))].sort();
@@ -496,6 +510,7 @@ tip.hidden=false;}
             finally { riskLoading=false;riskMore.disabled=!referenceCursor;window.RankChartAxis.loadingBar(canvas.parentElement,false,'지표'); }
         }
         window[refreshName] = () => breadth ? refreshBreadth() : refreshRisk();
+        window[`get${displayName.replace('DisplaySettings','DataState')}`]=()=>({dates,candles,data,loading:breadth?breadthLoading:riskLoading});
         const save = () => { if (!window.rankCandleSyncing && typeof saveAppData === 'function') saveAppData(); };
         window[`get${displayName}`] = () => ({ range, ...(breadth ? { mode: breadthMode } : {}), candleOpen: !candleArea.hidden });
         window[`apply${displayName}`] = settings => {

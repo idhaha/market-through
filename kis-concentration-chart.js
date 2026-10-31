@@ -102,6 +102,7 @@ function createKisConcentrationChartService({ reference, http, credentials, getT
         }
     }
     function collectionWindow() {
+        const policy=require('./trading-session').current();if(policy && !policy.spotAt(now()))return null;
         const korean = new Date(now() + 9 * 3600000), weekday = korean.getUTCDay();
         const minutes = korean.getUTCHours() * 60 + korean.getUTCMinutes();
         return weekday >= 1 && weekday <= 5 && minutes >= 480 && minutes <= 1202

@@ -101,6 +101,21 @@ function fileLog(message) {
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const tradingSession = require('./trading-session').createTradingSession({
+    directory:path.join(__dirname,'data','trading-session'),
+    loadCalendar:async date=>{
+        const domain=(process.env.EFRIEND_DOMAIN || '').trim(),appKey=(process.env.EFRIEND_APPKEY || '').trim(),secretKey=(process.env.EFRIEND_SECRETKEY || '').trim();
+        if(!domain || !appKey || !secretKey)throw Error('Market calendar credentials unavailable');
+        const response=await kisHttp.get(domain+'/uapi/domestic-stock/v1/quotations/chk-holiday',{
+            params:{BASS_DT:date,CTX_AREA_FK:'',CTX_AREA_NK:''},
+            headers:{authorization:'Bearer '+await getEfriendAccessToken(domain,appKey,secretKey),appkey:appKey,appsecret:secretKey,tr_id:'CTCA0903R',custtype:'P'},timeout:10000
+        });
+        if(String(response.data.rt_cd)!=='0')throw Error('Market calendar unavailable');
+        return response.data.output;
+    }
+});
+require('./trading-session').install(tradingSession);
+app.get('/api/trading-session',(req,res)=>res.set('Cache-Control','no-store').json(tradingSession.snapshot()));
 const SERVER_START_TIME = new Date().toLocaleString();
 const GOOGLE_OAUTH_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '218429663028-l66pfc3i804uec317arj717r1hrf519u.apps.googleusercontent.com';
 const AUTH_ADMIN_EMAIL = 'azikanbal@gmail.com';
@@ -200,7 +215,7 @@ createRankIndependentRelay({
         if (url.pathname === '/api/kis-supply/chart') return kisStockSupplyService.query(Object.fromEntries(url.searchParams));
         if (url.pathname === '/api/concentration-chart') return concentrationChartService.query(command.body || {}, email);
         if (url.pathname === '/api/concentration-stock') return { success: true, stock: await concentrationChartService.resolveStock(url.searchParams.get('q')) };
-        if (url.pathname === '/api/concentration-stocks') return { success: true, stocks: concentrationChartService.searchStocks(url.searchParams.get('q')) };
+        if (url.pathname === '/api/concentration-stocks') return { success: true, stocks: await concentrationChartService.searchStocksReady(url.searchParams.get('q')) };
         if (url.pathname === '/api/supply/watchlist') return command.method === 'PUT'
             ? supplyService.configure(command.body?.codes, command.body?.revision) : supplyService.summary();
         if (url.pathname === '/api/supply/chart') return supplyService.query(Object.fromEntries(url.searchParams));
@@ -240,6 +255,7 @@ const chartReferenceService = require('./chart-reference-service').createChartRe
     http: indexHttp, getToken: () => getAccessToken(process.env.KIWOOM_APPKEY, process.env.KIWOOM_SECRETKEY)
 });
 const marketSupplyService = require('./market-supply-service').createMarketSupplyService({
+    futuresDaytimeOnly: true,
     directory: path.join(__dirname, 'data', 'market-supply'), http: kisHttp,
     credentials: () => ({ domain: (process.env.EFRIEND_DOMAIN || '').trim(), appKey: (process.env.EFRIEND_APPKEY || '').trim(), secretKey: (process.env.EFRIEND_SECRETKEY || '').trim() }),
     getToken: () => getEfriendAccessToken((process.env.EFRIEND_DOMAIN || '').trim(), (process.env.EFRIEND_APPKEY || '').trim(), (process.env.EFRIEND_SECRETKEY || '').trim()),
@@ -259,10 +275,25 @@ app.post('/api/market-alerts/acknowledge', (req, res) => {
     catch (error) { res.status(error.status || 500).json({ error: '경보 확인 요청을 처리하지 못했습니다.' }); }
 });
 app.get('/api/market-alerts/diagnostics', (req, res) => res.set('Cache-Control', 'no-store').json(marketAlertService.diagnostics()));
+const lsMarketDailyProvider = require('./ls-market-daily').createLsMarketDaily({http:axios,getToken:()=>lsMarketSupplyProvider.accessToken(),reference:chartReferenceService});
 const lsMarketSupplyService = require('./market-supply-service').createMarketSupplyService({
     directory: path.join(__dirname, 'data', 'ls-market-supply'), minuteProvider: lsMarketSupplyProvider,
-    dailyProvider: require('./ls-market-daily').createLsMarketDaily({http:axios,getToken:()=>lsMarketSupplyProvider.accessToken(),reference:chartReferenceService}),
+    dailyProvider: lsMarketDailyProvider,
     reference: chartReferenceService, supply: supplyService
+});
+const lsFuturesTestService = require('./ls-futures-test').createLsFuturesTest({
+    http: axios, getToken: () => lsMarketSupplyProvider.accessToken(),
+    dailyProvider: lsMarketDailyProvider,
+    daytimeStore: marketSupplyService.store,
+    directory: path.join(__dirname, 'data', 'ls-futures-test')
+});
+app.get('/api/ls-futures-test/candles', async (req, res) => {
+    try { res.set('Cache-Control', 'no-store').json(await lsFuturesTestService.priceRange(req.query)); }
+    catch (error) { res.status(error.status || 502).json({ success: false, error: error.message }); }
+});
+app.get('/api/ls-futures-test/chart', async (req, res) => {
+    try { res.set('Cache-Control', 'no-store').json(await lsFuturesTestService.query(req.query)); }
+    catch (error) { res.status(error.status || 502).json({ success: false, error: error.message }); }
 });
 const kiwoomMarketSupplyProvider = require('./kiwoom-market-supply').createKiwoomMarketSupply({
     directory: path.join(__dirname, 'data', 'kiwoom-market-supply'), http: axios,
@@ -342,8 +373,8 @@ app.get('/api/supply/candles', async (req, res) => {
     try { res.set('Cache-Control', 'no-store').json(await supplyService.candles(req.query)); }
     catch (error) { res.status(error.status || 502).json({ success: false, error: error.message }); }
 });
-app.get('/api/concentration-stocks', (req, res) => {
-    try { res.json({ success: true, stocks: concentrationChartService.searchStocks(req.query.q) }); }
+app.get('/api/concentration-stocks', async (req, res) => {
+    try { res.json({ success: true, stocks: await concentrationChartService.searchStocksReady(req.query.q) }); }
     catch (error) { res.status(error.status || 503).json({ success: false, error: error.message }); }
 });
 app.get('/api/concentration-stock', async (req, res) => {
@@ -3080,7 +3111,8 @@ async function requestEfriendAccessToken(domain, appKey, secretKey) {
     }
 }
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
+    tradingSession.start();await tradingSession.refresh();
     marketAlertService.start();
     supplyService.start();
     kisStockSupplyService.start();
@@ -3088,6 +3120,7 @@ app.listen(PORT, () => {
     kisTurnoverData.start();
     lsTurnoverData.start();
     marketSupplyService.start();
+    lsFuturesTestService.start();
     kiwoomMarketSupplyService.start();
     lsMarketSupplyService.start();
     kisConcentrationChartService.start();

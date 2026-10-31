@@ -39,6 +39,14 @@
     }
     function response(data){return new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json','X-MarketThrough-Chart-Cache':'hit'}});}
     function throwIfAborted(signal){if(signal?.aborted)throw new DOMException('The operation was aborted.','AbortError');}
+    function waitForShared(task,signal){
+        throwIfAborted(signal);if(!signal)return task;
+        return new Promise((resolve,reject)=>{
+            const abort=()=>reject(new DOMException('The operation was aborted.','AbortError'));
+            signal.addEventListener('abort',abort,{once:true});
+            task.then(value=>{signal.removeEventListener('abort',abort);if(signal.aborted)abort();else resolve(value);},error=>{signal.removeEventListener('abort',abort);reject(error);});
+        });
+    }
     function notify(url){document.dispatchEvent(new CustomEvent('rank-chart-cache-updated',{detail:{path:url.pathname,mode:url.searchParams.get('mode')}}));}
     async function request(input,options={}){
         const url=new URL(typeof input==='string'?input:input.url,location.href),method=(options.method||'GET').toUpperCase();
@@ -51,9 +59,12 @@
         const key=await hash(owner+'|'+method+'|'+url.href+'|'+canonical),epoch=revision;
         if(handoff.has(key)){const saved=handoff.get(key);handoff.delete(key);if(Date.now()-saved.at<FRESH)return response(saved.data);}
         async function network(background=false){
-            if(pending.has(key)){try{return (await pending.get(key)).clone();}catch(e){if(e.name==='AbortError'&&!options.signal?.aborted)return nativeFetch(input,options);throw e;}}
+            if(pending.has(key))return (await waitForShared(pending.get(key),options.signal)).clone();
+            // A chart owns its subscription, not the shared network request.
+            // History restoration in one card must not cancel its peer's read.
+            const {signal,...sharedOptions}=options;
             const task=(async()=>{
-                const r=await nativeFetch(input,options);let data;try{data=await r.clone().json();}catch{return r;}
+                const r=await nativeFetch(input,sharedOptions);let data;try{data=await r.clone().json();}catch{return r;}
                 if(epoch!==revision)return r;
                 if(r.status===401||r.status===403){memory.delete(key);await storage('delete',key);identityAt=0;return r;}
                 if(r.ok&&data.pending){blocked.add(key);if(background){handoff.set(key,{data,at:Date.now()});while(handoff.size>MAX_ENTRIES)handoff.delete(handoff.keys().next().value);notify(url);}return r;}
@@ -66,15 +77,15 @@
                     }
                 }else{memory.delete(key);await storage('delete',key);}
                 if(background&&r.ok){handoff.set(key,{data,at:Date.now()});while(handoff.size>MAX_ENTRIES)handoff.delete(handoff.keys().next().value);notify(url);}return r;
-            })();pending.set(key,task);
-            try{return (await task).clone();}finally{if(pending.get(key)===task)pending.delete(key);}
+            })().finally(()=>{if(pending.get(key)===task)pending.delete(key);});pending.set(key,task);
+            return (await waitForShared(task,signal)).clone();
         }
         if(blocked.has(key))return network();
         const entry=memory.get(key)||await storage('get',key);throwIfAborted(options.signal);
-        if(entry&&entry.scope===owner&&Date.now()>=entry.at&&Date.now()-entry.at<TTL){
+        if(entry&&entry.scope===owner&&Date.now()>=entry.at&&(Date.now()-entry.at<TTL || window.TradingRefresh?.allowsUrl(url)===false)){
             const isHistorical=method==='GET'&&historical(url);
             // Persisted POST responses deliberately have no reusable pagination cursor.
-            if(!isHistorical&&(Date.now()-entry.at>=1000||body&&!entry.data.cursor))void network(true).catch(()=>{});
+            if(!isHistorical && window.TradingRefresh?.allowsUrl(url)!==false && (Date.now()-entry.at>=1000||body&&!entry.data.cursor))void network(true).catch(()=>{});
             return response(entry.data);
         }
         if(entry)await storage('delete',key);

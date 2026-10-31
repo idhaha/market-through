@@ -14,6 +14,28 @@ function service(post, marketCache = { '005930': { type: 'K', code: '0' } }) {
 function response(field, list, nextKey = '') {
     return { data: { return_code: 0, [field]: list }, headers: { 'cont-yn': nextKey ? 'Y' : 'N', 'next-key': nextKey } };
 }
+test('price-only concentration query never waits for the market denominator and owns a separate cursor',async()=>{
+    const calls=[];
+    const api=service(async(url,body,options)=>{
+        const id=options.headers['api-id'];calls.push(id);
+        if(id!=='ka10080')throw Error('Market denominator unavailable');
+        return response('stk_min_pole_chart_qry',[{...minute('20261007090000'),open_pric:'100',high_pric:'110',low_pric:'90'}],'next-stock');
+    });
+    const result=await api.query({code:'005930',mode:'minute',interval:1,prices_only:true},'owner');
+    assert.deepEqual(calls,['ka10080']);assert.equal(result.points[0].stock_price,100);assert.equal(result.points[0].value,null);
+    await assert.rejects(api.query({code:'005930',mode:'minute',interval:1,cursor:result.cursor},'owner'),/./);
+});
+test('daily price-only concentration shares an in-flight stock page with the subject query',async()=>{
+    let release;const gate=new Promise(resolve=>release=resolve);let stockCalls=0;
+    const api=service(async(url,body,options)=>{
+        if(options.headers['api-id']==='ka10081'){stockCalls++;await gate;return response('stk_dt_pole_chart_qry',[{...daily('20261007'),open_pric:'95',high_pric:'110',low_pric:'90'}]);}
+        return response('inds_dt_pole_qry',[daily('20261007','1000')]);
+    });
+    const subject=api.query({code:'005930',mode:'day',interval:1},'owner');
+    const price=api.query({code:'005930',mode:'day',interval:1,prices_only:true},'owner');
+    await new Promise(resolve=>setImmediate(resolve));assert.equal(stockCalls,1);release();
+    const [s,p]=await Promise.all([subject,price]);assert.equal(p.points[0].value,null);assert.equal(p.points[0].stock_price,100);assert.ok(s.points[0].value>0);
+});
 
 test('minute ratios use absolute price, integer volume, same timestamp, and retain 08:00 NXT prices with missing index ratios', () => {
     const stock = rows([minute('20261007080000'), minute('20261007090000'), minute('20261007090100'), minute('20261007090200', '100', '0'), minute('20261007090300')]);
@@ -286,4 +308,17 @@ test('autocomplete searches the local master and failed refresh preserves the pr
     fail = true;
     await assert.rejects(api.refreshStockDirectory(), /temporary failure/);
     assert.equal(api.searchStocks('삼성').length, 2);
+});
+test('cold autocomplete initializes once for concurrent searches and retries a failed initialization',async()=>{
+    let calls=0,release,fail=true;const gate=new Promise(resolve=>release=resolve);
+    const api=service(async(url,body)=>{
+        calls++;if(fail)throw Error('temporary failure');await gate;
+        return {data:{list:body.mrkt_tp==='0'?[{stk_cd:'005930',stk_nm:'삼성전자',marketCode:'0'}]:[{stk_cd:'000660',stk_nm:'다른종목',marketCode:'10'}]},headers:{}};
+    });
+    assert.deepEqual(await api.searchStocksReady(''),[]);assert.equal(calls,0);
+    await assert.rejects(api.searchStocksReady('삼성'),/temporary failure/);fail=false;
+    const a=api.searchStocksReady('삼'),b=api.searchStocksReady('삼성');release();
+    const results=await Promise.all([a,b]);assert.equal(results[0][0].code,'005930');assert.equal(results[1][0].code,'005930');
+    assert.equal(calls,3,'One failed request plus one shared two-market initialization');
+    await api.searchStocksReady('005930');assert.equal(calls,3,'Warm autocomplete reads the master without another TR');
 });

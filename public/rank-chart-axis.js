@@ -12,7 +12,7 @@
             const indices=[...new Set(Array.from({length:5},(_,i)=>Math.round(i*(daily.days.length-1)/4)))];
             let previousRight=-Infinity;
             return indices.flatMap(index=>{
-                const label=daily.days[index].slice(2,10),width=context.measureText(label).width;
+                const label=daily.days[index].slice(5,10).replace('-','/'),width=context.measureText(label).width;
                 const labelX=Math.max(left+width/2,Math.min(right-width/2,left+index/Math.max(1,daily.days.length-1)*(right-left)));
                 if(width>right-left || labelX-width/2<previousRight+16)return [];
                 previousRight=labelX+width/2;return [{label,labelX}];
@@ -23,7 +23,7 @@
         const multipleDays=mode==='minute' && dates[0].slice(0,10)!==dates.at(-1).slice(0,10);
         const result=[];let previousRight=-Infinity,previousLabel='';
         values.forEach((value,i)=>{
-            const date=dates[i],label=mode==='minute'?`${multipleDays?date.slice(5,10)+' ':''}${date.slice(11,16)}`:date.slice(2,10);
+            const date=dates[i],label=mode==='minute'?`${multipleDays?date.slice(5,10).replace('-','/')+' ':''}${date.slice(11,16)}`:date.slice(5,10).replace('-','/');
             const width=context.measureText(label).width;
             if(width>right-left || label===previousLabel)return;
             const labelX=Math.max(left+width/2,Math.min(right-width/2,x(value,i)));
@@ -44,7 +44,7 @@
     const minuteCharts=new Map();
     const viewports=new Map();
     let viewportSource=null,viewportBefore=null;
-    const viewportPanels={combinedMarketSupplySecondary:'rankCombinedMarketSupplySecondaryChartPanel',combinedMarketSupply:'rankCombinedMarketSupplyChartPanel',combinedSupply:'rankCombinedSupplyChartPanel',combinedTurnover:'rankCombinedTurnoverChartPanel',combinedConcentration:'combinedConcentrationChartPanel',lsConcentration:'lsConcentrationChartPanel',kisTurnover:'rankKisTurnoverChartPanel',lsTurnover:'rankLsTurnoverChartPanel',kiwoomMarketSupply:'rankKiwoomMarketSupplyChartPanel',kisSupply:'rankKisSupplyChartPanel',lsSupply:'rankLsSupplyChartPanel',lsMarketSupply:'rankLsMarketSupplyChartPanel',concentration:'concentrationChartPanel',kisConcentration:'kisConcentrationChartPanel',supply:'rankSupplyChartPanel',marketSupply:'rankMarketSupplyChartPanel',breadth:'rankBreadthChartPanel',turnover:'rankTurnoverChartPanel',adr:'rankAdrChartPanel',volatility:'rankVolatilityChartPanel',sentiment:'rankSentimentChartPanel'};
+    const viewportPanels={testMarketSupply:'rankTestMarketSupplyChartPanel',combinedMarketSupplySecondary:'rankCombinedMarketSupplySecondaryChartPanel',combinedMarketSupply:'rankCombinedMarketSupplyChartPanel',combinedSupply:'rankCombinedSupplyChartPanel',combinedTurnover:'rankCombinedTurnoverChartPanel',combinedConcentration:'combinedConcentrationChartPanel',lsConcentration:'lsConcentrationChartPanel',kisTurnover:'rankKisTurnoverChartPanel',lsTurnover:'rankLsTurnoverChartPanel',kiwoomMarketSupply:'rankKiwoomMarketSupplyChartPanel',kisSupply:'rankKisSupplyChartPanel',lsSupply:'rankLsSupplyChartPanel',lsMarketSupply:'rankLsMarketSupplyChartPanel',concentration:'concentrationChartPanel',kisConcentration:'kisConcentrationChartPanel',supply:'rankSupplyChartPanel',marketSupply:'rankMarketSupplyChartPanel',breadth:'rankBreadthChartPanel',turnover:'rankTurnoverChartPanel',adr:'rankAdrChartPanel',volatility:'rankVolatilityChartPanel',sentiment:'rankSentimentChartPanel'};
     const hoverCharts=new Map();
     function hoverKey(value,mode) { return value==null?null:dateParts(value).slice(0,mode==='minute'?16:10); }
     function registerHover(id,getMode,getValue,apply) { hoverCharts.set(id,{getMode,getValue,apply}); }
@@ -91,7 +91,29 @@
     }
     function notifyCharts() {
         if(redrawQueued)return;redrawQueued=true;
-        queueMicrotask(()=>{redrawQueued=false;for(const chart of minuteCharts.values())chart.draw();});
+        queueMicrotask(()=>{redrawQueued=false;for(const chart of minuteCharts.values())chart.draw();catchUpVisibleHistory();});
+    }
+    const visibleHistoryAttempts=new Map(),visibleHistoryRunning=new Set();
+    let visibleHistoryQueued=false;
+    function scheduleVisibleHistory(){
+        if(visibleHistoryQueued)return;visibleHistoryQueued=true;
+        queueMicrotask(()=>{visibleHistoryQueued=false;catchUpVisibleHistory();});
+    }
+    function catchUpVisibleHistory(){
+        if(historyBusy)return;
+        const range=minuteDomain();
+        for(const [id,chart] of minuteCharts){
+            const loader=historyLoaders.get(id);
+            if(chart.mode!=='minute' || !loader?.state || loader.busy() || visibleHistoryRunning.has(id))continue;
+            const state=loader.state(),first=state.coverageFirst ?? chart.first;
+            if(!state.hasMore || first && first<=range.first)continue;
+            const key=`${state.identity}:${range.first}:${first}:${state.cursor}`;
+            if(visibleHistoryAttempts.get(id)===key)continue;
+            visibleHistoryAttempts.set(id,key);visibleHistoryRunning.add(id);
+            // A peer's price history may expand the axis before this card has
+            // loaded matching source rows. Reuse the existing history loader.
+            void restoreHistoryRange(id,range).finally(()=>{visibleHistoryRunning.delete(id);});
+        }
     }
     function showHistory(){if(historyBusy)return;historyMode=true;for(const chart of minuteCharts.values())chart.applied=undefined;notifyCharts();}
     function resetHistoryWork(){
@@ -100,12 +122,13 @@
         scheduleHistoryButtons();
     }
     function showToday(){resetHistoryWork();viewports.delete('minute');historyMode=false;sharedCutoff=new Date(Date.now()+9*3600000).toISOString().slice(0,10)+' 08:00';rangeRevision++;for(const chart of minuteCharts.values())chart.applied=undefined;notifyCharts();}
-    const refreshOrder=['concentration','combinedConcentration','supply','marketSupply','breadth','turnover','adr','sentiment','volatility','kisConcentration','lsMarketSupply','kisSupply','lsSupply','kiwoomMarketSupply','lsConcentration','kisTurnover','lsTurnover','combinedTurnover','combinedSupply','combinedMarketSupply','combinedMarketSupplySecondary'];
-    const refreshMethods={combinedMarketSupplySecondary:'refreshRankCombinedMarketSupplySecondaryChart',combinedMarketSupply:'refreshRankCombinedMarketSupplyChart',combinedSupply:'refreshRankCombinedSupplyChart',combinedTurnover:'refreshRankCombinedTurnoverChart',combinedConcentration:'refreshConcentrationChart',lsConcentration:'refreshLsConcentrationChart',kisTurnover:'refreshRankKisTurnoverChart',lsTurnover:'refreshRankLsTurnoverChart',kiwoomMarketSupply:'refreshRankKiwoomMarketSupplyChart',kisSupply:'refreshRankKisSupplyChart',lsSupply:'refreshRankLsSupplyChart',lsMarketSupply:'refreshRankLsMarketSupplyChart',concentration:'refreshConcentrationChart',kisConcentration:'refreshKisConcentrationChart',supply:'refreshRankSupplyChart',marketSupply:'refreshRankMarketSupplyChart',breadth:'refreshRankBreadthChart',turnover:'refreshRankTurnoverChart',adr:'refreshRankAdrChart',sentiment:'refreshRankSentimentChart',volatility:'refreshRankVolatilityChart'};
-    function refreshCharts({skipConcentration=false,mode=null}={}) {
+    const refreshOrder=['concentration','combinedConcentration','supply','marketSupply','breadth','turnover','adr','sentiment','volatility','kisConcentration','lsMarketSupply','kisSupply','lsSupply','kiwoomMarketSupply','lsConcentration','kisTurnover','lsTurnover','combinedTurnover','combinedSupply','combinedMarketSupply','combinedMarketSupplySecondary','testMarketSupply'];
+    const refreshMethods={testMarketSupply:'refreshRankTestMarketSupplyChart',combinedMarketSupplySecondary:'refreshRankCombinedMarketSupplySecondaryChart',combinedMarketSupply:'refreshRankCombinedMarketSupplyChart',combinedSupply:'refreshRankCombinedSupplyChart',combinedTurnover:'refreshRankCombinedTurnoverChart',combinedConcentration:'refreshConcentrationChart',lsConcentration:'refreshLsConcentrationChart',kisTurnover:'refreshRankKisTurnoverChart',lsTurnover:'refreshRankLsTurnoverChart',kiwoomMarketSupply:'refreshRankKiwoomMarketSupplyChart',kisSupply:'refreshRankKisSupplyChart',lsSupply:'refreshRankLsSupplyChart',lsMarketSupply:'refreshRankLsMarketSupplyChart',concentration:'refreshConcentrationChart',kisConcentration:'refreshKisConcentrationChart',supply:'refreshRankSupplyChart',marketSupply:'refreshRankMarketSupplyChart',breadth:'refreshRankBreadthChart',turnover:'refreshRankTurnoverChart',adr:'refreshRankAdrChart',sentiment:'refreshRankSentimentChart',volatility:'refreshRankVolatilityChart'};
+    function refreshCharts({skipConcentration=false,mode=null,automatic=false}={}) {
         window.rankChartRefreshStarted=true;
         const pending=[];
         for(const id of refreshOrder){
+            if(automatic && window.TradingRefresh && !window.TradingRefresh.allows(id))continue;
             if(id==='concentration' && minuteCharts.has('combinedConcentration') || id==='combinedConcentration' && !minuteCharts.has('combinedConcentration'))continue;
             if(mode && minuteCharts.get(id)?.mode!==mode)continue;
             if(skipConcentration && id==='concentration')continue;
@@ -303,6 +326,7 @@
         return {advanced,failures,exhausted,target,partial:showAvailable,metrics};
     }
     function sharedRange(id,values,getDate,mode,start,count,draw) {
+        if(mode==='minute')scheduleVisibleHistory();
         scheduleHistoryButtons();
         const previous=minuteCharts.get(id);
         if(mode==='minute' && previous && previous.mode!=='minute')historyMode=false;
@@ -318,7 +342,8 @@
         const signature=`${mode}:${first}:${last}:${days.join(',')}`;
         const chart={id,dates:values.map(v=>dateParts(getDate(v)).slice(0,length)),signature,mode,first,last,days,draw,applied:previous?.applied,revision:previous?.revision};minuteCharts.set(id,chart);
         const starts=[...minuteCharts.values()].filter(c=>c.mode==='minute' && c.first).map(c=>c.first);
-        const today=new Date(Date.now()+9*3600000).toISOString().slice(0,10)+' 08:00';
+        const overnight=minuteCharts.get('testMarketSupply');
+        const today=overnight?.mode==='minute' && overnight.first ? overnight.first : new Date(Date.now()+9*3600000).toISOString().slice(0,10)+' 08:00';
         const candidate=historyMode && starts.length?starts.sort().at(-1):today;
         const cutoff=historyBusy ? (sharedCutoff || today) : historyMode && sharedCutoff && candidate>sharedCutoff ? sharedCutoff : candidate;
         if(atLatest){
@@ -375,6 +400,16 @@
         const today=new Date(Date.now()+9*3600000).toISOString().slice(0,10);
         const localFirst=dates[0]?.slice(0,10) || today;
         const viewport=useViewport?viewports.get('minute'):null;
+        const overnight=minuteCharts.get('testMarketSupply');
+        if(overnight?.mode==='minute' && overnight.first){
+            const first=viewport?.first || sharedCutoff || overnight.first;
+            const last=viewport?.last || active.map(c=>c.last).filter(v=>v && v>=first).sort().at(-1) || first;
+            const epoch=s=>Date.parse(s.replace(' ','T')+':00+09:00')/60000;
+            const origin=epoch(first),position=value=>epoch(dateParts(value).slice(0,16))-origin;
+            const at=n=>dateParts((origin+n)*60000);
+            const days=[];for(let t=Date.parse(first.slice(0,10)+'T00:00:00+09:00'),end=Date.parse(last.slice(0,10)+'T00:00:00+09:00');t<=end;t+=86400000)days.push(dateParts(t).slice(0,10));
+            return {first,last,days,offset:0,span:Math.max(1,position(last)),position,at,continuous:true};
+        }
         const first=viewport?.first || (active.length ? (sharedCutoff || today+' 08:00') : localFirst+' 08:00');
         const latest=active.length ? active.map(c=>c.last).filter(v=>v && v>=first).sort().at(-1) : dates.at(-1);
         const now=new Date(Date.now()+9*3600000).toISOString().slice(0,16).replace('T',' ');
@@ -390,6 +425,7 @@
         if(mode==='minute'){
             const domain=minuteDomain([],v=>v,false);
             return {...domain,at:position=>{
+                if(domain.continuous)return domain.at(Math.round(position));
                 const total=Math.round(position)+domain.offset,index=Math.min(domain.days.length-1,Math.max(0,Math.floor(total/720)));
                 const minutes=480+total-index*720;
                 return domain.days[index]+' '+String(Math.floor(minutes/60)).padStart(2,'0')+':'+String(minutes%60).padStart(2,'0');
@@ -440,6 +476,7 @@
         }else{
             const domain=minuteDomain();
             const at=fraction=>{
+                if(domain.continuous)return domain.at(Math.round(fraction*domain.span));
                 const position=domain.offset+Math.round(fraction*domain.span);
                 const index=Math.max(0,Math.min(domain.days.length-1,Math.floor(position/720)));
                 const minute=480+position-index*720;
@@ -459,15 +496,31 @@
         const domain=minuteDomain(values,getDate),multiple=domain.days.length>1;
         const intervals=[1,2,5,10,15,30,60,120,240,360,720,1440,2880,5760];
         const step=intervals.find(n=>n>=domain.span/6) || Math.ceil(domain.span/6/720)*720;
+        const boundaries=dayBoundaryPositions(left,right,domain);
+        if(domain.span>=720 && boundaries.length){
+            const labels=[];let edge=-Infinity;
+            for(const tick of boundaries){
+                const label=tick.date.slice(5,10).replace('-','/')+' 08:00',width=context.measureText(label).width;
+                const labelX=Math.max(left+width/2,Math.min(right-width/2,tick.x));
+                if(width<=right-left && labelX-width/2>=edge+16){labels.push({label,labelX});edge=labelX+width/2;}
+            }
+            return labels;
+        }
         const offsets=[0];
         for(let n=step;n<domain.span;n+=step)offsets.push(n);
         offsets.push(domain.span);
         const labels=[];let previousRight=-Infinity;
         for(const offset of offsets){
+            if(domain.continuous){
+                const date=domain.at(offset),label=(multiple?date.slice(5,10).replace('-','/')+' ':'')+date.slice(11,16),width=context.measureText(label).width;
+                const labelX=Math.max(left+width/2,Math.min(right-width/2,left+offset/domain.span*(right-left)));
+                if(width<=right-left && labelX-width/2>=previousRight+16){labels.push({label,labelX});previousRight=labelX+width/2;}
+                continue;
+            }
             const total=offset+domain.offset,index=Math.min(domain.days.length-1,Math.floor(total/720));
             const minutes=480+total-index*720;
             const clock=String(Math.floor(minutes/60)).padStart(2,'0')+':'+String(Math.floor(minutes%60)).padStart(2,'0');
-            const label=(multiple?domain.days[index].slice(5)+' ':'')+clock,width=context.measureText(label).width;
+            const label=(multiple?domain.days[index].slice(5).replace('-','/')+' ':'')+clock,width=context.measureText(label).width;
             const labelX=Math.max(left+width/2,Math.min(right-width/2,left+offset/domain.span*(right-left)));
             if(width>right-left || labelX-width/2<previousRight+16)continue;
             labels.push({label,labelX});previousRight=labelX+width/2;
@@ -476,6 +529,7 @@
     }
     function eightTick(context,labels,left,right,active,label='08:00') {
         if(!active)return labels;
+        if(minuteDomain().span>=720 && labels.some(t=>t.label.endsWith('08:00')))return labels;
         const width=context.measureText(label).width;
         if(width>right-left)return [];
         const first={label,labelX:left+width/2};
@@ -483,7 +537,16 @@
     }
     function sessionStartLabel(values,getDate) {
         const domain=minuteDomain(values,getDate);
-        return (domain.days.length>1?domain.first.slice(5,10)+' ':'')+domain.first.slice(11,16);
+        return (domain.days.length>1?domain.first.slice(5,10).replace('-','/')+' ':'')+domain.first.slice(11,16);
+    }
+    function dayBoundaryPositions(left,right,domain=minuteDomain()) {
+        return domain.days.map(day=>({date:day,x:left+domain.position(day+' 08:00')/domain.span*(right-left)}))
+            .filter(p=>Number.isFinite(p.x)&&p.x>=left&&p.x<=right);
+    }
+    function drawDayBoundaries(context,left,right,top,bottom) {
+        context.save();context.strokeStyle='#94a3b8';context.lineWidth=1;context.setLineDash([]);
+        for(const {x} of dayBoundaryPositions(left,right)){context.beginPath();context.moveTo(x,top);context.lineTo(x,bottom);context.stroke();}
+        context.restore();
     }
     function marketChoice(name, choices, value, label) {
         const group=document.createElement('div');group.className='rank-market-choice';group.setAttribute('role','radiogroup');group.setAttribute('aria-label',label);
@@ -673,5 +736,5 @@
         }
         return result;
     }
-    window.RankChartAxis={concentrationCumulative,loadingBar,intradayGap,restoreHistoryRange,marketChoice,validCandle,candleLabel,selectViewport,plotBounds,registerHover,synchronizeHover,matchesHover,updateSlider,scrollViewport,synchronizeViewport,refreshOrder,refreshCharts,registerHistoryLoader,requestHistory,showHistory,showToday,sharedRange,dailyDomain,minuteDomain,ticks,todayRange,limitToday,sessionRange,limitSessions,sessionX,eightTick,sessionStartLabel,candleLayout,todayButton};
+    window.RankChartAxis={dayBoundaryPositions,drawDayBoundaries,concentrationCumulative,loadingBar,intradayGap,restoreHistoryRange,marketChoice,validCandle,candleLabel,selectViewport,plotBounds,registerHover,synchronizeHover,matchesHover,updateSlider,scrollViewport,synchronizeViewport,refreshOrder,refreshCharts,registerHistoryLoader,requestHistory,showHistory,showToday,sharedRange,dailyDomain,minuteDomain,ticks,todayRange,limitToday,sessionRange,limitSessions,sessionX,eightTick,sessionStartLabel,candleLayout,todayButton};
 })();

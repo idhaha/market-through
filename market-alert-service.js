@@ -17,7 +17,7 @@ function createMarketAlerts({ directory, now = Date.now, getToken, WebSocket = r
     const epoch = crypto.randomUUID();
     let storageError = '', connection = '대기 중', socket, retryTimer, heartbeat, ackTimer, rotateTimer, stopped = true, connecting = false, failures = 0;
     const startedAt = now();
-    let lastReceivedAt = null, disconnectedAt = null;
+    let lastReceivedAt = null, disconnectedAt = null, sessionTimer;
     try {
         if (file && fs.existsSync(file)) {
             const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -126,10 +126,12 @@ function createMarketAlerts({ directory, now = Date.now, getToken, WebSocket = r
     }
     async function connect() {
         if (stopped || socket || connecting) return;
+        const policy=require('./trading-session').current();if(policy && !policy.spotAt(now())){connection='장외';return;}
         connecting = true; connection = 'JIF 연결 중';
         try {
             const token = await getToken();
             if (stopped) return;
+            if(require('./trading-session').current() && !require('./trading-session').current().spotAt(now()))return;
             const ws = new WebSocket('wss://openapi.ls-sec.co.kr:9443/websocket', { handshakeTimeout: 10000, maxPayload: 65536 });
             socket = ws;
             let alive = true;
@@ -152,8 +154,14 @@ function createMarketAlerts({ directory, now = Date.now, getToken, WebSocket = r
         } catch { connection = 'LS 인증/연결 실패 · 설정 확인 필요'; log('[MarketAlerts] LS 인증/연결 실패'); retry(); }
         finally { connecting = false; }
     }
-    function start() { if (!stopped) return; stopped = false; void connect(); }
-    function stop() { stopped = true; clearTimeout(retryTimer); retryTimer = null; cleanup(); const old = socket; socket = null; old?.terminate(); connection = '수신 중지'; persist(); }
+    function start() { if (!stopped) return; stopped = false; void connect();
+        if(require('./trading-session').current()){sessionTimer=setInterval(()=>{
+            const open=require('./trading-session').current()?.spotAt(now());
+            if(!open){clearTimeout(retryTimer);retryTimer=null;cleanup();const old=socket;socket=null;old?.terminate();connection='장외';}
+            else void connect();
+        },60000);sessionTimer.unref?.();}
+    }
+    function stop() { stopped = true;clearInterval(sessionTimer);sessionTimer=null; clearTimeout(retryTimer); retryTimer = null; cleanup(); const old = socket; socket = null; old?.terminate(); connection = '수신 중지'; persist(); }
     return { start, stop, receive, snapshot, acknowledge, diagnostics };
 }
 module.exports = { createMarketAlerts, codes, dayKey };

@@ -3,6 +3,17 @@ const {createSharedIndexHttp}=require('../../shared-index-http');
 const {createChartReferenceService}=require('../../chart-reference-service');
 const url='https://api.kiwoom.com/api/dostk/chart';
 const options=(api='ka20006',next='')=>({headers:{'api-id':api,'cont-yn':next?'Y':'N','next-key':next,Authorization:'Bearer test'}});
+test('closed spot sessions reuse matching cached pages past TTL and midnight, without mixing candle intervals',async t=>{
+ const {install}=require('../../trading-session');let open=true,calls=0,at=Date.parse('2026-10-30T19:59:00+09:00');
+ install({spotAt:()=>open});t.after(()=>install(null));
+ const http=createSharedIndexHttp({now:()=>at,http:{post:async()=>{calls++;return {data:{inds_min_pole_qry:[]},headers:{}};}}});
+ await http.post(url,{inds_cd:'001',tic_scope:'1'},options('ka20005'));
+ open=false;at=Date.parse('2026-10-31T01:00:00+09:00');
+ await http.post(url,{inds_cd:'001',tic_scope:'1'},options('ka20005'));assert.equal(calls,1);
+ await http.post(url,{inds_cd:'001',tic_scope:'5'},options('ka20005'));assert.equal(calls,2);
+ await http.post(url,{inds_cd:'001',tic_scope:'1'},options('ka20005'));assert.equal(calls,2);
+ open=true;await http.post(url,{inds_cd:'001',tic_scope:'1'},options('ka20005'));assert.equal(calls,3);
+});
 test('cross-card in-flight pages share one request and immutable snapshots',async()=>{
  let calls=0,at=Date.parse('2026-10-24T10:00:00+09:00'),resolve;
  const shared=createSharedIndexHttp({now:()=>at,http:{post:()=>{calls++;return new Promise(r=>resolve=r);}}});

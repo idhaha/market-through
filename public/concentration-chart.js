@@ -88,16 +88,29 @@
         let sharedRevision = 0;
         let candleGeometry = null;
         let candlePointerY = null;
+        const selectionKey=chartKey+'SelectedStockV1';
+        function validSelection(stock){return stock && typeof stock.code==='string' && /^[0-9A-Za-z]{6}$/.test(stock.code) && typeof stock.name==='string' && stock.name.trim();}
+        function rememberSelection(){try{if(validSelection(state.selection))localStorage.setItem(selectionKey,JSON.stringify(state.selection));}catch{}}
+        function restoreSelection(){
+            if(state.selection)return false;
+            let stock;
+            try{stock=JSON.parse(localStorage.getItem(selectionKey)||'null');}catch{}
+            if(!validSelection(stock))return false;
+            state.selection={code:stock.code,name:stock.name};name.value=stock.name;
+            rememberSelection();selectedRows();return true;
+        }
 
         window[api('getConcentrationDisplaySettings')] = () => ({
             marketPins: window.getRankMarketPins?.() || [],
             chartGuideEdits: window.RankSupplyGuide?.getEdits() || {},
             candleOpen: !candleArea.hidden, mode: state.mode, interval: state.interval,
+            selection:state.selection && {...state.selection},
             ...(window.getRankAdrCandleOpen ? { adrCandleOpen: window.getRankAdrCandleOpen() } : {}),
             ...(!kis && window.getRankCombinedTurnoverCandleOpen ? { combinedTurnoverCandleOpen: window.getRankCombinedTurnoverCandleOpen() } : {}),
             ...(window.getRankTurnoverCandleOpen ? { turnoverCandleOpen: window.getRankTurnoverCandleOpen() } : {}),
             ...(window.getRankVolatilityDisplaySettings ? { volatility: window.getRankVolatilityDisplaySettings() } : {}),
             ...(window.getRankBreadthDisplaySettings ? { breadth: window.getRankBreadthDisplaySettings() } : {}),
+            ...(window.getRankTestMarketSupplyDisplaySettings ? { testMarketSupply: window.getRankTestMarketSupplyDisplaySettings() } : {}),
             ...(window.getRankCombinedMarketSupplySecondaryDisplaySettings ? { combinedMarketSupplySecondary: window.getRankCombinedMarketSupplySecondaryDisplaySettings() } : {}),
             ...(window.getRankCombinedMarketSupplyDisplaySettings ? { combinedMarketSupply: window.getRankCombinedMarketSupplyDisplaySettings() } : {}),
             ...(window.getRankKiwoomMarketSupplyDisplaySettings ? { kiwoomMarketSupply: window.getRankKiwoomMarketSupplyDisplaySettings() } : {}),
@@ -117,7 +130,10 @@
             if (!kis && nextCandleOpen !== !candleArea.hidden) document.dispatchEvent(new CustomEvent('rank-candle-display', { detail: { open: nextCandleOpen } }));
             const mode = settings?.mode === 'minute' ? 'minute' : 'day';
             const interval = scopes.includes(Number(settings?.interval)) ? Number(settings.interval) : 1;
-            const changed = state.mode !== mode || state.interval !== interval;
+            const selectionChanged=validSelection(settings?.selection) && state.selection?.code!==settings.selection.code;
+            if(validSelection(settings?.selection)){state.selection={code:settings.selection.code,name:settings.selection.name};name.value=state.selection.name;rememberSelection();}
+            const restored=restoreSelection();
+            const changed = state.mode !== mode || state.interval !== interval || selectionChanged || restored;
             state.mode = mode; state.interval = interval;
             candleArea.hidden = settings?.candleOpen !== true;
             candleToggle.setAttribute('aria-expanded', String(!candleArea.hidden));
@@ -128,6 +144,7 @@
                 if (!window.rankIndependentClient || settings && 'turnoverCandleOpen' in settings) window.applyRankTurnoverCandleOpen?.(window.rankIndependentClient ? settings.turnoverCandleOpen === true : nextCandleOpen);
                 if (settings && 'volatility' in settings) window.applyRankVolatilityDisplaySettings?.(window.rankIndependentClient ? settings.volatility : {...settings.volatility,candleOpen:nextCandleOpen});
                 if (settings && 'breadth' in settings) window.applyRankBreadthDisplaySettings?.(window.rankIndependentClient ? settings.breadth : {...settings.breadth,candleOpen:nextCandleOpen});
+                if (settings && 'testMarketSupply' in settings) window.applyRankTestMarketSupplyDisplaySettings?.(settings.testMarketSupply);
                 if (settings && 'combinedMarketSupplySecondary' in settings) window.applyRankCombinedMarketSupplySecondaryDisplaySettings?.(settings.combinedMarketSupplySecondary);
                 if (settings && 'combinedMarketSupply' in settings) window.applyRankCombinedMarketSupplyDisplaySettings?.(settings.combinedMarketSupply);
                 if (settings && 'kiwoomMarketSupply' in settings) window.applyRankKiwoomMarketSupplyDisplaySettings?.(settings.kiwoomMarketSupply);
@@ -137,12 +154,13 @@
                 if (settings && 'lsSupply' in settings) window.applyRankLsSupplySettings?.(settings.lsSupply);
                 if (settings && 'marketSupply' in settings) window.applyRankMarketSupplyDisplaySettings?.(settings.marketSupply);
                 if (settings && 'sentiment' in settings) window.applyRankSentimentDisplaySettings?.(window.rankIndependentClient ? settings.sentiment : {...settings.sentiment,candleOpen:nextCandleOpen});
-                if(!window.rankIndependentClient){ window.applyRankKiwoomMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankCombinedMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankCombinedMarketSupplySecondaryCandleOpen?.(nextCandleOpen); window.applyRankLsMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankSupplyCandleOpen?.(nextCandleOpen); window.applyRankKisSupplyCandleOpen?.(nextCandleOpen); window.applyRankCombinedSupplyCandleOpen?.(nextCandleOpen); window.applyRankLsSupplyCandleOpen?.(nextCandleOpen); window.applyRankMarketSupplyCandleOpen?.(nextCandleOpen); }
+                if(!window.rankIndependentClient){ window.applyRankTestMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankKiwoomMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankCombinedMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankCombinedMarketSupplySecondaryCandleOpen?.(nextCandleOpen); window.applyRankLsMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankSupplyCandleOpen?.(nextCandleOpen); window.applyRankKisSupplyCandleOpen?.(nextCandleOpen); window.applyRankCombinedSupplyCandleOpen?.(nextCandleOpen); window.applyRankLsSupplyCandleOpen?.(nextCandleOpen); window.applyRankMarketSupplyCandleOpen?.(nextCandleOpen); }
                 window.applyRankCombinedTurnoverCandleOpen?.(settings?.combinedTurnoverCandleOpen ?? nextCandleOpen);
                 window.applyKisConcentrationDisplaySettings?.(settings); window.applyLsConcentrationDisplaySettings?.(settings);
             }
             state.hover = null; tooltip.hidden = true; candleTooltip.hidden = true;
             draw();
+            if(!changed && state.selection && !candleArea.hidden)void loadIndependentPrices(false);
             if (changed && state.selection) load();
         };
         function saveDisplaySettings() {
@@ -150,9 +168,9 @@
         }
         function updateControls() {
             window.RankChartAxis.loadingBar(chartArea,state.busy,'쏠림율');
-            window.RankChartAxis.loadingBar(candleCanvas.parentElement,state.busy,'캔들');
+            window.RankChartAxis.loadingBar(candleCanvas.parentElement,priceBusy,'캔들');
             canvas.classList.toggle('is-loading', state.busy);
-            candleCanvas.classList.toggle('is-loading', state.busy);
+            candleCanvas.classList.toggle('is-loading', priceBusy);
             if (state.busy || state.hover == null) candleTooltip.hidden = true;
             chartArea.setAttribute('aria-busy', String(state.busy));
             panel.querySelectorAll('[data-chart-mode]').forEach(button => {
@@ -228,6 +246,7 @@
                 candleCtx.fillText(Math.round(price).toLocaleString('ko-KR'), width - 4, y(price));
             }
             candleCtx.setLineDash([]);
+            if(state.mode==='minute')window.RankChartAxis.drawDayBoundaries(candleCtx,plot.left,plot.right,top,bottom);
             boundaries.forEach(boundaryX => {
                 candleCtx.beginPath(); candleCtx.setLineDash([3, 5]); candleCtx.strokeStyle = '#b8c1cc';
                 candleCtx.moveTo(boundaryX, top); candleCtx.lineTo(boundaryX, bottom); candleCtx.stroke();
@@ -314,8 +333,9 @@
                 ctx.moveTo(plot.left, y(percent)); ctx.lineTo(plot.right, y(percent)); ctx.stroke();
                 ctx.textAlign = 'right'; ctx.fillText(`${percent.toLocaleString()}%`, width - 4, y(percent));
             }
-            // Daily charts mark month boundaries; minute charts mark trading days.
-            {
+            // Minute separators use the same 08:00 clock boundary on every card.
+            if(state.mode==='minute')window.RankChartAxis.drawDayBoundaries(ctx,plot.left,plot.right,plot.top,plot.bottom);
+            else {
                 const boundaryLength = state.mode === 'minute' ? 8 : 6;
                 let lastDay = points[0]?.time.slice(0, boundaryLength);
                 let lastBoundaryX = -Infinity;
@@ -416,6 +436,36 @@
             updateControls();
         }
         let todayOnly = true;
+        let priceController,priceIdentity='',priceCursor=null,priceBusy=false;
+        async function loadIndependentPrices(append){
+            if(!state.selection || candleArea.hidden)return;
+            const identity=`${state.selection.code}:${state.mode}:${state.interval}`;
+            if(priceBusy && identity===priceIdentity && !append)return;
+            if(identity!==priceIdentity){priceIdentity=identity;priceCursor=null;}
+            if(append && !priceCursor)return;
+            priceController?.abort();const current=priceController=new AbortController();priceBusy=true;
+            try{
+                const response=await (window.RankChartCache?.fetch || fetch)('/api/concentration-chart',{
+                    method:'POST',headers:{'Content-Type':'application/json'},signal:current.signal,
+                    body:JSON.stringify({code:state.selection.code,mode:state.mode,interval:state.interval,prices_only:true,cursor:append?priceCursor:null})
+                });
+                const result=await response.json();
+                if(current!==priceController || identity!==`${state.selection?.code}:${state.mode}:${state.interval}`)return;
+                if(!response.ok || !result.success)throw new Error(result.error || '캔들 조회 실패');
+                priceCursor=result.has_more?result.cursor:null;
+                const merged=new Map(state.points.map(p=>[p.time,p]));
+                for(const p of result.points || []){
+                    const old=merged.get(p.time);
+                    merged.set(p.time,old?{...p,...old,...Object.fromEntries(['stock_open','stock_high','stock_low','stock_price'].filter(f=>Number.isFinite(p[f])).map(f=>[f,p[f]]))}:p);
+                }
+                const oldLength=state.points.length,visible=state.visible,anchor=state.points[state.start]?.time;
+                const following=state.start+visible>=oldLength;
+                state.points=[...merged.values()].sort((a,b)=>a.time.localeCompare(b.time));
+                state.visible=visible && visible<oldLength?Math.min(visible,state.points.length):state.points.length;
+                state.start=following?Math.max(0,state.points.length-state.visible):Math.max(0,state.points.findIndex(p=>p.time>=anchor));
+            }catch(error){if(error.name!=='AbortError' && current===priceController)candleTooltip.title=error.message;}
+            finally{if(current===priceController){priceBusy=false;sharedRevision++;draw();}}
+        }
         window.RankChartAxis.todayButton(panel,'[data-chart-mode="minute"]',()=>state.mode,()=>{todayOnly=true;draw();void load(false,true);});
         async function load(append = false, refresh = false) {
             if(window.rankManagedChartRefresh && !window.rankChartRefreshStarted)return;
@@ -423,6 +473,7 @@
             if(append){window.RankChartAxis.showHistory();todayOnly=false;}else if(!refresh){todayOnly=true;}
             state.historyError='';
             const previous = { points: state.points, start: state.start, visible: state.visible };
+            if(!append && !refresh){state.points=[];state.start=0;state.visible=0;}
             state.controller?.abort();
             const controller = new AbortController();
             state.controller = controller;
@@ -434,6 +485,7 @@
             status.textContent = '';
             draw();
             try {
+                void loadIndependentPrices(append);
                 const response = await (window.RankChartCache?.fetch || fetch)(combined ? state.mode === 'minute' ? '/api/ls-concentration-chart' : '/api/concentration-chart' : kis ? `/api/${broker}-concentration-chart` : window.rankIndependentClient && state.mode === 'minute' ? '/api/ls-concentration-chart' : '/api/concentration-chart', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ code: state.selection.code, mode: state.mode, interval: state.interval, cursor: append ? state.cursor : null }),
@@ -442,12 +494,13 @@
                 const result = await response.json();
                 if (request !== state.request) return;
                 if (!response.ok || !result.success) throw new Error(result.error || '차트 조회 실패');
-                const freshPoints = result.points;
+                const prices=new Map(state.points.map(p=>[p.time,p]));
+                const freshPoints = result.points.map(p=>({...prices.get(p.time),...p}));
                 if ((refresh || append) && previous.points.length && result.points.length) {
                     const earliest = result.points[0].time;
                     state.points = [...previous.points.filter(point => point.time < earliest), ...freshPoints];
                 } else {
-                    state.points = refresh && !result.points.length ? previous.points : freshPoints;
+                    state.points = refresh && !result.points.length ? state.points : [...new Map([...state.points,...freshPoints].map(p=>[p.time,p])).values()].sort((a,b)=>a.time.localeCompare(b.time));
                 }
                 state.cursor = result.cursor; state.hasMore = result.has_more;state.historyProgress=result.history_progress;state.historyError=result.partial ? result.notice || '거래대금 일부 조회 실패' : '';
                 state.visible = state.points.length; state.start = 0;
@@ -473,7 +526,7 @@
                 if (request !== state.request || error.name === 'AbortError') return;
                 state.historyError=error.message;
                 window.setRankCardConnection?.('#' + chartKey + 'ChartPanel', false);
-                if (!append && !refresh) { state.points = []; state.start = 0; state.visible = 0; }
+                if (!append && !refresh) { state.points = state.points.filter(p=>Number.isFinite(p.stock_price)); state.start = 0; state.visible = state.points.length; }
                 status.textContent = `${error.message} · ${refresh ? '다음 갱신 주기에 다시 조회합니다.' : append ? '추가 조회 버튼으로 다시 시도하세요.' : '일/분 버튼으로 다시 시도하세요.'}`;
                 if (error.message.includes('만료')) { state.cursor = null; state.hasMore = false; }
             } finally {
@@ -481,6 +534,7 @@
             }
         }
         window[api('refreshConcentrationChart')] = () => {
+            restoreSelection();
             if (!state.selection) return;
             if (state.busy || state.drag || (typeof isCapturing !== 'undefined' && isCapturing)) { refreshPending = true; return; }
             refreshPending = false;
@@ -523,12 +577,15 @@
         }
         function chooseStock(stock) {
             const restoreRange=state.mode==='minute'?window.RankChartAxis.minuteDomain():window.RankChartAxis.dailyDomain();
+            const selectionChanged=state.selection?.code!==stock.code;
             lookupVersion++; hideSuggestions();
             state.selection = { code: stock.code, name: stock.name };
+            rememberSelection();
             name.value = stock.name; market.textContent = stock.market === 'K' ? '코스피' : stock.market === 'Q' ? '코스닥' : '-';
             panel.querySelector('.rank-selection-history-notice')?.remove();
             selectedRows(); void load().then(()=>{if(state.selection?.code===stock.code)return window.RankChartAxis.restoreHistoryRange(chartKey,restoreRange);});
             document.dispatchEvent(new CustomEvent('rank-concentration-selection', { detail: { source: chartKey, stock } }));
+            if(selectionChanged)saveDisplaySettings();
         }
         function highlightSuggestion(index) {
             activeSuggestion = index;
@@ -616,6 +673,7 @@
             if (row && ['Enter', ' '].includes(event.key)) { event.preventDefault(); selectRow(row); }
         });
         panel.querySelectorAll('[data-chart-mode]').forEach(button => button.addEventListener('click', () => {
+            restoreSelection();
             if (button.dataset.chartMode === 'minute' && state.mode !== 'minute') state.interval = 1;
             state.mode = button.dataset.chartMode; updateControls(); saveDisplaySettings(); load();
         }));
@@ -730,10 +788,15 @@
         document.addEventListener('rank-concentration-selection', event => {
             if (event.detail.source !== chartKey && event.detail.stock?.code !== state.selection?.code) chooseStock(event.detail.stock);
         });
+        if(combined)document.addEventListener('rank-stock-supply-selection',event=>{
+            if(window.rankIndependentClient || event.detail?.code===state.selection?.code)return;
+            const stock=event.detail?.stock || window.getRankCombinedSupplyState?.()?.config?.archive?.find(stock=>stock.code===event.detail?.code);
+            if(validSelection(stock))chooseStock(stock);
+        });
         if (kis) document.addEventListener('rank-chart-state', () => {
             const selection = window.getRankChartState?.()?.selection;
             if (selection && selection.code !== state.selection?.code) chooseStock(selection);
         });
-        selectedRows(); draw();
+        restoreSelection();selectedRows(); draw();
     }
 })();

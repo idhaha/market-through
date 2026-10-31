@@ -62,23 +62,40 @@ function createSupplyStore({ directory, now = Date.now, fields: valueFields = fi
         return rows;
     }
     function merge(code, point) {
-        const t = Math.floor(point.t / 60000) * 60000;
-        if (!Number.isFinite(t) || t <= 0 || t > now()) throw failure('잘못된 수집 시각입니다.');
-        const day = dayKey(t), rows = points(code, day), byTime = new Map(rows.map(row => [row.t, row]));
-        const next = { ...(byTime.get(t) || {}), t };
-        for (const field of valueFields) {
-            if (Number.isSafeInteger(point[field])) {
-                next[field] = point[field];
-                next[`${field}_at`] = point[`${field}_at`] ?? point.t;
-            }
+        return mergeMany(code, [point]);
+    }
+    function mergeMany(code, incoming) {
+        const groups = new Map();
+        for (const point of incoming) {
+            const t = Math.floor(point.t / 60000) * 60000;
+            if (!Number.isFinite(t) || t <= 0 || t > now()) throw failure('잘못된 수집 시각입니다.');
+            const day = dayKey(t);
+            if (!groups.has(day)) groups.set(day, []);
+            groups.get(day).push({...point,t});
         }
-        if (!valueFields.some(field => Number.isSafeInteger(next[field]))) return;
-        byTime.set(t, next);
-        const filename = path.join(stockDirectory(code), `${day}.json`);
-        const data = [...byTime.values()].sort((a, b) => a.t - b.t);
-        if (!fs.existsSync(filename) && fs.existsSync(`${filename}.gz`))
-            atomicBytes(`${filename}.gz`, zlib.gzipSync(JSON.stringify(data), { level: 9 }));
-        else atomic(filename, data);
+        for (const [day, rowsToMerge] of groups) {
+            const rows = points(code, day), byTime = new Map(rows.map(row => [row.t, row]));
+            let changed=false;
+            for (const point of rowsToMerge) {
+                const t = point.t;
+                const next = { ...(byTime.get(t) || {}), t };
+                for (const field of valueFields) {
+                    if (Number.isSafeInteger(point[field])) {
+                        next[field] = point[field];
+                        next[`${field}_at`] = point[`${field}_at`] ?? point.t;
+                    }
+                }
+                if (!valueFields.some(field => Number.isSafeInteger(next[field]))) continue;
+                if(point.source==='LS' && point.session==='N'){next.source='LS';next.session='N';}
+                byTime.set(t, next);changed=true;
+            }
+            if(!changed)continue;
+            const filename = path.join(stockDirectory(code), `${day}.json`);
+            const data = [...byTime.values()].sort((a, b) => a.t - b.t);
+            if (!fs.existsSync(filename) && fs.existsSync(`${filename}.gz`))
+                atomicBytes(`${filename}.gz`, zlib.gzipSync(JSON.stringify(data), { level: 9 }));
+            else atomic(filename, data);
+        }
     }
     function archiveCompleted() {
         const current = now(), today = dayKey(current), korean = new Date(current + 9 * 3600000);
@@ -106,6 +123,6 @@ function createSupplyStore({ directory, now = Date.now, fields: valueFields = fi
     }
     function marketDay() { return read(path.join(directory, 'market-day.json'), null); }
     function confirmMarketDay(day, confirmedAt) { atomic(path.join(directory, 'market-day.json'), { day, confirmed_at: confirmedAt }); }
-    return { config, configure, dates, points, merge, archiveCompleted, marketDay, confirmMarketDay };
+    return { config, configure, dates, points, merge, mergeMany, archiveCompleted, marketDay, confirmMarketDay };
 }
 module.exports = { createSupplyStore, dayKey, validCode, fields, failure };

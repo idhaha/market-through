@@ -3120,7 +3120,12 @@ body { height:100dvh; min-height:0; overflow:hidden; display:flex; flex-directio
 .rank-chart-row > #rankCombinedTurnoverChartPanel { grid-column:2; grid-row:2; order:4; }
 .rank-chart-row > #rankCombinedMarketSupplySecondaryChartPanel { grid-column:3; grid-row:2; order:5; }
 .rank-chart-row > #rankVolatilityChartPanel { grid-column:2; grid-row:3; order:7; }
-.rank-chart-row > #rankSentimentChartPanel { grid-column:3; grid-row:3; order:8; }
+.rank-chart-row > #rankSentimentChartPanel { grid-column:1; grid-row:4; order:9; }
+.rank-chart-row > #rankTestMarketSupplyChartPanel { grid-column:3; grid-row:3; order:8; }
+.market-test-session { font-size:12px; white-space:nowrap; }
+@media(max-width:700px) {
+    .rank-chart-row > #rankTestMarketSupplyChartPanel { grid-column:1 / -1!important; grid-row:auto!important; }
+}
 
 .panel > .rank-market-pin { position:absolute; top:14px; right:42px; width:24px; height:20px; padding:0; border:0; background:transparent; color:var(--text-muted,#94a3b8); cursor:pointer; display:flex; align-items:center; justify-content:center; z-index:3; }
 .panel > .rank-market-pin svg { width:22px; height:20px; pointer-events:none; fill:currentColor; }

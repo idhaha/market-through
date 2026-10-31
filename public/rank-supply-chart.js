@@ -131,6 +131,7 @@
         }
         stockSelect.addEventListener('change', () => queueMicrotask(publish));
         function clearView() {
+            candleController?.abort();++candleRevision;candleLoading=false;
             todayOnly=true;
             points = []; candles = []; start = 0; count = null; hover = null; info.hidden = true;
             cursor = null; hasMore = false; historyLoaded = false; flowCoverageFirst=''; candleError='';
@@ -186,6 +187,7 @@
                     && (!boundaryXs.length || x(point.t) - boundaryXs.at(-1) >= 32)) boundaryXs.push(x(point.t));
             });
             function boundaries(context, upper, lower) {
+                if(mode==='minute'){window.RankChartAxis.drawDayBoundaries(context,left,right,upper,lower);return;}
                 context.save(); context.strokeStyle = '#b8c1cc'; context.lineWidth = 1; context.setLineDash([3,5]);
                 boundaryXs.forEach(px => { context.beginPath(); context.moveTo(px,upper); context.lineTo(px,lower); context.stroke(); }); context.restore();
             }
@@ -321,21 +323,25 @@
             paintArchive();
         }
         document.addEventListener('rank-stock-supply-selection', event => {
-            if (!window.rankIndependentClient && config.archive.some(stock => stock.code === event.detail?.code)) choose(event.detail.code, false);
+            if (!window.rankIndependentClient && config.stocks.some(stock => stock.code === event.detail?.code)) choose(event.detail.code, false);
+        });
+        document.addEventListener('rank-concentration-selection',event=>{
+            const code=event.detail?.stock?.code;
+            if(!window.rankIndependentClient && config.stocks.some(stock=>stock.code===code))choose(code,false);
         });
         function choose(code, broadcast = true) {
             if (selected === code) return;
             const restoreWindow=mode==='minute'?window.RankChartAxis.minuteDomain():null;
             selected = code; remember(); clearView(); paintStocks();
-            if (broadcast && !window.rankIndependentClient) document.dispatchEvent(new CustomEvent('rank-stock-supply-selection', { detail: { code } }));
+            if (broadcast && !window.rankIndependentClient) document.dispatchEvent(new CustomEvent('rank-stock-supply-selection', { detail: { code,stock:config.stocks.find(stock=>stock.code===code)||config.archive.find(stock=>stock.code===code),source:axisId } }));
             if(restoreWindow && restoreWindow.first.slice(0,10)<dayKey(Date.now()))todayOnly=false;
             void load(false,restoreWindow);
         }
         async function loadCandles(target) {
+            if(candleLoading && !target)return;
             candleController?.abort(); const current = candleController = new AbortController(), id = ++candleRevision;
             candleMessage = ''; candleError='';
             if (!selected || !showCandles && mode === 'day') { draw(); return; }
-            if (mode === 'day') { draw(); return; }
             candleLoading = true; candleMessage = '캔들 조회 중…'; setStatus(); draw();
             try {
                 const requestedDays=new Set(minuteDays);
@@ -381,14 +387,15 @@
         async function load(append = false, restoreWindow = null) {
             if(window.rankManagedChartRefresh && !window.rankChartRefreshStarted)return;
             const nextCursor = append ? [hasMore ? cursor : null, mode === 'minute' ? priceCursor : null].filter(Boolean).sort().at(-1) : null;
-            if (append && (loading || candleLoading || !nextCursor)) return;
+            if (append && (loading || !nextCursor)) return;
             controller?.abort(); const current = controller = new AbortController(), id = ++revision;
-            candleController?.abort(); ++candleRevision; candleLoading = false;
+
             if (!selected) { loading = false; clearView(); chartMessage = '+ 종목 추가에서 최대 5종목을 지정하세요.'; setStatus(); return; }
             if(append){window.RankChartAxis.showHistory();todayOnly=false;}
             loading = true; flowLoading=true; chartMessage = append ? '과거 수급 조회 중…' : '수급 조회 중…'; setStatus(); draw();
             try {
                 let firstResponse=true;
+                if(showCandles || mode==='minute')void loadCandles();
                 do {
                 const params = new URLSearchParams({ code: selected, mode, ...(mode === 'day' ? { progressive: '1' } : {}), ...(append ? { cursor: nextCursor } : {}) });
                 const result = await request(`${(combined || window.rankIndependentClient) && mode === 'minute' ? '/api/kis-supply/chart' : endpoint}?${params}`, { signal: current.signal });
@@ -435,7 +442,7 @@
                 window.setRankCardConnection?.(panel, !result.status?.error && !result.warnings?.some(text => /실패|오류/.test(text)));
                 hover = null; info.hidden = true; setStatus(); draw();
                 flowLoading=!!result.pending;draw();
-                if (showCandles || mode === 'minute') await loadCandles();
+                if (showCandles || mode === 'minute') void loadCandles();
                 publish();
                 firstResponse=false;
                 if (!result.pending) break;
@@ -456,7 +463,7 @@
         }
         window[api('refreshRankSupplyChart')] = async () => {
             if(window.rankManagedChartRefresh && !window.rankChartRefreshStarted)return;
-            if (drag || refreshing || loading || candleLoading) { refreshPending = true; return; }
+            if (drag || refreshing || loading) { refreshPending = true; return; }
             refreshing = true; refreshPending = false;
             try {
                 config = await request('/api/supply/watchlist', { cache: 'no-store' }); configError = '';
@@ -480,7 +487,7 @@
             panel.querySelectorAll('[data-mode]').forEach(b => { b.classList.toggle('active', b === button); b.setAttribute('aria-pressed', String(b === button)); });
             load();
         }));
-        window.RankChartAxis.registerHistoryLoader(axisId,()=>load(true),()=>loading || candleLoading,()=>({identity:selected,coverageFirst:flowCoverageFirst,ensureRange:async target=>{await loadCandles(target);if(candleError)throw new Error(candleError);},hasMore:!!selected && (hasMore || mode==='minute' && !!priceCursor),cursor:[cursor,priceCursor].join(':')}));
+        window.RankChartAxis.registerHistoryLoader(axisId,()=>load(true),()=>loading,()=>({identity:selected,coverageFirst:flowCoverageFirst,ensureRange:async target=>{await loadCandles(target);if(candleError)throw new Error(candleError);},hasMore:!!selected && (hasMore || mode==='minute' && !!priceCursor),cursor:[cursor,priceCursor].join(':')}));
         more.addEventListener('click', () => window.RankChartAxis.requestHistory(mode));
         panel.querySelectorAll('[data-series]').forEach(button => button.addEventListener('click', () => {
             const field = button.dataset.series;

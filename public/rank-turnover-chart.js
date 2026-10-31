@@ -27,6 +27,29 @@
         let data = {kospi:[],kosdaq:[]}, previous = {kospi:null,kosdaq:null};
         let mode = 'day', dates = [], start = 0, count = null, controller, hover = null, geometry, drag = null, refreshPending = false;
         let candlePointerY = null;
+        let priceController,priceKey='',pricePending='',priceBusy=false;
+        async function loadPrices(){
+            if(candleArea.hidden)return;
+            const domain=mode==='minute'?window.RankChartAxis.minuteDomain():window.RankChartAxis.dailyDomain();
+            const from=(domain?.first || dateKey(Date.now()-180*86400000)).slice(0,10).replaceAll('-','');
+            const to=(domain?.last || dateKey(Date.now())).slice(0,10).replaceAll('-','');
+            const identity=`${selectedMarket}:${mode}`,key=`${identity}:${from}:${to}`;
+            if(key===priceKey || key===pricePending)return;
+            priceController?.abort();const current=priceController=new AbortController(),market=selectedMarket;
+            pricePending=key;priceBusy=true;
+            try{
+                const response=await (window.RankChartCache?.fetch || fetch)(`/api/adr/candles?market=${market}&mode=${mode}&from=${from}&to=${to}`,{signal:current.signal});
+                const result=await response.json();
+                if(current!==priceController || identity!==`${selectedMarket}:${mode}`)return;
+                if(!response.ok)throw Error(result.error || 'Price query failed');
+                const merged=new Map(data[market].map(p=>[p.t,p]));
+                for(const p of result.points || [])merged.set(p.t,{...merged.get(p.t),...p});
+                data[market]=[...merged.values()].sort((a,b)=>a.t-b.t);
+                dates=[...new Set(Object.values(data).flat().map(p=>p.t))].sort((a,b)=>a-b);
+                priceKey=key;
+            }catch(error){if(error.name!=='AbortError' && current===priceController)candle.title=error.message;}
+            finally{if(current===priceController){pricePending='';priceBusy=false;draw();}}
+        }
         const dateKey = t => new Date(t + 9 * 3600000).toISOString().slice(0,10);
         function surface(c, context) {
             const w = c.clientWidth, h = c.clientHeight, dpr = window.devicePixelRatio || 1;
@@ -47,7 +70,7 @@
         function draw() {
             renderHoverInfo();
             window.RankChartAxis.loadingBar(canvas.parentElement,loading,'거래대금');
-            window.RankChartAxis.loadingBar(candleArea,loading,'캔들');
+            window.RankChartAxis.loadingBar(candleArea,priceBusy,'캔들');
             window.RankChartAxis.candleLabel(candleArea,selectedMarket==='kosdaq'?'KOSDAQ':'KOSPI');
             {const view=window.RankChartAxis.sharedRange(axisId,dates,t=>t,mode,start,count,draw);start=view.start;count=view.count;}
             const n = Math.min(dates.length,count ?? dates.length); start = Math.max(0,Math.min(start,dates.length-n));
@@ -91,6 +114,7 @@
                     && (!boundaryXs.length || x(t) - boundaryXs.at(-1) >= 32)) boundaryXs.push(x(t));
             });
             function boundaries(context, upper, lower) {
+                if(mode==='minute'){window.RankChartAxis.drawDayBoundaries(context,left,right,upper,lower);return;}
                 context.save(); context.strokeStyle='#b8c1cc'; context.lineWidth=1; context.setLineDash([3,5]);
                 boundaryXs.forEach(px => {context.beginPath();context.moveTo(px,upper);context.lineTo(px,lower);context.stroke();});context.restore();
             }
@@ -192,6 +216,7 @@
             if (drag) { refreshPending = true; return; }
             if(more){window.RankChartAxis.showHistory();todayOnly=false;}
             refreshPending = false; loading = true; moreButton.disabled = true;
+            void loadPrices();
             const current = controller = new AbortController();
             const anchor = dates[start], followLatest = start + (count ?? dates.length) >= dates.length;
             status.textContent = '거래대금 조회 중';draw();
@@ -208,7 +233,7 @@
                 }
                 const pages = [...loadedPages.values()];
                 for (const market of ['kospi','kosdaq']) {
-                    data[market] = [...new Map(pages.flatMap(p => p.markets[market] || []).map(p => [p.t,p])).values()].sort((a,b)=>a.t-b.t);
+                    data[market] = [...new Map([...data[market],...pages.flatMap(p => p.markets[market] || [])].map(p => [p.t,p])).values()].sort((a,b)=>a.t-b.t);
                 }
                 dates = [...new Set(Object.values(data).flat().map(p=>p.t))].sort((a,b)=>a-b);
                 cursor = pages.at(-1)?.cursor || null;
@@ -239,12 +264,12 @@
             candle.setAttribute('aria-label',`${names[selectedMarket]} 지수 ${mode==='minute'?'1분봉':'일봉'} 캔들차트`);
             window[api('refreshRankTurnoverChart')]();
         }));
-        panel.querySelector('.rank-market-choice').addEventListener('change',event=>{selectedMarket=event.target.value;tip.hidden=true;hover=null;candle.setAttribute('aria-label',`${names[selectedMarket]} 지수 ${mode==='minute'?'1분봉':'일봉'} 캔들차트`);draw();});
+        panel.querySelector('.rank-market-choice').addEventListener('change',event=>{selectedMarket=event.target.value;void loadPrices();tip.hidden=true;hover=null;candle.setAttribute('aria-label',`${names[selectedMarket]} 지수 ${mode==='minute'?'1분봉':'일봉'} 캔들차트`);draw();});
         const candleButton = panel.querySelector('.concentration-candle-toggle');
         window[api('getRankTurnoverCandleOpen')] = () => !candleArea.hidden;
         window[api('applyRankTurnoverCandleOpen')] = open => {
             if (candleArea.hidden === (open !== true)) return;
-            candleArea.hidden = open !== true;
+            candleArea.hidden = open !== true;if(open===true)void loadPrices();
             candleButton.setAttribute('aria-expanded', String(!candleArea.hidden));
             resize();
         };

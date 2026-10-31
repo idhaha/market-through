@@ -14,15 +14,20 @@ function createSharedIndexHttp({ http, now = Date.now, ttl = 60000, limit = 256 
             const next = String(headers['cont-yn']).toUpperCase() === 'Y' ? String(headers['next-key'] || '') : '';
             const key = `${today}:${api}:${canonical(normalized)}:${next}`;
             const old = cache.get(key);
+            const policy=require('./trading-session').current();
+            if(policy && !policy.spotAt(now())){
+                const closed=old || [...cache.values()].findLast(entry=>entry.api===api && entry.parameters===canonical(normalized) && entry.next===next);
+                if(closed)return closed.promise.then(structuredClone);
+            }
             if (old && (old.pending || old.until > now())) return old.promise.then(structuredClone);
             if (old) cache.delete(key);
-            for (const [key, entry] of cache) if (!entry.pending && entry.until <= now()) cache.delete(key);
+            if(!policy || policy.spotAt(now()))for (const [key, entry] of cache) if (!entry.pending && entry.until <= now()) cache.delete(key);
             while (cache.size >= limit) {
                 const victim = [...cache].find(([, entry]) => !entry.pending);
                 if (!victim) break;
                 cache.delete(victim[0]);
             }
-            const entry = { pending: true, until: 0 };
+            const entry = { pending: true, until: 0,api,parameters:canonical(normalized),next };
             const promise = Promise.resolve().then(() => http.post(url, body, options)).then(response => {
                 if (Number(response.data?.return_code || 0)) throw new Error(response.data.return_msg || '시장 지수 조회 실패');
                 const field = api === 'ka20006' ? 'inds_dt_pole_qry' : 'inds_min_pole_qry';

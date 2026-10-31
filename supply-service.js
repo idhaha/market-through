@@ -12,6 +12,7 @@ function timestamp(date, time = '000000') {
     return Date.parse(`${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T${time.slice(0, 2)}:${time.slice(2, 4)}:${time.slice(4, 6)}+09:00`);
 }
 function collectingAt(t) {
+    const policy=require('./trading-session').current();if(policy)return policy.spotAt(t);
     const clock = new Date(t + 9 * 3600000), minute = clock.getUTCHours() * 60 + clock.getUTCMinutes();
     return ![0, 6].includes(clock.getUTCDay()) && minute >= 480 && minute <= 1201;
 }
@@ -19,6 +20,7 @@ function investorObservationAt(t) {
     return collectingAt(t);
 }
 function futuresObservationAt(t, confirmedDay) {
+    const policy=require('./trading-session').current();if(policy)return policy.futuresAt(t);
     const clock = new Date(t + 9 * 3600000), minute = clock.getUTCHours() * 60 + clock.getUTCMinutes();
     if (minute >= 360 && minute < 480) return false;
     // After midnight, the session belongs to the date on which night trading started.
@@ -247,10 +249,6 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
             load: onProgress => daily(code,cursor,onProgress) });
     }
     async function candles(input = {}) {
-        if (!input.mode || input.mode === 'day') {
-            const result = await query({ ...input, mode: 'day' });
-            return { success: true, points: result.candles, partial: result.warnings.length > 0, cursor: result.cursor, has_more: result.has_more };
-        }
         const { code, mode = 'day', range = '1y', date = dayKey(now()) } = input;
         if (!validCode(code) || !['day', 'minute'].includes(mode) || !['6m', '1y', '3y', '5y'].includes(range)
             || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw failure('잘못된 캔들 조회 조건입니다.');

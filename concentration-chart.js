@@ -174,6 +174,12 @@ function createConcentrationChartService({ axios, getAccessToken, marketCache, n
             .sort((a,b) => Number(!normalizeName(a.name).startsWith(query)) - Number(!normalizeName(b.name).startsWith(query)) || a.name.localeCompare(b.name, 'ko'))
             .slice(0, 30);
     }
+    async function searchStocksReady(input){
+        const query=normalizeName(input || '');
+        if(!query || query.length>80)return [];
+        if(!stockDirectory)await refreshStockDirectory();
+        return searchStocks(input);
+    }
     async function resolveStock(input) {
         const text = String(input || '').trim();
         if (!text || text.length > 80) throw Object.assign(new Error('종목명 또는 종목코드를 입력하세요.'), { status: 400 });
@@ -183,7 +189,10 @@ function createConcentrationChartService({ axios, getAccessToken, marketCache, n
         return matches[0];
     }
     function startStockDirectorySchedule() {
-        const run = () => refreshStockDirectory().then(count => console.log(`[StockMaster] ${count}종목 갱신`)).catch(error => console.warn('[StockMaster]', error.message));
+        const run = () => {
+            const policy=require('./trading-session').current();if(policy && !policy.spotAt(now().getTime()))return;
+            return refreshStockDirectory().then(count => console.log(`[StockMaster] ${count}종목 갱신`)).catch(error => console.warn('[StockMaster]', error.message));
+        };
         run();
         function schedule() {
             const current = now().getTime();
@@ -204,7 +213,15 @@ function createConcentrationChartService({ axios, getAccessToken, marketCache, n
             sessions.delete(oldest[0]);
         }
     }
-    async function post(apiId, body, token, nextKey = '') {
+    const chartRequests=new Map();
+    async function post(apiId,body,token,nextKey=''){
+        const key=JSON.stringify([apiId,body,nextKey]);
+        let task=chartRequests.get(key);
+        if(!task){task=fetchPost(apiId,body,token,nextKey).finally(()=>chartRequests.delete(key));chartRequests.set(key,task);}
+        const response=await task;
+        return {data:structuredClone(response.data),headers:{...response.headers}};
+    }
+    async function fetchPost(apiId, body, token, nextKey = '') {
         const response = await axios.post('https://api.kiwoom.com/api/dostk/chart', body, {
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'api-id': apiId,
                 'cont-yn': nextKey ? 'Y' : 'N', 'next-key': nextKey },
@@ -284,7 +301,7 @@ function createConcentrationChartService({ axios, getAccessToken, marketCache, n
         let cursor = input.cursor;
         if (cursor) {
             session = sessions.get(cursor);
-            if (!session || session.owner !== owner || session.code !== code || session.mode !== mode || session.interval !== interval) {
+            if (!session || session.owner !== owner || session.code !== code || session.mode !== mode || session.interval !== interval || !!session.pricesOnly !== !!input.prices_only) {
                 throw Object.assign(new Error('과거 조회가 만료되었습니다. 일/분 버튼을 눌러 다시 조회해 주세요.'), { status: 410 });
             }
             if (session.busy) throw Object.assign(new Error('이 차트의 이전 조회가 진행 중입니다.'), { status: 409 });
@@ -294,7 +311,7 @@ function createConcentrationChartService({ axios, getAccessToken, marketCache, n
             const indexInterval = INDEX_SCOPES.filter(value => interval % value === 0).at(-1);
             const daily = mode === 'day';
             session = {
-                owner, code, mode, interval, market, expires: Date.now() + TTL,
+                owner, code, mode, interval, market, pricesOnly:!!input.prices_only, expires: Date.now() + TTL,
                 stock: stream(daily ? 'ka10081' : 'ka10080', {
                     stk_cd: `${code}_AL`, upd_stkpc_tp: '0',
                     ...(daily ? { base_dt: baseDate } : { tic_scope: String(interval) })
@@ -319,14 +336,14 @@ function createConcentrationChartService({ axios, getAccessToken, marketCache, n
             if (!pendingMarket && (!stock.loaded || stock.nextKey)) await loadPage(stock, token);
             const oldest = earliest(stock, mode, interval);
             let pages = 0;
-            while ((!index.loaded || (oldest && index.nextKey && (!earliest(index, mode, 1) || earliest(index, mode, 1) > oldest))) && pages < 12) {
+            while (!input.prices_only && (!index.loaded || (oldest && index.nextKey && (!earliest(index, mode, 1) || earliest(index, mode, 1) > oldest))) && pages < 12) {
                 await loadPage(index, token);
                 pages++;
             }
             session.stock = stock;
             session.index = index;
             session.expires = Date.now() + TTL;
-            const pending = Boolean(oldest && index.nextKey && (!earliest(index, mode, 1) || earliest(index, mode, 1) > oldest));
+            const pending = !input.prices_only && Boolean(oldest && index.nextKey && (!earliest(index, mode, 1) || earliest(index, mode, 1) > oldest));
             return {
                 success: true, market: session.market, mode, interval, cursor,
                 points: calculatePoints(stock.rows, index.rows, mode, interval),
@@ -340,7 +357,7 @@ function createConcentrationChartService({ axios, getAccessToken, marketCache, n
             };
         } finally { session.busy = false; }
     }
-    return { query, resolveStock, searchStocks, refreshStockDirectory, startStockDirectorySchedule };
+    return { query, resolveStock, searchStocks, searchStocksReady, refreshStockDirectory, startStockDirectorySchedule };
 }
 
 module.exports = { createConcentrationChartService, calculatePoints, dailyTurnover, barKey, MINUTE_SCOPES, recentCompletedFiveBars, alignedFiveBarDebug };

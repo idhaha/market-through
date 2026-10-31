@@ -15,7 +15,7 @@ function program(row) {
     return arbitrage == null || nonArbitrage == null ? null : arbitrage + nonArbitrage;
 }
 function createMarketSupplyService({ directory, http, credentials, getToken, reference, supply, now = Date.now,
-    minuteProvider, dailyProvider,
+    minuteProvider, dailyProvider, futuresDaytimeOnly = false,
     pause = ms => new Promise(resolve => setTimeout(resolve, ms)), log = console.warn }) {
     const store = createSupplyStore({ directory, now }), statuses = new Map();
     const { createHistoryCache, createDailyQueryCache } = require('./daily-query-cache');
@@ -41,6 +41,7 @@ function createMarketSupplyService({ directory, http, credentials, getToken, ref
         queue = task.catch(() => {}); return task;
     }
     const warnings = market => markets[market].priceMarket ? [
+        ...(futuresDaytimeOnly?['수급: 주간 한투 · 야간 LS 저장 이력']:[]),
         '선물 프로그램 수급 미제공',
         `캔들: ${markets[market].priceMarket === 'kospi' ? '코스피' : '코스닥'} 현물지수`
     ] : ['투자자 수급: KRX+NXT 통합 집계 미확인'];
@@ -102,6 +103,10 @@ function createMarketSupplyService({ directory, http, credentials, getToken, ref
             const spotAllowed = collectingAt(now()) && await supply.confirmMarket();
             const date = compact(dayKey(now()));
             for (const [market, config] of Object.entries(markets)) {
+                if(config.priceMarket && futuresDaytimeOnly){
+                    const clock=new Date(now()+9*3600000).toISOString().slice(11,16);
+                    if(clock<'08:00'||clock>'15:46')continue;
+                }
                 if (config.priceMarket && !supply.futuresAllowed()) continue;
                 if (!config.priceMarket && !spotAllowed) continue;
                 const state = { checked_at: now(), investor_ok: false, program_ok: false, error: '' };
@@ -154,7 +159,7 @@ function createMarketSupplyService({ directory, http, credentials, getToken, ref
             }
         })().finally(() => { running = null; }); return running;
     }
-    async function query({ code = 'kospi', mode = 'day', cursor = '', progressive = '' } = {}) {
+    async function query({ code = 'kospi', mode = 'day', cursor = '', progressive = '', prices = '1' } = {}) {
         if (!Object.hasOwn(markets, code) || !['day','minute'].includes(mode) || typeof cursor !== 'string' || cursor.length > 2048
             || (mode === 'day' && markets[code].priceMarket && !dailyProvider)) throw failure('지원하지 않는 시장 수급 조회 조건입니다.');
         if (mode === 'minute') {
@@ -169,7 +174,7 @@ function createMarketSupplyService({ directory, http, credentials, getToken, ref
             const earlierDate = dates.filter(day => day < date).at(-1);
             const previous = earlierDate ? compact(earlierDate) : null;
             const price = { points: [], error: '', previous: null };
-            if (date) try {
+            if (date && prices !== '0') try {
                 let next = '';
                 for (let page = 0; page < 80; page++) {
                     const result = await reference.query({ market: config.priceMarket || code, mode: 'minute', cursor: next });

@@ -6,6 +6,18 @@ const { createSupplyService, quantity, timestamp, collectingAt, investorObservat
 const { createSupplyStore } = require('../../supply-store');
 
 const today = '20261020';
+test('daily candle endpoint requests only OHLC without investor or program queries',async t=>{
+    const f=fixture(t,async api=>{
+        assert.equal(api,'ka10081');
+        return {data:{stk_dt_pole_chart_qry:[{dt:today,open_pric:'100',high_pric:'110',low_pric:'90',cur_prc:'105'}]},headers:{}};
+    });
+    f.setTime(timestamp(today,'210000'));
+    await f.service.configure(['005930'],0);
+    f.calls.length=0;
+    const result=await f.service.candles({code:'005930',mode:'day'});
+    assert.equal(result.points[0].close,105);
+    assert.deepEqual(f.calls.map(c=>c.headers['api-id']),['ka10081']);
+});
 test('futures require a confirmed session day, including Friday night but excluding weekend and holiday starts', () => {
     const {futuresObservationAt} = require('../../supply-service');
     assert.equal(futuresObservationAt(timestamp('20261023','220000'),'2026-10-23'),true);

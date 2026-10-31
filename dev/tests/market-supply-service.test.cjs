@@ -6,6 +6,18 @@ const path = require('node:path');
 const { createMarketSupplyService } = require('../../market-supply-service');
 const { timestamp } = require('../../supply-service');
 const day = '20261023';
+test('stored-only minute queries return both duplicate cards without consulting the price provider',async t=>{
+    const {service,references}=fixture(t,async()=>[],false,'160000');
+    const time=timestamp(day,'101400');
+    service.store.merge('FUTURE',{t:time,foreign:7,individual:-4,institution:-3});
+    service.store.merge('FUTURE',{t:timestamp('20261022','101400'),foreign:5});
+    const results=await Promise.all([service.query({code:'futures',mode:'minute',prices:'0'}),service.query({code:'futures',mode:'minute',prices:'0'})]);
+    for(const r of results){assert.equal(r.points.find(p=>p.t===time)?.foreign,7);assert.equal(r.cursor,'20261022');assert.deepEqual(r.candles,[]);}
+    const past=await service.query({code:'futures',mode:'minute',cursor:'20261022',prices:'0'});
+    assert.equal(past.points[0].foreign,5);assert.equal(references.length,0);
+    await service.query({code:'futures',mode:'minute'});
+    assert.equal(references.length,1,'Default endpoint behavior still includes prices');
+});
 test('non-trading day query returns the latest stored futures session with an explicit source date',async t=>{
     const {service,setTime}=fixture(t,async()=>[],false,'160000');
     const time=timestamp(day,'154500');

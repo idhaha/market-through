@@ -1,6 +1,7 @@
 (() => {
     const states = new Map();
     const cardSources = [
+        ['#rankTestMarketSupplyChartPanel','LS(선물 수급·가격)·한투(주간 보완)'],
         ['#rankCombinedMarketSupplySecondaryChartPanel','일봉 LS·분봉 현물 키움/선물 한투·키움(가격)'], ['#rankCombinedMarketSupplyChartPanel','일봉 LS·분봉 현물 키움/선물 한투·키움(가격)'], ['#rankCombinedSupplyChartPanel','일봉 키움·분봉 한투(수급)·키움(가격)'], ['#rankCombinedTurnoverChartPanel','일봉 키움·분봉 LS(거래대금)·키움(가격)'], ['#combinedConcentrationChartPanel','일봉 키움·분봉 LS(거래대금)·키움(가격)'], ['#lsConcentrationChartPanel','LS(거래대금)·키움(가격)'], ['#rankKisTurnoverChartPanel','한투(거래대금)·키움(가격)'], ['#rankLsTurnoverChartPanel','LS(거래대금)·키움(가격)'],
         ['#rankKiwoomMarketSupplyChartPanel', '키움'],
         ['#rankKisSupplyChartPanel', '한투(수급)·키움(가격)'], ['#rankLsSupplyChartPanel', 'LS(수급)·키움(가격)'],
@@ -14,7 +15,12 @@
     const getPanel = target => typeof target === 'string' ? document.querySelector(target)?.closest('.panel') : target?.closest('.panel');
     function paint(panel, state) {
         let source = cardSources.find(([selector]) => panel.matches(selector) || panel.querySelector(selector))?.[1];
-        if(['rankCombinedMarketSupplyChartPanel','rankCombinedMarketSupplySecondaryChartPanel'].includes(panel.id)){const minute=!!panel.querySelector('[data-mode=minute].active'),future=!!panel.querySelector('input[value^=futures]:checked');source=minute?(future?'한투(선물 수급)·키움(현물가격)':'키움'):'LS(수급)·키움(가격)';const credit=panel.querySelector('.rank-card-source');if(credit&&credit.textContent!=='출처: '+source)credit.textContent='출처: '+source;}
+        if(panel.id==='rankTestMarketSupplyChartPanel'){
+            const future=(panel.dataset.market || '').startsWith('futures');
+            source=future ? 'LS(선물 수급·가격)'+(panel.dataset.chartMode==='minute'?'·한투(주간 보완)':'') : panel.dataset.chartMode==='minute' ? '키움(현물)' : 'LS(현물 수급)·키움(가격)';
+            const credit=panel.querySelector('.rank-card-source');if(credit && credit.textContent!=='출처: '+source)credit.textContent='출처: '+source;
+        }
+        if(['rankCombinedMarketSupplyChartPanel','rankCombinedMarketSupplySecondaryChartPanel'].includes(panel.id)){const minute=!!panel.querySelector('[data-mode=minute].active'),future=!!panel.querySelector('input[value^=futures]:checked');source=minute?(future?'한투(주간)·LS(야간)·키움(현물가격)':'키움'):'LS(수급)·키움(가격)';const credit=panel.querySelector('.rank-card-source');if(credit&&credit.textContent!=='출처: '+source)credit.textContent='출처: '+source;}
         if(panel.id==='rankCombinedSupplyChartPanel'){source=panel.querySelector('[data-mode=minute].active')?'한투(수급)·키움(가격)':'키움';const credit=panel.querySelector('.rank-card-source');if(credit&&credit.textContent!=='출처: '+source)credit.textContent='출처: '+source;}
         if(panel.id==='rankCombinedTurnoverChartPanel'){source=panel.querySelector('[data-mode=minute].active')?'LS(거래대금)·키움(가격)':'키움';const credit=panel.querySelector('.rank-card-source');if(credit&&credit.textContent!=='출처: '+source)credit.textContent='출처: '+source;}
         if(panel.id==='combinedConcentrationChartPanel')source=panel.querySelector('[data-chart-mode=minute].active')?'LS(거래대금)·키움(가격)':'키움';

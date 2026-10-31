@@ -1,4 +1,29 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),{chromium}=require('playwright');
+test('duplicate market cards isolate cancellation and consume one shared response',async()=>{
+ const browser=await chromium.launch({headless:true,channel:'msedge'});
+ try{
+  const page=await browser.newPage();let calls=0;const releases=[];
+  await page.route('https://shared-chart.test/**',async route=>{
+   const u=new URL(route.request().url());
+   if(u.pathname==='/')return route.fulfill({contentType:'text/html',body:'<html></html>'});
+   if(u.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:'shared@example.test'}}});
+   calls++;await new Promise(resolve=>releases.push(resolve));
+   await route.fulfill({json:{success:true,points:[{t:1793059200000,foreign:123}],warnings:[]}}).catch(()=>{});
+  });
+  await page.goto('https://shared-chart.test/');await page.addScriptTag({path:'public/rank-chart-cache.js'});
+  await page.evaluate(()=>{
+   window.firstController=new AbortController();
+   window.first=RankChartCache.fetch('/api/market-supply/chart?code=futures&mode=minute&prices=0',{signal:firstController.signal}).then(r=>r.json()).then(()=> 'completed',e=>e.name);
+  });
+  while(!calls)await new Promise(resolve=>setTimeout(resolve,10));
+  await page.evaluate(()=>{window.second=RankChartCache.fetch('/api/market-supply/chart?code=futures&mode=minute&prices=0').then(r=>r.json());});
+  await page.waitForTimeout(100);
+  await page.evaluate(()=>firstController.abort());await page.waitForTimeout(100);
+  releases.forEach(resolve=>resolve());
+  const result=await page.evaluate(async()=>({first:await first,second:await second}));
+  assert.equal(result.first,'AbortError');assert.equal(result.second.points[0].foreign,123);assert.equal(calls,1,'Cancelling one card must not restart the other card request');
+ }finally{await browser.close();}
+});
 test('browser chart cache retains history 16 hours, revalidates live data, excludes errors and isolates accounts',async()=>{
  const browser=await chromium.launch({headless:true,channel:'msedge'});try{
  const page=await browser.newPage();let calls=[],value=10,user='one@example.test',failure=false,missing=false,pendingOnce=false,session=0;

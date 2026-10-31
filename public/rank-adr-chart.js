@@ -199,6 +199,7 @@
             for (const tick of geometry.ticks) { context.textAlign = tick.align || 'center'; context.fillText(tick.label, tick.labelX, height - 8); }
         }
         function drawBoundaries(context, upper, lower) {
+            if(mode==='minute' && geometry){window.RankChartAxis.drawDayBoundaries(context,geometry.left,geometry.right,upper,lower);return;}
             context.save(); context.strokeStyle = '#b8c1cc'; context.lineWidth = 1; context.setLineDash([3,5]);
             (geometry?.boundaryXs || []).forEach(px => { context.beginPath(); context.moveTo(px,upper); context.lineTo(px,lower); context.stroke(); }); context.restore();
         }
@@ -251,8 +252,8 @@
             if(candleArea.hidden)return;
             if(mode==='day' && referencePoints.length){candles=referencePoints;candleStatus.textContent='';draw();return;}
             const domain=mode==='minute'?window.RankChartAxis.minuteDomain():null;
-            const from=(target || domain?.first || (points[0] && dateKey(points[0].t)))?.slice(0,10).replaceAll('-','');
-            const to=(domain?.last || (points.at(-1) && dateKey(points.at(-1).t)))?.slice(0,10).replaceAll('-','');
+            const from=(target || domain?.first || (points[0] && dateKey(points[0].t)) || dateKey(Date.now()-180*86400000))?.slice(0,10).replaceAll('-','');
+            const to=(domain?.last || (points.at(-1) && dateKey(points.at(-1).t)) || dateKey(Date.now()))?.slice(0,10).replaceAll('-','');
             if(!from || !to || from>to)return;
             const key=`${selectedMarket}:${mode}:${from}:${to}`;
             if(target && candleRangeError)candleRangeKey='';
@@ -284,9 +285,11 @@
             const key = `rank-adr:${market}:${day}`;
             const beforeOpen = new Date(Date.now() + 9 * 3600000).getUTCHours() < 9;
             referenceLoading = true; moreButton.disabled = true;window.RankChartAxis.loadingBar(canvas.parentElement,true,'ADR');
+            void loadCandles();
             let referenceWarning = '';
             const oldAnchor = viewportPoints()[0]?.t;
             try {
+                const referenceJob=(async()=>{
                 const keys = more ? [referenceCursor] : [...new Set(['', ...referencePages.keys()])];
                 try {
                     for (const cursor of keys) {
@@ -307,6 +310,8 @@
                 referenceCursor = [...referencePages.values()].at(-1)?.cursor || null;
                 if(more){viewStart=0;viewCount=null;}
                 else if(viewCount!=null)viewStart=Math.max(0,referencePoints.findIndex(p=>p.t>=oldAnchor));
+                draw();
+                })().catch(error=>{if(error.name!=='AbortError')referenceWarning=error.message;});
                 if (mode === 'day') {
                     const response = await (window.RankChartCache?.fetch || fetch)(`/api/adr/history?market=${market}&range=${range}`, { signal: current.signal });
                     const data = await response.json(); if (!response.ok) throw new Error('ADR 일별 조회 실패');

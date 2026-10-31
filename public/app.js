@@ -1594,13 +1594,17 @@ function startAutoRefresh() {
 
     console.log(`[Rank] 🔄 자동 새로고침 시작 (간격: ${intervalMs}ms, qry_tp: ${selectedOption.value})`);
 
-    autoRefreshInterval = setInterval(() => {
+    autoRefreshInterval = setInterval(async () => {
         if (isCapturing) { console.log('[Capture] Auto-refresh skipped (isCapturing)'); return; }
         const now = new Date().toLocaleTimeString();
         console.log(`[Rank] ⚡ 자동 새로고침 실행 (${now})`);
-        loadData();
-        loadTransactionRank();
-        loadWatchlistRank();
+        const session=window.TradingRefresh ? await window.TradingRefresh.update() : {spot:true};
+        if(session.spot){
+            loadData();
+            loadTransactionRank({refreshMarketCharts:false});
+            loadWatchlistRank();
+        }
+        window.RankChartAxis?.refreshCharts({automatic:true});
     }, intervalMs);
 }
 

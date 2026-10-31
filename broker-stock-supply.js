@@ -183,6 +183,7 @@ function createBrokerStockSupply({ broker, directory, http, credentials, getToke
         nextConnect = now() + Math.min(60000, 2000 * 2 ** Math.min(failures++, 5));
     }
     function sync() {
+        if(require('./trading-session').current() && !collectingAt(now()))return;
         if (!socket || socket.readyState !== 1 || outstanding) return;
         const codes = stocks().map(s => s.code);
         const remove = [...subscribed].find(code => !codes.includes(code));

@@ -57,6 +57,8 @@ data/adr-minutes/
 data/volatility/
 data/supply/
 data/market-supply/
+data/trading-session/
+data/ls-futures-test/
 data/kis-concentration/
 data/breadth/
 

@@ -23,7 +23,12 @@ function createLsMarketSupply({ directory, http, credentials, supply, now = Date
     // Raw source amounts are retained separately. Only verified conversions reach the chart.
     const raw = createSupplyStore({ directory: path.join(directory, 'raw'), now });
     const pending = new Map(), states = new Map();
-    let socket, token, expires = 0, tokenTask, connecting, timer, stopped = true, retryAt = 0, failures = 0;
+    let socket, token, expires = 0, tokenTask, connecting, timer, stopped = true, retryAt = 0, failures = 0, subscribedSession='';
+    function activeSubscriptions(){
+        if(!require('./trading-session').current())return subscriptions;
+        const clock=new Date(now()+9*3600000).toISOString().slice(11,16);
+        return subscriptions.filter(s=>s.tr==='BMT'?clock>='08:45'&&clock<'15:45'&&supply.futuresAllowed():collectingAt(now()));
+    }
     let connectionError = '', confirmedDay = '', lastFlush = 0, lastArchive = 0;
     let recoveryTask;
     function validation() {
@@ -154,14 +159,16 @@ function createLsMarketSupply({ directory, http, credentials, supply, now = Date
         connecting = (async () => {
             const auth = await accessToken();
             if (stopped) return;
+            if(require('./trading-session').current() && !activeSubscriptions().length)return;
             const ws = new WebSocket('wss://openapi.ls-sec.co.kr:9443/websocket', { handshakeTimeout: 10000, maxPayload: 1024 * 1024 });
             socket = ws;
             // LS ACKs omit tr_key. Keep only one subscription request outstanding
             // so a successful/failed ACK can be attributed without guessing its key.
             let subscriptionIndex = 0, awaiting, ackTimer;
+            const selected=activeSubscriptions();subscribedSession=selected.map(s=>s.tr+':'+s.key).join(',');
             const subscribeNext = () => {
                 clearTimeout(ackTimer);
-                awaiting = subscriptions[subscriptionIndex++];
+                awaiting = selected[subscriptionIndex++];
                 if (!awaiting || socket !== ws || stopped) return;
                 ws.send(JSON.stringify({ header: { token: auth, tr_type: '3' }, body: { tr_cd: awaiting.tr, tr_key: awaiting.key } }));
                 ackTimer = setTimeout(() => { if (socket === ws) ws.close(); }, 10000);
@@ -208,7 +215,8 @@ function createLsMarketSupply({ directory, http, credentials, supply, now = Date
             if (now() - lastArchive >= 60000) { raw.archiveCompleted(); lastArchive = now(); }
             if (!collectingAt(now())) confirmedDay = '';
             else if (confirmedDay !== dayKey(now()) && await supply.confirmMarket()) confirmedDay = dayKey(now());
-            if (!supply.futuresAllowed() && (!collectingAt(now()) || confirmedDay !== dayKey(now()))) {
+            if(socket && subscribedSession!==activeSubscriptions().map(s=>s.tr+':'+s.key).join(',')){const old=socket;socket=null;old.close();}
+            if (require('./trading-session').current() && !activeSubscriptions().length || !supply.futuresAllowed() && (!collectingAt(now()) || confirmedDay !== dayKey(now()))) {
                 if (socket) { const old = socket; socket = null; old.close(); }
                 return;
             }
