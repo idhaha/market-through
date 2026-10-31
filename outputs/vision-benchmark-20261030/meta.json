@@ -1,0 +1,100 @@
+{
+  "started_at": "2026-10-30T14:06:27.011Z",
+  "ollama": {
+    "version": "0.40.13"
+  },
+  "models": [
+    {
+      "name": "qwen3.5:9b",
+      "model": "qwen3.5:9b",
+      "modified_at": "2026-10-30T23:06:25.5003602+09:00",
+      "size": 6550825550,
+      "digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+      "details": {
+        "parent_model": "model.gguf",
+        "format": "gguf",
+        "family": "qwen35",
+        "families": [
+          "qwen35"
+        ],
+        "parameter_size": "9.0B",
+        "quantization_level": "Q4_K_M",
+        "context_length": 262144,
+        "embedding_length": 4096,
+        "runner": "llamacpp"
+      },
+      "capabilities": [
+        "completion",
+        "vision",
+        "tools",
+        "thinking"
+      ]
+    },
+    {
+      "name": "qwen3-vl:8b-instruct",
+      "model": "qwen3-vl:8b-instruct",
+      "modified_at": "2026-10-30T23:06:00.6793977+09:00",
+      "size": 6190971795,
+      "digest": "70e58e37beb15464e19aa903dedb2cba828b89c0fb186f75ff2738c7347b96eb",
+      "details": {
+        "parent_model": "dhiltgen/qwen3-vl:8b-instruct-q4_K_M-llamacpp",
+        "format": "gguf",
+        "family": "qwen3vl",
+        "families": [
+          "qwen3vl",
+          "clip"
+        ],
+        "parameter_size": "8.2B",
+        "quantization_level": "Q4_K_M",
+        "context_length": 262144,
+        "embedding_length": 4096,
+        "runner": "llamacpp"
+      },
+      "capabilities": [
+        "completion",
+        "vision",
+        "tools"
+      ]
+    }
+  ],
+  "methodology": "10 fixed uniformly spaced rows from ScreenSpot 1272-row test split; normalized point inside annotated bounding box = success. Single pass, no retries. ABBA order: 8B first five GUI plus first two OCR, 9B all fifteen, 8B remaining five GUI plus three OCR; separate image warm-up per block, no scored warm-ups. Same original PNG/JPEG bytes, prompt, JSON schema, temperature=0, seed=42, context=8192, GUI output_limit=128, think=false. No external model API. Small exploratory test, not a general vision/code benchmark.",
+  "ocr_methodology": "Five crops from existing synthetic application screenshots, no resizing. References transcribed and fixed before inference. Top-to-bottom, row-wise transcription. Same Korean prompt and JSON text schema, output_limit=1024 for both models. Score OCR separately from GUI. Primary CER uses NFC Unicode codepoints with all whitespace removed (layout differences excluded, punctuation and numbers retained); additionally report Hangul-only CER and exact numeric-token recall. Micro-average edit distances over total reference characters. Small exploratory sample.",
+  "dataset": "https://huggingface.co/datasets/bevaya/ScreenSpot",
+  "options": {
+    "temperature": 0,
+    "seed": 42,
+    "num_ctx": 8192,
+    "num_predict": 128
+  },
+  "blocks": [
+    {
+      "block": 1,
+      "model": "qwen3-vl:8b-instruct",
+      "warmup_seconds": 36.55672799999999,
+      "allocation": [
+        {
+          "model": "qwen3-vl:8b-instruct",
+          "size": 6604393020,
+          "size_vram": 6604393020,
+          "context_length": 8192
+        }
+      ]
+    },
+    {
+      "block": 2,
+      "model": "qwen3.5:9b",
+      "warmup_seconds": 20.7799112,
+      "allocation": [
+        {
+          "model": "qwen3.5:9b",
+          "size": 5878988144,
+          "size_vram": 5878988144,
+          "context_length": 8192
+        }
+      ]
+    }
+  ],
+  "aborted_at": "2026-10-30T14:12:26.065Z",
+  "finished_at": "2026-10-30T14:12:26.065Z",
+  "aborted_reason": "Repeated Vulkan device lost during image encoding on both models. Native run stopped early to avoid further GPU resets. Missing cases were not attempted and must not be counted as recognition errors. CPU OCR is a separate diagnostic pass."
+}

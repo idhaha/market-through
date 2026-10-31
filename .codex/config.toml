@@ -1,0 +1,7 @@
+# Append this section to the user's Codex config.toml. Keep the existing ollama server.
+[mcp_servers.ollama_coder]
+enabled = true
+command = 'C:/Program Files/nodejs/node.exe'
+args = ['D:/Program/MarketThrough/scripts/ollama-coder/server.cjs']
+startup_timeout_sec = 15
+tool_timeout_sec = 30

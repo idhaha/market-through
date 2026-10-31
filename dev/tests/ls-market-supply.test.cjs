@@ -18,12 +18,38 @@ function fixture(t, validated = true, options = {}) {
         close() {this.emit('close');}
     }
     const provider = createLsMarketSupply({directory,now:()=>time,WebSocket:Socket,...options,
-        supply:{confirmMarket:async()=>true},credentials:()=>({appKey:'private-key',secretKey:'private-secret'}),
+        supply:options.supply || {confirmMarket:async()=>true,futuresAllowed:()=>true},credentials:()=>({appKey:'private-key',secretKey:'private-secret'}),
         http:{post:async(url)=>{calls.push(url);if(url.endsWith('/token'))return {data:{access_token:'private-token',expires_in:3600}};return {data:{rsp_cd:'00000',t1602OutBlock1:[]}};}}});
     t.after(()=>{provider.stop();fs.rmSync(directory,{recursive:true,force:true});});
     return {provider,sockets,calls,setTime:t=>{time=t;},directory};
 }
 function message(tr,key,time,body) {return JSON.stringify({header:{tr_cd:tr,tr_key:key},body:{...(tr==='UPM'?{time}:{tjjtime:time}),...body}});}
+test('closed sessions do not authenticate or connect and ignore futures frames', async t => {
+    const f = fixture(t,true,{supply:{confirmMarket:async()=>false,futuresAllowed:()=>false}});
+    f.setTime(timestamp('20261024','220000'));
+    f.provider.start(); await f.provider.collect();
+    assert.equal(f.calls.length,0); assert.equal(f.sockets.length,0);
+    f.provider.receive(message('BMT','900','22000000',{msval2:'9'}));
+    f.setTime(timestamp('20261024','220100')); f.provider.flush();
+    assert.equal(f.provider.store.points('FUTURE','2026-10-24').length,0);
+});
+
+test('night futures accept fresh ticks across midnight while spot remains closed and stale ticks are rejected', async t => {
+    const f = fixture(t), p = f.provider;
+    f.setTime(timestamp('20261023', '213000')); await p.collect();
+    p.receive(message('BMT','900','21300000',{msval2:'7'}));
+    p.receive(message('UBT','U001','21300000',{msval2:'99'}));
+    f.setTime(timestamp('20261023','213100')); p.flush();
+    assert.equal(p.store.points('FUTURE','2026-10-23')[0].foreign,700);
+    assert.equal(p.store.points('KOSPI0','2026-10-23').length,0);
+    f.setTime(timestamp('20261024','000010')); await p.collect();
+    p.receive(message('BMT','900','23595000',{msval2:'8'}));
+    p.receive(message('BMT','900','23000000',{msval2:'999'}));
+    p.receive(message('BMT','901','00000500',{msval2:'9'}));
+    f.setTime(timestamp('20261024','000100')); p.flush();
+    assert.equal(p.store.points('FUTURE','2026-10-23').at(-1).foreign,800);
+    assert.equal(p.store.points('FUTKQ0','2026-10-24')[0].foreign,900);
+});
 test('one shared socket subscribes six sources, coalesces a minute, retains zero and never carries a missing minute forward', async t=>{
     const f=fixture(t), p=f.provider;p.start();await p.collect();assert.equal(f.sockets.length,1);
     f.sockets[0].emit('open');assert.equal(f.sockets[0].sent.length,1);

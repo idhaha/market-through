@@ -363,6 +363,8 @@
                 }
                 if (!response.ok) throw new Error('연결 실패');
                 const result = await response.json();
+                window.lastMarketAlertState = result.marketAlerts;
+                window.dispatchEvent(new CustomEvent('market-alert-state', { detail: result.marketAlerts }));
                 transportFailed=false;renderFailed=false;stage='render';
                 if(/^[a-f0-9]{64}$/.test(result.cacheScope||''))window.rankIndependentCacheScope=result.cacheScope;
                 relayEpoch = result.epoch || null;
@@ -374,6 +376,7 @@
                 if (result.serverRefresh) applyServerRefresh(result.serverRefresh);
                 renderFailed=false;delete window.rankIndependentLastFailure;status.title='';
             } catch (error) {
+                window.dispatchEvent(new Event('market-alert-offline'));
                 transportFailed=stage==='transport';renderFailed=stage==='render';
                 window.rankIndependentLastFailure={stage,status:responseStatus,error:renderFailed?String(error.message).replace(/[A-Za-z0-9_-]{32,}/g,'[redacted]').slice(0,160):error.name};
                 document.querySelectorAll('#tab_rank .panel').forEach(panel => window.setRankCardConnection?.(panel, false));

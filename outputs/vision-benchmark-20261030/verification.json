@@ -1,0 +1,9 @@
+{
+  "verified_at": "2026-10-30T14:56:08.725Z",
+  "gui_requests": 20,
+  "ocr_requests": 10,
+  "model_pairs_unique": true,
+  "image_hashes_preserved": true,
+  "cpu_vram_bytes": 0,
+  "report_relative_assets_present": true
+}

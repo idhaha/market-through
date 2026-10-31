@@ -1,0 +1,52 @@
+[
+  {
+    "id": "ko-1",
+    "title": "경보 배너 / 흰 글자·붉은 배경",
+    "file": "screens/ko-01.png",
+    "reference": "코스피 서킷브레이커 1단계 · 상위 단계 발동 · 확인됨\n조건: 지수가 전일 종가 대비 8% 이상 하락하여 1분간 지속\n조치: 20분간 매매 중단 → 이후 10분간 단일가 매매 후 재개\n발생 10시 0분 0초 | 해제 미확인 · 수신시각 기준",
+    "width": 1000,
+    "height": 109,
+    "sha256": "bbf45d915fbd39cb5e9e21f9a33e62a73b39c6dd4c74941a66c5f3b05cc3a2a4",
+    "source": "Existing synthetic application test screenshots under dev/output; cropped without resizing. Reference manually transcribed before inference."
+  },
+  {
+    "id": "ko-2",
+    "title": "조건표 / 좁은 화면 줄바꿈",
+    "file": "screens/ko-02.png",
+    "reference": "단계/ 시장 조건\n1단계 지수가 전일 종가 대비 8% 이상 하락하여 1분간 지속\n2단계 지수가 전일 종가 대비 15% 이상 하락하고 1단계 발동 지수보다 낮은 상태가 1분간 지속\n3단계 지수가 전일 종가 대비 20% 이상 하락하고 2단계 발동 지수보다 낮은 상태가 1분간 지속",
+    "width": 305,
+    "height": 313,
+    "sha256": "c4daeed960aefada909e62fd86face5384433fa50226aeaa18813dd741b22786",
+    "source": "Existing synthetic application test screenshots under dev/output; cropped without resizing. Reference manually transcribed before inference."
+  },
+  {
+    "id": "ko-3",
+    "title": "시장 수급 / 작은 글자·대금 단위",
+    "file": "screens/ko-03.png",
+    "reference": "2026-10-23\n외 +3억원 기 +0억원\n프 -1억원 개 -1억원",
+    "width": 145,
+    "height": 54,
+    "sha256": "8c3b6189848748f51f7b4f26f23edb658774bdecfc6a60dc5537a87e18e4e509",
+    "source": "Existing synthetic application test screenshots under dev/output; cropped without resizing. Reference manually transcribed before inference."
+  },
+  {
+    "id": "ko-4",
+    "title": "종목 수급 / 작은 글자·수량 단위",
+    "file": "screens/ko-04.png",
+    "reference": "2026-10-23\n외 +111주 기 +222주\n프 +444주 개 +333주",
+    "width": 145,
+    "height": 54,
+    "sha256": "3aad989c871080413587796557a93bdf1e4f22b3efa84eda2751cbaa365460ff",
+    "source": "Existing synthetic application test screenshots under dev/output; cropped without resizing. Reference manually transcribed before inference."
+  },
+  {
+    "id": "ko-5",
+    "title": "거래대금 / 영문·소수·한글 단위",
+    "file": "screens/ko-05.png",
+    "reference": "2026-10-23\nKOSPI 3.0조원\nKOSDAQ 1.0조원",
+    "width": 140,
+    "height": 55,
+    "sha256": "ee4263d89edbabd3cf814c21913928a1cea3ce3112662069e7046bd4277a824b",
+    "source": "Existing synthetic application test screenshots under dev/output; cropped without resizing. Reference manually transcribed before inference."
+  }
+]

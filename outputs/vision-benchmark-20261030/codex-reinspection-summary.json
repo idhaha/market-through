@@ -1,0 +1,45 @@
+{
+  "workflow_median_seconds": 4.252,
+  "workflow_min_seconds": 4.093,
+  "workflow_max_seconds": 9.175,
+  "errors": 0,
+  "characters": 303,
+  "method": "Current Codex session visually re-read the same five images, one image per tool response. Workflow wall time from immediately before view_image to immediately before recording the transcription in the next tool call; includes tool and orchestration overhead. Not a direct model API latency benchmark. Images and references were previously seen in this conversation; accuracy is not a blind/held-out evaluation. Local Ollama timing and this workflow timing have different measurement boundaries.",
+  "records": [
+    {
+      "case_id": "ko-1",
+      "workflow_seconds": 5.061,
+      "text": "코스피 서킷브레이커 1단계 · 상위 단계 발동 · 확인됨\n조건: 지수가 전일 종가 대비 8% 이상 하락하여 1분간 지속\n조치: 20분간 매매 중단 → 이후 10분간 단일가 매매 후 재개\n발생 10시 0분 0초 | 해제 미확인 · 수신시각 기준",
+      "characters": 96,
+      "errors": 0
+    },
+    {
+      "case_id": "ko-2",
+      "workflow_seconds": 4.219,
+      "text": "단계/ 시장 조건\n1단계 지수가 전일 종가 대비 8% 이상 하락하여 1분간 지속\n2단계 지수가 전일 종가 대비 15% 이상 하락하고 1단계 발동 지수보다 낮은 상태가 1분간 지속\n3단계 지수가 전일 종가 대비 20% 이상 하락하고 2단계 발동 지수보다 낮은 상태가 1분간 지속",
+      "characters": 112,
+      "errors": 0
+    },
+    {
+      "case_id": "ko-3",
+      "workflow_seconds": 4.093,
+      "text": "2026-10-23\n외 +3억원 기 +0억원\n프 -1억원 개 -1억원",
+      "characters": 30,
+      "errors": 0
+    },
+    {
+      "case_id": "ko-4",
+      "workflow_seconds": 4.252,
+      "text": "2026-10-23\n외 +111주 기 +222주\n프 +444주 개 +333주",
+      "characters": 34,
+      "errors": 0
+    },
+    {
+      "case_id": "ko-5",
+      "workflow_seconds": 9.175,
+      "text": "2026-10-23\nKOSPI 3.0조원\nKOSDAQ 1.0조원",
+      "characters": 31,
+      "errors": 0
+    }
+  ]
+}

@@ -1,0 +1,403 @@
+<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>로컬 비전 모델 비교 — 한글 OCR 포함</title><style>
+/* Initial layout/CSS draft delegated to local qwen2.5-coder:7b; reviewed and extended by Codex. */
+body{max-width:1200px;margin:0 auto;font-family:system-ui,'Malgun Gothic',sans-serif;background:#f4f4f4;color:#222;line-height:1.6}main{padding:24px}header h1{font-size:24px}h2{font-size:20px;margin-top:32px}h3{font-size:17px}.paired{display:flex;gap:16px}.paired>div{flex:1;min-width:0}section.case{border-top:1px solid #ccc;padding:18px 0}.instruction{color:#555}.screen{position:relative;display:inline-block;max-width:100%}.screen img{display:block;width:100%;height:auto;max-height:650px;object-fit:contain;object-position:left top}.gui-image{max-width:800px}.gui-image img{max-height:none}.target{position:absolute;box-sizing:border-box;border:2px dashed #111;background:#fff3}.point{position:absolute;width:12px;height:12px;border-radius:50%;transform:translate(-50%,-50%);border:2px solid white}.m0{background:#003b89}.m1{background:#a53000}table{width:100%;border-collapse:collapse;background:white;font-size:14px}th,td{border:1px solid #ccc;padding:8px;text-align:left}th{background:#eee}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:white;padding:12px;border:1px solid #ddd;font-family:inherit;font-size:14px}details{margin-top:12px}code{overflow-wrap:anywhere}.scroll{overflow:auto}.note{color:#555;font-size:14px}@media(max-width:700px){main{padding:12px}.paired{flex-direction:column}table{font-size:12px}}
+section.case>img{max-width:100%;height:auto}</style><main><header><h1>8B Instruct와 9B 실제 비교</h1><p>동일 이미지 · CPU 화면 위치 찾기 10장 + CPU 한글 OCR 5장 · GPU 오류 기록 별도 보존</p><p class="note">실행 시작 2026-10-30T14:06:27.011Z / 종료 2026-10-30T14:48:43.375Z · Ollama 0.40.13</p></header>
+<h2>현재 판단</h2><p>원본 GPU 실행은 두 모델에서 Vulkan device lost 오류가 반복돼 중단했습니다. 아래는 이를 분리한 <strong>CPU 전용 비교</strong>입니다. GUI 20/20회, OCR 10/10회 결과가 기록됐습니다.</p><p>GUI는 같은 10장 각각의 긴 변을 최대 1,280픽셀로 동일하게 축소한 PNG를 사용했습니다. OCR 5장은 원본 크기의 잘라낸 영역을 사용했습니다. 두 과제의 점수와 시간을 나누어 보세요. GPU 정상 작동 시의 속도·정확도를 의미하지 않습니다.</p><h2>CPU 화면 위치 찾기와 한글 OCR 결과</h2><div class="scroll"><table><thead><tr><th>모델</th><th>CPU 위치 찾기 성공/시도</th><th>CPU 위치 찾기 중앙값</th><th>OCR 글자 오류율 ↓</th><th>한글만 오류율 ↓</th><th>숫자·단위 토큰 일치</th><th>CPU OCR 중앙값</th><th>호출 실패</th></tr></thead><tbody><tr><th>qwen3-vl:8b-instruct</th><td>10/10</td><td>74.07초</td><td>3.3% (10/303)</td><td>0.0%</td><td>31/32</td><td>81.18초</td><td>0</td></tr><tr><th>qwen3.5:9b</th><td>8/10</td><td>49.96초</td><td>15.5% (47/303)</td><td>5.1%</td><td>27/32</td><td>9.74초</td><td>0</td></tr></tbody></table></div>
+<p class="note">OCR 오류율(CER)은 NFC 정규화 후 공백·줄바꿈을 제거한 문자열의 편집거리/정답 글자 수입니다. 숫자·문장부호는 유지합니다. 한글만 오류율은 다른 문자를 제거한 보조 지표입니다. 숫자 토큰 일치는 부호·단위를 포함하며 위치를 평가하지 않는 보조 지표입니다. 시간은 워밍업 이후 요청 왕복 시간이고, 입력 이미지 처리와 출력 생성 모두 포함합니다.</p>
+<h2>현재 Codex 세션의 같은 이미지 재판독</h2><p>이미지를 불러오기 직전부터 전사문을 다음 도구 호출에 기록하기 직전까지의 작업 흐름 시간입니다. 도구·왕복·진행 처리 시간이 포함되며, 직접 모델 API 응답 시간 측정이 아닙니다. 앞서 이 이미지와 정답을 본 세션이므로 독립적인 정확도 평가로 볼 수 없습니다. 로컬 Ollama 시간과 측정 경계도 달라 속도 배율을 계산하지 않습니다.</p><p>5장 중앙값 <strong>4.25초</strong>, 범위 4.09~9.18초. 정답 303자 대비 편집 오류 0자.</p><table><thead><tr><th>이미지</th><th>재판독 작업 시간</th><th>편집 오류/정답 글자</th></tr></thead><tbody><tr><td>ko-1</td><td>5.06초</td><td>0/96</td></tr><tr><td>ko-2</td><td>4.22초</td><td>0/112</td></tr><tr><td>ko-3</td><td>4.09초</td><td>0/30</td></tr><tr><td>ko-4</td><td>4.25초</td><td>0/34</td></tr><tr><td>ko-5</td><td>9.18초</td><td>0/31</td></tr></tbody></table><details><summary>전사문·측정 기록</summary><pre>{
+  &quot;workflow_median_seconds&quot;: 4.252,
+  &quot;workflow_min_seconds&quot;: 4.093,
+  &quot;workflow_max_seconds&quot;: 9.175,
+  &quot;errors&quot;: 0,
+  &quot;characters&quot;: 303,
+  &quot;method&quot;: &quot;Current Codex session visually re-read the same five images, one image per tool response. Workflow wall time from immediately before view_image to immediately before recording the transcription in the next tool call; includes tool and orchestration overhead. Not a direct model API latency benchmark. Images and references were previously seen in this conversation; accuracy is not a blind/held-out evaluation. Local Ollama timing and this workflow timing have different measurement boundaries.&quot;,
+  &quot;records&quot;: [
+    {
+      &quot;case_id&quot;: &quot;ko-1&quot;,
+      &quot;workflow_seconds&quot;: 5.061,
+      &quot;text&quot;: &quot;코스피 서킷브레이커 1단계 · 상위 단계 발동 · 확인됨\n조건: 지수가 전일 종가 대비 8% 이상 하락하여 1분간 지속\n조치: 20분간 매매 중단 → 이후 10분간 단일가 매매 후 재개\n발생 10시 0분 0초 | 해제 미확인 · 수신시각 기준&quot;,
+      &quot;characters&quot;: 96,
+      &quot;errors&quot;: 0
+    },
+    {
+      &quot;case_id&quot;: &quot;ko-2&quot;,
+      &quot;workflow_seconds&quot;: 4.219,
+      &quot;text&quot;: &quot;단계/ 시장 조건\n1단계 지수가 전일 종가 대비 8% 이상 하락하여 1분간 지속\n2단계 지수가 전일 종가 대비 15% 이상 하락하고 1단계 발동 지수보다 낮은 상태가 1분간 지속\n3단계 지수가 전일 종가 대비 20% 이상 하락하고 2단계 발동 지수보다 낮은 상태가 1분간 지속&quot;,
+      &quot;characters&quot;: 112,
+      &quot;errors&quot;: 0
+    },
+    {
+      &quot;case_id&quot;: &quot;ko-3&quot;,
+      &quot;workflow_seconds&quot;: 4.093,
+      &quot;text&quot;: &quot;2026-10-23\n외 +3억원 기 +0억원\n프 -1억원 개 -1억원&quot;,
+      &quot;characters&quot;: 30,
+      &quot;errors&quot;: 0
+    },
+    {
+      &quot;case_id&quot;: &quot;ko-4&quot;,
+      &quot;workflow_seconds&quot;: 4.252,
+      &quot;text&quot;: &quot;2026-10-23\n외 +111주 기 +222주\n프 +444주 개 +333주&quot;,
+      &quot;characters&quot;: 34,
+      &quot;errors&quot;: 0
+    },
+    {
+      &quot;case_id&quot;: &quot;ko-5&quot;,
+      &quot;workflow_seconds&quot;: 9.175,
+      &quot;text&quot;: &quot;2026-10-23\nKOSPI 3.0조원\nKOSDAQ 1.0조원&quot;,
+      &quot;characters&quot;: 31,
+      &quot;errors&quot;: 0
+    }
+  ]
+}</pre></details><p><a href="codex-reinspection.json">재판독 원시 기록</a> · <a href="codex-reinspection-summary.json">재판독 계산 결과</a></p><h2>CPU 한글 OCR: 원본과 전사 비교</h2><section class="case"><h3>ko-1 · 경보 배너 / 흰 글자·붉은 배경</h3><img src="screens/ko-01.png" alt="경보 배너 / 흰 글자·붉은 배경" loading="lazy"><details open><summary>사전에 확정한 정답</summary><pre>코스피 서킷브레이커 1단계 · 상위 단계 발동 · 확인됨
+조건: 지수가 전일 종가 대비 8% 이상 하락하여 1분간 지속
+조치: 20분간 매매 중단 → 이후 10분간 단일가 매매 후 재개
+발생 10시 0분 0초 | 해제 미확인 · 수신시각 기준</pre></details><div class="paired"><div><h4>qwen3-vl:8b-instruct</h4><p>CER 0.0% · 83.06초</p><pre>코스피 서킷브레이커 1단계 · 상위 단계 발동 · 확인됨
+조건: 지수가 전일 종가 대비 8% 이상 하락하여 1분간 지속
+조치: 20분간 매매 중단 → 이후 10분간 단일가 매매 후 재개
+발생 10시 0분 0초 | 해제 미확인 · 수신시각 기준</pre></div><div><h4>qwen3.5:9b</h4><p>CER 1.0% · 19.01초</p><pre>코스피 서킷브레이커 1단계 · 상위 단계 발동 · 확인됨
+조건: 지수가 전일 종가 대비 8% 이상 하락하여 1분간 지속
+조치: 20분간 매매 중단 → 이후 10분간 단일가 매매 후 재개
+발생 10시 0분 0초 | 해제 미확인 · 수신시작 기준</pre></div></div></section><section class="case"><h3>ko-2 · 조건표 / 좁은 화면 줄바꿈</h3><img src="screens/ko-02.png" alt="조건표 / 좁은 화면 줄바꿈" loading="lazy"><details open><summary>사전에 확정한 정답</summary><pre>단계/ 시장 조건
+1단계 지수가 전일 종가 대비 8% 이상 하락하여 1분간 지속
+2단계 지수가 전일 종가 대비 15% 이상 하락하고 1단계 발동 지수보다 낮은 상태가 1분간 지속
+3단계 지수가 전일 종가 대비 20% 이상 하락하고 2단계 발동 지수보다 낮은 상태가 1분간 지속</pre></details><div class="paired"><div><h4>qwen3-vl:8b-instruct</h4><p>CER 0.0% · 84.42초</p><pre>단계/ 시장 조건
+1단계 지수가 전일 종가 대비 8% 이상 하락하여 1분간 지속
+2단계 지수가 전일 종가 대비 15% 이상 하락하고 1단계 발동 지수보다 낮은 상태가 1분간 지속
+3단계 지수가 전일 종가 대비 20% 이상 하락하고 2단계 발동 지수보다 낮은 상태가 1분간 지속</pre></div><div><h4>qwen3.5:9b</h4><p>CER 0.0% · 20.17초</p><pre>단계/ 시장 조건 1단계 지수가 전일 종가 대비 8% 이상 하락하여 1분간 지속 2단계 지수가 전일 종가 대비 15% 이상 하락하고 1단계 발동 지수보다 낮은 상태가 1분 간 지속 3단계 지수가 전일 종가 대비 20% 이상 하락하고 2단계 발동 지수보다 낮은 상태가 1분 간 지속</pre></div></div></section><section class="case"><h3>ko-3 · 시장 수급 / 작은 글자·대금 단위</h3><img src="screens/ko-03.png" alt="시장 수급 / 작은 글자·대금 단위" loading="lazy"><details open><summary>사전에 확정한 정답</summary><pre>2026-10-23
+외 +3억원 기 +0억원
+프 -1억원 개 -1억원</pre></details><div class="paired"><div><h4>qwen3-vl:8b-instruct</h4><p>CER 33.3% · 74.66초</p><pre>외 +3억원
+기 +0억원
+프 -1억원
+개 -1억원</pre></div><div><h4>qwen3.5:9b</h4><p>CER 23.3% · 8.63초</p><pre>2026-10-23
+의 +3억원
+프 -1억원
+기 +0억원
+개 -1억원</pre></div></div></section><section class="case"><h3>ko-4 · 종목 수급 / 작은 글자·수량 단위</h3><img src="screens/ko-04.png" alt="종목 수급 / 작은 글자·수량 단위" loading="lazy"><details open><summary>사전에 확정한 정답</summary><pre>2026-10-23
+외 +111주 기 +222주
+프 +444주 개 +333주</pre></details><div class="paired"><div><h4>qwen3-vl:8b-instruct</h4><p>CER 0.0% · 78.33초</p><pre>2026-10-23
+외 +111주
+기 +222주
+프 +444주
+개 +333주</pre></div><div><h4>qwen3.5:9b</h4><p>CER 76.5% · 9.74초</p><pre>외 +111건
+프 +444건
+2026-10-23
+기 +222건
+개 +333건</pre></div></div></section><section class="case"><h3>ko-5 · 거래대금 / 영문·소수·한글 단위</h3><img src="screens/ko-05.png" alt="거래대금 / 영문·소수·한글 단위" loading="lazy"><details open><summary>사전에 확정한 정답</summary><pre>2026-10-23
+KOSPI 3.0조원
+KOSDAQ 1.0조원</pre></details><div class="paired"><div><h4>qwen3-vl:8b-instruct</h4><p>CER 0.0% · 81.18초</p><pre>2026-10-23
+KOSPI 3.0조원
+KOSDAQ 1.0조원</pre></div><div><h4>qwen3.5:9b</h4><p>CER 41.9% · 8.75초</p><pre>2026-03-20
+3.0 조원
+KOSPI
+1.0 조원
+KOSDAQ</pre></div></div></section>
+<h2>CPU 화면 위치 찾기 (긴 변 최대 1,280px)</h2><p>점선: 정답 영역 · 파랑: 8B · 주황: 9B. 예측 지점이 정답 영역 안에 있으면 성공입니다.</p><section class="case"><h3>1. close</h3><p class="instruction">windows · 960×540</p><div class="screen gui-image"><img src="cpu-screens/01.png" alt="close" loading="lazy"><span class="target" style="left:94.79166666666666%;top:14.444444444444443%;width:4.583333333333339%;height:6.296296296296297%"></span><span class="point m0" title="qwen3-vl:8b-instruct" style="left:96.7%;top:17.2%"></span><span class="point m1" title="qwen3.5:9b" style="left:96.6%;top:17.5%"></span></div><div class="paired"><div><b>qwen3-vl:8b-instruct</b><p>성공 · 65.31초 · {&quot;x&quot;:967,&quot;y&quot;:172}</p></div><div><b>qwen3.5:9b</b><p>성공 · 32.86초 · {&quot;x&quot;:966,&quot;y&quot;:175}</p></div></div></section><section class="case"><h3>2. insert an image</h3><p class="instruction">windows · 362×313</p><div class="screen gui-image"><img src="cpu-screens/02.png" alt="insert an image" loading="lazy"><span class="target" style="left:58.28729281767956%;top:87.53993610223642%;width:11.049723756906072%;height:11.501597444089452%"></span><span class="point m0" title="qwen3-vl:8b-instruct" style="left:62.9%;top:93.4%"></span><span class="point m1" title="qwen3.5:9b" style="left:0%;top:0%"></span></div><div class="paired"><div><b>qwen3-vl:8b-instruct</b><p>성공 · 68.50초 · {&quot;x&quot;:629,&quot;y&quot;:934}</p></div><div><b>qwen3.5:9b</b><p>실패 · 11.03초 · {&quot;x&quot;:0,&quot;y&quot;:0}</p></div></div></section><section class="case"><h3>3. add a screenshot</h3><p class="instruction">macos · 1280×1166</p><div class="screen gui-image"><img src="cpu-screens/03.png" alt="add a screenshot" loading="lazy"><span class="target" style="left:33.957845433255265%;top:16.580976863753214%;width:7.201405152224827%;height:7.197943444730076%"></span><span class="point m0" title="qwen3-vl:8b-instruct" style="left:37%;top:20.8%"></span><span class="point m1" title="qwen3.5:9b" style="left:37.2%;top:20%"></span></div><div class="paired"><div><b>qwen3-vl:8b-instruct</b><p>성공 · 100.55초 · {&quot;x&quot;:370,&quot;y&quot;:208}</p></div><div><b>qwen3.5:9b</b><p>성공 · 96.58초 · {&quot;x&quot;:372,&quot;y&quot;:200}</p></div></div></section><section class="case"><h3>4. try it free</h3><p class="instruction">ios · 591×1280</p><div class="screen gui-image"><img src="cpu-screens/04.png" alt="try it free" loading="lazy"><span class="target" style="left:21.965811965811966%;top:60.821484992101105%;width:56.41025641025641%;height:4.304897314375989%"></span><span class="point m0" title="qwen3-vl:8b-instruct" style="left:49.9%;top:62.7%"></span><span class="point m1" title="qwen3.5:9b" style="left:50%;top:63%"></span></div><div class="paired"><div><b>qwen3-vl:8b-instruct</b><p>성공 · 72.78초 · {&quot;x&quot;:499,&quot;y&quot;:627}</p></div><div><b>qwen3.5:9b</b><p>성공 · 45.39초 · {&quot;x&quot;:500,&quot;y&quot;:630}</p></div></div></section><section class="case"><h3>5. display wearing device</h3><p class="instruction">android · 576×1280</p><div class="screen gui-image"><img src="cpu-screens/05.png" alt="display wearing device" loading="lazy"><span class="target" style="left:53.425925925925924%;top:90.83333333333333%;width:19.166666666666675%;height:7.6250000000000036%"></span><span class="point m0" title="qwen3-vl:8b-instruct" style="left:62.1%;top:94.2%"></span><span class="point m1" title="qwen3.5:9b" style="left:62.8%;top:94.4%"></span></div><div class="paired"><div><b>qwen3-vl:8b-instruct</b><p>성공 · 74.74초 · {&quot;x&quot;:621,&quot;y&quot;:942}</p></div><div><b>qwen3.5:9b</b><p>성공 · 44.51초 · {&quot;x&quot;:628,&quot;y&quot;:944}</p></div></div></section><section class="case"><h3>6. join a meeting</h3><p class="instruction">android · 576×1280</p><div class="screen gui-image"><img src="cpu-screens/06.png" alt="join a meeting" loading="lazy"><span class="target" style="left:2.5925925925925926%;top:12.333333333333334%;width:20.37037037037037%;height:10.208333333333332%"></span><span class="point m0" title="qwen3-vl:8b-instruct" style="left:13%;top:16.7%"></span><span class="point m1" title="qwen3.5:9b" style="left:13.2%;top:17.4%"></span></div><div class="paired"><div><b>qwen3-vl:8b-instruct</b><p>성공 · 72.07초 · {&quot;x&quot;:130,&quot;y&quot;:167}</p></div><div><b>qwen3.5:9b</b><p>성공 · 44.43초 · {&quot;x&quot;:132,&quot;y&quot;:174}</p></div></div></section><section class="case"><h3>7. set reminder</h3><p class="instruction">gitlab · 1280×720</p><div class="screen gui-image"><img src="cpu-screens/07.png" alt="set reminder" loading="lazy"><span class="target" style="left:73.5546875%;top:31.319444444444443%;width:4.648437499999991%;height:4.9305555555555545%"></span><span class="point m0" title="qwen3-vl:8b-instruct" style="left:75.4%;top:33.7%"></span><span class="point m1" title="qwen3.5:9b" style="left:93.4%;top:69%"></span></div><div class="paired"><div><b>qwen3-vl:8b-instruct</b><p>성공 · 74.20초 · {&quot;x&quot;:754,&quot;y&quot;:337}</p></div><div><b>qwen3.5:9b</b><p>실패 · 54.52초 · {&quot;x&quot;:934,&quot;y&quot;:690}</p></div></div></section><section class="case"><h3>8. show reviews</h3><p class="instruction">shop · 1280×720</p><div class="screen gui-image"><img src="cpu-screens/08.png" alt="show reviews" loading="lazy"><span class="target" style="left:8.75%;top:58.12500000000001%;width:9.765625%;height:4.444444444444439%"></span><span class="point m0" title="qwen3-vl:8b-instruct" style="left:13.7%;top:60.4%"></span><span class="point m1" title="qwen3.5:9b" style="left:13.7%;top:60.3%"></span></div><div class="paired"><div><b>qwen3-vl:8b-instruct</b><p>성공 · 74.64초 · {&quot;x&quot;:137,&quot;y&quot;:604}</p></div><div><b>qwen3.5:9b</b><p>성공 · 55.24초 · {&quot;x&quot;:137,&quot;y&quot;:603}</p></div></div></section><section class="case"><h3>9. select the html as share format</h3><p class="instruction">tool · 1280×720</p><div class="screen gui-image"><img src="cpu-screens/09.png" alt="select the html as share format" loading="lazy"><span class="target" style="left:90.9375%;top:30.069444444444443%;width:4.804687499999993%;height:4.9305555555555545%"></span><span class="point m0" title="qwen3-vl:8b-instruct" style="left:93%;top:32.2%"></span><span class="point m1" title="qwen3.5:9b" style="left:93.6%;top:32.9%"></span></div><div class="paired"><div><b>qwen3-vl:8b-instruct</b><p>성공 · 74.46초 · {&quot;x&quot;:930,&quot;y&quot;:322}</p></div><div><b>qwen3.5:9b</b><p>성공 · 56.86초 · {&quot;x&quot;:936,&quot;y&quot;:329}</p></div></div></section><section class="case"><h3>10. view the previous photo</h3><p class="instruction">shop · 1280×720</p><div class="screen gui-image"><img src="cpu-screens/10.png" alt="view the previous photo" loading="lazy"><span class="target" style="left:3.6328125000000004%;top:5.138888888888888%;width:3.359374999999999%;height:9.166666666666666%"></span><span class="point m0" title="qwen3-vl:8b-instruct" style="left:5%;top:9.3%"></span><span class="point m1" title="qwen3.5:9b" style="left:5.3%;top:9.4%"></span></div><div class="paired"><div><b>qwen3-vl:8b-instruct</b><p>성공 · 73.95초 · {&quot;x&quot;:50,&quot;y&quot;:93}</p></div><div><b>qwen3.5:9b</b><p>성공 · 55.85초 · {&quot;x&quot;:53,&quot;y&quot;:94}</p></div></div></section>
+<h2>방법과 한계</h2><p>GUI CPU 비교는 별도 단일 실행입니다. System.Drawing HighQualityBicubic으로 긴 변이 1,280px를 넘는 이미지만 축소했고 원본의 정답 영역 정규화 좌표는 유지했습니다. 8B 전반 5개 → 9B 10개 → 8B 후반 5개 순서로 모델을 번갈아 실행했습니다. 블록별 워밍업은 평가하지 않는 OCR 이미지로 수행해 채점 이미지 캐시를 피했습니다. 작은 글자는 축소로 가독성이 떨어질 수 있습니다. CPU GUI와 OCR 실행 메타데이터를 아래에서 확인할 수 있습니다.</p><p>CPU 최종 비교에서는 presence_penalty=0, frequency_penalty=0, repeat_penalty=1을 맞췄습니다. 최초 8B 실행 로그가 이 값임을 확인했습니다. 9B 태그는 presence_penalty=1.5가 기본이므로 최초 결과를 보존하고 0으로 명시한 9B 추가 실행을 최종 비교에 사용했습니다. <a href="cpu-ocr-default-results.json">최초 기본값 실행</a> · <a href="model-defaults.json">모델 기본 설정</a>. CER은 글자 누락·오독뿐 아니라 지정한 행 순서와 다른 전사 순서도 오류로 계산합니다. 숫자 토큰은 공백을 제거한 뒤 대조합니다.</p><p>GUI 표본은 <a href="https://huggingface.co/datasets/bevaya/ScreenSpot">ScreenSpot 공개 미러</a> test 1,272개 중 균등 간격 10개를 결과 확인 전에 고정했습니다. 한글 OCR은 기존 앱 테스트 화면 5개 영역을 원래 해상도로 잘라 사용했으며 실사용 개인정보는 포함하지 않았습니다. 두 모델에 동일한 바이트와 과제별 동일 프롬프트·JSON 형식을 전달했습니다. temperature=0, seed=42, context=8192, think=false. GUI 출력 한도 128, OCR 1024 토큰입니다. 모델 자체의 이미지 처리 방식은 다를 수 있습니다.</p><p>당초 GPU 실행은 8B 전반 → 9B 전체 → 8B 후반 순서였으나 두 모델에서 반복되는 이미지 인코더 Vulkan device lost 오류로 중단했습니다. 실행한 기록은 보존하고 미실행 사례를 오답으로 채우지 않았습니다. 이후 CPU에서 8B 한글 OCR 5개 → 9B 한글 OCR 5개를 별도로 실행했습니다. 프롬프트와 정답은 변경하지 않았습니다. 표본이 작고 같은 앱의 제한된 글꼴·디자인이므로 일반 문서, 손글씨, 사진 또는 모든 한글 화면에 일반화할 수 없습니다.</p>
+<details><summary>모델 파일 정보·GPU 할당·실행 메타데이터</summary><pre>{
+  &quot;started_at&quot;: &quot;2026-10-30T14:06:27.011Z&quot;,
+  &quot;ollama&quot;: {
+    &quot;version&quot;: &quot;0.40.13&quot;
+  },
+  &quot;models&quot;: [
+    {
+      &quot;name&quot;: &quot;qwen3.5:9b&quot;,
+      &quot;model&quot;: &quot;qwen3.5:9b&quot;,
+      &quot;modified_at&quot;: &quot;2026-10-30T23:06:25.5003602+09:00&quot;,
+      &quot;size&quot;: 6550825550,
+      &quot;digest&quot;: &quot;56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90&quot;,
+      &quot;details&quot;: {
+        &quot;parent_model&quot;: &quot;model.gguf&quot;,
+        &quot;format&quot;: &quot;gguf&quot;,
+        &quot;family&quot;: &quot;qwen35&quot;,
+        &quot;families&quot;: [
+          &quot;qwen35&quot;
+        ],
+        &quot;parameter_size&quot;: &quot;9.0B&quot;,
+        &quot;quantization_level&quot;: &quot;Q4_K_M&quot;,
+        &quot;context_length&quot;: 262144,
+        &quot;embedding_length&quot;: 4096,
+        &quot;runner&quot;: &quot;llamacpp&quot;
+      },
+      &quot;capabilities&quot;: [
+        &quot;completion&quot;,
+        &quot;vision&quot;,
+        &quot;tools&quot;,
+        &quot;thinking&quot;
+      ]
+    },
+    {
+      &quot;name&quot;: &quot;qwen3-vl:8b-instruct&quot;,
+      &quot;model&quot;: &quot;qwen3-vl:8b-instruct&quot;,
+      &quot;modified_at&quot;: &quot;2026-10-30T23:06:00.6793977+09:00&quot;,
+      &quot;size&quot;: 6190971795,
+      &quot;digest&quot;: &quot;70e58e37beb15464e19aa903dedb2cba828b89c0fb186f75ff2738c7347b96eb&quot;,
+      &quot;details&quot;: {
+        &quot;parent_model&quot;: &quot;dhiltgen/qwen3-vl:8b-instruct-q4_K_M-llamacpp&quot;,
+        &quot;format&quot;: &quot;gguf&quot;,
+        &quot;family&quot;: &quot;qwen3vl&quot;,
+        &quot;families&quot;: [
+          &quot;qwen3vl&quot;,
+          &quot;clip&quot;
+        ],
+        &quot;parameter_size&quot;: &quot;8.2B&quot;,
+        &quot;quantization_level&quot;: &quot;Q4_K_M&quot;,
+        &quot;context_length&quot;: 262144,
+        &quot;embedding_length&quot;: 4096,
+        &quot;runner&quot;: &quot;llamacpp&quot;
+      },
+      &quot;capabilities&quot;: [
+        &quot;completion&quot;,
+        &quot;vision&quot;,
+        &quot;tools&quot;
+      ]
+    }
+  ],
+  &quot;methodology&quot;: &quot;10 fixed uniformly spaced rows from ScreenSpot 1272-row test split; normalized point inside annotated bounding box = success. Single pass, no retries. ABBA order: 8B first five GUI plus first two OCR, 9B all fifteen, 8B remaining five GUI plus three OCR; separate image warm-up per block, no scored warm-ups. Same original PNG/JPEG bytes, prompt, JSON schema, temperature=0, seed=42, context=8192, GUI output_limit=128, think=false. No external model API. Small exploratory test, not a general vision/code benchmark.&quot;,
+  &quot;ocr_methodology&quot;: &quot;Five crops from existing synthetic application screenshots, no resizing. References transcribed and fixed before inference. Top-to-bottom, row-wise transcription. Same Korean prompt and JSON text schema, output_limit=1024 for both models. Score OCR separately from GUI. Primary CER uses NFC Unicode codepoints with all whitespace removed (layout differences excluded, punctuation and numbers retained); additionally report Hangul-only CER and exact numeric-token recall. Micro-average edit distances over total reference characters. Small exploratory sample.&quot;,
+  &quot;dataset&quot;: &quot;https://huggingface.co/datasets/bevaya/ScreenSpot&quot;,
+  &quot;options&quot;: {
+    &quot;temperature&quot;: 0,
+    &quot;seed&quot;: 42,
+    &quot;num_ctx&quot;: 8192,
+    &quot;num_predict&quot;: 128
+  },
+  &quot;blocks&quot;: [
+    {
+      &quot;block&quot;: 1,
+      &quot;model&quot;: &quot;qwen3-vl:8b-instruct&quot;,
+      &quot;warmup_seconds&quot;: 36.55672799999999,
+      &quot;allocation&quot;: [
+        {
+          &quot;model&quot;: &quot;qwen3-vl:8b-instruct&quot;,
+          &quot;size&quot;: 6604393020,
+          &quot;size_vram&quot;: 6604393020,
+          &quot;context_length&quot;: 8192
+        }
+      ]
+    },
+    {
+      &quot;block&quot;: 2,
+      &quot;model&quot;: &quot;qwen3.5:9b&quot;,
+      &quot;warmup_seconds&quot;: 20.7799112,
+      &quot;allocation&quot;: [
+        {
+          &quot;model&quot;: &quot;qwen3.5:9b&quot;,
+          &quot;size&quot;: 5878988144,
+          &quot;size_vram&quot;: 5878988144,
+          &quot;context_length&quot;: 8192
+        }
+      ]
+    }
+  ],
+  &quot;aborted_at&quot;: &quot;2026-10-30T14:12:26.065Z&quot;,
+  &quot;finished_at&quot;: &quot;2026-10-30T14:12:26.065Z&quot;,
+  &quot;aborted_reason&quot;: &quot;Repeated Vulkan device lost during image encoding on both models. Native run stopped early to avoid further GPU resets. Missing cases were not attempted and must not be counted as recognition errors. CPU OCR is a separate diagnostic pass.&quot;,
+  &quot;cpu_ocr&quot;: {
+    &quot;started_at&quot;: &quot;2026-10-30T14:12:33.276Z&quot;,
+    &quot;profile&quot;: &quot;CPU only (num_gpu=0), separate diagnostic OCR pass after Vulkan failures; no GPU/CPU latency comparison&quot;,
+    &quot;options&quot;: {
+      &quot;temperature&quot;: 0,
+      &quot;seed&quot;: 42,
+      &quot;num_ctx&quot;: 8192,
+      &quot;num_predict&quot;: 128,
+      &quot;num_gpu&quot;: 0
+    },
+    &quot;blocks&quot;: [
+      {
+        &quot;model&quot;: &quot;qwen3-vl:8b-instruct&quot;,
+        &quot;warmup_seconds&quot;: 74.8493376,
+        &quot;allocation&quot;: [
+          {
+            &quot;name&quot;: &quot;qwen3-vl:8b-instruct&quot;,
+            &quot;model&quot;: &quot;qwen3-vl:8b-instruct&quot;,
+            &quot;size&quot;: 7056811621,
+            &quot;digest&quot;: &quot;70e58e37beb15464e19aa903dedb2cba828b89c0fb186f75ff2738c7347b96eb&quot;,
+            &quot;details&quot;: {
+              &quot;parent_model&quot;: &quot;&quot;,
+              &quot;format&quot;: &quot;gguf&quot;,
+              &quot;family&quot;: &quot;qwen3vl&quot;,
+              &quot;families&quot;: [
+                &quot;qwen3vl&quot;,
+                &quot;clip&quot;
+              ],
+              &quot;parameter_size&quot;: &quot;8.2B&quot;,
+              &quot;quantization_level&quot;: &quot;Q4_K_M&quot;
+            },
+            &quot;expires_at&quot;: &quot;2026-10-30T23:23:48.184823+09:00&quot;,
+            &quot;size_vram&quot;: 0,
+            &quot;context_length&quot;: 8192,
+            &quot;runner&quot;: &quot;llamacpp&quot;
+          }
+        ]
+      },
+      {
+        &quot;model&quot;: &quot;qwen3.5:9b&quot;,
+        &quot;warmup_seconds&quot;: 14.881363899999997,
+        &quot;allocation&quot;: [
+          {
+            &quot;name&quot;: &quot;qwen3.5:9b&quot;,
+            &quot;model&quot;: &quot;qwen3.5:9b&quot;,
+            &quot;size&quot;: 6452129298,
+            &quot;digest&quot;: &quot;56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90&quot;,
+            &quot;details&quot;: {
+              &quot;parent_model&quot;: &quot;&quot;,
+              &quot;format&quot;: &quot;gguf&quot;,
+              &quot;family&quot;: &quot;qwen35&quot;,
+              &quot;families&quot;: [
+                &quot;qwen35&quot;
+              ],
+              &quot;parameter_size&quot;: &quot;9.0B&quot;,
+              &quot;quantization_level&quot;: &quot;Q4_K_M&quot;
+            },
+            &quot;expires_at&quot;: &quot;2026-10-30T23:30:45.1702852+09:00&quot;,
+            &quot;size_vram&quot;: 0,
+            &quot;context_length&quot;: 8192,
+            &quot;runner&quot;: &quot;llamacpp&quot;
+          }
+        ]
+      },
+      {
+        &quot;model&quot;: &quot;qwen3.5:9b&quot;,
+        &quot;warmup_seconds&quot;: 12.8674075,
+        &quot;allocation&quot;: [
+          {
+            &quot;name&quot;: &quot;qwen3.5:9b&quot;,
+            &quot;model&quot;: &quot;qwen3.5:9b&quot;,
+            &quot;size&quot;: 6452129298,
+            &quot;digest&quot;: &quot;56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90&quot;,
+            &quot;details&quot;: {
+              &quot;parent_model&quot;: &quot;&quot;,
+              &quot;format&quot;: &quot;gguf&quot;,
+              &quot;family&quot;: &quot;qwen35&quot;,
+              &quot;families&quot;: [
+                &quot;qwen35&quot;
+              ],
+              &quot;parameter_size&quot;: &quot;9.0B&quot;,
+              &quot;quantization_level&quot;: &quot;Q4_K_M&quot;
+            },
+            &quot;expires_at&quot;: &quot;2026-10-30T23:32:45.4042206+09:00&quot;,
+            &quot;size_vram&quot;: 0,
+            &quot;context_length&quot;: 8192,
+            &quot;runner&quot;: &quot;llamacpp&quot;
+          }
+        ]
+      }
+    ],
+    &quot;controlled_rerun&quot;: {
+      &quot;model&quot;: &quot;qwen3.5:9b&quot;,
+      &quot;started_at&quot;: &quot;2026-10-30T14:22:32.505Z&quot;,
+      &quot;options&quot;: {
+        &quot;temperature&quot;: 0,
+        &quot;seed&quot;: 42,
+        &quot;num_ctx&quot;: 8192,
+        &quot;num_predict&quot;: 128,
+        &quot;num_gpu&quot;: 0,
+        &quot;presence_penalty&quot;: 0,
+        &quot;frequency_penalty&quot;: 0,
+        &quot;repeat_penalty&quot;: 1
+      },
+      &quot;reason&quot;: &quot;Qwen3.5 model tag defaults presence_penalty to 1.5, whereas 8B used 0. Control both to 0. Existing 8B logs verified frequency=0, presence=0, repeat=1; preserve initial 9B defaults pass separately.&quot;
+    },
+    &quot;finished_at&quot;: &quot;2026-10-30T14:23:51.732Z&quot;
+  },
+  &quot;cpu_gui&quot;: {
+    &quot;started_at&quot;: &quot;2026-10-30T14:25:13.273Z&quot;,
+    &quot;profile&quot;: &quot;CPU GUI grounding: same ten original screenshots resized only if long edge exceeds 1280px; Windows System.Drawing HighQualityBicubic; both models receive identical PNG bytes; original normalized target boxes unchanged. Same prompt, schema and explicitly controlled generation settings. Single pass with no retries. ABBA blocks, separate unscored warm-up on an OCR image to avoid caching any scored screenshot.&quot;,
+    &quot;options&quot;: {
+      &quot;temperature&quot;: 0,
+      &quot;seed&quot;: 42,
+      &quot;num_ctx&quot;: 8192,
+      &quot;num_predict&quot;: 128,
+      &quot;num_gpu&quot;: 0,
+      &quot;presence_penalty&quot;: 0,
+      &quot;frequency_penalty&quot;: 0,
+      &quot;repeat_penalty&quot;: 1
+    },
+    &quot;blocks&quot;: [
+      {
+        &quot;block&quot;: 1,
+        &quot;model&quot;: &quot;qwen3-vl:8b-instruct&quot;,
+        &quot;warmup_seconds&quot;: 72.3668658,
+        &quot;allocation&quot;: [
+          {
+            &quot;name&quot;: &quot;qwen3-vl:8b-instruct&quot;,
+            &quot;model&quot;: &quot;qwen3-vl:8b-instruct&quot;,
+            &quot;size&quot;: 7056811621,
+            &quot;digest&quot;: &quot;70e58e37beb15464e19aa903dedb2cba828b89c0fb186f75ff2738c7347b96eb&quot;,
+            &quot;details&quot;: {
+              &quot;parent_model&quot;: &quot;&quot;,
+              &quot;format&quot;: &quot;gguf&quot;,
+              &quot;family&quot;: &quot;qwen3vl&quot;,
+              &quot;families&quot;: [
+                &quot;qwen3vl&quot;,
+                &quot;clip&quot;
+              ],
+              &quot;parameter_size&quot;: &quot;8.2B&quot;,
+              &quot;quantization_level&quot;: &quot;Q4_K_M&quot;
+            },
+            &quot;expires_at&quot;: &quot;2026-10-30T23:41:25.6660946+09:00&quot;,
+            &quot;size_vram&quot;: 0,
+            &quot;context_length&quot;: 8192,
+            &quot;runner&quot;: &quot;llamacpp&quot;
+          }
+        ]
+      },
+      {
+        &quot;block&quot;: 2,
+        &quot;model&quot;: &quot;qwen3.5:9b&quot;,
+        &quot;warmup_seconds&quot;: 10.480635199999961,
+        &quot;allocation&quot;: [
+          {
+            &quot;name&quot;: &quot;qwen3.5:9b&quot;,
+            &quot;model&quot;: &quot;qwen3.5:9b&quot;,
+            &quot;size&quot;: 6452129298,
+            &quot;digest&quot;: &quot;56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90&quot;,
+            &quot;details&quot;: {
+              &quot;parent_model&quot;: &quot;&quot;,
+              &quot;format&quot;: &quot;gguf&quot;,
+              &quot;family&quot;: &quot;qwen35&quot;,
+              &quot;families&quot;: [
+                &quot;qwen35&quot;
+              ],
+              &quot;parameter_size&quot;: &quot;9.0B&quot;,
+              &quot;quantization_level&quot;: &quot;Q4_K_M&quot;
+            },
+            &quot;expires_at&quot;: &quot;2026-10-30T23:47:58.0668276+09:00&quot;,
+            &quot;size_vram&quot;: 0,
+            &quot;context_length&quot;: 8192,
+            &quot;runner&quot;: &quot;llamacpp&quot;
+          }
+        ]
+      },
+      {
+        &quot;block&quot;: 3,
+        &quot;model&quot;: &quot;qwen3-vl:8b-instruct&quot;,
+        &quot;warmup_seconds&quot;: 78.6453027,
+        &quot;allocation&quot;: [
+          {
+            &quot;name&quot;: &quot;qwen3-vl:8b-instruct&quot;,
+            &quot;model&quot;: &quot;qwen3-vl:8b-instruct&quot;,
+            &quot;size&quot;: 7056811621,
+            &quot;digest&quot;: &quot;70e58e37beb15464e19aa903dedb2cba828b89c0fb186f75ff2738c7347b96eb&quot;,
+            &quot;details&quot;: {
+              &quot;parent_model&quot;: &quot;&quot;,
+              &quot;format&quot;: &quot;gguf&quot;,
+              &quot;family&quot;: &quot;qwen3vl&quot;,
+              &quot;families&quot;: [
+                &quot;qwen3vl&quot;,
+                &quot;clip&quot;
+              ],
+              &quot;parameter_size&quot;: &quot;8.2B&quot;,
+              &quot;quantization_level&quot;: &quot;Q4_K_M&quot;
+            },
+            &quot;expires_at&quot;: &quot;2026-10-30T23:57:34.0332006+09:00&quot;,
+            &quot;size_vram&quot;: 0,
+            &quot;context_length&quot;: 8192,
+            &quot;runner&quot;: &quot;llamacpp&quot;
+          }
+        ]
+      }
+    ],
+    &quot;finished_at&quot;: &quot;2026-10-30T14:48:43.375Z&quot;
+  }
+}</pre></details><p><a href="cpu-gui-results.json">CPU GUI 원시 결과</a> · <a href="results.json">GPU 중단 기록</a> · <a href="cpu-ocr-results.json">CPU OCR 원시 결과</a> · <a href="summary.json">계산 결과</a> · <a href="ocr-cases.json">OCR 정답·해시</a> · <a href="benchmark.cjs">실행 스크립트</a></p></main></html>

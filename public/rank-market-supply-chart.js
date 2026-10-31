@@ -21,16 +21,16 @@
         if (!response.ok || !data.success) throw Object.assign(new Error(data.error || '수급 조회 실패'), { status: response.status });
         return data;
     }
-    function initialize(broker = '') {
+    function initialize(broker = '', secondary = false) {
         const combined = broker === 'combined';
         const isLs = broker === 'ls', isKiwoom = broker === 'kiwoom';
         const format = (n, signed = true) => Number.isFinite(n) ? `${formatAmount(n / 100, signed)}억원` : formatAmount(n, signed);
-        const axisId = combined ? 'combinedMarketSupply' : isKiwoom ? 'kiwoomMarketSupply' : isLs ? 'lsMarketSupply' : 'marketSupply';
-        const panelId = combined ? 'rankCombinedMarketSupplyChartPanel' : isKiwoom ? 'rankKiwoomMarketSupplyChartPanel' : isLs ? 'rankLsMarketSupplyChartPanel' : 'rankMarketSupplyChartPanel';
-        const eventName = name => combined ? name.replace('rank-market-supply','rank-combined-market-supply') : isKiwoom ? name.replace('rank-market-supply', 'rank-kiwoom-market-supply') : isLs ? name.replace('rank-market-supply', 'rank-ls-market-supply') : name;
-        const api = name => combined ? name.replace('MarketSupply','CombinedMarketSupply') : isKiwoom ? name.replace('MarketSupply', 'KiwoomMarketSupply') : isLs ? name.replace('MarketSupply', 'LsMarketSupply') : name;
+        const axisId = combined ? (secondary ? 'combinedMarketSupplySecondary' : 'combinedMarketSupply') : isKiwoom ? 'kiwoomMarketSupply' : isLs ? 'lsMarketSupply' : 'marketSupply';
+        const panelId = combined ? (secondary ? 'rankCombinedMarketSupplySecondaryChartPanel' : 'rankCombinedMarketSupplyChartPanel') : isKiwoom ? 'rankKiwoomMarketSupplyChartPanel' : isLs ? 'rankLsMarketSupplyChartPanel' : 'rankMarketSupplyChartPanel';
+        const eventName = name => combined ? name.replace('rank-market-supply', secondary ? 'rank-combined-market-supply-secondary' : 'rank-combined-market-supply') : isKiwoom ? name.replace('rank-market-supply', 'rank-kiwoom-market-supply') : isLs ? name.replace('rank-market-supply', 'rank-ls-market-supply') : name;
+        const api = name => combined ? name.replace('MarketSupply', secondary ? 'CombinedMarketSupplySecondary' : 'CombinedMarketSupply') : isKiwoom ? name.replace('MarketSupply', 'KiwoomMarketSupply') : isLs ? name.replace('MarketSupply', 'LsMarketSupply') : name;
         const endpoint = isKiwoom ? '/api/kiwoom-market-supply/chart' : isLs ? '/api/ls-market-supply/chart' : '/api/market-supply/chart';
-        const storageKey = combined ? 'rankCombinedMarketSupplySelectedV1' : isKiwoom ? 'rankKiwoomMarketSupplySelectedV1' : isLs ? 'rankLsMarketSupplySelectedV1' : 'rankMarketSupplySelectedV1';
+        const storageKey = combined ? (secondary ? 'rankCombinedMarketSupplySecondarySelectedV1' : 'rankCombinedMarketSupplySelectedV1') : isKiwoom ? 'rankKiwoomMarketSupplySelectedV1' : isLs ? 'rankLsMarketSupplySelectedV1' : 'rankMarketSupplySelectedV1';
         if (window.rankIndependentClient) return;
         const breadth = document.getElementById('rankBreadthChartPanel'), row = window.rankIndependentClient ? document.getElementById('tab_rank') : breadth?.closest('.rank-chart-row');
         if (!row || document.getElementById(panelId)) return;
@@ -58,7 +58,7 @@
         const info = panel.querySelector('.chart-hover-info'), status = panel.querySelector('[role="status"]');
         const slider = panel.querySelector('input[type="range"]');
         const more = panel.querySelector('[data-action="more"]');
-        const stockSelect = window.RankChartAxis.marketChoice(combined ? 'combined-market-supply' : isKiwoom ? 'kiwoom-market-supply' : isLs ? 'ls-market-supply' : 'market-supply',[], 'kospi','시장 수급 시장 선택');
+        const stockSelect = window.RankChartAxis.marketChoice(combined ? (secondary ? 'combined-market-supply-secondary' : 'combined-market-supply') : isKiwoom ? 'kiwoom-market-supply' : isLs ? 'ls-market-supply' : 'market-supply',[], 'kospi','시장 수급 시장 선택');
         panel.querySelector('.concentration-chart-header h2').after(stockSelect);
         stockSelect.addEventListener('change', () => { if (stockSelect.value) choose(stockSelect.value); });
         let selected = 'kospi', mode = 'day', cursor = null, hasMore = false, loading = false, historyLoaded = false;
@@ -500,6 +500,6 @@
         paintStocks(); resize(); document.dispatchEvent(new Event(eventName('rank-market-supply-ready')));
         if (!window.rankIndependentClient && !window.rankManagedChartRefresh) window[api('refreshRankMarketSupplyChart')]();
     }
-    const initializeBoth = () => { initialize('combined'); };
+    const initializeBoth = () => { initialize('combined'); initialize('combined', true); };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initializeBoth, { once: true }); else initializeBoth();
 })();

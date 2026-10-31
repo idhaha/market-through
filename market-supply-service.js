@@ -98,21 +98,41 @@ function createMarketSupplyService({ directory, http, credentials, getToken, ref
     function collect() {
         if (minuteProvider) return minuteProvider.collect();
         if (running) return running;
-        if (!collectingAt(now())) return Promise.resolve();
         running = (async () => {
-            if (!await supply.confirmMarket()) return;
+            const spotAllowed = collectingAt(now()) && await supply.confirmMarket();
             const date = compact(dayKey(now()));
             for (const [market, config] of Object.entries(markets)) {
-                const clock = new Date(now() + 9 * 3600000), minute = clock.getUTCHours()*60 + clock.getUTCMinutes();
-                if (config.priceMarket && minute > 946) continue;
+                if (config.priceMarket && !supply.futuresAllowed()) continue;
+                if (!config.priceMarket && !spotAllowed) continue;
                 const state = { checked_at: now(), investor_ok: false, program_ok: false, error: '' };
                 try {
                     const rows = await get('FHPTJ04030000', 'inquire-investor-time-by-market', { FID_INPUT_ISCD: config.market, FID_INPUT_ISCD_2: config.industry });
-                    if (compact(dayKey(now())) !== date || !collectingAt(now())) continue;
+                    if (compact(dayKey(now())) !== date || (config.priceMarket ? !supply.futuresAllowed() : !collectingAt(now()))) continue;
                     // This TR is a current snapshot without a source timestamp. Store observation time only.
                     const row = rows[0]; if (!row) throw new Error('투자자 당일 자료 미제공');
                     const values = investor(row);
-                    store.merge(config.code, { t: now(), ...values });
+                    if (config.priceMarket) {
+                        // Read persisted field observations so restarts and midnight do not
+                        // turn an unchanged closing snapshot into a new market update.
+                        const previous = {}, fields = Object.keys(values);
+                        for (const day of store.dates(config.code).slice().reverse()) {
+                            for (const point of store.points(config.code, day).slice().reverse()) {
+                                for (const field of fields) if (!previous[field] && Number.isSafeInteger(point[field]))
+                                    previous[field] = { value: point[field], at: point[`${field}_at`] ?? point.t };
+                                if (fields.every(field => previous[field])) break;
+                            }
+                            if (fields.every(field => previous[field])) break;
+                        }
+                        const changed = fields.filter(field => Number.isSafeInteger(values[field]) && values[field] !== previous[field]?.value);
+                        if (changed.length) {
+                            const point = { t: now(), ...values };
+                            for (const field of fields) if (Number.isSafeInteger(values[field]))
+                                point[`${field}_at`] = changed.includes(field) ? point.t : previous[field].at;
+                            store.merge(config.code, point);
+                        }
+                        state.investor_at = Math.max(0, ...fields.map(field => changed.includes(field) ? now() : previous[field]?.at || 0)) || null;
+                        state.value_changed = changed.length > 0;
+                    } else store.merge(config.code, { t: now(), ...values });
                     state.investor_ok = Object.values(values).every(v => v != null);
                     if (!state.investor_ok) state.error = '일부 투자자 수급 미제공';
                 } catch (error) { state.error = error.message; }

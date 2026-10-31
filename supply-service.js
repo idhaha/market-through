@@ -16,9 +16,14 @@ function collectingAt(t) {
     return ![0, 6].includes(clock.getUTCDay()) && minute >= 480 && minute <= 1201;
 }
 function investorObservationAt(t) {
+    return collectingAt(t);
+}
+function futuresObservationAt(t, confirmedDay) {
     const clock = new Date(t + 9 * 3600000), minute = clock.getUTCHours() * 60 + clock.getUTCMinutes();
-    // Store the 15:30 close and permit one 15:31 settlement recheck only.
-    return minute <= 931;
+    if (minute >= 360 && minute < 480) return false;
+    // After midnight, the session belongs to the date on which night trading started.
+    const session = new Date(t + 9 * 3600000 - (minute < 360 ? 86400000 : 0));
+    return ![0, 6].includes(session.getUTCDay()) && session.toISOString().slice(0,10) === confirmedDay;
 }
 
 function createSupplyService({ directory, http, getToken, resolveStock, now = Date.now,
@@ -134,7 +139,7 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
                     if (!previous) errors.push('개인·외국인·기관 장마감 관측값 없음');
                 }
                 try {
-                    // ka90008 has only HHmmss. After investor polling closes, the confirmed market day validates collection.
+                    // ka90008 has only HHmmss. Require a verified investor date while polling is active.
                     if (verifiedDay.get(stock.code) !== startDay && !(marketConfirmed() && !investorObservationAt(now()))) throw new Error('당일 거래일 미확인 · 프로그램 수집 대기');
                     const response = await post('ka90008', { stk_cd: `${stock.code}_AL`, amt_qty_tp: '2', date });
                     const rows = response.data.stk_tm_prm_trde_trnsn;
@@ -294,6 +299,7 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
         run(); timer = setInterval(run, 60000); timer.unref?.();
     }
     function stop() { clearInterval(timer); timer = null; }
-    return { summary, configure, query, candles, collect, start, stop, store, confirmMarket };
+    return { summary, configure, query, candles, collect, start, stop, store, confirmMarket,
+        futuresAllowed: () => futuresObservationAt(now(), market?.day) };
 }
-module.exports = { createSupplyService, quantity, timestamp, collectingAt, investorObservationAt };
+module.exports = { createSupplyService, quantity, timestamp, collectingAt, investorObservationAt, futuresObservationAt };

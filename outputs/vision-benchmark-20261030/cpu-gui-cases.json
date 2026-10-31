@@ -1,0 +1,192 @@
+﻿[
+    {
+        "id":  1,
+        "dataset_row":  0,
+        "file":  "cpu-screens/01.png",
+        "source_file":  "pc_ede36f9b-1154-4f76-b7f8-c15d7d3f9b6e.png",
+        "instruction":  "close",
+        "target_bbox":  [
+                            0.9479166666666666,
+                            0.14444444444444443,
+                            0.99375,
+                            0.2074074074074074
+                        ],
+        "type":  "icon",
+        "platform":  "windows",
+        "width":  960,
+        "height":  540,
+        "sha256":  "268b163339869c17b50a4745553ff61b8b8bab190ec842242e81ce14019e0ff5",
+        "original_file":  "screens/01.png"
+    },
+    {
+        "id":  2,
+        "dataset_row":  141,
+        "file":  "cpu-screens/02.png",
+        "source_file":  "pc_639ab093-46ed-4332-9229-125647aad9da.png",
+        "instruction":  "insert an image",
+        "target_bbox":  [
+                            0.5828729281767956,
+                            0.8753993610223643,
+                            0.6933701657458563,
+                            0.9904153354632588
+                        ],
+        "type":  "icon",
+        "platform":  "windows",
+        "width":  362,
+        "height":  313,
+        "sha256":  "7f10aecdfce545004a3ff64519eab4d39e82af9a7c6e11ab9d34c5c1b1f77b76",
+        "original_file":  "screens/02.png"
+    },
+    {
+        "id":  3,
+        "dataset_row":  282,
+        "file":  "cpu-screens/03.png",
+        "source_file":  "pc_00b0c9f6-b24f-4bff-b492-12117b50e63b.png",
+        "instruction":  "add a screenshot",
+        "target_bbox":  [
+                            0.3395784543325527,
+                            0.16580976863753213,
+                            0.41159250585480095,
+                            0.2377892030848329
+                        ],
+        "type":  "text",
+        "platform":  "macos",
+        "width":  1280,
+        "height":  1166,
+        "sha256":  "3718c9af906313916e398a895a07be09db9e5ba5938fbc3731d97042f8d6a7b9",
+        "original_file":  "screens/03.png"
+    },
+    {
+        "id":  4,
+        "dataset_row":  423,
+        "file":  "cpu-screens/04.png",
+        "source_file":  "mobile_0affae67-191e-43fa-890d-778555ffbab0.png",
+        "instruction":  "try it free",
+        "target_bbox":  [
+                            0.21965811965811965,
+                            0.608214849921011,
+                            0.7837606837606838,
+                            0.6512638230647709
+                        ],
+        "type":  "text",
+        "platform":  "ios",
+        "width":  591,
+        "height":  1280,
+        "sha256":  "64544d87b1ac8278548b78a566bf7f83cf0cfa29c1161fcb29a2b31b80597e41",
+        "original_file":  "screens/04.jpg"
+    },
+    {
+        "id":  5,
+        "dataset_row":  564,
+        "file":  "cpu-screens/05.png",
+        "source_file":  "mobile_569a4f5a-01f0-4386-89ba-768e1f88d38e.png",
+        "instruction":  "display wearing device",
+        "target_bbox":  [
+                            0.5342592592592592,
+                            0.9083333333333333,
+                            0.725925925925926,
+                            0.9845833333333334
+                        ],
+        "type":  "text",
+        "platform":  "android",
+        "width":  576,
+        "height":  1280,
+        "sha256":  "a5bdae0346eaa285c0bf0d73784dcde9f0c5189f51fcfccdbe03075809224b1b",
+        "original_file":  "screens/05.jpg"
+    },
+    {
+        "id":  6,
+        "dataset_row":  706,
+        "file":  "cpu-screens/06.png",
+        "source_file":  "mobile_6049f1b2-a8b8-4e39-bbac-ddd647cd3248.png",
+        "instruction":  "join a meeting",
+        "target_bbox":  [
+                            0.025925925925925925,
+                            0.12333333333333334,
+                            0.22962962962962963,
+                            0.22541666666666665
+                        ],
+        "type":  "text",
+        "platform":  "android",
+        "width":  576,
+        "height":  1280,
+        "sha256":  "679f8c7650e85dba12ae220957109dbac469a265a1032554c6135dad5e6674af",
+        "original_file":  "screens/06.jpg"
+    },
+    {
+        "id":  7,
+        "dataset_row":  847,
+        "file":  "cpu-screens/07.png",
+        "source_file":  "web_7a5f6ad5-ec34-4693-ac45-136547757893.png",
+        "instruction":  "set reminder",
+        "target_bbox":  [
+                            0.735546875,
+                            0.31319444444444444,
+                            0.78203125,
+                            0.3625
+                        ],
+        "type":  "icon",
+        "platform":  "gitlab",
+        "width":  1280,
+        "height":  720,
+        "sha256":  "313b07992f339616cdbc23ac66ef3a92f20cdae570473ef50ade1e71b2508ea1",
+        "original_file":  "screens/07.png"
+    },
+    {
+        "id":  8,
+        "dataset_row":  988,
+        "file":  "cpu-screens/08.png",
+        "source_file":  "web_39126cee-4462-4567-9fa4-5ad1f3589047.png",
+        "instruction":  "show reviews",
+        "target_bbox":  [
+                            0.0875,
+                            0.58125,
+                            0.18515625,
+                            0.6256944444444444
+                        ],
+        "type":  "text",
+        "platform":  "shop",
+        "width":  1280,
+        "height":  720,
+        "sha256":  "8ff99aae2aea0b812cbe09e7807221b975ac09dafd0550a7fa0a3e4622e33135",
+        "original_file":  "screens/08.png"
+    },
+    {
+        "id":  9,
+        "dataset_row":  1129,
+        "file":  "cpu-screens/09.png",
+        "source_file":  "web_e0425287-c246-4122-a26e-6e0ca5958d4e.png",
+        "instruction":  "select the html as share format",
+        "target_bbox":  [
+                            0.909375,
+                            0.30069444444444443,
+                            0.957421875,
+                            0.35
+                        ],
+        "type":  "text",
+        "platform":  "tool",
+        "width":  1280,
+        "height":  720,
+        "sha256":  "b5f3ef8d40b926eefdb99afb078e09cb4f4afaf199f225eb3f2f71dce8a91555",
+        "original_file":  "screens/09.png"
+    },
+    {
+        "id":  10,
+        "dataset_row":  1271,
+        "file":  "cpu-screens/10.png",
+        "source_file":  "web_3b0ad239-da6b-4f6f-8f12-f674dc90ff33.png",
+        "instruction":  "view the previous photo",
+        "target_bbox":  [
+                            0.036328125,
+                            0.05138888888888889,
+                            0.069921875,
+                            0.14305555555555555
+                        ],
+        "type":  "icon",
+        "platform":  "shop",
+        "width":  1280,
+        "height":  720,
+        "sha256":  "a4cde9e05e5242ecdb6e5746e96b0476162de585f9813b56a8111799d0f244e5",
+        "original_file":  "screens/10.png"
+    }
+]

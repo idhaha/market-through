@@ -6,13 +6,42 @@ const path = require('node:path');
 const { createMarketSupplyService } = require('../../market-supply-service');
 const { timestamp } = require('../../supply-service');
 const day = '20261023';
+test('confirmed futures sessions continue at night and after midnight',async t=>{
+    let foreign = '7';
+    const {service,calls,setTime}=fixture(t,async()=>[{frgn_ntby_tr_pbmn:foreign}],true,'220000');
+    await service.collect();
+    assert.deepEqual(calls.map(c=>c.params.FID_INPUT_ISCD),['K2I','KQI']);
+    assert.equal(service.store.points('FUTURE','2026-10-23')[0].foreign,7);
+    setTime(timestamp('20261024','010000')); await service.collect();
+    assert.equal(service.store.points('FUTURE','2026-10-24').length,0,'Midnight must not refresh an unchanged value');
+    foreign = '8'; setTime(timestamp('20261024','010100')); await service.collect();
+    assert.equal(service.store.points('FUTURE','2026-10-24')[0].foreign,8);
+    assert.equal(service.store.points('KOSPI0','2026-10-24').length,0);
+});
+test('persisted futures baseline ignores repeats and missing fields, retaining per-field change times',async t=>{
+    let row = {prsn_ntby_tr_pbmn:'1',frgn_ntby_tr_pbmn:'2',orgn_ntby_tr_pbmn:'3'};
+    const {service,setTime}=fixture(t,async()=>[row],true,'220000');
+    const baseline = timestamp(day,'154500');
+    service.store.merge('FUTURE',{t:baseline,individual:1,foreign:2,institution:3});
+    await service.collect();
+    assert.equal(service.store.points('FUTURE','2026-10-23').length,1);
+    setTime(timestamp(day,'220100')); row = {frgn_ntby_tr_pbmn:'2'}; await service.collect();
+    assert.equal(service.store.points('FUTURE','2026-10-23').length,1,'Missing fields are not changes');
+    setTime(timestamp(day,'220200')); row = {prsn_ntby_tr_pbmn:'1',frgn_ntby_tr_pbmn:'0',orgn_ntby_tr_pbmn:'3'}; await service.collect();
+    const points = service.store.points('FUTURE','2026-10-23');
+    assert.equal(points.length,2); assert.equal(points[1].foreign,0);
+    assert.equal(points[1].foreign_at,timestamp(day,'220200'));
+    assert.equal(points[1].individual_at,baseline); assert.equal(points[1].institution_at,baseline);
+    setTime(timestamp(day,'220300')); await service.collect();
+    assert.equal(service.store.points('FUTURE','2026-10-23').length,2);
+});
 function fixture(t, handler, confirmed = true, at = '101500', referenceRows) {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(),'market-supply-'));
     t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
     const calls=[], references=[];let currentTime=timestamp(day,at);
     const service=createMarketSupplyService({directory, now:()=>currentTime, pause:async()=>{},
         credentials:()=>({domain:'https://kis.test',appKey:'test',secretKey:'test'}),getToken:async()=>'test',
-        supply:{confirmMarket:async()=>confirmed},
+        supply:{confirmMarket:async()=>confirmed,futuresAllowed:()=>confirmed},
         reference:{query:async input=>{references.push(input);return {points:referenceRows || [{t:timestamp(day,input.mode==='minute'?'101400':'090000'),open:100,high:110,low:90,close:105}],has_more:false};}},
         http:{get:async(url,options)=>{calls.push(options);return {data:{rt_cd:'0',output:await handler(options.headers.tr_id,options.params)}};}}});
     return {service,calls,references,setTime:value=>{currentTime=value;}};
@@ -44,22 +73,22 @@ test('collection backfills valid source program times, rejects stale/future/afte
     assert.equal(calls.filter(c=>c.headers.tr_id==='FHPPG04600101').length,4);
     assert.ok(calls.filter(c=>c.headers.tr_id==='FHPPG04600101').every(c=>['K','Q'].includes(c.params.FID_MRKT_CLS_CODE)));
 });
-test('closed market never writes snapshots; errors are partial and do not fabricate zero',async t=>{
-    const closed=fixture(t,async()=>{throw Error('must not call');},false);await closed.service.collect();assert.equal(closed.calls.length,0);
+test('unconfirmed market makes no supply requests; errors do not fabricate zero',async t=>{
+    const closed=fixture(t,async()=>{throw Error('must not call');},false);await closed.service.collect();assert.equal(closed.calls.length,0); 
     const {service}=fixture(t,async(id)=>{if(id==='FHPTJ04040000')throw Error('investor unavailable');return [{stck_bsop_date:day,arbt_smtn_ntby_tr_pbmn:'0',nabt_smtn_ntby_tr_pbmn:'0'}];});
     const result=await service.query({code:'kospi'});assert.equal(result.points[0].program,0);assert.equal(result.points[0].foreign,undefined);
     assert.ok(result.warnings.some(w=>w.includes('investor unavailable')));
     await assert.rejects(service.query({code:'../invalid',mode:'minute'}));
 });
 
-test('unified evening program observations survive after KRX close; futures stop after the day session',async t=>{
+test('unified evening program observations survive after KRX close; futures also collect after the day session',async t=>{
     const {service,calls}=fixture(t,async(id)=>id==='FHPTJ04030000'
         ?[{frgn_ntby_tr_pbmn:'5',prsn_ntby_tr_pbmn:'-3',orgn_ntby_tr_pbmn:'-2'}]
         :[{bsop_hour:'193600',whol_smtn_ntby_tr_pbmn:'-9'},{bsop_hour:'200500',whol_smtn_ntby_tr_pbmn:'-9'}],true,'193700');
     await service.collect();
     const result=await service.query({code:'kospi',mode:'minute'});
     assert.equal(result.points.find(p=>p.t===timestamp(day,'193600')).program,-9);
-    assert.ok(calls.filter(c=>c.headers.tr_id==='FHPTJ04030000').every(c=>!['K2I','KQI'].includes(c.params.FID_INPUT_ISCD)));
+    assert.ok(calls.filter(c=>c.headers.tr_id==='FHPTJ04030000').some(c=>['K2I','KQI'].includes(c.params.FID_INPUT_ISCD)));
     assert.ok(result.points.every(p=>p.t<=timestamp(day,'193700')));
 });
 

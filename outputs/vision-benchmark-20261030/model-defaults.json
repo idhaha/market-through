@@ -1,0 +1,19 @@
+{
+  "qwen3-vl:8b-instruct": {
+    "parameters": "temperature                    1\ntop_k                          20\ntop_p                          0.95",
+    "capabilities": [
+      "completion",
+      "vision",
+      "tools"
+    ]
+  },
+  "qwen3.5:9b": {
+    "parameters": "top_p                          0.95\npresence_penalty               1.5\ntemperature                    1\ntop_k                          20",
+    "capabilities": [
+      "completion",
+      "vision",
+      "tools",
+      "thinking"
+    ]
+  }
+}

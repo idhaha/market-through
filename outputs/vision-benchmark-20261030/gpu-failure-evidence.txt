@@ -1,0 +1,20 @@
+﻿ggml_vulkan: device lost on Vulkan0
+[GIN] 2026/10/30 - 23:07:53 | 500 |   28.97s |       127.0.0.1 | POST     "/api/chat"
+ggml_vulkan: device lost on Vulkan0
+[GIN] 2026/10/30 - 23:08:16 | 500 |    23.1s |       127.0.0.1 | POST     "/api/chat"
+ggml_vulkan: device lost on Vulkan0
+[GIN] 2026/10/30 - 23:08:34 | 500 |   18.42s |       127.0.0.1 | POST     "/api/chat"
+ggml_vulkan: device lost on Vulkan0
+[GIN] 2026/10/30 - 23:09:00 | 500 |   25.81s |       127.0.0.1 | POST     "/api/chat"
+ggml_vulkan: device lost on Vulkan0
+[GIN] 2026/10/30 - 23:09:42 | 500 |   41.74s |       127.0.0.1 | POST     "/api/chat"
+ggml_vulkan: device lost on Vulkan0
+[GIN] 2026/10/30 - 23:10:45 | 500 |    29.1s |       127.0.0.1 | POST     "/api/chat"
+ggml_vulkan: device lost on Vulkan0
+[GIN] 2026/10/30 - 23:11:11 | 500 |   26.14s |       127.0.0.1 | POST     "/api/chat"
+ggml_vulkan: device lost on Vulkan0
+[GIN] 2026/10/30 - 23:11:41 | 500 |   30.45s |       127.0.0.1 | POST     "/api/chat"
+ggml_vulkan: device lost on Vulkan0
+[GIN] 2026/10/30 - 23:12:07 | 500 |   26.23s |       127.0.0.1 | POST     "/api/chat"
+ggml_vulkan: device lost on Vulkan0
+[GIN] 2026/10/30 - 23:12:25 | 500 |   17.08s |       127.0.0.1 | POST     "/api/chat"

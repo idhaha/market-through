@@ -1,0 +1,101 @@
+{
+  "features": [
+    {
+      "feature_idx": 0,
+      "name": "file_name",
+      "type": {
+        "dtype": "string",
+        "_type": "Value"
+      }
+    },
+    {
+      "feature_idx": 1,
+      "name": "bbox",
+      "type": {
+        "feature": {
+          "dtype": "float64",
+          "_type": "Value"
+        },
+        "_type": "List"
+      }
+    },
+    {
+      "feature_idx": 2,
+      "name": "instruction",
+      "type": {
+        "dtype": "string",
+        "_type": "Value"
+      }
+    },
+    {
+      "feature_idx": 3,
+      "name": "data_type",
+      "type": {
+        "dtype": "string",
+        "_type": "Value"
+      }
+    },
+    {
+      "feature_idx": 4,
+      "name": "data_source",
+      "type": {
+        "dtype": "string",
+        "_type": "Value"
+      }
+    },
+    {
+      "feature_idx": 5,
+      "name": "image",
+      "type": {
+        "_type": "Image"
+      }
+    }
+  ],
+  "rows": [
+    {
+      "row_idx": 0,
+      "row": {
+        "file_name": "pc_ede36f9b-1154-4f76-b7f8-c15d7d3f9b6e.png",
+        "bbox": [
+          0.9479166666666666,
+          0.14444444444444443,
+          0.99375,
+          0.2074074074074074
+        ],
+        "instruction": "close",
+        "data_type": "icon",
+        "data_source": "windows",
+        "image": {
+          "src": "https://datasets-server.huggingface.co/cached-assets/bevaya/ScreenSpot/--/0be08781e2e188582f6131625ae1598d443b4d5d/--/default/test/0/image/image.png?Expires=1793371479&Signature=wrx-De95YhM3J7K0vuXNtWG1giXuPk8MsV-oFK0ZXXgf49zNKYKHV4KnwBGNKZadO6yf6~B-z-gQZmeEDMfubUBw9nutZ~sebt2CUoRzPMypTj9OXNCnvP-8-mz96QFTzCC7eZOu6dNQN9VrD4SUjHBawREp0otMVSICUNqhNYdFnWh6ryVXzXChLnvJASLC-PlC4o~yF-4za0rA1ht6NudL5SV0cVPUASA6AnF1kRzXywTnYThiw0ucHwLO30qpdFMfPb7A-lpVmg3r8tkvU-7~hkZDTwDqUHkSLJ~HbL7j1ARJigXqSR3Kb6v0GE2bBf9ehhjhvD2ebdCJtZes2w__&Key-Pair-Id=K3C0L9WB6U5DUC",
+          "height": 540,
+          "width": 960
+        }
+      },
+      "truncated_cells": []
+    },
+    {
+      "row_idx": 1,
+      "row": {
+        "file_name": "pc_5e09e8e9-7ef6-44be-ad54-aeaeac151897.png",
+        "bbox": [
+          0.8697916666666666,
+          0,
+          0.9072916666666667,
+          0.05555555555555555
+        ],
+        "instruction": "minimize this window",
+        "data_type": "icon",
+        "data_source": "windows",
+        "image": {
+          "src": "https://datasets-server.huggingface.co/cached-assets/bevaya/ScreenSpot/--/0be08781e2e188582f6131625ae1598d443b4d5d/--/default/test/1/image/image.png?Expires=1793371479&Signature=OCkgol2nrJNeiDP13mMt9nhxsOWmZyqZQUBx52meP~wX9cCE1NlzVraTKB7EJPJQnT~KrJ6-880bF1RRVGOo9HOY5Zmh7UKNGW0cCEry689VUpievnViKlla4RoG5Lhh6dwUOGwCMgRFhR2xVx~ulx1XkgDHNW3G6SF-njf0E3v8RfgO736Kh~58sJr5oHz9qFyzphLGgp922j1qB0ngsLjbP0ZUxv780BBC2gltrIKhAONFYRap73ubwZtgCPHJh7RTu2mkOlDUHoy9e6qWEnH2tgUnK8cXtofV9N5dSqtrHpqwT0bd3dloJCgFEZc4mWvxUwXu1mxp5h72zcltTQ__&Key-Pair-Id=K3C0L9WB6U5DUC",
+          "height": 540,
+          "width": 960
+        }
+      },
+      "truncated_cells": []
+    }
+  ],
+  "num_rows_total": 1272,
+  "num_rows_per_page": 100,
+  "partial": false
+}

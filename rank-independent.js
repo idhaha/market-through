@@ -2,7 +2,7 @@
 const crypto = require('crypto');
 
 // Short-lived capability channel. No market credentials or disk persistence.
-function createRankIndependentRelay({ now = Date.now, refresh, request, schedule = setInterval } = {}) {
+function createRankIndependentRelay({ now = Date.now, refresh, request, schedule = setInterval, marketAlerts } = {}) {
     const channels = new Map();
     const ttl = 120000;
     const hash = value => crypto.createHash('sha256').update(String(value || '')).digest('hex');
@@ -154,6 +154,8 @@ function createRankIndependentRelay({ now = Date.now, refresh, request, schedule
         });
         app.post('/api/rank-independent/peer/:id', (req, res) => {
             const channel = peer(req, res); if (!channel) return;
+            if (req.body.marketAlertAck != null && (!Array.isArray(req.body.marketAlertAck) || req.body.marketAlertAck.length))
+                return res.status(403).json({ error: '시장경보 확인은 메인창에서만 가능합니다.' });
             if (req.body.pinned === false) channel.peerChart = null;
             for (const id of (req.body.acks || []).slice(0, 32)) delete channel.replies[id];
             if (req.body.close) channel.closed = true;
@@ -198,7 +200,7 @@ function createRankIndependentRelay({ now = Date.now, refresh, request, schedule
             const compact=req.body.compact===true;
             const snapshot=req.body.epoch===channel.epoch&&Number(req.body.version)===channel.version?null:channel.snapshot;
             const data=compact&&channel.data?{...channel.data,chart:compactState(channel.data.chart),peerChart:compactState(channel.data.peerChart),supply:compactState(channel.data.supply),peerSupply:compactState(channel.data.peerSupply)}:channel.data;
-            res.json({cacheScope:hash('rank-chart-cache:'+channel.owner),epoch:channel.epoch,version:channel.version,snapshot:compact?compactSnapshot(snapshot):snapshot,replies,serverRefresh:refresh?{data,interval:intervalFor(channel),error:channel.error,serverNow:now()}:null});
+            res.json({marketAlerts:marketAlerts?.snapshot(channel.owner),cacheScope:hash('rank-chart-cache:'+channel.owner),epoch:channel.epoch,version:channel.version,snapshot:compact?compactSnapshot(snapshot):snapshot,replies,serverRefresh:refresh?{data,interval:intervalFor(channel),error:channel.error,serverNow:now()}:null});
         });
     }
     return { mount };

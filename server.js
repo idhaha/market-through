@@ -160,6 +160,7 @@ app.get('/api/server/storage', async (req, res) => {
 });
 
 createRankIndependentRelay({
+    marketAlerts: { snapshot: user => marketAlertService.snapshot(user) },
     refresh: async (snapshot, email) => {
         const data = await new Promise((resolve, reject) => {
             transactionRankHandler({ query: { mrkt_tp: snapshot.conditions?.mrktTp, stex_tp: snapshot.conditions?.stexTp } },
@@ -249,6 +250,15 @@ const lsMarketSupplyProvider = require('./ls-market-supply').createLsMarketSuppl
     validationDefaults: require('./ls-market-validation'),
     credentials: () => ({ appKey: (process.env.LS_APPKEY || '').trim(), secretKey: (process.env.LS_SECRETKEY || '').trim() })
 });
+const marketAlertService = require('./market-alert-service').createMarketAlerts({
+    directory: path.join(__dirname, 'data', 'market-alerts'), getToken: () => lsMarketSupplyProvider.accessToken()
+});
+app.get('/api/market-alerts', (req, res) => res.set('Cache-Control', 'no-store').json(marketAlertService.snapshot(req.authUser.email)));
+app.post('/api/market-alerts/acknowledge', (req, res) => {
+    try { res.set('Cache-Control', 'no-store').json(marketAlertService.acknowledge(req.authUser.email, req.body.ids)); }
+    catch (error) { res.status(error.status || 500).json({ error: '경보 확인 요청을 처리하지 못했습니다.' }); }
+});
+app.get('/api/market-alerts/diagnostics', (req, res) => res.set('Cache-Control', 'no-store').json(marketAlertService.diagnostics()));
 const lsMarketSupplyService = require('./market-supply-service').createMarketSupplyService({
     directory: path.join(__dirname, 'data', 'ls-market-supply'), minuteProvider: lsMarketSupplyProvider,
     dailyProvider: require('./ls-market-daily').createLsMarketDaily({http:axios,getToken:()=>lsMarketSupplyProvider.accessToken(),reference:chartReferenceService}),
@@ -3071,6 +3081,7 @@ async function requestEfriendAccessToken(domain, appKey, secretKey) {
 }
 
 app.listen(PORT, () => {
+    marketAlertService.start();
     supplyService.start();
     kisStockSupplyService.start();
     lsStockSupplyService.start();

@@ -117,10 +117,13 @@ function createLsMarketSupply({ directory, http, credentials, supply, now = Date
             states.set(id, { ...previous, error: 'LS 구독 거부', checked_at: now() }); return;
         }
         if (!Object.keys(b).length) { states.set(id, { ...previous, subscribed: true }); return; }
-        const received = now(), t = sourceTime(entry.tr === 'UPM' ? b.time : b.tjjtime, received);
-        if (!collectingAt(received) || !confirmedDay || confirmedDay !== dayKey(received)
-            || !Number.isFinite(t) || t > received || received - t > 120000 || !collectingAt(t)) return;
-        if (entry.tr === 'BMT' && new Date(t + 9 * 3600000).getUTCHours() * 60 + new Date(t + 9 * 3600000).getUTCMinutes() > 946) return;
+        const received = now();
+        if (entry.tr === 'BMT' && !supply.futuresAllowed()) return;
+        let t = sourceTime(entry.tr === 'UPM' ? b.time : b.tjjtime, received);
+        // A fresh futures tick may arrive just after midnight for the prior calendar day.
+        if (entry.tr === 'BMT' && t > received && t - received >= 86400000 - 120000) t -= 86400000;
+        if (!Number.isFinite(t) || t > received || received - t > 120000) return;
+        if (entry.tr !== 'BMT' && (!collectingAt(received) || confirmedDay !== dayKey(received) || !collectingAt(t))) return;
         // Check the echoed market as well as the subscription, never remap unknown keys.
         if (entry.tr !== 'UPM' && b.upcode != null && String(b.upcode) !== entry.key.replace(/^U/, '')) return;
         if (previous.source_at != null && t < previous.source_at) return;
@@ -203,13 +206,11 @@ function createLsMarketSupply({ directory, http, credentials, supply, now = Date
         collecting = (async () => {
             flush();
             if (now() - lastArchive >= 60000) { raw.archiveCompleted(); lastArchive = now(); }
-            if (!collectingAt(now())) {
-                confirmedDay = ''; if (socket) { const old = socket; socket = null; old.close(); }
+            if (!collectingAt(now())) confirmedDay = '';
+            else if (confirmedDay !== dayKey(now()) && await supply.confirmMarket()) confirmedDay = dayKey(now());
+            if (!supply.futuresAllowed() && (!collectingAt(now()) || confirmedDay !== dayKey(now()))) {
+                if (socket) { const old = socket; socket = null; old.close(); }
                 return;
-            }
-            if (confirmedDay !== dayKey(now())) {
-                if (!await supply.confirmMarket()) return;
-                confirmedDay = dayKey(now());
             }
             if (socket && expires <= now() + 60000) { const old = socket; socket = null; old.close(); }
             if (!stopped && !socket && now() >= retryAt) await connect();
@@ -246,7 +247,7 @@ function createLsMarketSupply({ directory, http, credentials, supply, now = Date
         const entries = subscriptions.filter(s => s.market === market);
         const records = entries.map(s => states.get(`${s.tr}:${s.key}`));
         const latest = Math.max(0, ...records.map(s => s?.checked_at || 0));
-        const active = collectingAt(now()) && date === dayKey(now());
+        const active = (market.startsWith('futures') ? supply.futuresAllowed() : collectingAt(now())) && date === dayKey(now());
         const error = entries.some(s => !verified(s)) ? [connectionError, 'LS 데이터 검증 대기'].filter(Boolean).join(' · ') : active && (connectionError || records.some(s => !s?.subscribed || s?.error || !s?.checked_at || now() - s.checked_at > 120000))
             ? connectionError || '일부 LS 수급 수신 지연·미제공' : '';
         return { partial: Boolean(error), status: { checked_at: latest || null, last_flush: lastFlush || null, error } };

@@ -6,6 +6,16 @@ const { createSupplyService, quantity, timestamp, collectingAt, investorObservat
 const { createSupplyStore } = require('../../supply-store');
 
 const today = '20261020';
+test('futures require a confirmed session day, including Friday night but excluding weekend and holiday starts', () => {
+    const {futuresObservationAt} = require('../../supply-service');
+    assert.equal(futuresObservationAt(timestamp('20261023','220000'),'2026-10-23'),true);
+    assert.equal(futuresObservationAt(timestamp('20261024','010000'),'2026-10-23'),true);
+    assert.equal(futuresObservationAt(timestamp('20261024','060000'),'2026-10-23'),false);
+    assert.equal(futuresObservationAt(timestamp('20261024','220000'),'2026-10-24'),false);
+    assert.equal(futuresObservationAt(timestamp('20261026','010000'),'2026-10-23'),false);
+    assert.equal(futuresObservationAt(timestamp('20261026','220000'),'2026-10-23'),false);
+    assert.equal(futuresObservationAt(timestamp('20261026','220000'),undefined),false);
+});
 const investorRow = (overrides = {}) => ({ dt: today, ind_invsr: '+10', frgnr_invsr: '--20', orgn: '+30', ...overrides });
 function fixture(t, handler, marketHandler) {
     const output = path.resolve(__dirname, '../output'); fs.mkdirSync(output, { recursive: true });
@@ -42,10 +52,12 @@ test('sign parsing preserves missing vs zero and collecting hours use Korea time
     assert.equal(collectingAt(timestamp(today, '200100')), true);
     assert.equal(collectingAt(timestamp(today, '200200')), false);
     assert.equal(investorObservationAt(timestamp(today, '153100')), true);
-    assert.equal(investorObservationAt(timestamp(today, '153200')), false);
+    assert.equal(investorObservationAt(timestamp(today, '153200')), true);
+    assert.equal(investorObservationAt(timestamp(today, '200100')), true);
+    assert.equal(investorObservationAt(timestamp(today, '200200')), false);
     assert.equal(collectingAt(timestamp('20261018', '101500')), false);
 });
-test('after close rechecks investors once, then continues program minute storage', async t => {
+test('evening investor polling continues while unchanged observations are not duplicated', async t => {
     let investor = { ind_invsr: '+10', frgnr_invsr: '--20', orgn: '+30' }, program = '--40', programTime = '153000';
     const f = fixture(t, api => {
         if (api === 'ka10060') return { data: { stk_invsr_orgn_chart: [investorRow(investor)] }, headers: {} };
@@ -62,9 +74,21 @@ test('after close rechecks investors once, then continues program minute storage
     f.setTime(timestamp(today, '153300')); await f.service.collect();
     const points = (await f.service.query({ code: '005930', mode: 'minute' })).points;
     assert.deepEqual(points.map(point => [point.individual, point.foreign, point.institution, point.program]), [[10, -20, 30, undefined], [10, -20, 30, -40], [11, -21, 31, -40], [undefined, undefined, undefined, -41], [undefined, undefined, undefined, -41]]);
-    assert.equal(f.calls.filter(call => call.headers['api-id'] === 'ka10060').length, 4, 'initial observation plus 15:30 and two 15:31 calls only');
+    assert.equal(f.calls.filter(call => call.headers['api-id'] === 'ka10060').length, 6, 'Investor polling continues after 15:31');
     assert.equal(f.calls.filter(call => call.headers['api-id'] === 'ka90008').length, 6);
 });
+test('changed individual investor data is collected at 20:01 and stops at 20:02', async t => {
+    let foreign = '-20';
+    const f = fixture(t, (api, body) => api === 'ka10060'
+        ? {data:{stk_invsr_orgn_chart:[investorRow({frgnr_invsr:foreign})]}} : normal(api,body));
+    await f.service.configure(['005930'],0); await f.service.collect();
+    foreign = '-21'; f.setTime(timestamp(today,'200100')); await f.service.collect();
+    assert.equal(f.service.store.points('005930','2026-10-20').at(-1).foreign,-21);
+    const count = f.calls.length;
+    f.setTime(timestamp(today,'200200')); await f.service.collect();
+    assert.equal(f.calls.length,count);
+});
+
 test('five background stocks persist, one row per minute, restart, and removed archives survive', async t => {
     const f = fixture(t, normal), codes = ['005930', '000660', '035420', '035720', '005380'];
     await f.service.configure(codes, 0); await f.service.collect();

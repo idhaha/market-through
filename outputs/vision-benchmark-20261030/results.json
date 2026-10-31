@@ -1,0 +1,154 @@
+[
+  {
+    "model": "qwen3-vl:8b-instruct",
+    "case_id": 1,
+    "task": "gui",
+    "block": 1,
+    "wall_seconds": 1.5505898000000016,
+    "total_seconds": 1.5478932,
+    "load_seconds": 0.0257294,
+    "prefill_seconds": 0.443535,
+    "decode_seconds": 1.044636,
+    "prompt_tokens": 1136,
+    "output_tokens": 17,
+    "done_reason": "stop",
+    "raw": "{\"x\": 967, \"y\": 172}",
+    "point": {
+      "x": 967,
+      "y": 172
+    },
+    "hit": true
+  },
+  {
+    "model": "qwen3-vl:8b-instruct",
+    "case_id": 2,
+    "task": "gui",
+    "block": 1,
+    "wall_seconds": 19.254133799999995,
+    "total_seconds": 19.2515211,
+    "load_seconds": 0.0162776,
+    "prefill_seconds": 16.806621,
+    "decode_seconds": 0.876438,
+    "prompt_tokens": 1156,
+    "output_tokens": 15,
+    "done_reason": "stop",
+    "raw": "{\"x\":629, \"y\":934}",
+    "point": {
+      "x": 629,
+      "y": 934
+    },
+    "hit": true
+  },
+  {
+    "model": "qwen3-vl:8b-instruct",
+    "case_id": 3,
+    "task": "gui",
+    "block": 1,
+    "hit": false,
+    "error": "HTTP 500 at /api/chat"
+  },
+  {
+    "model": "qwen3-vl:8b-instruct",
+    "case_id": 4,
+    "task": "gui",
+    "block": 1,
+    "hit": false,
+    "error": "HTTP 500 at /api/chat"
+  },
+  {
+    "model": "qwen3-vl:8b-instruct",
+    "case_id": 5,
+    "task": "gui",
+    "block": 1,
+    "hit": false,
+    "error": "HTTP 500 at /api/chat"
+  },
+  {
+    "model": "qwen3-vl:8b-instruct",
+    "case_id": "ko-1",
+    "task": "ocr",
+    "block": 1,
+    "hit": false,
+    "error": "HTTP 500 at /api/chat"
+  },
+  {
+    "model": "qwen3-vl:8b-instruct",
+    "case_id": "ko-2",
+    "task": "ocr",
+    "block": 1,
+    "hit": false,
+    "error": "HTTP 500 at /api/chat"
+  },
+  {
+    "model": "qwen3.5:9b",
+    "case_id": 1,
+    "task": "gui",
+    "block": 2,
+    "wall_seconds": 8.46346709999998,
+    "total_seconds": 8.4616911,
+    "load_seconds": 0.0333733,
+    "prefill_seconds": 7.453308,
+    "decode_seconds": 0.950525,
+    "prompt_tokens": 618,
+    "output_tokens": 15,
+    "done_reason": "stop",
+    "raw": "{\"x\":962, \"y\":175}",
+    "point": {
+      "x": 962,
+      "y": 175
+    },
+    "hit": true
+  },
+  {
+    "model": "qwen3.5:9b",
+    "case_id": 2,
+    "task": "gui",
+    "block": 2,
+    "wall_seconds": 4.1823618999999885,
+    "total_seconds": 4.1804322,
+    "load_seconds": 0.0182744,
+    "prefill_seconds": 2.776659,
+    "decode_seconds": 0.669069,
+    "prompt_tokens": 220,
+    "output_tokens": 10,
+    "done_reason": "stop",
+    "raw": "{\"x\":0,\"y\":0}",
+    "point": {
+      "x": 0,
+      "y": 0
+    },
+    "hit": false
+  },
+  {
+    "model": "qwen3.5:9b",
+    "case_id": 3,
+    "task": "gui",
+    "block": 2,
+    "hit": false,
+    "error": "HTTP 500 at /api/chat"
+  },
+  {
+    "model": "qwen3.5:9b",
+    "case_id": 4,
+    "task": "gui",
+    "block": 2,
+    "hit": false,
+    "error": "HTTP 500 at /api/chat"
+  },
+  {
+    "model": "qwen3.5:9b",
+    "case_id": 5,
+    "task": "gui",
+    "block": 2,
+    "hit": false,
+    "error": "HTTP 500 at /api/chat"
+  },
+  {
+    "model": "qwen3.5:9b",
+    "case_id": 6,
+    "task": "gui",
+    "block": 2,
+    "hit": false,
+    "error": "HTTP 500 at /api/chat"
+  }
+]

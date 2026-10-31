@@ -44,7 +44,7 @@
     const minuteCharts=new Map();
     const viewports=new Map();
     let viewportSource=null,viewportBefore=null;
-    const viewportPanels={combinedMarketSupply:'rankCombinedMarketSupplyChartPanel',combinedSupply:'rankCombinedSupplyChartPanel',combinedTurnover:'rankCombinedTurnoverChartPanel',combinedConcentration:'combinedConcentrationChartPanel',lsConcentration:'lsConcentrationChartPanel',kisTurnover:'rankKisTurnoverChartPanel',lsTurnover:'rankLsTurnoverChartPanel',kiwoomMarketSupply:'rankKiwoomMarketSupplyChartPanel',kisSupply:'rankKisSupplyChartPanel',lsSupply:'rankLsSupplyChartPanel',lsMarketSupply:'rankLsMarketSupplyChartPanel',concentration:'concentrationChartPanel',kisConcentration:'kisConcentrationChartPanel',supply:'rankSupplyChartPanel',marketSupply:'rankMarketSupplyChartPanel',breadth:'rankBreadthChartPanel',turnover:'rankTurnoverChartPanel',adr:'rankAdrChartPanel',volatility:'rankVolatilityChartPanel',sentiment:'rankSentimentChartPanel'};
+    const viewportPanels={combinedMarketSupplySecondary:'rankCombinedMarketSupplySecondaryChartPanel',combinedMarketSupply:'rankCombinedMarketSupplyChartPanel',combinedSupply:'rankCombinedSupplyChartPanel',combinedTurnover:'rankCombinedTurnoverChartPanel',combinedConcentration:'combinedConcentrationChartPanel',lsConcentration:'lsConcentrationChartPanel',kisTurnover:'rankKisTurnoverChartPanel',lsTurnover:'rankLsTurnoverChartPanel',kiwoomMarketSupply:'rankKiwoomMarketSupplyChartPanel',kisSupply:'rankKisSupplyChartPanel',lsSupply:'rankLsSupplyChartPanel',lsMarketSupply:'rankLsMarketSupplyChartPanel',concentration:'concentrationChartPanel',kisConcentration:'kisConcentrationChartPanel',supply:'rankSupplyChartPanel',marketSupply:'rankMarketSupplyChartPanel',breadth:'rankBreadthChartPanel',turnover:'rankTurnoverChartPanel',adr:'rankAdrChartPanel',volatility:'rankVolatilityChartPanel',sentiment:'rankSentimentChartPanel'};
     const hoverCharts=new Map();
     function hoverKey(value,mode) { return value==null?null:dateParts(value).slice(0,mode==='minute'?16:10); }
     function registerHover(id,getMode,getValue,apply) { hoverCharts.set(id,{getMode,getValue,apply}); }
@@ -100,8 +100,8 @@
         scheduleHistoryButtons();
     }
     function showToday(){resetHistoryWork();viewports.delete('minute');historyMode=false;sharedCutoff=new Date(Date.now()+9*3600000).toISOString().slice(0,10)+' 08:00';rangeRevision++;for(const chart of minuteCharts.values())chart.applied=undefined;notifyCharts();}
-    const refreshOrder=['concentration','combinedConcentration','supply','marketSupply','breadth','turnover','adr','sentiment','volatility','kisConcentration','lsMarketSupply','kisSupply','lsSupply','kiwoomMarketSupply','lsConcentration','kisTurnover','lsTurnover','combinedTurnover','combinedSupply','combinedMarketSupply'];
-    const refreshMethods={combinedMarketSupply:'refreshRankCombinedMarketSupplyChart',combinedSupply:'refreshRankCombinedSupplyChart',combinedTurnover:'refreshRankCombinedTurnoverChart',combinedConcentration:'refreshConcentrationChart',lsConcentration:'refreshLsConcentrationChart',kisTurnover:'refreshRankKisTurnoverChart',lsTurnover:'refreshRankLsTurnoverChart',kiwoomMarketSupply:'refreshRankKiwoomMarketSupplyChart',kisSupply:'refreshRankKisSupplyChart',lsSupply:'refreshRankLsSupplyChart',lsMarketSupply:'refreshRankLsMarketSupplyChart',concentration:'refreshConcentrationChart',kisConcentration:'refreshKisConcentrationChart',supply:'refreshRankSupplyChart',marketSupply:'refreshRankMarketSupplyChart',breadth:'refreshRankBreadthChart',turnover:'refreshRankTurnoverChart',adr:'refreshRankAdrChart',sentiment:'refreshRankSentimentChart',volatility:'refreshRankVolatilityChart'};
+    const refreshOrder=['concentration','combinedConcentration','supply','marketSupply','breadth','turnover','adr','sentiment','volatility','kisConcentration','lsMarketSupply','kisSupply','lsSupply','kiwoomMarketSupply','lsConcentration','kisTurnover','lsTurnover','combinedTurnover','combinedSupply','combinedMarketSupply','combinedMarketSupplySecondary'];
+    const refreshMethods={combinedMarketSupplySecondary:'refreshRankCombinedMarketSupplySecondaryChart',combinedMarketSupply:'refreshRankCombinedMarketSupplyChart',combinedSupply:'refreshRankCombinedSupplyChart',combinedTurnover:'refreshRankCombinedTurnoverChart',combinedConcentration:'refreshConcentrationChart',lsConcentration:'refreshLsConcentrationChart',kisTurnover:'refreshRankKisTurnoverChart',lsTurnover:'refreshRankLsTurnoverChart',kiwoomMarketSupply:'refreshRankKiwoomMarketSupplyChart',kisSupply:'refreshRankKisSupplyChart',lsSupply:'refreshRankLsSupplyChart',lsMarketSupply:'refreshRankLsMarketSupplyChart',concentration:'refreshConcentrationChart',kisConcentration:'refreshKisConcentrationChart',supply:'refreshRankSupplyChart',marketSupply:'refreshRankMarketSupplyChart',breadth:'refreshRankBreadthChart',turnover:'refreshRankTurnoverChart',adr:'refreshRankAdrChart',sentiment:'refreshRankSentimentChart',volatility:'refreshRankVolatilityChart'};
     function refreshCharts({skipConcentration=false,mode=null}={}) {
         window.rankChartRefreshStarted=true;
         const pending=[];
@@ -530,14 +530,52 @@
         new MutationObserver(update).observe(minute,{attributes:true,attributeFilter:['class','aria-pressed']});update();return button;
     }
     if(typeof document!=='undefined') {
+        // Pinning isolates market selection; interval and viewport synchronization remain shared.
+        const pinStorage=window.rankIndependentClient?sessionStorage:localStorage;
+        const pinnedMarkets=new Set();
+        const pinPainters=new Map();
+        const persistPins=()=>{try { pinStorage.setItem('rankPinnedMarketsV1',JSON.stringify([...pinnedMarkets])); } catch {}};
+        window.getRankMarketPins=()=>[...pinnedMarkets];
+        window.applyRankMarketPins=value=>{
+            if(!Array.isArray(value))return;
+            pinnedMarkets.clear();value.filter(id=>typeof id==='string').forEach(id=>pinnedMarkets.add(id));
+            persistPins();for(const paint of pinPainters.values())paint();
+        };
+        try { const saved=JSON.parse(pinStorage.getItem('rankPinnedMarketsV1') || '[]'); if(Array.isArray(saved))saved.filter(id=>typeof id==='string').forEach(id=>pinnedMarkets.add(id)); } catch {}
+        const marketPinned=element=>pinnedMarkets.has(element.closest('.panel')?.id);
+        function attachMarketPins() {
+            for(const group of document.querySelectorAll('#tab_rank .rank-market-choice[role="radiogroup"]')) {
+                const panel=group.closest('.panel');
+                if(!panel?.id || panel.querySelector(':scope > .rank-market-pin'))continue;
+                const button=document.createElement('button');button.type='button';button.className='rank-market-pin';
+                function paintPin() {
+                    const locked=pinnedMarkets.has(panel.id);
+                    button.setAttribute('aria-pressed',String(locked));
+                    button.setAttribute('aria-label',locked?'시장 선택 고정 해제':'시장 선택 고정');
+                    button.title=locked?'시장 선택 고정됨 · 클릭하여 동기화 허용':'시장 선택 고정 · 다른 카드와 시장 동기화 차단';
+                    button.innerHTML='<svg viewBox="0 0 28 24" aria-hidden="true"><path d="M5 2h10v2l-2 1v5l3 3v2H4v-2l3-3V5L5 4zM9 15h2v6H9z"/>'+(locked?'<path d="M18 13v-3a3 3 0 0 1 6 0v3" fill="none" stroke="currentColor" stroke-width="2"/><rect x="17" y="12" width="8" height="9" rx="1"/>':'')+'</svg>';
+                }
+                button.addEventListener('click',()=>{
+                    if(pinnedMarkets.has(panel.id))pinnedMarkets.delete(panel.id);else pinnedMarkets.add(panel.id);
+                    persistPins();
+                    paintPin();
+                    if(typeof saveAppData==='function')saveAppData();
+                });
+                pinPainters.set(panel.id,paintPin);
+                paintPin();panel.classList.add('has-market-pin');panel.append(button);
+            }
+        }
+        const pinObserver=new MutationObserver(attachMarketPins);
+        function watchMarketPins(){attachMarketPins();pinObserver.observe(document.body,{childList:true,subtree:true});}
+        if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',watchMarketPins,{once:true});else watchMarketPins();
         let syncingMarket=false;
         document.addEventListener('change',event=>{
             const input=event.target;
-            if(syncingMarket || !input.matches?.('.rank-market-choice input[type="radio"]') || !input.closest('#tab_rank'))return;
+            if(syncingMarket || !input.matches?.('.rank-market-choice input[type="radio"]') || !input.closest('#tab_rank') || marketPinned(input))return;
             syncingMarket=true;
             try{
                 for(const group of document.querySelectorAll('#tab_rank .rank-market-choice[role="radiogroup"]')){
-                    if(group===input.closest('.rank-market-choice'))continue;
+                    if(group===input.closest('.rank-market-choice') || marketPinned(group))continue;
                     const peer=[...group.querySelectorAll('input[type="radio"]')].find(peer=>peer.value===input.value && !peer.disabled);
                     if(peer && !peer.checked)peer.click();
                 }

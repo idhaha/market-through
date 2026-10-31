@@ -1,0 +1,402 @@
+[
+  {
+    "model": "qwen3-vl:8b-instruct",
+    "case_id": 1,
+    "task": "gui",
+    "profile": "cpu-max1280",
+    "block": 1,
+    "wall_seconds": 65.31279199999999,
+    "total_seconds": 65.309286,
+    "load_seconds": 0.0130488,
+    "prefill_seconds": 63.138947,
+    "decode_seconds": 2.079023,
+    "prompt_tokens": 1136,
+    "output_tokens": 17,
+    "raw": "{\"x\": 967, \"y\": 172}",
+    "point": {
+      "x": 967,
+      "y": 172
+    },
+    "hit": true
+  },
+  {
+    "model": "qwen3-vl:8b-instruct",
+    "case_id": 2,
+    "task": "gui",
+    "profile": "cpu-max1280",
+    "block": 1,
+    "wall_seconds": 68.5014543,
+    "total_seconds": 68.4977538,
+    "load_seconds": 0.0159315,
+    "prefill_seconds": 66.563178,
+    "decode_seconds": 1.853532,
+    "prompt_tokens": 1156,
+    "output_tokens": 15,
+    "raw": "{\"x\":629, \"y\":934}",
+    "point": {
+      "x": 629,
+      "y": 934
+    },
+    "hit": true
+  },
+  {
+    "model": "qwen3-vl:8b-instruct",
+    "case_id": 3,
+    "task": "gui",
+    "profile": "cpu-max1280",
+    "block": 1,
+    "wall_seconds": 100.55234650000001,
+    "total_seconds": 100.5461576,
+    "load_seconds": 0.0173054,
+    "prefill_seconds": 98.037122,
+    "decode_seconds": 2.394583,
+    "prompt_tokens": 1546,
+    "output_tokens": 18,
+    "raw": "{\"x\": 370, \"y\": 208}",
+    "point": {
+      "x": 370,
+      "y": 208
+    },
+    "hit": true
+  },
+  {
+    "model": "qwen3-vl:8b-instruct",
+    "case_id": 4,
+    "task": "gui",
+    "profile": "cpu-max1280",
+    "block": 1,
+    "wall_seconds": 72.78127979999996,
+    "total_seconds": 72.7426453,
+    "load_seconds": 0.0294991,
+    "prefill_seconds": 70.716291,
+    "decode_seconds": 1.870929,
+    "prompt_tokens": 1162,
+    "output_tokens": 15,
+    "raw": "{\"x\":499, \"y\":627}",
+    "point": {
+      "x": 499,
+      "y": 627
+    },
+    "hit": true
+  },
+  {
+    "model": "qwen3-vl:8b-instruct",
+    "case_id": 5,
+    "task": "gui",
+    "profile": "cpu-max1280",
+    "block": 1,
+    "wall_seconds": 74.74421639999997,
+    "total_seconds": 74.7395193,
+    "load_seconds": 0.0195409,
+    "prefill_seconds": 72.743881,
+    "decode_seconds": 1.884575,
+    "prompt_tokens": 1162,
+    "output_tokens": 15,
+    "raw": "{\"x\":621, \"y\":942}",
+    "point": {
+      "x": 621,
+      "y": 942
+    },
+    "hit": true
+  },
+  {
+    "model": "qwen3.5:9b",
+    "case_id": 1,
+    "task": "gui",
+    "profile": "cpu-max1280",
+    "block": 2,
+    "wall_seconds": 32.86419180000003,
+    "total_seconds": 32.8622596,
+    "load_seconds": 0.0158965,
+    "prefill_seconds": 30.950439,
+    "decode_seconds": 1.829478,
+    "prompt_tokens": 618,
+    "output_tokens": 15,
+    "raw": "{\"x\":966, \"y\":175}",
+    "point": {
+      "x": 966,
+      "y": 175
+    },
+    "hit": true
+  },
+  {
+    "model": "qwen3.5:9b",
+    "case_id": 2,
+    "task": "gui",
+    "profile": "cpu-max1280",
+    "block": 2,
+    "wall_seconds": 11.02814870000002,
+    "total_seconds": 11.0252345,
+    "load_seconds": 0.014056,
+    "prefill_seconds": 9.600183,
+    "decode_seconds": 1.333429,
+    "prompt_tokens": 220,
+    "output_tokens": 11,
+    "raw": "{\"x\":0, \"y\":0}",
+    "point": {
+      "x": 0,
+      "y": 0
+    },
+    "hit": false
+  },
+  {
+    "model": "qwen3.5:9b",
+    "case_id": 3,
+    "task": "gui",
+    "profile": "cpu-max1280",
+    "block": 2,
+    "wall_seconds": 96.58492460000002,
+    "total_seconds": 96.5776717,
+    "load_seconds": 0.0391727,
+    "prefill_seconds": 94.544567,
+    "decode_seconds": 1.899205,
+    "prompt_tokens": 1550,
+    "output_tokens": 15,
+    "raw": "{\"x\":372, \"y\":200}",
+    "point": {
+      "x": 372,
+      "y": 200
+    },
+    "hit": true
+  },
+  {
+    "model": "qwen3.5:9b",
+    "case_id": 4,
+    "task": "gui",
+    "profile": "cpu-max1280",
+    "block": 2,
+    "wall_seconds": 45.3915,
+    "total_seconds": 45.3854532,
+    "load_seconds": 0.0207808,
+    "prefill_seconds": 43.451922,
+    "decode_seconds": 1.821007,
+    "prompt_tokens": 830,
+    "output_tokens": 14,
+    "raw": "{\"x\":500,\"y\":630}",
+    "point": {
+      "x": 500,
+      "y": 630
+    },
+    "hit": true
+  },
+  {
+    "model": "qwen3.5:9b",
+    "case_id": 5,
+    "task": "gui",
+    "profile": "cpu-max1280",
+    "block": 2,
+    "wall_seconds": 44.506064000000016,
+    "total_seconds": 44.5028335,
+    "load_seconds": 0.015037,
+    "prefill_seconds": 42.569221,
+    "decode_seconds": 1.829132,
+    "prompt_tokens": 830,
+    "output_tokens": 15,
+    "raw": "{\"x\":628, \"y\":944}",
+    "point": {
+      "x": 628,
+      "y": 944
+    },
+    "hit": true
+  },
+  {
+    "model": "qwen3.5:9b",
+    "case_id": 6,
+    "task": "gui",
+    "profile": "cpu-max1280",
+    "block": 2,
+    "wall_seconds": 44.432131000000055,
+    "total_seconds": 44.428444,
+    "load_seconds": 0.0164789,
+    "prefill_seconds": 42.453238,
+    "decode_seconds": 1.884027,
+    "prompt_tokens": 830,
+    "output_tokens": 15,
+    "raw": "{\"x\":132, \"y\":174}",
+    "point": {
+      "x": 132,
+      "y": 174
+    },
+    "hit": true
+  },
+  {
+    "model": "qwen3.5:9b",
+    "case_id": 7,
+    "task": "gui",
+    "profile": "cpu-max1280",
+    "block": 2,
+    "wall_seconds": 54.52420000000007,
+    "total_seconds": 54.5201266,
+    "load_seconds": 0.0448009,
+    "prefill_seconds": 52.583899,
+    "decode_seconds": 1.806118,
+    "prompt_tokens": 989,
+    "output_tokens": 15,
+    "raw": "{\"x\":934, \"y\":690}",
+    "point": {
+      "x": 934,
+      "y": 690
+    },
+    "hit": false
+  },
+  {
+    "model": "qwen3.5:9b",
+    "case_id": 8,
+    "task": "gui",
+    "profile": "cpu-max1280",
+    "block": 2,
+    "wall_seconds": 55.242396300000024,
+    "total_seconds": 55.2366376,
+    "load_seconds": 0.0160067,
+    "prefill_seconds": 53.062888,
+    "decode_seconds": 2.072659999,
+    "prompt_tokens": 989,
+    "output_tokens": 17,
+    "raw": "{\"x\": 137, \"y\": 603}",
+    "point": {
+      "x": 137,
+      "y": 603
+    },
+    "hit": true
+  },
+  {
+    "model": "qwen3.5:9b",
+    "case_id": 9,
+    "task": "gui",
+    "profile": "cpu-max1280",
+    "block": 2,
+    "wall_seconds": 56.864370299999955,
+    "total_seconds": 56.8573158,
+    "load_seconds": 0.0440059,
+    "prefill_seconds": 54.761897,
+    "decode_seconds": 1.910558,
+    "prompt_tokens": 993,
+    "output_tokens": 15,
+    "raw": "{\"x\":936, \"y\":329}",
+    "point": {
+      "x": 936,
+      "y": 329
+    },
+    "hit": true
+  },
+  {
+    "model": "qwen3.5:9b",
+    "case_id": 10,
+    "task": "gui",
+    "profile": "cpu-max1280",
+    "block": 2,
+    "wall_seconds": 55.852350299999934,
+    "total_seconds": 55.8373197,
+    "load_seconds": 0.0711172,
+    "prefill_seconds": 54.025605,
+    "decode_seconds": 1.619595,
+    "prompt_tokens": 991,
+    "output_tokens": 13,
+    "raw": "{\"x\":53, \"y\":94}",
+    "point": {
+      "x": 53,
+      "y": 94
+    },
+    "hit": true
+  },
+  {
+    "model": "qwen3-vl:8b-instruct",
+    "case_id": 6,
+    "task": "gui",
+    "profile": "cpu-max1280",
+    "block": 3,
+    "wall_seconds": 72.07305440000002,
+    "total_seconds": 72.0707242,
+    "load_seconds": 0.0167845,
+    "prefill_seconds": 70.158889,
+    "decode_seconds": 1.809232,
+    "prompt_tokens": 1162,
+    "output_tokens": 15,
+    "raw": "{\"x\":130, \"y\":167}",
+    "point": {
+      "x": 130,
+      "y": 167
+    },
+    "hit": true
+  },
+  {
+    "model": "qwen3-vl:8b-instruct",
+    "case_id": 7,
+    "task": "gui",
+    "profile": "cpu-max1280",
+    "block": 3,
+    "wall_seconds": 74.1967875000001,
+    "total_seconds": 74.1933318,
+    "load_seconds": 0.0129989,
+    "prefill_seconds": 72.224488,
+    "decode_seconds": 1.860258,
+    "prompt_tokens": 1180,
+    "output_tokens": 15,
+    "raw": "{\"x\":754, \"y\":337}",
+    "point": {
+      "x": 754,
+      "y": 337
+    },
+    "hit": true
+  },
+  {
+    "model": "qwen3-vl:8b-instruct",
+    "case_id": 8,
+    "task": "gui",
+    "profile": "cpu-max1280",
+    "block": 3,
+    "wall_seconds": 74.64371580000012,
+    "total_seconds": 74.6384981,
+    "load_seconds": 0.0219173,
+    "prefill_seconds": 72.425182,
+    "decode_seconds": 2.092567,
+    "prompt_tokens": 1180,
+    "output_tokens": 15,
+    "raw": "{\"x\":137, \"y\":604}",
+    "point": {
+      "x": 137,
+      "y": 604
+    },
+    "hit": true
+  },
+  {
+    "model": "qwen3-vl:8b-instruct",
+    "case_id": 9,
+    "task": "gui",
+    "profile": "cpu-max1280",
+    "block": 3,
+    "wall_seconds": 74.4600904000001,
+    "total_seconds": 74.4523036,
+    "load_seconds": 0.0295491,
+    "prefill_seconds": 72.406224,
+    "decode_seconds": 1.895335,
+    "prompt_tokens": 1184,
+    "output_tokens": 15,
+    "raw": "{\"x\":930, \"y\":322}",
+    "point": {
+      "x": 930,
+      "y": 322
+    },
+    "hit": true
+  },
+  {
+    "model": "qwen3-vl:8b-instruct",
+    "case_id": 10,
+    "task": "gui",
+    "profile": "cpu-max1280",
+    "block": 3,
+    "wall_seconds": 73.94513439999986,
+    "total_seconds": 73.9406532,
+    "load_seconds": 0.0196487,
+    "prefill_seconds": 72.246105,
+    "decode_seconds": 1.574239,
+    "prompt_tokens": 1182,
+    "output_tokens": 13,
+    "raw": "{\"x\":50, \"y\":93}",
+    "point": {
+      "x": 50,
+      "y": 93
+    },
+    "hit": true
+  }
+]

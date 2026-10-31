@@ -101,9 +101,16 @@
             if(state && (state.mode==='minute'?'/api/kis-supply/chart':'/api/supply/chart')===event.detail.path && !timers.has(combinedKey))timers.set(combinedKey,setTimeout(()=>{timers.delete(combinedKey);void Promise.resolve(window.refreshRankCombinedSupplyChart?.()).catch(()=>{});},100));
         }
         if(!window.rankIndependentClient && ['/api/ls-market-supply/chart','/api/kiwoom-market-supply/chart','/api/market-supply/chart'].includes(event.detail.path)){
+            {
             const state=window.getRankCombinedMarketSupplyDisplaySettings?.(),key='combinedMarketSupply';
             const path=state?.mode==='day'?'/api/ls-market-supply/chart':state?.selected?.startsWith('futures')?'/api/market-supply/chart':'/api/kiwoom-market-supply/chart';
             if(state && path===event.detail.path && !timers.has(key))timers.set(key,setTimeout(()=>{timers.delete(key);void Promise.resolve(window.refreshRankCombinedMarketSupplyChart?.()).catch(()=>{});},100));
+            }
+            {
+            const state=window.getRankCombinedMarketSupplySecondaryDisplaySettings?.(),key='combinedMarketSupplySecondary';
+            const path=state?.mode==='day'?'/api/ls-market-supply/chart':state?.selected?.startsWith('futures')?'/api/market-supply/chart':'/api/kiwoom-market-supply/chart';
+            if(state && path===event.detail.path && !timers.has(key))timers.set(key,setTimeout(()=>{timers.delete(key);void Promise.resolve(window.refreshRankCombinedMarketSupplySecondaryChart?.()).catch(()=>{});},100));
+            }
         }
         const mode=event.detail.mode==='minute'?'minute':'day',key=name==='__allCharts'?name+':'+mode:name;
         if(!name||timers.has(key))return;

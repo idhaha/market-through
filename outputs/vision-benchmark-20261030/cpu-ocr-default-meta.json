@@ -1,0 +1,67 @@
+{
+  "started_at": "2026-10-30T14:12:33.276Z",
+  "profile": "CPU only (num_gpu=0), separate diagnostic OCR pass after Vulkan failures; no GPU/CPU latency comparison",
+  "options": {
+    "temperature": 0,
+    "seed": 42,
+    "num_ctx": 8192,
+    "num_predict": 128,
+    "num_gpu": 0
+  },
+  "blocks": [
+    {
+      "model": "qwen3-vl:8b-instruct",
+      "warmup_seconds": 74.8493376,
+      "allocation": [
+        {
+          "name": "qwen3-vl:8b-instruct",
+          "model": "qwen3-vl:8b-instruct",
+          "size": 7056811621,
+          "digest": "70e58e37beb15464e19aa903dedb2cba828b89c0fb186f75ff2738c7347b96eb",
+          "details": {
+            "parent_model": "",
+            "format": "gguf",
+            "family": "qwen3vl",
+            "families": [
+              "qwen3vl",
+              "clip"
+            ],
+            "parameter_size": "8.2B",
+            "quantization_level": "Q4_K_M"
+          },
+          "expires_at": "2026-10-30T23:23:48.184823+09:00",
+          "size_vram": 0,
+          "context_length": 8192,
+          "runner": "llamacpp"
+        }
+      ]
+    },
+    {
+      "model": "qwen3.5:9b",
+      "warmup_seconds": 14.881363899999997,
+      "allocation": [
+        {
+          "name": "qwen3.5:9b",
+          "model": "qwen3.5:9b",
+          "size": 6452129298,
+          "digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+          "details": {
+            "parent_model": "",
+            "format": "gguf",
+            "family": "qwen35",
+            "families": [
+              "qwen35"
+            ],
+            "parameter_size": "9.0B",
+            "quantization_level": "Q4_K_M"
+          },
+          "expires_at": "2026-10-30T23:30:45.1702852+09:00",
+          "size_vram": 0,
+          "context_length": 8192,
+          "runner": "llamacpp"
+        }
+      ]
+    }
+  ],
+  "finished_at": "2026-10-30T14:21:55.334Z"
+}

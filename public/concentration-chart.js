@@ -90,6 +90,7 @@
         let candlePointerY = null;
 
         window[api('getConcentrationDisplaySettings')] = () => ({
+            marketPins: window.getRankMarketPins?.() || [],
             chartGuideEdits: window.RankSupplyGuide?.getEdits() || {},
             candleOpen: !candleArea.hidden, mode: state.mode, interval: state.interval,
             ...(window.getRankAdrCandleOpen ? { adrCandleOpen: window.getRankAdrCandleOpen() } : {}),
@@ -97,6 +98,7 @@
             ...(window.getRankTurnoverCandleOpen ? { turnoverCandleOpen: window.getRankTurnoverCandleOpen() } : {}),
             ...(window.getRankVolatilityDisplaySettings ? { volatility: window.getRankVolatilityDisplaySettings() } : {}),
             ...(window.getRankBreadthDisplaySettings ? { breadth: window.getRankBreadthDisplaySettings() } : {}),
+            ...(window.getRankCombinedMarketSupplySecondaryDisplaySettings ? { combinedMarketSupplySecondary: window.getRankCombinedMarketSupplySecondaryDisplaySettings() } : {}),
             ...(window.getRankCombinedMarketSupplyDisplaySettings ? { combinedMarketSupply: window.getRankCombinedMarketSupplyDisplaySettings() } : {}),
             ...(window.getRankKiwoomMarketSupplyDisplaySettings ? { kiwoomMarketSupply: window.getRankKiwoomMarketSupplyDisplaySettings() } : {}),
             ...(window.getRankLsMarketSupplyDisplaySettings ? { lsMarketSupply: window.getRankLsMarketSupplyDisplaySettings() } : {}),
@@ -108,6 +110,7 @@
         });
         window[api('applyConcentrationDisplaySettings')] = settings => {
             if(combined && settings?.combinedConcentration)settings={...settings,...settings.combinedConcentration};
+            if(!kis && settings && Object.hasOwn(settings,'marketPins'))window.applyRankMarketPins?.(settings.marketPins);
             if (!kis && settings && Object.hasOwn(settings, 'chartGuideEdits')) window.RankSupplyGuide?.applyEdits(settings.chartGuideEdits);
             const nextCandleOpen = settings?.candleOpen === true;
             if(!kis && !window.rankIndependentClient)window.rankMainCandleOpen=nextCandleOpen;
@@ -125,6 +128,7 @@
                 if (!window.rankIndependentClient || settings && 'turnoverCandleOpen' in settings) window.applyRankTurnoverCandleOpen?.(window.rankIndependentClient ? settings.turnoverCandleOpen === true : nextCandleOpen);
                 if (settings && 'volatility' in settings) window.applyRankVolatilityDisplaySettings?.(window.rankIndependentClient ? settings.volatility : {...settings.volatility,candleOpen:nextCandleOpen});
                 if (settings && 'breadth' in settings) window.applyRankBreadthDisplaySettings?.(window.rankIndependentClient ? settings.breadth : {...settings.breadth,candleOpen:nextCandleOpen});
+                if (settings && 'combinedMarketSupplySecondary' in settings) window.applyRankCombinedMarketSupplySecondaryDisplaySettings?.(settings.combinedMarketSupplySecondary);
                 if (settings && 'combinedMarketSupply' in settings) window.applyRankCombinedMarketSupplyDisplaySettings?.(settings.combinedMarketSupply);
                 if (settings && 'kiwoomMarketSupply' in settings) window.applyRankKiwoomMarketSupplyDisplaySettings?.(settings.kiwoomMarketSupply);
                 if (settings && 'lsMarketSupply' in settings) window.applyRankLsMarketSupplyDisplaySettings?.(settings.lsMarketSupply);
@@ -133,7 +137,7 @@
                 if (settings && 'lsSupply' in settings) window.applyRankLsSupplySettings?.(settings.lsSupply);
                 if (settings && 'marketSupply' in settings) window.applyRankMarketSupplyDisplaySettings?.(settings.marketSupply);
                 if (settings && 'sentiment' in settings) window.applyRankSentimentDisplaySettings?.(window.rankIndependentClient ? settings.sentiment : {...settings.sentiment,candleOpen:nextCandleOpen});
-                if(!window.rankIndependentClient){ window.applyRankKiwoomMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankCombinedMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankLsMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankSupplyCandleOpen?.(nextCandleOpen); window.applyRankKisSupplyCandleOpen?.(nextCandleOpen); window.applyRankCombinedSupplyCandleOpen?.(nextCandleOpen); window.applyRankLsSupplyCandleOpen?.(nextCandleOpen); window.applyRankMarketSupplyCandleOpen?.(nextCandleOpen); }
+                if(!window.rankIndependentClient){ window.applyRankKiwoomMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankCombinedMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankCombinedMarketSupplySecondaryCandleOpen?.(nextCandleOpen); window.applyRankLsMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankSupplyCandleOpen?.(nextCandleOpen); window.applyRankKisSupplyCandleOpen?.(nextCandleOpen); window.applyRankCombinedSupplyCandleOpen?.(nextCandleOpen); window.applyRankLsSupplyCandleOpen?.(nextCandleOpen); window.applyRankMarketSupplyCandleOpen?.(nextCandleOpen); }
                 window.applyRankCombinedTurnoverCandleOpen?.(settings?.combinedTurnoverCandleOpen ?? nextCandleOpen);
                 window.applyKisConcentrationDisplaySettings?.(settings); window.applyLsConcentrationDisplaySettings?.(settings);
             }
