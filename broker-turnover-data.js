@@ -71,8 +71,11 @@ function createBrokerTurnoverData({ broker, directory, transport, http, getToken
                 if (String(response.data?.rsp_cd)!=='00000') throw new Error();
                 return {data:response.data,headers:response.headers || {}};
             } catch { throw failure(`LS ${tr} 거래대금 조회 실패`,502); }
-            finally { await pause(1100); }
-        }); queue=task.catch(()=>{}); return task;
+        });
+        // Return received data immediately; only the next request waits for
+        // the existing cooldown, including after failed requests.
+        queue=task.catch(()=>{}).then(()=>pause(1100));
+        return task;
     }
     async function lsBars(instrument, mode, from, to) {
         const stock=!Object.hasOwn(marketCodes,instrument), daily=mode==='day';
