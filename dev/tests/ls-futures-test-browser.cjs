@@ -21,6 +21,11 @@ const fs = require('node:fs'), assert = require('node:assert/strict'), { chromiu
         assert.equal(await card.locator('h2').textContent(),'시장수급(테스트)');
         assert.equal(await card.evaluate(el=>el===el.parentElement.lastElementChild),true);
         assert.equal(await card.evaluate(el=>getComputedStyle(el).gridRowStart),'3');
+        await card.locator('.concentration-candle-toggle').click();
+        await page.waitForFunction(()=>window.getTestMarketSupplyCandleDiagnostics().validCandles>0);
+        assert.match(await card.locator('.rank-candle-label').textContent(),/연결선물/);
+        assert.ok(calls.some(c=>c.startsWith('/api/ls-futures-test/candles?')&&c.includes('mode=day')&&c.includes('from=')&&c.includes('to=')));
+        await card.locator('.concentration-candle-toggle').click();
         await card.locator('[data-mode="minute"]').click();
         assert.equal(await card.locator('.market-test-session').count(),0);
         await page.waitForFunction(()=>window.getTestMarketSupplyCandleDiagnostics().flowPoints===4);

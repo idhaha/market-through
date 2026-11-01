@@ -280,7 +280,7 @@
             stockSelect.value=selected;
             stockSelect.title=stockSelect.selectedOptions[0]?.textContent || '시장 선택';
             const future=selected.startsWith('futures');
-            window.RankChartAxis.candleLabel(candleArea, isTest && future ? (selected === 'futuresKosdaq' ? 'KOSDAQ150' : 'KOSPI200') + ' 선물 (주야간)' : (selected==='kosdaq'||selected==='futuresKosdaq'?'KOSDAQ':'KOSPI')+(future?' (현물)':''));
+            window.RankChartAxis.candleLabel(candleArea, isTest && future ? (selected === 'futuresKosdaq' ? 'KOSDAQ150' : 'KOSPI200') + (mode==='day'?' 연결선물 (주야간)':' 선물 (주야간)') : (selected==='kosdaq'||selected==='futuresKosdaq'?'KOSDAQ':'KOSPI')+(future?' (현물)':''));
             candle.setAttribute('aria-label', isTest && future ? 'LS 지수선물 가격 캔들차트' : `${selected==='kosdaq'||selected==='futuresKosdaq'?'코스닥':'코스피'} 현물지수 캔들차트`);
             const program=panel.querySelector('[data-series="program"]');
             program.disabled=selected.startsWith('futures');
@@ -314,12 +314,12 @@
             candleController?.abort();const current=candleController=new AbortController(),id=++candleRevision;
             candleRangePending=key;candleRangeError='';candleLoading=true;draw();
             try{
-                const url=futuresTest?(mode==='day'?`/api/ls-futures-test/chart?code=${selected}&mode=day&prices_only=1`:`/api/ls-futures-test/candles?code=${selected}&from=${from}&to=${to}`):`/api/adr/candles?market=${market}&mode=${mode}&from=${from}&to=${to}`;
+                const url=futuresTest?`/api/ls-futures-test/candles?code=${selected}&mode=${mode}&from=${from}&to=${to}`:`/api/adr/candles?market=${market}&mode=${mode}&from=${from}&to=${to}`;
                 const response=await (window.RankChartCache?.fetch || fetch)(url,{signal:current.signal});
                 const result=await response.json();
                 if(!response.ok)throw new Error(result.error || '시장 가격 조회 실패');
                 if(id!==candleRevision)return;
-                const incoming=(futuresTest && mode==='day'?result.candles || []:result.points || []).filter(p=>Number.isFinite(p.t))
+                const incoming=(result.points || []).filter(p=>Number.isFinite(p.t))
                     .map(p=>mode==='day'?{...p,t:Date.parse(dayKey(p.t)+'T00:00:00+09:00')}:p);
                 candles=[...new Map([...candles,...incoming].map(p=>[p.t,p])).values()].sort((a,b)=>a.t-b.t);
                 const timeline=new Map(incoming.map(p=>[p.t,{t:p.t}]));

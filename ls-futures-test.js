@@ -86,6 +86,30 @@ function createLsFuturesTest({ http, getToken, directory, daytimeStore, dailyPro
         try { const rows = JSON.parse(fs.readFileSync(path.join(directory, `${code}-${session}.json`), 'utf8')); return Array.isArray(rows) ? rows : []; }
         catch (e) { if (e.code === 'ENOENT') return []; throw failure('테스트 수급 저장 자료 읽기 실패', 500); }
     }
+    async function connectedDaily(code, session, to, from) {
+        const contract = await master(code, session), tr = session === 'N' ? 't8459' : 't2214';
+        const rows = new Map(), seen = new Set();
+        let keys = { date: to, cts_code: '', lastdate: '' }, continuation;
+        for (let page = 0; page < 400; page++) {
+            const response = await rest(tr, 'market-data', { shcode: contract.shcode, futcheck: '1', ...keys, cnt: 100 }, continuation);
+            const batch = response[tr + 'OutBlock1'];
+            if (!Array.isArray(batch)) throw failure('LS 연결선물 일봉 응답 오류', 502);
+            for (const row of batch) {
+                const p = candle(row, validDate(String(row.date)) ? timestamp(row.date) : NaN);
+                if (p && p.t <= now() && compact(p.t) <= to && (!from || compact(p.t) >= from)) rows.set(p.t, p);
+            }
+            const out = response[tr + 'OutBlock'] || {};
+            if (!batch.length || (from ? batch.some(row => validDate(String(row.date)) && row.date <= from) : rows.size >= 180)
+                || response._continuation?.more === false || !validDate(String(out.date))) break;
+            const next = JSON.stringify([out.date, out.cts_code, out.lastdate, response._continuation?.key]);
+            if (seen.has(next) || page === 399) throw failure('LS 연결선물 과거 조회가 진행되지 않았습니다', 502);
+            seen.add(next);
+            keys = { date: out.date, cts_code: out.cts_code || '', lastdate: out.lastdate || '' };
+            continuation = { key: response._continuation?.key || '' };
+        }
+        const candles = [...rows.values()].sort((a,b) => a.t-b.t);
+        return { contract, candles: from ? candles : candles.slice(-180), tr };
+    }
     function saveHistory(code, session, rows) {
         if (!directory) return;
         fs.mkdirSync(directory, { recursive: true });
@@ -218,27 +242,26 @@ function createLsFuturesTest({ http, getToken, directory, daytimeStore, dailyPro
         let candles = [], contract = null, partial = flowFailed, priceCursor = null;
         try {
             if(mode==='minute' && cursor && session==='N')throw failure('과거 야간 가격은 날짜를 지정할 수 없어 저장 자료만 표시합니다',502);
-            contract = await master(code, session);
-            let priceTr, params;
             if (mode === 'day') {
-                priceTr = session === 'N' ? 't8459' : 't8466';
-                params = session === 'N' ? { shcode: contract.shcode, futcheck: '', date: cursor || '', cts_code: '', lastdate: '', cnt: 180 }
-                    : { shcode: contract.shcode, gubun: '2', qrycnt: 180, sdate: '', edate: end, cts_date: '', comp_yn: 'N' };
+                const connected = await connectedDaily(code, session, end);
+                contract = connected.contract; candles = connected.candles;
+                if (!candles.length) { partial = true; warnings.push('선택 세션의 연결선물 가격 없음'); }
+                warnings.push(`가격: LS ${connected.tr} · ${cfg.name} 연결선물 (최근월물 연결)`);
             } else {
-                priceTr = session === 'N' ? 't8461' : 't8465';
-                params = session === 'N' ? { focode: contract.shcode, cgubun: 'B', bgubun: 1, cnt: 999 }
+            contract = await master(code, session);
+            const priceTr = session === 'N' ? 't8461' : 't8465';
+            const params = session === 'N' ? { focode: contract.shcode, cgubun: 'B', bgubun: 1, cnt: 999 }
                     : { shcode: contract.shcode, ncnt: 1, qrycnt: 500, nday: '0', sdate: '', stime: '', edate: cursor || compact(anchor || now()), etime: '', cts_date: '', cts_time: '', comp_yn: 'N' };
-            }
             if (mode === 'minute' && session === 'N' && !Number.isFinite(anchor)) throw failure('야간 가격 날짜를 확인할 수급 시각 없음', 502);
-            const prices = await rest(priceTr, mode === 'day' && session === 'N' ? 'market-data' : 'chart', params);
+            const prices = await rest(priceTr, 'chart', params);
             const rows = prices[priceTr + 'OutBlock1']; if (!Array.isArray(rows)) throw failure('LS 선물 가격 응답 오류', 502);
-            candles = rows.map(r => candle(r, mode === 'day' ? validDate(String(r.date)) ? timestamp(r.date) : NaN
-                : session === 'N' ? nightPriceTime(String(r.chetime || ''), anchor) : investorTime(r))).filter(Boolean)
-                .filter(r => r.t <= now() && (mode !== 'day' || compact(r.t) <= end));
+            candles = rows.map(r => candle(r, session === 'N' ? nightPriceTime(String(r.chetime || ''), anchor) : investorTime(r))).filter(Boolean)
+                .filter(r => r.t <= now());
             if (mode === 'minute') candles = candles.filter(r => r.t < Math.floor(now() / 60000) * 60000 && (!points.length && session === 'D' || points.length && r.t >= points[0].t && r.t <= points.at(-1).t));
             if (!candles.length) { partial = true; warnings.push('선택 세션의 선물 가격 없음'); }
-            if (mode === 'day' && candles.length) priceCursor = previous(compact(Math.min(...candles.map(r => r.t))));
             warnings.push(`가격: LS ${priceTr} · ${cfg.name} ${contract.hname} (${contract.shcode}) · 현재 최근월물, 연속선물 아님`);
+            }
+            if (mode === 'day' && candles.length) priceCursor = previous(compact(candles[0].t));
         } catch (e) { partial = true; warnings.push(e.status ? e.message : 'LS 선물 가격 조회 실패'); }
         const timeline = new Map(candles.map(r => [r.t, { t: r.t }]));
         for (const row of points) timeline.set(row.t, row);
@@ -333,11 +356,20 @@ function createLsFuturesTest({ http, getToken, directory, daytimeStore, dailyPro
         pending.set(key, task); return task;
     }
     const priceRanges=new Map();
-    async function priceRange({code='futures',from,to}={}) {
-        if(!Object.hasOwn(assets,code)||!validDate(from)||!validDate(to)||from>to||timestamp(to)-timestamp(from)>366*86400000)throw failure('잘못된 선물 가격 조회 범위');
-        const key=`${code}:${from}:${to}`,old=priceRanges.get(key);
+    async function priceRange({code='futures',mode='minute',from,to}={}) {
+        if(!Object.hasOwn(assets,code)||!['day','minute'].includes(mode)||!validDate(from)||!validDate(to)||from>to||timestamp(to)-timestamp(from)>(mode==='day'?36600:366)*86400000)throw failure('잘못된 선물 가격 조회 범위');
+        const key=`${code}:${mode}:${from}:${to}`,old=priceRanges.get(key);
         if(old && (to<compact(now()) || now()-old.at<60000))return old.promise;
         const promise=(async()=>{
+            if (mode === 'day') {
+                const parts = [], warnings = [];
+                await Promise.all(['D','N'].map(async session => {
+                    try { const result = await connectedDaily(code, session, to, from); parts.push({ session, points: [], candles: result.candles, warnings: [], has_more: false }); }
+                    catch { warnings.push(`LS ${session==='D'?'주간':'야간'} 연결선물 가격 조회 실패`); }
+                }));
+                const merged = mergeCombined({mode:'day'}, parts);
+                return {success:true,points:merged.candles,partial:warnings.length>0,warnings,source:'LS t2214/t8459 연결선물'};
+            }
             const contract=await master(code,'D'), rows=new Map(),seen=new Set();
             let cts_date='',cts_time='',partial=false,continuation;
             for(let page=0;page<400;page++){
@@ -353,7 +385,10 @@ function createLsFuturesTest({ http, getToken, directory, daytimeStore, dailyPro
                 if(page===399)partial=true;
             }
             return {success:true,points:[...rows.values()].sort((a,b)=>a.t-b.t),partial,source:'LS t8465'};
-        })();
+        })().then(result => {
+            if (mode === 'day' && result.partial && priceRanges.get(key)?.promise === promise) priceRanges.delete(key);
+            return result;
+        });
         priceRanges.set(key,{at:now(),promise});
         promise.catch(()=>priceRanges.delete(key));
         if(priceRanges.size>40)priceRanges.delete(priceRanges.keys().next().value);

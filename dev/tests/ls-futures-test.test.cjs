@@ -76,7 +76,7 @@ test('test futures daily candles query both price sessions without investor TRs'
     const result=await service.query({code:'futures',mode:'day',prices_only:'1'});
     assert.ok(result.candles.length>0);
     assert.ok(!calls.some(c=>c.tr==='t8462'||c.tr==='t8463'));
-    assert.ok(calls.some(c=>c.tr==='t8466')&&calls.some(c=>c.tr==='t8459'));
+    assert.ok(calls.some(c=>c.tr==='t2214')&&calls.some(c=>c.tr==='t8459'));
 });
 test('historical futures prices follow both continuation keys and reuse a completed past range',async()=>{
     const calls=[];
@@ -124,7 +124,7 @@ for (const [code, asset] of [['futures', 'K2I'], ['futuresKosdaq', 'KQI']]) {
         assert.equal(result.points.find(p => p.foreign != null).foreign, 0);
         assert.equal(result.candles[0].close, 101); assert.equal(result.contract.code, 'A016C000');
         assert.equal(result.partial, false); assert.ok(result.points.every(p => p.program === undefined));
-        assert.deepEqual(calls.map(c => c.tr), ['t8462', session === 'N' ? 't8455' : 't8467', session === 'N' ? 't8459' : 't8466']);
+        assert.deepEqual(calls.map(c => c.tr), ['t8462', session === 'N' ? 't8455' : 't8467', session === 'N' ? 't8459' : 't2214']);
         const length = calls.length; await service.query({ code, session }); assert.equal(calls.length, length);
     });
 }
