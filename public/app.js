@@ -1905,6 +1905,7 @@ function getSerializedState(sourceData = null) {
         tabs: capturedTabs,
         contents: dataToSerialize,
         rankInterval: refreshIntervalSelect ? refreshIntervalSelect.value : "2",
+        rankSources: { market: mrktTpSelect?.value || '000', exchange: stexTpSelect?.value || '3' },
         watchlistGroupId: watchlistGroupId,
         tabSidebar: { ...tabSidebarState },
         rankChartDisplay: window.getConcentrationDisplaySettings?.() || { debugOpen: false, candleOpen: false, mode: 'day', interval: 1 },
@@ -2045,6 +2046,8 @@ function applyData(data) {
     const memoNameMigrationNeeded = migrateMemoTabIconOnce(data);
     try {
         window.applyConcentrationDisplaySettings?.(data.rankChartDisplay);
+        if(['000','001','101'].includes(data.rankSources?.market))mrktTpSelect.value=data.rankSources.market;
+        if(['1','2','3'].includes(data.rankSources?.exchange))stexTpSelect.value=data.rankSources.exchange;
         ensurePermanentTabs(); // Always ensure permanent tabs first
         resetDynamicTabs();
         tabData = data.contents || {};
@@ -5668,6 +5671,8 @@ function applyFullStateBackup(data) {
     }
 
     // 4. 전역 설정 복구
+    if(['000','001','101'].includes(data.rankSources?.market))mrktTpSelect.value=data.rankSources.market;
+    if(['1','2','3'].includes(data.rankSources?.exchange))stexTpSelect.value=data.rankSources.exchange;
     if (data.rankInterval && refreshIntervalSelect) {
         refreshIntervalSelect.value = data.rankInterval;
         startAutoRefresh();
@@ -5736,6 +5741,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!authResponse.ok) return;
         const authState = await authResponse.json();
         if (!authState.authenticated) return;
+        await window.BackgroundRefreshPresence?.start();
         unlockApp(authState.user);
     } catch (error) {
         console.error('[Auth] Could not verify the current session:', error);
@@ -5811,8 +5817,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    if (mrktTpSelect) mrktTpSelect.addEventListener('change', loadTransactionRank);
-    if (stexTpSelect) stexTpSelect.addEventListener('change', loadTransactionRank);
+    if (mrktTpSelect) mrktTpSelect.addEventListener('change', () => {loadTransactionRank();void saveAppData();});
+    if (stexTpSelect) stexTpSelect.addEventListener('change', () => {loadTransactionRank();void saveAppData();});
 
     // --- Custom Chart Modal Handlers ---
     const modal = document.getElementById('customChartModal');

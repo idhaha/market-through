@@ -43,6 +43,7 @@
         const code=url.searchParams.get('code');
         return code?.startsWith('futures') ? state.futures : state.spot;
     }
-    window.TradingRefresh={update,ensureCalendar,allows,allowsUrl,get state(){return state;}};
-    void update();
+    function accept(value){if(typeof value?.spot!=='boolean'||typeof value?.futures!=='boolean')return;state=value;acceptCalendar(value.days || {});checked=Date.now();}
+    window.TradingRefresh={update,accept,ensureCalendar,allows,allowsUrl,get state(){return state;}};
+    if(!window.rankIndependentClient)void update();
 })();

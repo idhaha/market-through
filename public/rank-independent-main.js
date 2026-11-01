@@ -62,7 +62,7 @@
             const cell = document.querySelector('#transactionBody tr[data-chart-code] td');
             const style = cell && getComputedStyle(cell);
             return { tableConnection: window.getRankCardConnectionState?.('#transactionTable'), chartConnection: window.getRankCardConnectionState?.('#combinedConcentrationChartPanel'), tableConnected: window.getRankCardConnection?.('#transactionTable') === true, chartConnected: window.getRankCardConnection?.('#combinedConcentrationChartPanel') === true, rows: document.getElementById('transactionBody').innerHTML, chart: chartMetadata(window.getRankChartState?.()), display: window.getConcentrationDisplaySettings?.(),
-                supply: chartMetadata(window.getRankSupplyState?.()),
+                supply: chartMetadata((window.getRankCombinedSupplyState || window.getRankSupplyState)?.()),
                 refreshStatus: { time: document.getElementById('lastUpdate')?.textContent || '-', text: document.getElementById('statusText')?.textContent || '대기 중' },
                 typography: { rootFontSize: getComputedStyle(document.documentElement).fontSize, family: getComputedStyle(document.body).fontFamily,
                     pixelRatio: devicePixelRatio, cellFont: style?.fontSize, cellPadding: style && parseFloat(style.paddingTop), rowHeight: cell?.parentElement.getBoundingClientRect().height },
@@ -70,14 +70,14 @@
         }
         async function execute(command) {
             try {
-                if (command.type === 'supply-watchlist') { await window.refreshRankSupplyChart?.(); dirty = true; return; }
+                if (command.type === 'supply-watchlist') { await (window.refreshRankCombinedSupplyChart || window.refreshRankSupplyChart)?.(); dirty = true; return; }
                 if (command.type === 'supply-display' && command.pinned) return;
                 if (command.type === 'supply-display') {
-                    const current = window.getRankSupplyState?.() || {};
+                    const current = (window.getRankCombinedSupplyState || window.getRankSupplyState)?.() || {};
                     const fields = ['selected', 'mode', 'visibleSeries'];
                     const changes = Object.fromEntries((Array.isArray(command.changed) ? command.changed : Object.keys(command.settings || {})).filter(key => fields.includes(key)).map(key => [key, command.settings[key]]));
                     const settings = { ...current, ...changes, ...(command.pinned ? { selected: current.selected || '' } : {}) };
-                    window.applyRankSupplySettings?.(settings); dirty = true; return;
+                    (window.applyRankCombinedSupplySettings || window.applyRankSupplySettings)?.(settings); dirty = true; return;
                 }
                 if (command.type === 'server-chart') { window.applyRankChartState?.(command.chart); dirty = true; return; }
                 if (command.type === 'conditions') {

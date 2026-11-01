@@ -1542,6 +1542,30 @@ iframe {
     font-size: 1rem;
 }
 
+.profile-body .authorized-accounts-section {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 20px;
+}
+.background-refresh-toggle {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    line-height: 1.5;
+    cursor: pointer;
+}
+.background-refresh-toggle input {
+    flex: 0 0 auto;
+    margin-top: 5px;
+    accent-color: var(--primary-color, #2563eb);
+}
+.background-refresh-toggle span { word-break: keep-all; }
+.background-refresh-section .profile-help {
+    margin-left: 24px;
+}
+.background-refresh-section .profile-message.is-error { color: #b42318; }
+
 .profile-help {
     margin-bottom: 14px;
 }

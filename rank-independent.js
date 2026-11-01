@@ -2,7 +2,7 @@
 const crypto = require('crypto');
 
 // Short-lived capability channel. No market credentials or disk persistence.
-function createRankIndependentRelay({ now = Date.now, refresh, request, schedule = setInterval, marketAlerts } = {}) {
+function createRankIndependentRelay({ now = Date.now, refresh, request, schedule = setInterval, marketAlerts, onPeerActivity=()=>{}, canAutoRefresh=()=>true, session=()=>null } = {}) {
     const channels = new Map();
     const ttl = 120000;
     const hash = value => crypto.createHash('sha256').update(String(value || '')).digest('hex');
@@ -34,6 +34,7 @@ function createRankIndependentRelay({ now = Date.now, refresh, request, schedule
     const intervalFor = channel => intervals[channel.snapshot?.conditions?.refreshInterval] || 600000;
     async function update(channel) {
         if (!refresh || !channel.snapshot || channel.refreshing || channel.closed) return;
+        channel.manualRefresh=false;
         channel.refreshing = true;
         const generation = channel.generation;
         try {
@@ -47,7 +48,7 @@ function createRankIndependentRelay({ now = Date.now, refresh, request, schedule
     if (refresh) {
         const timer = schedule(() => {
             prune();
-            for (const channel of channels.values()) if (channel.peerSeen && now() - channel.peerSeen < ttl && now() >= channel.nextRefresh) update(channel);
+            for (const channel of channels.values()) if (channel.peerSeen && now() - channel.peerSeen < ttl && now() >= channel.nextRefresh && (channel.manualRefresh || canAutoRefresh())) update(channel);
         }, 1000);
         timer.unref?.();
     }
@@ -154,6 +155,7 @@ function createRankIndependentRelay({ now = Date.now, refresh, request, schedule
         });
         app.post('/api/rank-independent/peer/:id', (req, res) => {
             const channel = peer(req, res); if (!channel) return;
+            onPeerActivity(req.params.id,req.body.close!==true);
             if (req.body.marketAlertAck != null && (!Array.isArray(req.body.marketAlertAck) || req.body.marketAlertAck.length))
                 return res.status(403).json({ error: '시장경보 확인은 메인창에서만 가능합니다.' });
             if (req.body.pinned === false) channel.peerChart = null;
@@ -189,7 +191,7 @@ function createRankIndependentRelay({ now = Date.now, refresh, request, schedule
                         if (channel.snapshot) channel.snapshot.conditions = { ...channel.snapshot.conditions, ...channel.overrides };
                         channel.generation++; channel.nextRefresh = 0; channel.version++;
                     }
-                    if (command.type === 'refresh') { channel.generation++; channel.nextRefresh = 0; }
+                    if (command.type === 'refresh') { channel.generation++; channel.nextRefresh = 0; channel.manualRefresh=true; }
                     if (command.type === 'request' && request && /^\/api\/(?:concentration-(chart|stock|stocks)|ls-concentration-chart|kis-supply\/chart|supply\/(watchlist|chart|candles))(\?|$)/.test(command.path || '')) executeRequest(channel, command);
                     else channel.commands.push(command);
                     channel.commandIds.add(id);
@@ -200,7 +202,7 @@ function createRankIndependentRelay({ now = Date.now, refresh, request, schedule
             const compact=req.body.compact===true;
             const snapshot=req.body.epoch===channel.epoch&&Number(req.body.version)===channel.version?null:channel.snapshot;
             const data=compact&&channel.data?{...channel.data,chart:compactState(channel.data.chart),peerChart:compactState(channel.data.peerChart),supply:compactState(channel.data.supply),peerSupply:compactState(channel.data.peerSupply)}:channel.data;
-            res.json({marketAlerts:marketAlerts?.snapshot(channel.owner),cacheScope:hash('rank-chart-cache:'+channel.owner),epoch:channel.epoch,version:channel.version,snapshot:compact?compactSnapshot(snapshot):snapshot,replies,serverRefresh:refresh?{data,interval:intervalFor(channel),error:channel.error,serverNow:now()}:null});
+            res.json({marketAlerts:marketAlerts?.snapshot(channel.owner),tradingSession:session(),cacheScope:hash('rank-chart-cache:'+channel.owner),epoch:channel.epoch,version:channel.version,snapshot:compact?compactSnapshot(snapshot):snapshot,replies,serverRefresh:refresh?{data,interval:intervalFor(channel),error:channel.error,paused:!canAutoRefresh(),serverNow:now()}:null});
         });
     }
     return { mount };

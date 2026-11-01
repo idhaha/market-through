@@ -323,17 +323,17 @@
             paintArchive();
         }
         document.addEventListener('rank-stock-supply-selection', event => {
-            if (!window.rankIndependentClient && config.stocks.some(stock => stock.code === event.detail?.code)) choose(event.detail.code, false);
+            if (config.stocks.some(stock => stock.code === event.detail?.code)) choose(event.detail.code, false);
         });
         document.addEventListener('rank-concentration-selection',event=>{
             const code=event.detail?.stock?.code;
-            if(!window.rankIndependentClient && config.stocks.some(stock=>stock.code===code))choose(code,false);
+            if(config.stocks.some(stock=>stock.code===code))choose(code,false);
         });
         function choose(code, broadcast = true) {
             if (selected === code) return;
             const restoreWindow=mode==='minute'?window.RankChartAxis.minuteDomain():null;
             selected = code; remember(); clearView(); paintStocks();
-            if (broadcast && !window.rankIndependentClient) document.dispatchEvent(new CustomEvent('rank-stock-supply-selection', { detail: { code,stock:config.stocks.find(stock=>stock.code===code)||config.archive.find(stock=>stock.code===code),source:axisId } }));
+            if (broadcast) document.dispatchEvent(new CustomEvent('rank-stock-supply-selection', { detail: { code,stock:config.stocks.find(stock=>stock.code===code)||config.archive.find(stock=>stock.code===code),source:axisId } }));
             if(restoreWindow && restoreWindow.first.slice(0,10)<dayKey(Date.now()))todayOnly=false;
             void load(false,restoreWindow);
         }

@@ -37,19 +37,27 @@
         if (!kis && !window.rankIndependentClient) panel.querySelector('h2').textContent = combined ? '쏠림율' : '쏠림율(키움)';
         window.RankSupplyGuide?.attach(panel, 'concentration', window.rankIndependentClient ? 'combined' : broker || 'kiwoom');
         if (!kis) document.addEventListener('click', event => {
-            if (window.rankIndependentClient || window.rankCandleSyncing) return;
-            const button = event.target.closest?.('.rank-chart-row .concentration-candle-toggle');
+            if (window.rankCandleSyncing) return;
+            const selector = window.rankIndependentClient
+                ? '#concentrationChartPanel .concentration-candle-toggle, #rankSupplyChartPanel .concentration-candle-toggle'
+                : '.rank-chart-row .concentration-candle-toggle';
+            const button = event.target.closest?.(selector);
             if (!button || button.disabled) return;
             const open = button.getAttribute('aria-expanded') !== 'true';
-            window.rankMainCandleOpen=open;
+            if (!window.rankIndependentClient) window.rankMainCandleOpen=open;
             event.preventDefault(); event.stopImmediatePropagation();
             window.rankCandleSyncing = true;
+            if (window.rankIndependentClient) window.rankIndependentCandleHeights = new Map(
+                [...document.querySelectorAll(selector)].map(target => {
+                    const chart = target.closest('.panel');
+                    return [chart.id, chart.querySelector('.concentration-chart-area, .rank-adr-area').clientHeight];
+                }));
             try {
                 // Reuse each chart's own loading, rendering and accessibility logic.
-                for (const target of document.querySelectorAll('.rank-chart-row .concentration-candle-toggle')) {
+                for (const target of document.querySelectorAll(selector)) {
                     if (!target.disabled && (target.getAttribute('aria-expanded') === 'true') !== open) target.click();
                 }
-            } finally { window.rankCandleSyncing = false; }
+            } finally { window.rankCandleSyncing = false; window.rankIndependentCandleHeights = null; }
             if (typeof saveAppData === 'function') saveAppData();
         }, true);
         const canvas = get('concentrationCanvas');
@@ -184,7 +192,7 @@
                 button.setAttribute('aria-pressed', String(active));
                 button.disabled = state.mode === 'day';
             });
-            more.disabled = !state.selection || state.busy || !state.hasMore;
+            more.disabled = !state.selection || state.busy || !(state.hasMore || hasPriceHistory());
             more.setAttribute('aria-busy', String(state.busy));
             zoomIn.disabled = state.busy || state.points.length < 2 || state.visible <= Math.min(10, state.points.length);
             zoomOut.disabled = state.busy || !state.points.length || state.visible >= state.points.length;
@@ -436,8 +444,14 @@
             updateControls();
         }
         let todayOnly = true;
-        let priceController,priceIdentity='',priceCursor=null,priceBusy=false;
-        async function loadIndependentPrices(append){
+        let priceController,priceIdentity='',priceCursor=null,priceBusy=false,priceWork;
+        function hasPriceHistory(){return !candleArea.hidden && priceIdentity===`${state.selection?.code}:${state.mode}:${state.interval}` && !!priceCursor;}
+        function loadIndependentPrices(append){
+            const identity=`${state.selection?.code}:${state.mode}:${state.interval}`;
+            if(priceBusy && identity===priceIdentity)return append?priceWork.then(()=>identity===`${state.selection?.code}:${state.mode}:${state.interval}`?loadIndependentPrices(true):undefined):priceWork;
+            return priceWork=performPriceLoad(append);
+        }
+        async function performPriceLoad(append){
             if(!state.selection || candleArea.hidden)return;
             const identity=`${state.selection.code}:${state.mode}:${state.interval}`;
             if(priceBusy && identity===priceIdentity && !append)return;
@@ -464,7 +478,18 @@
                 state.visible=visible && visible<oldLength?Math.min(visible,state.points.length):state.points.length;
                 state.start=following?Math.max(0,state.points.length-state.visible):Math.max(0,state.points.findIndex(p=>p.time>=anchor));
             }catch(error){if(error.name!=='AbortError' && current===priceController)candleTooltip.title=error.message;}
-            finally{if(current===priceController){priceBusy=false;sharedRevision++;draw();}}
+            finally{if(current===priceController){priceBusy=false;sharedRevision++;updateControls();draw();}}
+        }
+        async function ensurePriceRange(target){
+            const identity=`${state.selection?.code}:${state.mode}:${state.interval}`;
+            if(candleArea.hidden)return;
+            await priceWork;
+            for(let page=0;page<80&&identity===`${state.selection?.code}:${state.mode}:${state.interval}`;page++){
+                const first=state.points.filter(p=>Number.isFinite(p.stock_price)).map(p=>p.time.slice(0,8)).sort()[0];
+                if(first && first<=String(target).replace(/\D/g,'').slice(0,8) || !priceCursor)return;
+                const before=priceCursor;await loadIndependentPrices(true);
+                if(before===priceCursor)throw new Error('캔들 과거 조회가 진행되지 않았습니다.');
+            }
         }
         window.RankChartAxis.todayButton(panel,'[data-chart-mode="minute"]',()=>state.mode,()=>{todayOnly=true;draw();void load(false,true);});
         async function load(append = false, refresh = false) {
@@ -496,7 +521,9 @@
                 if (!response.ok || !result.success) throw new Error(result.error || '차트 조회 실패');
                 const prices=new Map(state.points.map(p=>[p.time,p]));
                 const freshPoints = result.points.map(p=>({...prices.get(p.time),...p}));
-                if ((refresh || append) && previous.points.length && result.points.length) {
+                if (append) {
+                    state.points = [...new Map([...previous.points,...state.points,...freshPoints].map(p=>[p.time,p])).values()].sort((a,b)=>a.time.localeCompare(b.time));
+                } else if (refresh && previous.points.length && result.points.length) {
                     const earliest = result.points[0].time;
                     state.points = [...previous.points.filter(point => point.time < earliest), ...freshPoints];
                 } else {
@@ -677,7 +704,7 @@
             if (button.dataset.chartMode === 'minute' && state.mode !== 'minute') state.interval = 1;
             state.mode = button.dataset.chartMode; updateControls(); saveDisplaySettings(); load();
         }));
-        window.RankChartAxis.registerHistoryLoader(chartKey,()=>load(true),()=>state.busy,()=>({hasMore:!!state.selection && state.hasMore,cursor:state.cursor,progress:state.historyProgress,error:state.historyError,identity:state.selection?.code}));
+        window.RankChartAxis.registerHistoryLoader(chartKey,()=>state.hasMore?load(true):loadIndependentPrices(true),()=>state.busy,()=>({hasMore:!!state.selection && !!(state.hasMore || hasPriceHistory()),cursor:[state.cursor,priceCursor].join(':'),progress:state.historyProgress,error:state.historyError,identity:state.selection?.code,ensureRange:ensurePriceRange}));
         more.addEventListener('click', () => window.RankChartAxis.requestHistory(state.mode));
         function zoom(factor, anchor = .5) {
             if (!state.points.length) return;
@@ -788,9 +815,9 @@
         document.addEventListener('rank-concentration-selection', event => {
             if (event.detail.source !== chartKey && event.detail.stock?.code !== state.selection?.code) chooseStock(event.detail.stock);
         });
-        if(combined)document.addEventListener('rank-stock-supply-selection',event=>{
-            if(window.rankIndependentClient || event.detail?.code===state.selection?.code)return;
-            const stock=event.detail?.stock || window.getRankCombinedSupplyState?.()?.config?.archive?.find(stock=>stock.code===event.detail?.code);
+        if(combined || window.rankIndependentClient)document.addEventListener('rank-stock-supply-selection',event=>{
+            if(event.detail?.code===state.selection?.code)return;
+            const stock=event.detail?.stock || (window.getRankCombinedSupplyState || window.getRankSupplyState)?.()?.config?.archive?.find(stock=>stock.code===event.detail?.code);
             if(validSelection(stock))chooseStock(stock);
         });
         if (kis) document.addEventListener('rank-chart-state', () => {

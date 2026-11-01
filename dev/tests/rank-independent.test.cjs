@@ -17,11 +17,14 @@ const { promisify } = require('node:util');
         }
         next();
     });
-    createRankIndependentRelay({ now: () => clock }).mount(app);
+    createRankIndependentRelay({ now: () => clock, request:async command=>{
+        const response=await fetch(origin+command.path,{method:command.method||'GET',headers:{'Content-Type':'application/json'},...(command.body?{body:JSON.stringify(command.body)}:{})});
+        return response.json();
+    } }).mount(app);
     const points = Array.from({ length: 40 }, (_, index) => ({ time: '202608' + String(index + 1).padStart(2, '0'), value: index + 10, stock_price: 1000 }));
-    app.post('/api/concentration-chart', async (req, res) => {
-        queries.push(req.body); await new Promise(resolve => setTimeout(resolve, 60));
-        res.json({ success: true, points: points.map(point => ({ ...point, value: point.value + transactionQueries })), market: 'K', cursor: 'cursor', has_more: true, debug_five_bars: { stock: [], market: [], fetched_at: new Date().toISOString() } });
+    app.post(['/api/concentration-chart','/api/ls-concentration-chart'], async (req, res) => {
+        const sourceSeq=queries.length+1;queries.push({...req.body,sourceSeq}); await new Promise(resolve => setTimeout(resolve, 60));
+        res.json({ success: true, points: points.map(point => ({ ...point, sourceSeq, value: point.value + transactionQueries })), market: 'K', cursor: 'cursor', has_more: true, debug_five_bars: { stock: [], market: [], fetched_at: new Date().toISOString() } });
     });
     app.get('/api/transaction_rank', async (req, res) => {
         transactionQueries++;
@@ -56,13 +59,24 @@ const { promisify } = require('node:util');
             window.refreshRankAdrChart = window.refreshRankTurnoverChart = () => window.marketRefreshes++;
             ${loader}
         ` });
+        // A repeat read inside the cache's one-second coalescing window is
+        // intentionally reused. Exercise refresh after that window instead.
+        await child.waitForTimeout(1100);
         const chartQueriesBeforeRefresh = queries.length;
+        const childBeforeRefresh = await child.evaluate(() => ({...getRankChartState(),points:undefined}));
         await child.locator('#rankIndependentRefresh').click();
         await child.waitForFunction(() => document.getElementById('independentStatusText').textContent === '로딩 중');
         await child.waitForFunction(() => document.getElementById('transactionBody').textContent.includes('123456'));
-        await child.waitForFunction(() => getRankChartState().points.at(-1)?.value === 50 && !getRankChartState().busy);
+        await child.waitForFunction(revision => getRankChartState().revision > revision && !getRankChartState().busy, childBeforeRefresh.revision);
         assert.equal(transactionQueries, 1, 'Independent refresh must query the transaction table');
         assert.ok(queries.length > chartQueriesBeforeRefresh, 'Independent refresh must query the concentration chart');
+        let freshChild;
+        for(let attempt=0;attempt<100;attempt++){
+            freshChild=queries.slice(chartQueriesBeforeRefresh).find(query=>query.code===childBeforeRefresh.selection.code&&query.mode===childBeforeRefresh.mode&&!query.prices_only);
+            if(freshChild)break;await new Promise(resolve=>setTimeout(resolve,50));
+        }
+        assert.ok(freshChild,'Independent refresh uses its own selected stock and mode: '+JSON.stringify({selection:childBeforeRefresh.selection,mode:childBeforeRefresh.mode,requests:queries.slice(chartQueriesBeforeRefresh)}));
+        await child.waitForFunction(seq=>getRankChartState().points.some(p=>p.sourceSeq===seq)&&!getRankChartState().busy,freshChild.sourceSeq);
         assert.equal(await main.evaluate(() => window.marketRefreshes), 0, 'Independent refresh must skip ADR and turnover charts');
         assert.equal(await child.locator('#independentStatusText').textContent(), '완료');
         assert.notEqual(await child.locator('#independentLastUpdate').textContent(), '2026/10/12 11:54:53');
@@ -112,7 +126,11 @@ const { promisify } = require('node:util');
         const child = await browser.newPage({ viewport: { width: 1350, height: 850 } }); child.on('pageerror', error => errors.push(error.message));
         await child.goto(`${origin}/rank-independent.html#id=${ticket.id}&token=${ticket.token}`);
         await child.waitForFunction(() => window.getRankChartState?.()?.points.length === 40);
-        assert.equal(queries.length, before, 'Opening independent window must reuse existing data');
+        // The 2026-10-23 policy makes chart queries local to each window.
+        // The independent window needs its own first page, but exactly once.
+        assert.equal(queries.length, before+1, 'Opening independent window must make exactly one local initial chart query');
+        assert.equal(queries.at(-1).code,'000001');
+        assert.equal(await main.evaluate(()=>getRankChartState().revision),1,'Opening the peer must not refresh the main chart');
         assert.equal(await main.locator('#transactionBody tr').count(), 2);
         assert.equal(await child.locator('#transactionBody tr').count(), 2);
         await main.evaluate(() => { document.getElementById('lastUpdate').textContent = '2026/10/12 11:54:53'; document.getElementById('statusText').textContent = '로딩 중'; });
@@ -166,10 +184,11 @@ const { promisify } = require('node:util');
         assert.equal(await child.evaluate(() => location.hash), '');
         const nativeSmoke = path.resolve('desktop/build/RankNativeSmoke.exe');
         const nativeSnapshot = await main.evaluate(() => ({ rows: document.getElementById('transactionBody').innerHTML, chart: getRankChartState(), conditions: { mrktTp: '000', stexTp: '3', refreshInterval: '2' } }));
-        const mainRangeBefore = await main.locator('#concentrationRange').getAttribute('max');
+        const mainRangeBefore = await main.evaluate(()=>RankChartAxis.dailyDomain());
+        const childRangeBefore = await child.evaluate(()=>RankChartAxis.dailyDomain().days.length);
         await child.locator('#concentrationZoomIn').click();
-        assert.equal(await child.locator('#concentrationRange').getAttribute('max'), '20');
-        assert.equal(await main.locator('#concentrationRange').getAttribute('max'), mainRangeBefore);
+        assert.ok(await child.evaluate(()=>RankChartAxis.dailyDomain().days.length)<childRangeBefore,'Zoom must reduce the independent chart date range');
+        assert.deepEqual(await main.evaluate(()=>RankChartAxis.dailyDomain()), mainRangeBefore);
         await child.waitForFunction(() => !document.querySelector('#tab_rank .independent-collapsed'));
         await child.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
         let testWindowMaxHeight = Infinity;
@@ -182,29 +201,30 @@ const { promisify } = require('node:util');
         });
         await child.evaluate(() => { window.chrome.webview.postMessage = message => { window.foldMessages.push(message); window.resizeTestWindow(message); }; });
         const beforeCandleHeight = await child.locator('.concentration-chart-area').evaluate(el => el.clientHeight);
+        const beforeCandleGrowth = await child.locator('.concentration-chart-area, #rankSupplyChartPanel .rank-adr-area').evaluateAll(elements => elements.reduce((sum, element) => sum + element.clientHeight, 0));
         const beforeCandleWindow = child.viewportSize().height;
         await child.locator('#concentrationCandleToggle').click();
         assert.equal(await main.evaluate(() => getConcentrationDisplaySettings().candleOpen), false, 'Independent candles do not open the main candle');
         await child.waitForFunction(() => !document.getElementById('concentrationCandleArea').hidden);
-        await child.waitForFunction(({ windowHeight, chartHeight }) => innerHeight === windowHeight + chartHeight, { windowHeight: beforeCandleWindow, chartHeight: beforeCandleHeight });
+        await child.waitForFunction(({ windowHeight, chartHeight }) => innerHeight === windowHeight + chartHeight, { windowHeight: beforeCandleWindow, chartHeight: beforeCandleGrowth });
         assert.equal(await child.locator('#concentrationCandleArea').evaluate(el => el.clientHeight), await child.locator('.concentration-chart-area').evaluate(el => el.clientHeight), 'Candles match concentration height in the three-panel layout');
         const staleDisplaySnapshot = await main.evaluate(() => ({ rows: document.getElementById('transactionBody').innerHTML, chart: getRankChartState(), display: getConcentrationDisplaySettings() }));
         await main.route('**/api/rank-independent/*/owner', async route => { await new Promise(resolve => setTimeout(resolve, 700)); await route.continue(); });
         await child.evaluate(() => { window.candleReopens = 0; new MutationObserver(() => { if (!document.getElementById('concentrationCandleArea').hidden) window.candleReopens++; }).observe(document.getElementById('concentrationCandleArea'), { attributes: true, attributeFilter: ['hidden'] }); });
         await child.locator('#concentrationCandleToggle').click();
         await json(`/api/rank-independent/${ticket.id}/owner`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rank-Owner': ticket.ownerKey }, body: JSON.stringify({ snapshot: staleDisplaySnapshot }) });
-        await main.waitForFunction(() => document.getElementById('concentrationCandleArea').hidden);
+        await main.waitForFunction(() => !getConcentrationDisplaySettings().candleOpen);
         await child.waitForFunction(height => innerHeight === height, beforeCandleWindow);
-        await main.unroute('**/api/rank-independent/*/owner');
+        await main.unrouteAll({behavior:'wait'});
         assert.equal(await child.evaluate(() => window.candleReopens), 0, 'An outdated open snapshot must not reopen candles while close confirmation is pending');
         assert.equal(await child.locator('.concentration-chart-area').evaluate(el => el.clientHeight), beforeCandleHeight, 'Closing candles must restore window without changing concentration chart height');
         await child.setViewportSize({ width: 900, height: 1100 });
-        const stackedBefore = await child.locator('.concentration-chart-area').evaluate(el => el.clientHeight);
+        const stackedBefore = await child.locator('.concentration-chart-area, #rankSupplyChartPanel .rank-adr-area').evaluateAll(elements => elements.reduce((sum, element) => sum + element.clientHeight, 0));
         await child.locator('#concentrationCandleToggle').click();
         await child.waitForFunction(height => !document.getElementById('concentrationCandleArea').hidden && innerHeight === 1100 + height, stackedBefore);
         assert.equal(await child.locator('#concentrationCandleArea').evaluate(el => el.clientHeight), await child.locator('.concentration-chart-area').evaluate(el => el.clientHeight), 'Resized vertical layout keeps main and candle plots equal');
         await child.locator('#concentrationCandleToggle').click();
-        await main.waitForFunction(() => document.getElementById('concentrationCandleArea').hidden);
+        await main.waitForFunction(() => !getConcentrationDisplaySettings().candleOpen);
         await child.waitForFunction(() => innerHeight === 1100);
         // Reproduce a monitor-constrained candle window, then fold both panels.
         testWindowMaxHeight = 1100;
@@ -225,28 +245,27 @@ const { promisify } = require('node:util');
         await child.waitForFunction(() => !document.querySelector('#tab_rank .independent-collapsed'));
         testWindowMaxHeight = Infinity;
         await child.locator('#concentrationCandleToggle').click();
-        await main.waitForFunction(() => document.getElementById('concentrationCandleArea').hidden);
+        await main.waitForFunction(() => !getConcentrationDisplaySettings().candleOpen);
         await child.setViewportSize({ width: 1350, height: 850 });
         await child.locator('#transactionBody tr').nth(1).click();
-        await main.waitForFunction(() => getRankChartState().selection.code === '000002' && !getRankChartState().busy);
         await child.waitForFunction(() => getRankChartState().selection.code === '000002' && !getRankChartState().busy);
-        assert.equal(queries.filter(query => query.code === '000002' && !query.debug_five).length, 1, 'Shared selection must deduplicate chart query');
+        assert.equal(await main.evaluate(()=>getRankChartState().selection.code),'000001','Peer stock selection must leave the main chart unchanged');
+        assert.equal(queries.filter(query => query.code === '000002' && !query.debug_five).length, 1, 'Local selection must issue exactly one chart query');
         assert.equal(await child.locator('#rankStockPinned, #rankSupplyPinned').count(), 0);
         await main.locator('#transactionBody tr').first().click();
         await main.waitForFunction(() => getRankChartState().selection.code === '000001' && !getRankChartState().busy);
-        await child.waitForFunction(() => getRankChartState().selection.code === '000001');
+        assert.equal(await child.evaluate(()=>getRankChartState().selection.code),'000002','Main table selection must leave the peer chart unchanged');
         await child.locator('#concentrationStockName').fill('000003'); await child.locator('#concentrationStockName').press('Enter');
         await child.waitForFunction(() => getRankChartState().selection.code === '000003' && !getRankChartState().busy);
-        await main.waitForFunction(() => getRankChartState().selection.code === '000003');
+        assert.equal(await main.evaluate(()=>getRankChartState().selection.code),'000001');
         await child.locator('#mrktTp').selectOption('101');
         await main.waitForFunction(() => document.getElementById('mrktTp').value === '101');
         await child.locator('[data-chart-mode="minute"]').click();
-        await main.waitForFunction(() => getRankChartState().mode === 'minute');
-        await child.waitForFunction(() => getRankChartState().interval === 5);
-        assert.equal(await main.evaluate(() => getRankChartState().interval), 5, 'Minute chart must default to 5 minutes');
+        await child.waitForFunction(() => getRankChartState().mode === 'minute' && getRankChartState().interval === 1);
+        assert.equal(await main.evaluate(() => getRankChartState().mode), 'day', 'Peer mode changes must leave the main timeframe unchanged');
         await child.waitForFunction(() => !getRankChartState().busy);
         await main.locator('#transactionBody tr').first().click();
-        await child.waitForFunction(() => getRankChartState().selection.code === '000001');
+        assert.equal(await child.evaluate(()=>getRankChartState().selection.code),'000003');
         assert.equal(await child.locator('#concentrationStockName').getAttribute('readonly'), null);
         await verifyIndependentRefresh(main, child);
         // Native close notification enables the original button and leaves original content intact.
@@ -261,7 +280,8 @@ const { promisify } = require('node:util');
         assert.deepEqual(errors, []);
         // Main session deletion is visible to the independent view.
         await main.close();
-        await reopened.waitForFunction(() => document.getElementById('rankConnectionStatus').textContent.includes('終了') || document.getElementById('rankConnectionStatus').textContent.includes('종료'));
+        await reopened.waitForFunction(() => window.rankIndependentLastFailure?.status===401);
+        assert.equal(reopened.isClosed(),false,'An expired connection must leave the independent window open for recovery');
         const missingApp = await browser.newPage();
         const queuedRefresh = await browser.newPage();
         await queuedRefresh.goto(origin + '/main');
@@ -282,7 +302,7 @@ const { promisify } = require('node:util');
             const result = await promisify(execFile)(nativeSmoke, [`${origin}/rank-independent.html#id=${nativeTicket.id}&token=${nativeTicket.token}`], { cwd: path.dirname(nativeSmoke), windowsHide: true, timeout: 45000 });
             await json(`/api/rank-independent/${nativeTicket.id}/owner`, { method: 'DELETE', headers: { 'X-Rank-Owner': nativeTicket.ownerKey } });
             assert.match(result.stdout, /PASS real native WebView2 page/);
-            assert.equal(queries.length, beforeNative, 'Native WebView2 opening must also reuse data');
+            assert.equal(queries.length, beforeNative+1, 'Native WebView2 also makes exactly one local initial chart query');
             console.log(result.stdout.trim());
         }
         missingApp.once('dialog', dialog => { assert.match(dialog.message(), /설치되지 않았거나 실행이 취소/); dialog.accept(); });
@@ -299,7 +319,7 @@ const { promisify } = require('node:util');
         assert.match(await missingApp.locator('#rankIndependentControls [role="status"]').textContent(), /다운로드한 MarketThroughSetup.exe/);
         await missingApp.waitForTimeout(1200);
         assert.equal(await missingApp.getByRole('link', { name: /설치/ }).count(), 0);
-        console.log('PASS Rank relay security, initial reuse, shared selection/conditions, always synchronized stocks, independent zoom, close/reopen and owner shutdown');
+        console.log('PASS Rank relay security, one local initial query, isolated selection/mode, shared table conditions, independent zoom, close/reopen and owner shutdown');
         console.log('PASS missing-app notice and automatic installer download without separate install link');
         console.log('PASS independent panel collapse/expand preserves main view and reuses data');
     } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }

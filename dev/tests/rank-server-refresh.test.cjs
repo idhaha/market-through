@@ -1,9 +1,9 @@
 const assert = require('node:assert/strict');
 const {createRankIndependentRelay} = require('../../rank-independent');
 (async () => {
- let clock=1000000, tick, calls=0, fail=false;
+ let clock=1000000, tick, calls=0, fail=false,open=true;
  const routes=new Map(), app={use(){},post(p,f){routes.set('POST '+p,f)},delete(p,f){routes.set('DELETE '+p,f)}};
- createRankIndependentRelay({now:()=>clock,schedule:fn=>{tick=fn;return {unref(){}}},refresh:async snapshot=>{calls++;if(fail)throw Error('offline');return {items:[{stk_cd:'005930'}],chart:snapshot.chart}},request:async()=>({success:true})}).mount(app);
+ createRankIndependentRelay({now:()=>clock,canAutoRefresh:()=>open,session:()=>({spot:open,futures:true}),schedule:fn=>{tick=fn;return {unref(){}}},refresh:async snapshot=>{calls++;if(fail)throw Error('offline');return {items:[{stk_cd:'005930'}],chart:snapshot.chart}},request:async()=>({success:true})}).mount(app);
  function call(path,ticket={},body={}) {let result,status=200;routes.get('POST '+path)({params:{id:ticket.id},body,authUser:{email:'test'},get:n=>n==='X-Rank-Owner'?ticket.ownerKey:'Bearer '+ticket.token},{status(v){status=v;return this},json(v){result=v;return this}});return {result,status}}
  const t=call('/api/rank-independent').result;
  const owner=body=>call('/api/rank-independent/:id/owner',t,body).result;
@@ -21,6 +21,10 @@ const {createRankIndependentRelay} = require('../../rank-independent');
  const refresh={id:require('crypto').randomUUID(),type:'refresh'};peer({command:refresh});tick();await flush();assert.equal(calls,before+1);assert.ok(owner({}).commands.some(c=>c.id===refresh.id),'Manual refresh also reaches main');
  fail=true;clock+=60001;peer({});tick();await flush();let info=peer({}).serverRefresh;assert.ok(info.error);assert.ok(info.data.at>first,'Failure preserves last successful data');
  fail=false;clock+=60001;peer({});tick();await flush();assert.equal(peer({}).serverRefresh.error,false);
+ open=false;const closedCalls=calls;clock+=60001;peer({});tick();await flush();assert.equal(calls,closedCalls,'Closed spot session suppresses all scheduled broker refreshes, even if futures are open');assert.equal(peer({}).serverRefresh.paused,true);assert.equal(peer({}).tradingSession.spot,false);
+ peer({command:{id:require('crypto').randomUUID(),type:'refresh'}});tick();await flush();assert.equal(calls,closedCalls+1,'Explicit manual refresh remains available while closed');
+ clock+=60001;peer({});tick();await flush();assert.equal(calls,closedCalls+1,'One manual refresh must not re-enable the closed-session timer');
+ open=true;tick();await flush();assert.equal(calls,closedCalls+2,'Next opening resumes due refresh without reopening the window');
  const fs=require('node:fs'), vm=require('node:vm');
  const source=fs.readFileSync('public/rank-independent-client.js','utf8');
  const formatter=source.slice(source.indexOf('        function formatServerRefreshTime('),source.indexOf('        function paintFreshness()'));
@@ -30,10 +34,11 @@ const {createRankIndependentRelay} = require('../../rank-independent');
  const start=source.indexOf('        function paintFreshness()');
  const paint=source.slice(start,source.indexOf('        function applyServerRefresh',start));
  const label={textContent:''}, status={textContent:''};
- const context=vm.createContext({serverRefresh:{data:{at:1000},interval:30000,error:false},serverAge:0,receivedAt:clock,transportFailed:false,Date:{now:()=>clock},document:{getElementById:()=>label},status});
+ const context=vm.createContext({serverRefresh:{data:{at:1000},interval:30000,error:false},serverAge:0,receivedAt:clock,transportFailed:false,renderFailed:false,Date:{now:()=>clock},document:{getElementById:()=>label},status});
  vm.runInContext(paint,context);context.paintFreshness();assert.equal(label.textContent,'완료');
  clock+=120001;context.paintFreshness();assert.equal(label.textContent,'갱신 지연','A quiet connection cannot hide stale data');
  context.serverAge=0;context.receivedAt=clock;context.transportFailed=true;context.paintFreshness();assert.equal(label.textContent,'갱신 지연');
  context.transportFailed=false;context.paintFreshness();assert.equal(label.textContent,'완료');
+ context.renderFailed=true;context.paintFreshness();assert.equal(label.textContent,'갱신 지연');assert.match(status.textContent,/화면 갱신 오류/);
  console.log('PASS server refresh survives owner suspension, interval and manual commands reach main, failures retain data and recover');
 })().catch(error=>{console.error(error);process.exitCode=1});

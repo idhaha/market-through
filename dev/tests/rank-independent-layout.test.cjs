@@ -11,10 +11,12 @@ const assert = require('node:assert/strict');
         const html = fs.readFileSync('public/rank-independent.html', 'utf8')
             .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
             .replace(/<link\b[^>]*>/gi, '');
-        await page.setContent(html);
+        await page.route('http://chart-layout.test/**',route=>route.fulfill({contentType:'text/html',body:html}));
+        await page.goto('http://chart-layout.test/');
         await page.addStyleTag({ content: fs.readFileSync('public/style.css', 'utf8') });
         await page.addStyleTag({ content: fs.readFileSync('public/rank-independent.css', 'utf8') });
         await page.evaluate(() => {
+            window.rankIndependentClient = true;
             // Keep the minute-chart "today" viewport aligned with the fixture dates.
             Date.now = () => Date.parse('2026-10-01T06:00:00.000Z');
             window.verticalDateLines = [];
@@ -25,7 +27,7 @@ const assert = require('node:assert/strict');
             prototype.lineTo = function (...args) { (this.testPath ||= []).push(args); return line.apply(this, args); };
             prototype.stroke = function (...args) {
                 if (['concentrationCanvas', 'concentrationCandleCanvas'].includes(this.canvas.id)
-                    && this.strokeStyle === '#b8c1cc' && this.getLineDash().join(',') === '3,5'
+                    && ((this.strokeStyle === '#b8c1cc' && this.getLineDash().join(',') === '3,5') || (this.strokeStyle === '#94a3b8' && this.getLineDash().length === 0))
                     && this.testPath?.length === 2 && this.testPath[0][0] === this.testPath[1][0]) {
                     window.verticalDateLines.push(this.canvas.id);
                 }
@@ -63,12 +65,13 @@ const assert = require('node:assert/strict');
             const canvas = document.getElementById('concentrationCanvas').getBoundingClientRect();
             const value = document.getElementById('concentrationCurrentRate').getBoundingClientRect();
             const info = document.getElementById('concentrationTooltip').getBoundingClientRect();
-            return { chartTop: canvas.top, valueRight: value.right, axisRight: canvas.right - 36, infoHeight: info.height };
+            const header=document.querySelector('#concentrationChartPanel .concentration-chart-header').getBoundingClientRect();
+            return { chartTop: canvas.top, valueRight: value.right, valueTop:value.top,valueBottom:value.bottom,headerRight:header.right,headerTop:header.top,headerBottom:header.bottom,infoHeight: info.height };
         });
         const canvas = page.locator('#concentrationCanvas');
         await canvas.scrollIntoViewIfNeeded();
         const before = await positions();
-        assert.ok(Math.abs(before.valueRight - before.axisRight) < 1, 'Latest value aligns with the right edge of Y-axis labels');
+        assert.ok(before.valueRight<=before.headerRight+1&&before.valueTop>=before.headerTop&&before.valueBottom<=before.headerBottom,'Latest value stays within the current header row');
         assert.equal(before.infoHeight, 20, 'Hidden hover row reserves its compact height');
         const box = await canvas.boundingBox();
         await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -113,6 +116,17 @@ const assert = require('node:assert/strict');
             const contentType = path.endsWith('.css') ? 'text/css' : path.endsWith('.js') ? 'text/javascript' : 'text/html';
             return route.fulfill({ contentType, body: fs.readFileSync(path) });
         });
+        await independent.exposeFunction('resizeLayoutWindow', async message => {
+            if (!message.startsWith('resize-window:')) return;
+            const delta = Number(message.split(':')[1].split(',')[1]);
+            const size = independent.viewportSize();
+            await independent.setViewportSize({ width: size.width, height: size.height + delta });
+            await independent.evaluate(() => { window.dispatchEvent(new Event('rank-native-resize-complete')); window.layoutResizeFinished++; });
+        });
+        await independent.addInitScript(() => {
+            window.layoutResizeFinished = 0;
+            window.chrome.webview.postMessage = message => { window.resizeMessages.push(message); window.resizeLayoutWindow(message); };
+        });
         await independent.goto('http://layout.test/rank-independent.html#id=' + 'a'.repeat(32) + '&token=' + 'b'.repeat(64));
         await independent.waitForFunction(() => window.getRankChartState?.().points.length === 20);
         const stockInput = independent.locator('#concentrationStockName');
@@ -126,7 +140,8 @@ const assert = require('node:assert/strict');
         assert.equal(await stockInput.inputValue(), '삼성전자', 'Leaving an unsubmitted draft restores this window\'s selected stock');
         assert.equal(await independent.locator('#concentrationCandleArea').isVisible(), false, 'Initial main-window candle state is not imported');
         await independent.locator('#concentrationCandleToggle').click();
-        await independent.evaluate(() => new Promise(resolve => { window.resizeMessages = []; window.dispatchEvent(new Event('rank-native-resize-complete')); requestAnimationFrame(() => requestAnimationFrame(resolve)); }));
+        await independent.waitForFunction(() => window.layoutResizeFinished === 2);
+        await independent.evaluate(() => { window.resizeMessages = []; });
         const topmostPlacement = await independent.evaluate(() => {
             const top = document.getElementById('independentAlwaysOnTop').closest('label').getBoundingClientRect();
             const refresh = document.getElementById('refreshInterval').closest('label').getBoundingClientRect();
@@ -164,18 +179,15 @@ const assert = require('node:assert/strict');
         await independent.setViewportSize({ width: 850, height: 1760 });
         const compact = await rowHeights();
         assert.equal((await geometry()).panelOverflow, 0, 'Compact window still contains the whole chart');
-        await independent.setViewportSize({ width: 850, height: 2060 });
+        await independent.setViewportSize({ width: 850, height: 2320 });
         await independent.evaluate(() => new Promise(requestAnimationFrame));
         const enlarged = await rowHeights();
         assert.deepEqual(enlarged, compact, 'Manual window growth retains the capped table and chart heights');
+        const resizeCount = await independent.evaluate(() => window.layoutResizeFinished);
         await independent.locator('#concentrationCandleToggle').click();
-        const closedResize = await independent.evaluate(() => Number(window.resizeMessages.at(-1).split(':')[1].split(',')[1]));
-        await independent.setViewportSize({ width: 850, height: 2060 + closedResize });
-        await independent.evaluate(() => new Promise(resolve => { window.dispatchEvent(new Event('rank-native-resize-complete')); requestAnimationFrame(() => requestAnimationFrame(resolve)); }));
+        await independent.waitForFunction(count => window.layoutResizeFinished === count + 2, resizeCount);
         await independent.locator('#concentrationCandleToggle').click();
-        const openResize = await independent.evaluate(() => Number(window.resizeMessages.at(-1).split(':')[1].split(',')[1]));
-        await independent.setViewportSize({ width: 850, height: 2060 + closedResize + openResize });
-        await independent.evaluate(() => new Promise(resolve => { window.dispatchEvent(new Event('rank-native-resize-complete')); requestAnimationFrame(() => requestAnimationFrame(resolve)); }));
+        await independent.waitForFunction(count => window.layoutResizeFinished === count + 4, resizeCount);
         assert.equal(await independent.locator('#concentrationCandleToggle').getAttribute('aria-expanded'), 'true');
         const toggled = await rowHeights();
         const toggledGeometry = await geometry();
@@ -185,7 +197,7 @@ const assert = require('node:assert/strict');
         assert.equal(toggledGeometry.layoutOverflow, 0, 'Reopening candles does not add an inner grid scrollbar');
         assert.equal(toggledGeometry.bodyScroll, 0, 'Reopening candles does not add a vertical page scrollbar');
         assert.ok(Math.abs(toggledGeometry.main - toggledGeometry.candle) < 2, 'Reopened main and candle plots remain equal');
-        await independent.setViewportSize({ width: 850, height: 2060 + closedResize + openResize + 300 });
+        await independent.setViewportSize({ width: 850, height: independent.viewportSize().height + 300 });
         await independent.evaluate(() => new Promise(requestAnimationFrame));
         const afterToggleGrowth = await rowHeights();
         assert.deepEqual(afterToggleGrowth, toggled, 'After toggling candles, manual growth still retains capped card heights');

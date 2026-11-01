@@ -14,6 +14,12 @@ test('past stored concentration amounts bypass REST and preserve sparse minute g
  assert.equal(bars.values.has(at('090300')),false);
  assert.equal(total.values.get(at('090300')),5000000);
 });
+test('background turnover watch survives browser owner expiry and releases its own subscription when disabled',t=>{
+ const f=fixture(t);f.data.setBackgroundStocks(['000660']);assert.ok(f.streams.some(s=>s.tr==='US3'&&s.key==='U000660   '));
+ f.setTime(at('102550'));f.data.watchStock('005930','browser');f.setTime(at('104550'));f.data.watchStock('222800','another-browser');
+ assert.ok(f.streams.some(s=>s.key==='U000660   '));assert.ok(!f.streams.some(s=>s.key==='U005930   '));
+ f.data.setBackgroundStocks([]);assert.ok(!f.streams.some(s=>s.key==='U000660   '));assert.ok(f.streams.some(s=>s.key==='U222800   '));
+});
 test('LS minute concentration skips the unused Kiwoom index denominator',async()=>{
  let received;
  const svc=createBrokerComparisonService({broker:'ls',data:{watchStock(){},amounts:async()=>({values:new Map(),warnings:[]})},concentrationReference:{query:async input=>{received=input;return {success:true,points:[]};}}});
@@ -63,6 +69,13 @@ test('LS REST amounts use source interval money and end times, with no price-tim
  const totals=await f.data.amounts('kospi','minute',['20261026'],true);assert.equal(totals.values.get(at('090000')),10000000);assert.equal(totals.values.get(at('090100')),30000000);
  const intervals=await f.data.amounts('kospi','minute',['20261026']);assert.equal(intervals.values.get(at('090100')),20000000);
  assert.equal(f.calls.length,1);assert.equal(f.calls[0].body.t8409InBlock.qrycnt,500);
+});
+test('LS stock cumulative accepts a complete 09:00 start as well as 08:00, but leaves late partial starts unavailable',async t=>{
+ for(const [opening,available]of [['080100',true],['090100',true],['090200',false]]){
+  const f=fixture(t,'ls',[{date:'20261026',time:opening,value:10},{date:'20261026',time:'090300',value:20}]);
+  const result=await f.data.amounts('353200','minute',['20261026'],true);
+  assert.equal(result.values.get(at('090200')),available?30000000:null,opening);
+ }
 });
 test('comparison service retains shared candles but replaces only the broker amounts',async()=>{
  const seen=[];const service=createBrokerComparisonService({broker:'ls',data:{watchStock:(...args)=>seen.push(args),amounts:async(instrument,mode,dates,cumulative)=>({values:new Map([[at('090000'),cumulative?(instrument==='005930'?5000:10000):(instrument==='005930'?500:2000)]]),warnings:[]})},

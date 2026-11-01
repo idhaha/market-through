@@ -11,6 +11,7 @@ const { createRankIndependentRelay } = require('../../rank-independent');
     app.use((req, res, next) => { if (req.path === '/api/rank-independent' && req.method === 'POST') { const send = res.json.bind(res); res.json = value => { ticket = value; return send(value); }; } next(); });
     const config = { success: true, revision: 1, stocks: [{ code: '005930', name: '삼성전자' }, { code: '000660', name: 'SK하이닉스' }], archive: [{ code: '005930', name: '삼성전자' }, { code: '000660', name: 'SK하이닉스' }] };
     const query = url => {
+        if(url.pathname==='/api/concentration-stock')return {success:true,stock:{code:url.searchParams.get('q'),name:'선택 종목',market:'K'}};
         if (url.pathname === '/api/supply/watchlist') return config;
         if (['/api/concentration-chart','/api/ls-concentration-chart'].includes(url.pathname))return {success:true,points:Array.from({length:20},(_,i)=>({time:'202610'+String(i+1).padStart(2,'0')+'090000',value:30+i,open:100,high:110,low:90,close:105})),has_more:false};
         const points = Array.from({ length: 20 }, (_, i) => ({ t: Date.UTC(2026, 9, 1 + i), individual: i, foreign: -i, institution: i * 2, program: i * 3, open: 100, high: 110, low: 90, close: 105 }));
@@ -33,6 +34,7 @@ const { createRankIndependentRelay } = require('../../rank-independent');
     }).mount(app);
     app.get('/api/supply/:type', (req, res) => res.json(query(new URL(req.originalUrl, 'http://test'))));
     app.post('/api/concentration-chart', (req, res) => res.json({ success: true, points: [], has_more: false }));
+    app.get('/api/concentration-stock',(req,res)=>res.json(query(new URL(req.originalUrl,'http://test'))));
     app.get('/main', (req, res) => res.type('html').send(fs.readFileSync('public/rank-independent.html', 'utf8')
         .replace(/<script src="rank-independent-client.js[^" ]*" defer><\/script>/, '<script src="rank-independent-main.js" defer></script>')
         .replace('<main id="tab_rank">', '<div id="rankIndependentControls"></div><span id="lastUpdate">-</span><span id="statusText">대기 중</span><main id="tab_rank" class="rank-chart-row">')
@@ -50,9 +52,20 @@ const { createRankIndependentRelay } = require('../../rank-independent');
         await main.goto(origin + '/main');
         await main.waitForFunction(()=>window.getRankCombinedSupplyState?.().points.length===20);
         await main.evaluate(()=>selectRankChartStock({code:'005930',name:'삼성전자',market:'K'}));
-        await main.locator('#rankIndependentControls button').click();await main.waitForFunction(()=>window.testLaunchUrl);
+        await main.evaluate(()=>{document.getElementById('transactionBody').innerHTML=['005930','000660','000003'].map(code=>`<tr data-chart-code="${code}" data-chart-name="종목${code}" data-chart-market="K"><td>${code}</td></tr>`).join('');});
+        await main.getByRole('button',{name:'독립창',exact:true}).click();await main.waitForFunction(()=>window.testLaunchUrl);
         await child.goto(origin+'/rank-independent.html#'+new URLSearchParams({id:ticket.id,token:ticket.token}));
         await child.waitForFunction(()=>window.getRankSupplyState?.().points.length===20);
+        await child.locator('#transactionBody tr').nth(1).click();
+        await child.waitForFunction(()=>getRankChartState().selection.code==='000660'&&getRankSupplyState().selected==='000660',null,{timeout:5000});
+        await child.locator('#concentrationStockName').fill('005930');await child.locator('#concentrationStockName').press('Enter');
+        await child.waitForFunction(()=>getRankChartState().selection.code==='005930'&&getRankSupplyState().selected==='005930');
+        await child.locator('#rankSupplyChartPanel .supply-stock-select').selectOption('000660');
+        await child.waitForFunction(()=>getRankChartState().selection.code==='000660'&&getRankSupplyState().selected==='000660');
+        await child.locator('#transactionBody tr').nth(2).click();
+        await child.waitForFunction(()=>getRankChartState().selection.code==='000003');
+        assert.equal(await child.evaluate(()=>getRankSupplyState().selected),'000660','An unlisted table stock must leave supply selection unchanged');
+        assert.equal(await main.evaluate(()=>getRankChartState().selection.code),'005930','Local synchronization must not affect the main window');
         await child.evaluate(()=>selectRankChartStock({code:'000660',name:'SK하이닉스',market:'K'}));
         await child.locator('#rankSupplyChartPanel .supply-stock-select').selectOption('000660');
         await child.waitForFunction(()=>getRankSupplyState().selected==='000660' && getRankSupplyState().points.length===20);

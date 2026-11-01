@@ -7,15 +7,17 @@ const { createRankIndependentRelay } = require('../../rank-independent');
 (async () => {
     const app = express(); app.use(express.json({ limit: '5mb' }));
     app.use((req, res, next) => { req.authUser = { email: 'test@example.test' }; next(); });
-    let ticket, requestCount = 0, pump;
+    let ticket, requestCount = 0, pump, clock=Date.now();
     app.use((req, res, next) => { if (req.path === '/api/rank-independent' && req.method === 'POST') { const send = res.json.bind(res); res.json = value => { ticket = value; return send(value); }; } next(); });
     const config = { success: true, revision: 1, stocks: [{ code: '005930', name: '삼성전자' }, { code: '000660', name: 'SK하이닉스' }], archive: [{ code: '005930', name: '삼성전자' }, { code: '000660', name: 'SK하이닉스' }] };
     const query = url => {
         if (url.pathname === '/api/supply/watchlist') return config;
+        if(url.pathname.includes('concentration-chart'))return {success:true,points:Array.from({length:20},(_,i)=>({time:'202610'+String(i+1).padStart(2,'0')+'090000',value:20+i,stock_price:100,stock_open:99,stock_high:101,stock_low:98})),has_more:false};
         const points = Array.from({ length: 20 }, (_, i) => ({ t: Date.UTC(2026, 9, 1 + i), individual: i, foreign: -i, institution: i * 2, program: i * 3, open: 100, high: 110, low: 90, close: 105 }));
         return { success: true, points: url.pathname === '/api/supply/chart' && url.searchParams.get('mode') === 'minute' ? [] : points, candles: points, cursor: url.searchParams.has('cursor') ? null : '20260930', has_more: !url.searchParams.has('cursor') };
     };
     createRankIndependentRelay({
+        now:()=>clock,
         schedule: callback => { pump = callback; return { unref() {} }; },
         refresh: async snapshot => {
             const supply = { ...snapshot.supply, config, points: query(new URL('/api/supply/chart', 'http://test')).points.map(p => ({ ...p, foreign: 999 })) };
@@ -34,7 +36,8 @@ const { createRankIndependentRelay } = require('../../rank-independent');
     app.post('/api/concentration-chart', (req, res) => res.json({ success: true, points: [], has_more: false }));
     app.get('/main', (req, res) => res.type('html').send(fs.readFileSync('public/rank-independent.html', 'utf8')
         .replace(/<script src="rank-independent-client.js[^" ]*" defer><\/script>/, '<script src="rank-independent-main.js" defer></script>')
-        .replace('<main id="tab_rank">', '<div id="rankIndependentControls"></div><span id="lastUpdate">-</span><span id="statusText">대기 중</span><main id="tab_rank" class="rank-chart-row">')
+        .replace('<body class="rank-independent">','<body>')
+        .replace('<main id="tab_rank">', '<style>#tab_rank>.panel{grid-area:auto!important}#tab_rank{display:grid;grid-template-columns:1fr;gap:14px}</style><div id="rankIndependentControls"></div><span id="lastUpdate">-</span><span id="statusText">대기 중</span><main id="tab_rank" class="rank-chart-row">')
         .replace('</main>', '<section id="rankBreadthChartPanel"></section></main>')));
     app.get('/rank-independent-main.js', (req, res) => res.type('js').send(fs.readFileSync('public/rank-independent-main.js', 'utf8').replace("location.href = 'marketthrough://open?url=' + encodeURIComponent(url);", 'window.testLaunchUrl = url;')));
     app.use(express.static('public'));
@@ -46,13 +49,13 @@ const { createRankIndependentRelay } = require('../../rank-independent');
         const main = await context.newPage(), child = await context.newPage(), errors = [];
         main.on('pageerror', e => errors.push(e.message)); child.on('pageerror', e => errors.push(e.message));
         await main.goto(origin + '/main');
-        await main.waitForFunction(() => window.getRankSupplyState?.().points.length === 20);
-        await main.locator('#rankIndependentControls button').click();
+        await main.waitForFunction(() => window.getRankCombinedSupplyState?.().points.length === 20);
+        await main.getByRole('button',{name:'독립창',exact:true}).click();
         await main.waitForFunction(() => window.testLaunchUrl);
         await child.goto(origin + '/rank-independent.html#' + new URLSearchParams({ id: ticket.id, token: ticket.token }));
         await child.waitForFunction(() => window.getRankSupplyState?.().points.length === 20);
         const positions = await child.locator('#tab_rank > .panel').evaluateAll(es => es.map(e => ({ title: e.querySelector('h2').textContent, top: e.offsetTop, left: e.offsetLeft })));
-        assert.equal(positions.length, 3); assert.deepEqual(positions.map(p => p.title), ['거래대금 상위 [키움]', '쏠림율', '수급']);
+        assert.equal(positions.length, 3); assert.deepEqual(positions.map(p => p.title), ['거래대금 상위 [키움]', '쏠림율', '종목 수급']);
         assert.ok(positions[0].top < positions[1].top && positions[1].top < positions[2].top); assert.ok(positions.every(p => p.left === positions[0].left));
         await child.setViewportSize({ width: 1100, height: 1800 });
         await child.exposeFunction('resizeNativeWindow', async message => {
@@ -67,42 +70,45 @@ const { createRankIndependentRelay } = require('../../rank-independent');
         }));
         for (const id of ['rankSupplyChartPanel', 'concentrationChartPanel', 'rankSupplyChartPanel', 'concentrationChartPanel']) {
             const before = await plotHeights(), done = await child.evaluate(() => window.nativeResizeFinished);
+            const expectedOpen = await child.locator('#'+id+' .concentration-candle-toggle').getAttribute('aria-expanded') !== 'true';
             await child.locator(`#${id} .concentration-candle-toggle`).click();
-            await child.waitForFunction(count => window.nativeResizeFinished > count, done);
+            await child.waitForFunction(count => window.nativeResizeFinished >= count + 2, done);
             const after = await plotHeights();
             assert.ok(after.every((value, i) => Math.abs(value.plot - before[i].plot) <= 1), 'Opening/closing either candle preserves both main plot heights');
-            const other = id === 'rankSupplyChartPanel' ? 0 : 1;
-            assert.ok(Math.abs(after[other].card - before[other].card) <= 1, 'Only the toggled card changes its height');
-            assert.equal(await main.evaluate(() => getConcentrationDisplaySettings().candleOpen || getRankSupplyState().showCandles), false, 'Independent candle toggles do not change the main window');
+            assert.deepEqual(await child.locator('#concentrationChartPanel .concentration-candle-toggle, #rankSupplyChartPanel .concentration-candle-toggle').evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-expanded'))), [String(expectedOpen), String(expectedOpen)], 'Both independent candles follow either button');
+            assert.equal(await main.evaluate(() => getConcentrationDisplaySettings().candleOpen || getRankCombinedSupplyState().showCandles), false, 'Independent candle toggles do not change the main window');
         }
         assert.equal(child.viewportSize().height, 1800, 'Closing both candles restores the manually resized window even if opening hits the monitor height limit');
         for (const id of ['concentrationChartPanel', 'rankSupplyChartPanel']) {
+            const mainId=id==='concentrationChartPanel'?'combinedConcentrationChartPanel':'rankCombinedSupplyChartPanel';
             const before = await plotHeights();
-            await main.locator(`#${id} .concentration-candle-toggle`).click();
+            await main.locator(`#${mainId} .concentration-candle-toggle`).click();
             await new Promise(resolve => setTimeout(resolve, 700));
             assert.equal(await child.evaluate(() => getConcentrationDisplaySettings().candleOpen || getRankSupplyState().showCandles), false, 'Main candle toggles do not open independent candles');
             assert.deepEqual(await plotHeights(), before, 'Main candle toggles do not resize independent charts');
             let done = await child.evaluate(() => window.nativeResizeFinished);
             await child.locator(`#${id} .concentration-candle-toggle`).click();
-            await child.waitForFunction(count => window.nativeResizeFinished > count, done);
-            await main.locator(`#${id} .concentration-candle-toggle`).click();
+            await child.waitForFunction(count => window.nativeResizeFinished >= count + 2, done);
+            await main.locator(`#${mainId} .concentration-candle-toggle`).click();
             await new Promise(resolve => setTimeout(resolve, 700));
             assert.equal(await child.locator(`#${id} .concentration-candle-toggle`).getAttribute('aria-expanded'), 'true', 'Main closing its candle does not close the independent candle');
             done = await child.evaluate(() => window.nativeResizeFinished);
             await child.locator(`#${id} .concentration-candle-toggle`).click();
-            await child.waitForFunction(count => window.nativeResizeFinished > count, done);
+            await child.waitForFunction(count => window.nativeResizeFinished >= count + 2, done);
         }
         await child.locator('.supply-stock-select').selectOption('000660');
-        await main.waitForFunction(() => getRankSupplyState().selected === '000660');
-        assert.equal(await child.locator('#rankSupplyPinned, #rankStockPinned').count(), 0, 'Stock synchronization cannot be disabled');
+        await child.waitForFunction(()=>getRankSupplyState().selected==='000660');
+        assert.equal(await main.evaluate(()=>getRankCombinedSupplyState().selected),'005930','Independent selection leaves main selection unchanged');
+        assert.equal(await child.locator('#rankSupplyPinned, #rankStockPinned').count(), 0, 'Window isolation needs no synchronization toggle');
         await child.locator('.supply-stock-select').selectOption('005930');
         await child.waitForFunction(() => getRankSupplyState().selected === '005930' && getRankSupplyState().points.length === 20);
-        await main.waitForFunction(() => getRankSupplyState().selected === '005930');
+        assert.equal(await main.evaluate(()=>getRankCombinedSupplyState().selected),'005930');
         await child.locator('#rankSupplyChartPanel [data-mode="minute"]').click();
-        await main.waitForFunction(() => getRankSupplyState().mode === 'minute');
+        await child.waitForFunction(()=>getRankSupplyState().mode==='minute');
+        assert.equal(await main.evaluate(()=>getRankCombinedSupplyState().mode),'day');
         await child.waitForFunction(() => !document.querySelector('#rankSupplyChartPanel [data-action="more"]').disabled);
         assert.equal(await child.evaluate(() => getRankSupplyState().showCandles), false, 'Minute mode without flow keeps independent candles folded');
-        assert.equal(await main.evaluate(() => getRankSupplyState().showCandles), false, 'Minute mode without flow keeps main candles folded');
+        assert.equal(await main.evaluate(() => getRankCombinedSupplyState().showCandles), false, 'Peer mode changes leave main candles folded');
         await child.locator('#rankSupplyChartPanel [data-action="more"]').click();
         await child.waitForFunction(() => !getRankSupplyState().hasMore);
         assert.ok(requestCount >= 3, 'Supply requests use the authenticated relay');
@@ -129,20 +135,24 @@ const { createRankIndependentRelay } = require('../../rank-independent');
             }
         }
         assert.ok(await child.evaluate(() => window.foldSizes.filter(s => s.startsWith('resize-window:')).every(s => s.split(':')[1].split(',')[0] === '0')), 'Every fold/expand preserves native window width after manual resizing');
-        await main.locator('.supply-stock-select').selectOption('000660');
-        await child.waitForFunction(() => getRankSupplyState().selected === '000660').catch(async error => {
-            console.error('Reverse sync:', await main.evaluate(() => ({ selected: getRankSupplyState().selected, mode: getRankSupplyState().mode, status: document.querySelector('#rankSupplyChartPanel [role="status"]').textContent })), await child.evaluate(() => ({ selected: getRankSupplyState().selected, mode: getRankSupplyState().mode, status: document.querySelector('#rankSupplyChartPanel [role="status"]').textContent, connection: document.getElementById('rankConnectionStatus').textContent, debug: window.getRankIndependentDebug?.() })));
-            throw error;
-        });
+        await main.locator('#rankCombinedSupplyChartPanel .supply-stock-select').selectOption('000660');
+        await main.waitForFunction(()=>getRankCombinedSupplyState().selected==='000660');
+        assert.equal(await child.evaluate(()=>getRankSupplyState().selected),'005930','Main selection leaves peer selection unchanged');
         const saved = await child.evaluate(async () => (await fetch('/api/supply/watchlist', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ codes: ['005930'], revision: 1 }) })).json());
         assert.equal(saved.revision, 2);
-        await main.waitForFunction(() => getRankSupplyState().config.revision === 2);
+        await main.waitForFunction(() => getRankCombinedSupplyState().config.revision === 2);
         await new Promise(resolve => setTimeout(resolve, 1200));
+        await child.locator('#refreshInterval').selectOption('5');
+        await main.waitForFunction(()=>document.getElementById('refreshInterval').value==='5');
         await main.route('**/api/rank-independent/*/owner', route => route.abort());
         pump();
-        await child.waitForFunction(() => getRankSupplyState().points.some(p => p.foreign === 999));
+        await new Promise(resolve=>setTimeout(resolve,1200));
+        const beforeScheduled=requestCount;clock+=30001;pump();
+        for(let attempt=0;attempt<100&&requestCount<=beforeScheduled;attempt++)await new Promise(resolve=>setTimeout(resolve,100));
+        assert.ok(requestCount>beforeScheduled,'Scheduled refresh queries the peer source while the main transport is suspended');
+        assert.equal(await child.evaluate(()=>getRankSupplyState().points.some(p=>p.foreign===999)),false,'Server snapshot chart values must not replace local chart data');
         assert.deepEqual(errors, []);
-        console.log('PASS independent supply: vertical order, bidirectional selection without an opt-out, mode sync, minute history, fold, relay and server refresh while owner is suspended.');
+        console.log('PASS independent supply: vertical order, isolated selection and mode, minute history, fold, shared watchlist, relay and refresh while owner is suspended.');
     } catch (error) { console.error(error); throw error; }
     finally { await browser.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

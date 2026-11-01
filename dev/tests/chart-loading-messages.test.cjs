@@ -16,10 +16,10 @@ for(const file of ['rank-chart-cache.js','rank-chart-axis.js','rank-supply-guide
 await page.evaluate(()=>document.dispatchEvent(new Event('DOMContentLoaded')));await page.waitForFunction(()=>document.querySelector('#rankCombinedMarketSupplyChartPanel .rank-adr-status').textContent.includes('일별 순매수대금'));
 
 
-const rows=[['combinedConcentrationChartPanel','rankCombinedSupplyChartPanel','rankCombinedMarketSupplyChartPanel'],['rankBreadthChartPanel','rankAdrChartPanel','rankCombinedTurnoverChartPanel'],['rankVolatilityChartPanel','rankSentimentChartPanel']];
+const rows=[['combinedConcentrationChartPanel','rankCombinedSupplyChartPanel','rankCombinedMarketSupplyChartPanel'],['rankBreadthChartPanel','rankCombinedTurnoverChartPanel','rankCombinedMarketSupplySecondaryChartPanel'],['rankAdrChartPanel','rankVolatilityChartPanel','rankTestMarketSupplyChartPanel'],['rankSentimentChartPanel']];
 let bottom=0;
 for(const ids of rows){const rects=await page.evaluate(ids=>ids.map(id=>{const r=document.getElementById(id).getBoundingClientRect();return{top:r.top,left:r.left,bottom:r.bottom};}),ids);assert.ok(rects[0].top>=bottom);for(let i=1;i<rects.length;i++){assert.equal(rects[i].top,rects[0].top);assert.ok(rects[i].left>rects[i-1].left);}bottom=Math.max(...rects.map(r=>r.bottom));}
-assert.equal(await page.locator('.rank-chart-row>.panel').count(),8);
+assert.equal(await page.locator('.rank-chart-row>.panel').count(),10);
 await page.setViewportSize({width:600,height:1000});
 const mobile=await page.evaluate(ids=>ids.flat().map(id=>{const r=document.getElementById(id).getBoundingClientRect();return{top:r.top,left:r.left,bottom:r.bottom};}),rows);
 for(let i=1;i<mobile.length;i++){assert.equal(mobile[i].left,mobile[0].left);assert.ok(mobile[i].top>=mobile[i-1].bottom);}
@@ -27,5 +27,5 @@ const split=await page.evaluate(()=>{const panel=document.getElementById('rankCo
 assert.deepEqual(split.messages,['과거 조회 실패: 요청 시간 초과','일부 구간 미제공']);assert.match(split.notes,/표시 단위: 억원/);assert.match(split.notes,/관측한 누적값/);
 const concentrationNotes=await page.evaluate(()=>{const panel=document.getElementById('combinedConcentrationChartPanel');return {messages:RankSupplyGuide.loadingWarnings(panel,'minute',['LS 거래대금 미제공 구간은 결측 · 가격 캔들은 키움 자료','한투 거래대금 조회 실패: 시간 초과']),notes:document.querySelector('#'+panel.id+'Guide [data-loading-notes="minute"]').textContent};});
 assert.deepEqual(concentrationNotes.messages,['한투 거래대금 조회 실패: 시간 초과']);assert.match(concentrationNotes.notes,/미제공 구간은 결측/);assert.match(concentrationNotes.notes,/가격 캔들은 키움 자료/);
-assert.deepEqual(errors,[]);console.log('PASS trading chart desktop rows and mobile order; eight retained cards');
+assert.deepEqual(errors,[]);console.log('PASS trading chart desktop rows and mobile order; all ten current cards');
 }finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

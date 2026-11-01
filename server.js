@@ -173,12 +173,19 @@ app.use('/api', (req, res, next) => {
     next();
 });
 
+app.use('/api',(req,res,next)=>{
+    const value=backgroundRefreshService.cached(req.method,req.baseUrl+req.path,req.query);
+    if(value)return res.set('Cache-Control','no-store').json(value);
+    next();
+});
 app.get('/api/server/storage', async (req, res) => {
     try { res.set('Cache-Control', 'no-store').json(await diskSpace(path.join(__dirname, 'data'))); }
     catch { res.status(503).json({ success: false, error: '서버 디스크 용량을 확인할 수 없습니다.' }); }
 });
 
 createRankIndependentRelay({
+    canAutoRefresh:()=>tradingSession.spotAt(),session:()=>tradingSession.snapshot(),
+    onPeerActivity:(id,active)=>backgroundRefreshService.touchBrowser('independent:'+id,active,120000),
     marketAlerts: { snapshot: user => marketAlertService.snapshot(user) },
     refresh: async (snapshot, email) => {
         const data = await new Promise((resolve, reject) => {
@@ -2724,6 +2731,21 @@ app.get('/api/fred', async (req, res) => {
  * 사용자 설정 저장 및 불러오기 API
  */
 const SETTINGS_FILE = migrateSettingsNames(__dirname);
+let backgroundSettingsStamp=null,backgroundSettingsCache={};
+function readBackgroundSettings(){
+    try{
+        const stat=fs.statSync(SETTINGS_FILE),stamp=stat.mtimeMs+':'+stat.size;
+        if(stamp!==backgroundSettingsStamp){backgroundSettingsCache=JSON.parse(fs.readFileSync(SETTINGS_FILE,'utf8'));backgroundSettingsStamp=stamp;}
+    }catch(error){if(error.code!=='ENOENT')throw error;backgroundSettingsCache={};}
+    return {...backgroundSettingsCache,backgroundSupply:supplyService.summary()};
+}
+const backgroundRefreshService=require('./background-refresh').createBackgroundRefresh({
+    directory:path.join(__dirname,'data','background-refresh'),readSettings:readBackgroundSettings,policy:tradingSession,
+    setStocks:codes=>lsTurnoverData.setBackgroundStocks(codes),
+    execute:require('./background-refresh').createJobExecutor(app,{email:AUTH_ADMIN_EMAIL,isAdmin:true})
+});
+require('./background-refresh').mountBackgroundRoutes(app,backgroundRefreshService,req=>Boolean(getSessionFromRequest(req)));
+require('./browser-live-check').mountBrowserLiveCheck(app,{directory:path.join(__dirname,'outputs','browser-live-check-20261102'),background:backgroundRefreshService});
 const MEMO_BACKUP_FILE = path.join(__dirname, 'user_settings.memo-backup.json');
 const QUICK_NOTE_FILE = path.join(__dirname, 'user_settings.quick-note.json');
 
@@ -3129,6 +3151,7 @@ app.listen(PORT, async () => {
     lsMarketSupplyService.start();
     kisConcentrationChartService.start();
     breadthService.start();
+    backgroundRefreshService.start();
     // Keep the daily archive current even when no chart is open.
     const refreshVolatilityArchive = () => Promise.allSettled([volatilityService.query('all'), sentimentService.query('all')]).then(results => results.forEach(result => { if (result.status === 'rejected') console.warn('[Risk] Archive refresh failed:', result.reason.message); }));
     refreshVolatilityArchive();

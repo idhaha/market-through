@@ -116,9 +116,9 @@
             const sizes = panels.map(item => ({ width: item.offsetWidth, height: item.offsetHeight }));
             // Concentration publishes before toggling; supply publishes after toggling.
             // Recover the original plot height in either order.
-            const plotHeight = event.detail.open
+            const plotHeight = window.rankIndependentCandleHeights?.get(chart.id) || (event.detail.open
                 ? main.clientHeight + (main.style.flex || candle.hidden ? 0 : candle.clientHeight)
-                : candleHeights.get(chart.id) || candle.clientHeight || main.clientHeight;
+                : candleHeights.get(chart.id) || candle.clientHeight || main.clientHeight);
             main.style.flex = '0 0 ' + plotHeight + 'px'; main.style.height = plotHeight + 'px';
             candle.style.flex = '0 0 ' + plotHeight + 'px'; candle.style.height = plotHeight + 'px';
             const delta = event.detail.open ? plotHeight : -plotHeight;
@@ -317,6 +317,7 @@
         }
         function paintFreshness() {
             if (!serverRefresh) return;
+            if(serverRefresh.paused&&!transportFailed&&!renderFailed&&!serverRefresh.error){document.getElementById('independentStatusText').textContent='휴장 · 자동갱신 대기';return;}
             const age = serverAge + Date.now() - receivedAt;
             const delayed = transportFailed || renderFailed || serverRefresh.error || !serverRefresh.data || age > serverRefresh.interval + 90000;
             document.getElementById('independentStatusText').textContent = delayed ? '갱신 지연' : '완료';
@@ -363,6 +364,7 @@
                 }
                 if (!response.ok) throw new Error('연결 실패');
                 const result = await response.json();
+                window.TradingRefresh?.accept(result.tradingSession);
                 window.lastMarketAlertState = result.marketAlerts;
                 window.dispatchEvent(new CustomEvent('market-alert-state', { detail: result.marketAlerts }));
                 transportFailed=false;renderFailed=false;stage='render';

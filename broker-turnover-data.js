@@ -11,6 +11,7 @@ function createBrokerTurnoverData({ broker, directory, transport, http, getToken
     pause = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
     const store = createSupplyStore({ directory, now, fields: ['amount'] });
     const pending = new Map(), owners = new Map(), cache = new Map(), latest = new Map();
+    let backgroundStocks=[];
     let queue = Promise.resolve(), timer, archiveMinute = -1;
     function flush() {
         const minute = Math.floor(now()/60000)*60000;
@@ -49,7 +50,7 @@ function createBrokerTurnoverData({ broker, directory, transport, http, getToken
     }
     function watchedCodes() {
         for (const [owner, value] of owners) if (now()-value.at>15*60000) owners.delete(owner);
-        return [...new Set([...owners.values()].sort((a,b)=>b.at-a.at).map(v=>v.code))].slice(0,10);
+        return [...new Set([...backgroundStocks,...[...owners.values()].sort((a,b)=>b.at-a.at).map(v=>v.code)])].slice(0,10);
     }
     function syncStreams() {
         const streams = Object.entries(broker==='ls'?lsIndices:kisIndices).map(([,key])=>({tr:broker==='ls'?'IJ_':'H0UPCNT0',key,onData:raw=>receive(raw,key)}));
@@ -143,7 +144,9 @@ function createBrokerTurnoverData({ broker, directory, transport, http, getToken
         else if(broker==='ls') {
             let total=0,lastDay,complete=false;
             for(const p of data.rows){
-                const date=dayKey(p.t);if(date!==lastDay){lastDay=date;total=0;complete=new Date(p.t+9*3600000).toISOString().slice(11,19).replaceAll(':','')===opening;}
+                // A fully requested LS day may start at the regular 09:00
+                // session for a stock with no 08:00 premarket bars.
+                const date=dayKey(p.t);if(date!==lastDay){lastDay=date;total=0;const first=new Date(p.t+9*3600000).toISOString().slice(11,19).replaceAll(':','');complete=first===opening || stock&&first==='090000';}
                 total+=p.amount;result.set(p.t,cumulative?(complete?total:null):p.amount);
             }
         } else {
@@ -162,6 +165,7 @@ function createBrokerTurnoverData({ broker, directory, transport, http, getToken
         return {values:result,warnings:data.warnings};
     }
     function start(){if(timer)return;syncStreams();const run=()=>{try{flush();syncStreams();const m=Math.floor(now()/60000);if(m!==archiveMinute){store.archiveCompleted();archiveMinute=m;}}catch{}};timer=setInterval(run,1000);timer.unref?.();}
-    return {store,receive,flush,watchStock,amounts,start,stop:()=>{clearInterval(timer);timer=null;transport.setStreams('turnover',[]);},streamStatus:transport.streamStatus};
+    function setBackgroundStocks(codes){const next=[...new Set(codes.filter(validCode))];if(JSON.stringify(next)!==JSON.stringify(backgroundStocks)){backgroundStocks=next;syncStreams();}}
+    return {store,receive,flush,watchStock,setBackgroundStocks,amounts,start,stop:()=>{clearInterval(timer);timer=null;transport.setStreams('turnover',[]);},streamStatus:transport.streamStatus};
 }
 module.exports={createBrokerTurnoverData,million,marketCodes,lsMinuteTime};

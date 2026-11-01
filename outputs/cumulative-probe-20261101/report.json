@@ -1,0 +1,48 @@
+{
+  "date": "20261030",
+  "at": "2026-11-01T06:02:36.854Z",
+  "sources": [
+    {
+      "code": "353200",
+      "name": "대덕전자",
+      "minutes": 620,
+      "first": "2026-10-30T09:00:00",
+      "last": "2026-10-30T19:59:00",
+      "cumulativeMinutes": 620,
+      "cumulativeFirst": "2026-10-30T09:00:00",
+      "cumulativeLast": "2026-10-30T19:59:00",
+      "minuteTotal": 242187000000,
+      "dailyTotal": 242534000000,
+      "totalsMatch": false,
+      "warnings": []
+    },
+    {
+      "code": "005930",
+      "name": "삼성전자",
+      "minutes": 690,
+      "first": "2026-10-30T08:00:00",
+      "last": "2026-10-30T19:59:00",
+      "cumulativeMinutes": 690,
+      "cumulativeFirst": "2026-10-30T08:00:00",
+      "cumulativeLast": "2026-10-30T19:59:00",
+      "minuteTotal": 6816186000000,
+      "dailyTotal": 6860688000000,
+      "totalsMatch": false,
+      "warnings": []
+    },
+    {
+      "code": "kospi",
+      "name": "KOSPI",
+      "minutes": 381,
+      "first": "2026-10-30T09:00:00",
+      "last": "2026-10-30T15:30:00",
+      "cumulativeMinutes": 381,
+      "cumulativeFirst": "2026-10-30T09:00:00",
+      "cumulativeLast": "2026-10-30T15:30:00",
+      "minuteTotal": 20248472000000,
+      "dailyTotal": 20248472000000,
+      "totalsMatch": true,
+      "warnings": []
+    }
+  ]
+}
