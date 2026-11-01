@@ -1,11 +1,48 @@
 const test=require('node:test');const assert=require('node:assert/strict');const vm=require('node:vm');const fs=require('node:fs');
 const context={window:{}};vm.runInNewContext(fs.readFileSync('public/rank-chart-axis.js','utf8'),context);const {ticks}=context.window.RankChartAxis;
 const ctx={measureText:label=>({width:label.length*7})};
+test('weekday holiday and substitute closure skip only closed sessions, including a Friday holiday',()=>{
+ const window={TradingRefresh:{state:{days:{'2026-10-09':false,'2026-10-12':false}}}};
+ vm.runInNewContext(fs.readFileSync('public/rank-chart-axis.js','utf8'),{window,queueMicrotask:()=>{}});
+ const api=window.RankChartAxis,rows=['2026-10-08 18:00','2026-10-09 06:01','2026-10-13 08:00','2026-10-13 18:00'];
+ api.sharedRange('testMarketSupply',rows,v=>v,'minute',0,null,()=>{});
+ const domain=api.minuteDomain();
+ assert.equal(domain.position(rows[2])-domain.position(rows[1]),1);
+ for(let n=0;n<=domain.span;n++){
+  const date=domain.at(n).slice(0,16);assert.equal(domain.position(date),n);
+  assert.ok(!date.startsWith('2026-10-10')&&!date.startsWith('2026-10-11')&&!date.startsWith('2026-10-12'));
+  if(date.startsWith('2026-10-09'))assert.ok(date.slice(11)<='06:01');
+ }
+ const boundaries=api.dayBoundaryPositions(0,1000,domain);
+ assert.deepEqual(Array.from(boundaries,p=>p.date),['2026-10-13']);
+});
+test('weekend compression keeps Saturday close and maps the next minute to Monday open across weeks',()=>{
+ const isolated={window:{},queueMicrotask:()=>{}};
+ vm.runInNewContext(fs.readFileSync('public/rank-chart-axis.js','utf8'),isolated);
+ const api=isolated.window.RankChartAxis;
+ const rows=['2026-10-26 08:00','2026-10-31 06:00','2026-10-31 06:01','2026-11-02 08:00','2026-11-09 08:00'];
+ api.sharedRange('testMarketSupply',rows,v=>v,'minute',0,null,()=>{});
+ api.sharedRange('combinedConcentration',rows,v=>v,'minute',0,null,()=>{});
+ const domain=api.minuteDomain();
+ assert.equal(domain.position(rows[3])-domain.position(rows[2]),1);
+ assert.equal(domain.position(rows[3]),6610);assert.equal(domain.position(rows[4]),13220);
+ for(let n=0;n<=domain.span;n++){
+  const date=domain.at(n).slice(0,16),weekday=new Date(date.slice(0,10)+'T00:00:00Z').getUTCDay(),clock=date.slice(11);
+  assert.notEqual(weekday,0);if(weekday===6)assert.ok(clock<='06:01');if(weekday===1)assert.ok(clock>='08:00');
+  assert.equal(domain.position(date),n);
+ }
+ const boundaries=api.dayBoundaryPositions(0,1000,domain);
+ assert.ok(boundaries.every(p=>![0,6].includes(new Date(p.date+'T00:00:00Z').getUTCDay())));
+ const x=api.sessionX(rows,v=>v,0,domain.span,true),peer=api.sessionX(rows,v=>v,0,domain.span,true);
+ assert.equal(x(rows[3])-x(rows[2]),1);assert.equal(x(rows[3]),peer(rows[3]));
+ api.selectViewport('combinedConcentration',domain.position(rows[2])/domain.span,domain.position(rows[3])/domain.span);
+ assert.equal(api.minuteDomain().first,rows[2]);assert.equal(api.minuteDomain().last,rows[3]);assert.equal(api.minuteDomain().span,1);
+});
 test('overnight common axis omits 06:02-07:59 and preserves inverse, peer alignment and zoom',()=>{
  const isolated={window:{},queueMicrotask:()=>{}};
  vm.runInNewContext(fs.readFileSync('public/rank-chart-axis.js','utf8'),isolated);
  const api=isolated.window.RankChartAxis;
- const rows=['2026-10-30 06:00','2026-10-30 06:01','2026-10-30 08:00','2026-10-31 06:01','2026-10-31 08:00'];
+ const rows=['2026-10-30 06:00','2026-10-30 06:01','2026-10-30 08:00','2026-10-31 06:01','2026-11-02 08:00'];
  api.sharedRange('testMarketSupply',rows,v=>v,'minute',0,null,()=>{});
  api.sharedRange('combinedMarketSupply',rows.slice(2),v=>v,'minute',0,null,()=>{});
  const domain=api.minuteDomain();

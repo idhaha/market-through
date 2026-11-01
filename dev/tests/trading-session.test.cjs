@@ -23,6 +23,24 @@ test('a newly announced holiday is taken from refreshed broker dates, not a fixe
     await f.policy.refresh();assert.equal(f.policy.spotAt(),false);assert.equal(f.policy.futuresAt(),false);
     await f.policy.refresh();await f.policy.refresh();assert.equal(f.calls(),2);
 });
+test('night closure uses its start date, preserving the night before a weekday holiday',async t=>{
+ const f=fixture(t,'20261102','180000');
+ f.setRows([{bass_dt:'20261102',opnd_yn:'Y'},{bass_dt:'20261103',opnd_yn:'N'},{bass_dt:'20261104',opnd_yn:'Y'}]);
+ await f.policy.refresh();assert.equal(f.policy.nightAt(),true,'Next-day holiday must not close tonight');
+ f.setTime('20261103','010000');await f.policy.refresh();assert.equal(f.policy.nightAt(),true);
+ f.setTime('20261103','180000');assert.equal(f.policy.nightAt(),false);
+ f.setTime('20261104','010000');await f.policy.refresh();assert.equal(f.policy.nightAt(),false);
+ f.setTime('20261104','180000');assert.equal(f.policy.nightAt(),true);
+});
+test('historical calendar reads persist closures and do not mark current scheduling validated',async t=>{
+ const f=fixture(t,'20261102','120000');f.setRows([{bass_dt:'20261009',opnd_yn:'N'},{bass_dt:'20261012',opnd_yn:'Y'}]);
+ const result=await f.policy.calendarRange('2026-10-09','2026-10-12');
+ assert.equal(result.days['2026-10-09'],false);assert.equal(result.days['2026-10-12'],true);
+ assert.equal(f.policy.snapshot().calendarFresh,false);assert.equal(f.policy.spotAt(),false);
+ await f.policy.calendarRange('2026-10-09','2026-10-12');assert.equal(f.calls(),1);
+ assert.equal(JSON.parse(fs.readFileSync(path.join(f.directory,'calendar.json'))).days['2026-10-09'],false);
+ await assert.rejects(f.policy.calendarRange('invalid','2026-10-12'),e=>e.status===400);
+});
 test('failed calendar refresh suspends automatic collection and backs off instead of retrying every tick',async t=>{
     let calls=0;const f=fixture(t,'20261102','120000',{loadCalendar:async()=>{calls++;throw Error('private');}});
     await f.policy.refresh();await f.policy.refresh();assert.equal(calls,1);assert.equal(f.policy.spotAt(),false);assert.equal(f.policy.snapshot().calendarKnown,false);
@@ -52,4 +70,17 @@ test('frontend session failure clears the previous open state and automatic futu
     }});
     await window.TradingRefresh.update();assert.equal(window.TradingRefresh.allows('testMarketSupply'),true);assert.equal(window.TradingRefresh.allows('supply'),false);
     at+=61000;fail=true;await window.TradingRefresh.update();assert.equal(window.TradingRefresh.allows('testMarketSupply'),false);
+});
+test('frontend calendar requests include the prior night date, coalesce reads and notify chart redraw',async()=>{
+ const window={},requests=[],events=[];
+ const document={getElementById:()=>null,dispatchEvent:event=>events.push(event.type)};
+ const fetch=async url=>{requests.push(url);return {ok:true,json:async()=>url.includes('/calendar?')?{days:{'2026-10-09':false,'2026-10-12':false}}:{spot:false,futures:false,days:{'2026-10-08':true}}};};
+ vm.runInNewContext(fs.readFileSync('public/trading-refresh.js','utf8'),{window,document,fetch,URLSearchParams,CustomEvent:class{constructor(type){this.type=type;}}});
+ await window.TradingRefresh.update();
+ await Promise.all([window.TradingRefresh.ensureCalendar('2026-10-09','2026-10-12'),window.TradingRefresh.ensureCalendar('2026-10-09','2026-10-12')]);
+ assert.equal(requests.filter(url=>url.includes('/calendar?')).length,1);
+ assert.ok(requests.at(-1).includes('from=2026-10-08'));
+ assert.equal(window.TradingRefresh.state.days['2026-10-09'],false);
+ assert.equal(window.TradingRefresh.state.days['2026-10-08'],true);
+ assert.ok(events.includes('trading-calendar-updated'));
 });

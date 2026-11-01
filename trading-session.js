@@ -12,16 +12,38 @@ function createTradingSession({directory,loadCalendar,now=Date.now}){
         return typeof saved.days[date]==='boolean'?saved.days[date]:null;
     }
     function nightDay(t){const m=new Date(t+9*3600000).getUTCHours()*60+new Date(t+9*3600000).getUTCMinutes();return day(t-(m<360?86400000:0));}
-    function nextWeekday(d){let t=dateTime(d)+86400000;while([0,6].includes(new Date(t+9*3600000).getUTCDay()))t+=86400000;return day(t);}
     const fresh=()=>saved.validatedDay===day(now());
     function spotAt(t=now()){const d=new Date(t+9*3600000),m=d.getUTCHours()*60+d.getUTCMinutes();return fresh() && m>=480 && m<1200 && openDate(day(t))===true;}
     function nightAt(t=now()){
         const d=new Date(t+9*3600000),m=d.getUTCHours()*60+d.getUTCMinutes();
         if(!fresh() || m>=360 && m<1080)return false;
-        const date=nightDay(t);return openDate(date)===true && openDate(nextWeekday(date))===true;
+        const date=nightDay(t);return openDate(date)===true;
     }
     function futuresAt(t=now()){const d=new Date(t+9*3600000),m=d.getUTCHours()*60+d.getUTCMinutes();return fresh() && m>=525 && m<945 && openDate(day(t))===true || nightAt(t);}
-    function snapshot(){return {date:day(now()),spot:spotAt(),futures:futuresAt(),night:nightAt(),calendarKnown:openDate(day(now()))===false || fresh() && openDate(day(now()))!==null,checkedDay:saved.checkedDay,calendarFresh:fresh()};}
+    function snapshot(){return {date:day(now()),spot:spotAt(),futures:futuresAt(),night:nightAt(),calendarKnown:openDate(day(now()))===false || fresh() && openDate(day(now()))!==null,checkedDay:saved.checkedDay,calendarFresh:fresh(),days:{...saved.days}};}
+    function persist(){fs.mkdirSync(directory,{recursive:true});fs.writeFileSync(file+'.tmp',JSON.stringify(saved));fs.renameSync(file+'.tmp',file);}
+    function merge(rows){
+        if(!Array.isArray(rows))throw Error('Invalid market calendar');
+        for(const r of rows){const raw=String(r.bass_dt||'');if(/^\d{8}$/.test(raw)&&['Y','N'].includes(r.opnd_yn))saved.days[`${raw.slice(0,4)}-${raw.slice(4,6)}-${raw.slice(6)}`]=r.opnd_yn==='Y';}
+    }
+    const rangeJobs=new Map();
+    async function calendarRange(from,to){
+        const valid=d=>/^\d{4}-\d{2}-\d{2}$/.test(d) && Number.isFinite(dateTime(d)) && day(dateTime(d))===d;
+        if(!valid(from)||!valid(to)||from>to||dateTime(to)-dateTime(from)>3660*86400000)throw Object.assign(Error('Invalid calendar range'),{status:400});
+        const jobs=[];
+        for(let t=dateTime(from);t<=dateTime(to);t+=28*86400000){
+            const end=Math.min(t+27*86400000,dateTime(to));let missing=false;
+            for(let at=t;at<=end;at+=86400000)if(openDate(day(at))===null){missing=true;break;}
+            if(!missing)continue;
+            const key=day(t),old=rangeJobs.get(key);
+            if(old && now()-old.at<6*3600000){jobs.push(old.promise);continue;}
+            const entry={at:now(),promise:null};
+            entry.promise=Promise.resolve().then(()=>loadCalendar(key.replaceAll('-',''))).then(rows=>{merge(rows);persist();}).catch(()=>{entry.at=now()-6*3600000+15*60000;});
+            rangeJobs.set(key,entry);jobs.push(entry.promise);
+        }
+        await Promise.all(jobs);
+        return {days:Object.fromEntries(Object.entries(saved.days).filter(([date])=>date>=from&&date<=to))};
+    }
     async function refresh(){
         if(pending)return pending;
         const today=day(now());if(fresh() || lastFailure && now()-lastFailure<15*60000)return snapshot();
@@ -31,15 +53,14 @@ function createTradingSession({directory,loadCalendar,now=Date.now}){
         pending=(async()=>{
             try{
                 const rows=await loadCalendar(day(now()-86400000).replaceAll('-',''));
-                if(!Array.isArray(rows))throw Error();
-                for(const r of rows){const raw=String(r.bass_dt||'');if(/^\d{8}$/.test(raw)&&['Y','N'].includes(r.opnd_yn))saved.days[`${raw.slice(0,4)}-${raw.slice(4,6)}-${raw.slice(6)}`]=r.opnd_yn==='Y';}
+                merge(rows);
                 if(openDate(today)===null)throw Error();
                 saved.validatedDay=today;lastFailure=0;
-                fs.mkdirSync(directory,{recursive:true});fs.writeFileSync(file+'.tmp',JSON.stringify(saved));fs.renameSync(file+'.tmp',file);
+                persist();
             }catch{lastFailure=now(); /* Do not open from stale holiday data after a failed refresh. */ }
             return snapshot();
         })().finally(()=>{pending=null;});return pending;
     }
-    return {spotAt,nightAt,futuresAt,openDate,snapshot,refresh,start(){if(timer)return;void refresh();timer=setInterval(()=>void refresh(),60000);timer.unref?.();},stop(){clearInterval(timer);timer=null;}};
+    return {spotAt,nightAt,futuresAt,openDate,snapshot,calendarRange,refresh,start(){if(timer)return;void refresh();timer=setInterval(()=>void refresh(),60000);timer.unref?.();},stop(){clearInterval(timer);timer=null;}};
 }
 module.exports={createTradingSession,install,current};

@@ -116,6 +116,10 @@ const tradingSession = require('./trading-session').createTradingSession({
 });
 require('./trading-session').install(tradingSession);
 app.get('/api/trading-session',(req,res)=>res.set('Cache-Control','no-store').json(tradingSession.snapshot()));
+app.get('/api/trading-session/calendar',async(req,res)=>{
+    try{res.set('Cache-Control','no-store').json(await tradingSession.calendarRange(req.query.from,req.query.to));}
+    catch(error){res.status(error.status || 502).json({error:'Market calendar unavailable'});}
+});
 const SERVER_START_TIME = new Date().toLocaleString();
 const GOOGLE_OAUTH_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '218429663028-l66pfc3i804uec317arj717r1hrf519u.apps.googleusercontent.com';
 const AUTH_ADMIN_EMAIL = 'azikanbal@gmail.com';

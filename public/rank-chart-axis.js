@@ -397,6 +397,12 @@
         if(!previous || previous.left!==margin.left || previous.right!==margin.right)notifyCharts();
         return {left:Math.max(...[...plotMargins.values()].map(p=>p.left)),right:width-Math.max(...[...plotMargins.values()].map(p=>p.right))};
     }
+    let tradingAxisCache;
+    if(typeof document!=='undefined')document.addEventListener?.('trading-calendar-updated',()=>{
+        tradingAxisCache=null;rangeRevision++;
+        for(const chart of minuteCharts.values())chart.applied=undefined;
+        notifyCharts();
+    });
     function minuteDomain(values=[],getDate=v=>v,useViewport=true) {
         const active=[...minuteCharts.values()].filter(c=>c.mode==='minute');
         const dates=values.map(v=>dateParts(getDate(v)).slice(0,16));
@@ -407,20 +413,40 @@
         if(overnight?.mode==='minute' && overnight.first){
             const first=viewport?.first || sharedCutoff || overnight.first;
             const last=viewport?.last || active.map(c=>c.last).filter(v=>v && v>=first).sort().at(-1) || first;
-            // Keep 06:01 closing observations; omit 06:02 through 07:59.
-            // Zoom and scroll use the matching inverse below.
-            const epoch=s=>{
-                const local=Date.parse(s.replace(' ','T')+':00+09:00')/60000+540;
-                const day=Math.floor(local/1440),clock=local-day*1440;
-                return day*1322+clock-Math.min(118,Math.max(0,clock-362));
+            const calendar=window.TradingRefresh?.state?.days || {};
+            const open=date=>![0,6].includes(new Date(date+'T00:00:00Z').getUTCDay()) && calendar[date]!==false;
+            const epoch=s=>Date.parse(s.replace(' ','T')+':00+09:00')/60000;
+            const bounds=[first,last,...active.flatMap(c=>[c.first,c.last]),...dates].filter(Boolean).sort();
+            const from=bounds[0].slice(0,10),to=bounds.at(-1).slice(0,10);
+            void window.TradingRefresh?.ensureCalendar?.(from,to);
+            const key=from+':'+to+':'+JSON.stringify(calendar);
+            if(tradingAxisCache?.key!==key){
+                const intervals=[];let total=0;
+                const add=(start,end)=>{intervals.push({start,end,offset:total});total+=end-start;};
+                for(let t=Date.parse(from+'T00:00:00+09:00')-86400000,end=Date.parse(to+'T00:00:00+09:00')+7*86400000;t<=end;t+=86400000){
+                    const date=dateParts(t).slice(0,10),previous=dateParts(t-86400000).slice(0,10),minute=t/60000;
+                    if(open(previous))add(minute,minute+362);
+                    if(open(date))add(minute+480,minute+1440);
+                }
+                tradingAxisCache={key,intervals};
+            }
+            const intervals=tradingAxisCache.intervals;
+            const locate=(value,field)=>{
+                let low=0,high=intervals.length;
+                while(low<high){const middle=(low+high)>>1;if(intervals[middle][field]<=value)low=middle+1;else high=middle;}
+                return intervals[Math.max(0,low-1)];
             };
-            const origin=epoch(first),position=value=>epoch(dateParts(value).slice(0,16))-origin;
+            const coordinate=t=>{
+                const segment=locate(t,'start');
+                return segment?segment.offset+Math.min(segment.end-segment.start,t-segment.start):t;
+            };
+            const origin=coordinate(epoch(first)),position=value=>coordinate(epoch(dateParts(value).slice(0,16)))-origin;
             const at=n=>{
-                const total=origin+n,day=Math.floor(total/1322),clock=total-day*1322;
-                return dateParts((day*1440+clock+(clock>=362?118:0)-540)*60000);
+                const value=origin+n,segment=locate(value,'offset');
+                return dateParts((segment?segment.start+value-segment.offset:value)*60000);
             };
             const days=[];for(let t=Date.parse(first.slice(0,10)+'T00:00:00+09:00'),end=Date.parse(last.slice(0,10)+'T00:00:00+09:00');t<=end;t+=86400000)days.push(dateParts(t).slice(0,10));
-            return {first,last,days,offset:0,span:Math.max(1,position(last)),position,at,continuous:true};
+            return {first,last,days,offset:0,span:Math.max(1,position(last)),position,at,continuous:true,openDate:open};
         }
         const first=viewport?.first || (active.length ? (sharedCutoff || today+' 08:00') : localFirst+' 08:00');
         const latest=active.length ? active.map(c=>c.last).filter(v=>v && v>=first).sort().at(-1) : dates.at(-1);
@@ -552,7 +578,8 @@
         return (domain.days.length>1?domain.first.slice(5,10).replace('-','/')+' ':'')+domain.first.slice(11,16);
     }
     function dayBoundaryPositions(left,right,domain=minuteDomain()) {
-        return domain.days.map(day=>({date:day,x:left+domain.position(day+' 08:00')/domain.span*(right-left)}))
+        return domain.days.filter(day=>domain.openDate?domain.openDate(day):!domain.continuous || ![0,6].includes(new Date(day+'T00:00:00Z').getUTCDay()))
+            .map(day=>({date:day,x:left+domain.position(day+' 08:00')/domain.span*(right-left)}))
             .filter(p=>Number.isFinite(p.x)&&p.x>=left&&p.x<=right);
     }
     function drawDayBoundaries(context,left,right,top,bottom) {
