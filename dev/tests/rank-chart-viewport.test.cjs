@@ -1,5 +1,5 @@
 const vm=require('node:vm'),fs=require('node:fs'),test=require('node:test'),assert=require('node:assert/strict');
-function setup(){const listeners={};const sandbox={window:{},queueMicrotask:()=>{},Date:class extends Date{static now(){return Date.parse('2026-10-23T10:00:00+09:00')}},document:{querySelectorAll:()=>[],addEventListener:(type,fn)=>{(listeners[type]??=[]).push(fn)}}};vm.runInNewContext(fs.readFileSync('public/rank-chart-axis.js','utf8'),sandbox);return {api:sandbox.window.RankChartAxis,listeners};}
+function setup(){const listeners={};const sandbox={window:{},localStorage:{getItem:()=>null,setItem(){}},MutationObserver:class{observe(){}},queueMicrotask:()=>{},Date:class extends Date{static now(){return Date.parse('2026-10-23T10:00:00+09:00')}},document:{querySelectorAll:()=>[],addEventListener:(type,fn)=>{(listeners[type]??=[]).push(fn)}}};vm.runInNewContext(fs.readFileSync('public/rank-chart-axis.js','utf8'),sandbox);return {api:sandbox.window.RankChartAxis,listeners};}
 
 for(const mode of ['day','minute'])test(`${mode}: latest zoom follows new bars at constant width, with staggered sparse peers`,()=>{
  const {api}=setup();

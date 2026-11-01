@@ -130,6 +130,11 @@
             panel.addEventListener('click', event => { if (event.target.closest('[data-mode],[data-series]') && typeof saveAppData === 'function') queueMicrotask(() => saveAppData()); });
         }
         stockSelect.addEventListener('change', () => queueMicrotask(publish));
+        let dailyCandleCoverage = null, dailyCandleAttempt = '', candleWork;
+        function dailyCandleRange(target) {
+            const first = [window.RankChartAxis.dailyDomain()?.first, flowCoverageFirst, target].filter(Boolean).map(value=>value.slice(0,10)).sort()[0];
+            return {...(first?{from:first.replaceAll('-','')}:{count:'600'}),to:dayKey(Date.now()).replaceAll('-','')};
+        }
         function clearView() {
             candleController?.abort();++candleRevision;candleLoading=false;
             todayOnly=true;
@@ -137,6 +142,7 @@
             cursor = null; hasMore = false; historyLoaded = false; flowCoverageFirst=''; candleError='';
             minuteDays.clear();
             priceHistory.clear(); priceCursor = null;
+            dailyCandleCoverage = null; dailyCandleAttempt = '';
             candleMessage = ''; chartMessage = ''; draw();
         }
         function surface(c, context) {
@@ -146,6 +152,13 @@
             context.font = '12px Inter, sans-serif'; return { w, h };
         }
         function draw() {
+            if (mode === 'day' && selected && showCandles && !candleLoading) {
+                const range=dailyCandleRange(),key=`${selected}:${range.from || '600bars'}:${range.to}`;
+                if ((!dailyCandleCoverage || dailyCandleCoverage.from>range.from || dailyCandleCoverage.to<range.to) && dailyCandleAttempt!==key) {
+                    dailyCandleAttempt=key;
+                    queueMicrotask(()=>{if(mode==='day'&&selected&&showCandles)void loadCandles(undefined,true);});
+                }
+            }
             if(window.rankIndependentClient)panel.querySelector('h2').textContent='종목 수급';
             window.RankChartAxis.loadingBar(canvas.parentElement,flowLoading,'수급');
             window.RankChartAxis.loadingBar(candleArea,candleLoading,'캔들');
@@ -337,7 +350,16 @@
             if(restoreWindow && restoreWindow.first.slice(0,10)<dayKey(Date.now()))todayOnly=false;
             void load(false,restoreWindow);
         }
-        async function loadCandles(target) {
+        function loadCandles(target, onlyCoverage = false) {
+            if(candleLoading){
+                if(target)return Promise.resolve(candleWork).then(()=>loadCandles(target));
+                return candleWork;
+            }
+            return candleWork=performCandleLoad(target, onlyCoverage);
+        }
+        async function performCandleLoad(target, onlyCoverage) {
+            const dailyRange=mode==='day'?dailyCandleRange(target):null;
+            if((target || onlyCoverage) && dailyRange && dailyCandleCoverage && dailyCandleCoverage.from<=dailyRange.from && dailyCandleCoverage.to>=dailyRange.to)return;
             if(candleLoading && !target)return;
             candleController?.abort(); const current = candleController = new AbortController(), id = ++candleRevision;
             candleMessage = ''; candleError='';
@@ -345,14 +367,14 @@
             candleLoading = true; candleMessage = '캔들 조회 중…'; setStatus(); draw();
             try {
                 const requestedDays=new Set(minuteDays);
-                if(target){const domain=window.RankChartAxis.minuteDomain();for(const day of domain.days || [])if(day>=target.slice(0,10))requestedDays.add(day);requestedDays.add(target.slice(0,10));}
-                const days = [...requestedDays].sort(); if (!days.length) days.push('');
+                if(target && mode==='minute'){const domain=window.RankChartAxis.minuteDomain();for(const day of domain.days || [])if(day>=target.slice(0,10))requestedDays.add(day);requestedDays.add(target.slice(0,10));}
+                const days = dailyRange?['']:[...requestedDays].sort(); if (!days.length) days.push('');
                 const merged = new Map(candles.map(point => [point.t, point])); let partial = false;
                 for (const day of days) {
-                    const key = `${selected}:${day || dayKey(Date.now())}`;
+                    const key = `${selected}:${mode}:${dailyRange?(dailyRange.from || '600bars')+':'+dailyRange.to:day || dayKey(Date.now())}`;
                     let result = candleCache.get(key);
                     if (!result || day === dayKey(Date.now()) || !day) {
-                        const params = new URLSearchParams({ code: selected, mode, ...(day ? { date: day } : {}) });
+                        const params = new URLSearchParams({ code: selected, mode, ...(dailyRange?dailyRange:day ? { date: day } : {}) });
                         result = await request(`/api/supply/candles?${params}`, { signal: current.signal });
                         if (id !== candleRevision) return;
                         if(!result.partial)candleCache.set(key, result); if (candleCache.size > 60) candleCache.delete(candleCache.keys().next().value);
@@ -363,6 +385,7 @@
                     if (actualDay && !result.partial) priceHistory.set(actualDay, result.has_more ? result.cursor : null);
                 }
                 if (id !== candleRevision) return;
+                if(dailyRange && !partial)dailyCandleCoverage={...dailyRange,from:dailyRange.from || [...merged.values()].map(p=>dayKey(p.t).replaceAll('-','')).sort()[0] || dailyRange.to};
                 candles = [...merged.values()].sort((a,b) => a.t - b.t);
                 priceCursor = [...priceHistory.values()].filter(value => value && !priceHistory.has(`${value.slice(0,4)}-${value.slice(4,6)}-${value.slice(6,8)}`)).sort().at(-1) || null;
                 const anchor = points[start]?.t, atEnd = start + Math.min(points.length, count ?? points.length) >= points.length;

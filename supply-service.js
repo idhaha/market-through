@@ -253,10 +253,15 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
         if (!validCode(code) || !['day', 'minute'].includes(mode) || !['6m', '1y', '3y', '5y'].includes(range)
             || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw failure('잘못된 캔들 조회 조건입니다.');
         if (!store.config().archive.some(stock => stock.code === code)) throw failure('등록 또는 보관된 종목을 선택하세요.', 404);
-        let to = (mode === 'day' ? dayKey(now()) : date).replaceAll('-', '');
+        const validDay = value => typeof value === 'string' && /^\d{8}$/.test(value) && Number.isFinite(timestamp(value)) && dayKey(timestamp(value)).replaceAll('-', '') === value;
+        const initialCount = mode === 'day' && input.count != null && input.from == null ? Number(input.count) : null;
+        if (initialCount !== null && (!Number.isInteger(initialCount) || initialCount < 1 || initialCount > 600)) throw failure('잘못된 캔들 조회 건수입니다.');
+        if (mode === 'day' && ((input.from != null && !validDay(input.from)) || (input.to != null && !validDay(input.to)))) throw failure('잘못된 캔들 조회 기간입니다.');
+        let to = (mode === 'day' ? input.to || dayKey(now()) : date).replaceAll('-', '');
         const start = new Date(`${dayKey(now())}T00:00:00Z`);
         start.setUTCMonth(start.getUTCMonth() - ({ '6m': 6, '1y': 12, '3y': 36, '5y': 60 }[range]));
-        let from = mode === 'day' ? start.toISOString().slice(0, 10).replaceAll('-', '') : to;
+        let from = mode === 'day' ? input.from || (initialCount ? '19000101' : start.toISOString().slice(0, 10).replaceAll('-', '')) : to;
+        if (from > to) throw failure('잘못된 캔들 조회 기간입니다.');
         const points = new Map(); let next = '', partial = false, previousDay = null;
         for (let page = 0; page < 80; page++) {
             const response = await post(mode === 'day' ? 'ka10081' : 'ka10080', {
@@ -279,12 +284,13 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
                     low: Math.abs(quantity(row.low_pric) ?? NaN), close: Math.abs(quantity(row.cur_prc) ?? NaN) };
                 if (Number.isFinite(t) && [point.open, point.high, point.low, point.close].every(value => Number.isFinite(value) && value > 0)) points.set(t, point);
             }
-            if (reached || response.headers?.['cont-yn'] !== 'Y') break;
+            if (reached || initialCount && points.size >= initialCount || response.headers?.['cont-yn'] !== 'Y') break;
             const key = String(response.headers?.['next-key'] || '');
             if (!key || key === next) throw new Error('캔들 연속조회 키 오류');
             next = key; if (page === 79) partial = true;
         }
-        return { success: true, points: [...points.values()].sort((a, b) => a.t - b.t), partial,
+        const ordered = [...points.values()].sort((a, b) => a.t - b.t);
+        return { success: true, points: initialCount ? ordered.slice(-initialCount) : ordered, partial,
             has_more: Boolean(previousDay), cursor: previousDay,
             date: `${to.slice(0,4)}-${to.slice(4,6)}-${to.slice(6,8)}` };
     }

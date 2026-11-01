@@ -88,7 +88,7 @@
             const representative = [...events].sort((a, b) => rank(a) - rank(b))[0];
             root.classList.toggle('market-alert-unread', unread);
             if (representative) {
-                root.dataset.alertColor = representative.kind === 'circuit' ? 'red' : 'orange';
+                root.dataset.alertColor = representative.kind === 'circuit' ? 'red' : representative.stage === 'sell' ? 'blue' : 'orange';
             } else { delete root.dataset.alertColor; }
             root.style.setProperty('--alert-delay', `${-(Date.now() % 1500)}ms`);
             if (independent) {

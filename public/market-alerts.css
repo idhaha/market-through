@@ -18,6 +18,7 @@
 .market-alert-banner small { display:none; }
 #tab_rank.market-alerts[data-alert-color="red"],.rank-independent .market-alert-header[data-alert-color="red"] { --alert-dark:#c90000; --alert-bright:#ff9999; }
 #tab_rank.market-alerts[data-alert-color="orange"],.rank-independent .market-alert-header[data-alert-color="orange"] { --alert-dark:#f97316; --alert-bright:#ffedd5; }
+#tab_rank.market-alerts[data-alert-color="blue"],.rank-independent .market-alert-header[data-alert-color="blue"] { --alert-dark:#2563eb; --alert-bright:#dbeafe; }
 #tab_rank.market-alerts[data-alert-color],.rank-independent .market-alert-header[data-alert-color] { background-color:var(--alert-bright); }
 .rank-independent .independent-toolbar > #marketAlertArea { flex:0 1 230px; width:230px; min-width:0; height:32px; }
 .rank-independent .independent-toolbar > #marketAlertArea[hidden] { display:none!important; }

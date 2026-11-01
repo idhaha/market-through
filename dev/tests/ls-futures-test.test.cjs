@@ -3,6 +3,26 @@ const assert = require('node:assert/strict');
 const { createLsFuturesTest, nightPriceTime, investorTime } = require('../../ls-futures-test');
 const { timestamp } = require('../../supply-service');
 const fixedNow = timestamp('20261031', '090000');
+for(const code of ['futures','futuresKosdaq'])test(`${code} daily accepts the opaque reference cursor and uses that page's actual end date`,async()=>{
+    const next='REF20240510',seen=[];
+    const {service,calls}=fixture({dailyProvider:{daily:async(market,cursor)=>{
+        seen.push(cursor);
+        const dates=cursor?['20211202','20240510']:['20240513','20261030'];
+        return {points:dates.map(date=>({t:timestamp(date),individual:100,foreign:-100,institution:0})),cursor:cursor?null:next,has_more:!cursor,warnings:[]};
+    }},reply:async(tr,p)=>{
+        if(tr==='t8462')return {rsp_cd:'00000',t8462OutBlock1:[{date:p.from_date,sa_08:'1',sa_17:'-1',sa_18:'0'}]};
+        if(tr==='t8467'||tr==='t8455')return {rsp_cd:'00000',[tr+'OutBlock']:[{hname:'F 2612',shcode:'A016C000'}]};
+        return {rsp_cd:'00000',[tr+'OutBlock1']:[{date:p.date,open:100,high:110,low:90,close:105}]};
+    }});
+    const first=await service.query({code,mode:'day'});
+    assert.equal(first.cursor,next);
+    const past=await service.query({code,mode:'day',cursor:first.cursor});
+    assert.ok(past.points.some(p=>p.t===timestamp('20211202')&&Number.isFinite(p.individual)));
+    assert.equal(past.has_more,false);assert.deepEqual(seen,['',next]);
+    assert.ok(calls.some(c=>c.tr==='t2214'&&c.p.date==='20240510'));
+    assert.ok(calls.some(c=>c.tr==='t8459'&&c.p.date==='20240510'));
+    assert.ok(!calls.some(c=>c.p.date===next||c.p.to_date===next));
+});
 test('stored-only test flow never waits for or calls futures price TRs',async()=>{
     const {service,calls}=fixture({reply:async(tr,p)=>{
         if(tr==='t8463')return {rsp_cd:'00000',t8463OutBlock1:[{date:'20261030',time:p.tm_rng==='D'?'154500':'180000',indmsamt:'1',formsamt:'-1',sysmsamt:'0'}]};
@@ -22,7 +42,7 @@ for(const code of ['futures','futuresKosdaq'])test(`${code} daily uses the main 
     const {service,calls}=fixture({dailyProvider:{daily:async(...args)=>{baselineCalls.push(args);return baseline;}},reply:async(tr,p)=>{
         if(tr==='t8462'){
             assert.equal(p.tm_rng,'N');assert.equal(p.from_date,'20250106');
-            return {rsp_cd:'00000',t8462OutBlock1:p.to_date==='20261031'
+            return {rsp_cd:'00000',t8462OutBlock1:p.to_date==='20261030'
                 ?[{date:'20261030',sa_08:'1',sa_17:'-1',sa_18:'0'}]
                 :p.to_date==='20261029'?[{date:'20261029',sa_08:'2',sa_17:'-2',sa_18:'0'}]:[]};
         }
@@ -38,7 +58,7 @@ for(const code of ['futures','futuresKosdaq'])test(`${code} daily uses the main 
         [timestamp('20261030'),400,-200,-200]
     ]);
     assert.equal(result.cursor,'20250105');assert.equal(result.has_more,true);
-    assert.deepEqual(calls.filter(c=>c.tr==='t8462').map(c=>c.p.to_date),['20261031','20261029','20261028']);
+    assert.deepEqual(calls.filter(c=>c.tr==='t8462').map(c=>c.p.to_date),['20261030','20261029','20261028']);
     const past=await service.query({code,mode:'day',cursor:result.cursor});
     assert.equal(baselineCalls[1][1],'20250105');
 });

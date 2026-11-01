@@ -93,7 +93,7 @@
 - `PUT /api/supply/watchlist`: `{ codes: ["005930"], revision: 0 }`. 최대 5개, 중복 금지, 서버 종목 마스터 확인. 동시 변경은 409다.
 - `GET /api/supply/chart?code=005930&mode=day[&cursor=YYYYMMDD]`: 일봉·가격 캔들·경고·과거 cursor.
 - `GET /api/supply/chart?code=005930&mode=minute[&cursor=YYYYMMDD]`: 최신 또는 이전 저장 거래일. `investor_api=ka10060`, `individual_supported=true`다.
-- `GET /api/supply/candles?code=005930&mode=minute[&date=YYYY-MM-DD]`: 실제 가격 분봉과 이전 거래일 cursor. 일봉은 수급 응답에 포함된 캔들을 재사용한다.
+- `GET /api/supply/candles?code=005930&mode=minute[&date=YYYY-MM-DD]`: 실제 가격 분봉과 이전 거래일 cursor. 일봉은 `mode=day&from=YYYYMMDD&to=YYYYMMDD`로 공통 일봉 표시 범위의 가격을 수급과 별도로 조회한다. 공통 기간이 아직 없을 때는 `count=600`으로 다른 일봉과 같은 초기 600봉을 조회하며 임의의 3년 범위로 시간축을 늘리지 않는다. 다른 카드가 늦게 과거 범위를 넓히거나 더 불러오기를 하면 확장된 범위를 채운다. 기간과 건수를 생략하는 기존 호출의 기본 1년 범위는 유지한다. 메인창과 독립창에 동일하게 적용한다.
 - `GET /api/server/storage`: 데이터 저장 디스크의 전체·사용 가능한 여유 공간. 헤더의 ‘서버에서 불러오기’ 왼쪽에 남은/전체 GB를 표시하고 5분 및 화면 갱신에 맞춰 조회한다. 1,024³바이트를 GB로 표기한다.
 
 서버 구현은 `supply-service.js`, `supply-store.js`, `server-storage.js`, `server.js`에 있다. 화면은 `public/rank-supply-chart.js`, `public/server-storage.js`, 독립창은 `public/rank-independent-*`와 `rank-independent.js`, 네이티브 앱은 `desktop/IndependentWindow.cs`를 사용한다.

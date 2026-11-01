@@ -119,7 +119,7 @@ function createLsFuturesTest({ http, getToken, directory, daytimeStore, dailyPro
     async function load({ code, mode, session, cursor,pricesOnly,flowOnly }, onProgress = () => {}) {
         const cfg = assets[code], warnings = ['선물 프로그램 수급 미제공', '수급 금액 배율: 기존 LS 일봉과 동일(원본 ×100 백만원), HTS 대조 필요'];
         const tr = mode === 'day' ? 't8462' : 't8463';
-        const end = cursor || compact(now());
+        let end = validDate(cursor) ? cursor : compact(now());
         let stored = mode==='minute' && !(session==='N'&&nightCollector) ? readHistory(code,session) : [];
         let sharedOlder=null;
         if(mode==='minute' && session==='N' && nightCollector){
@@ -149,6 +149,9 @@ function createLsFuturesTest({ http, getToken, directory, daytimeStore, dailyPro
         try {
             if(mode==='day' && !pricesOnly && dailyProvider){
                 dailyBase = await dailyBaseline(code,cursor);
+                // A reference cursor is an opaque continuation key, not a
+                // calendar date. LS investor/price TRs need the returned page's dates.
+                if(dailyBase.points.length)end=compact(Math.min(timestamp(end),Math.max(...dailyBase.points.map(p=>p.t))));
                 if(session==='D')d={t8462OutBlock1:[]};
                 else {
                     const from = dailyBase.points.length ? compact(Math.min(...dailyBase.points.map(p=>p.t))) : end;
@@ -233,9 +236,10 @@ function createLsFuturesTest({ http, getToken, directory, daytimeStore, dailyPro
         // independent price page includes older trading dates.
         const flowCursor = mode==='day' ? dailyBase ? dailyBase.cursor : points.length ? previous(compact(points[0].t)) : null : minuteCursor;
         const flowHasMore = mode==='day' ? dailyBase ? dailyBase.has_more===true : incoming.length>0 : !!minuteCursor;
+        const flowCoverageFirst=mode==='day' && dailyBase?.points.length ? dayKey(Math.min(...dailyBase.points.map(p=>p.t))) : null;
         if (!points.length) warnings.push('선택 세션의 수급 자료 없음');
         onProgress({success:true,source:'LS',session,points:[...points],candles:[],warnings:[...warnings],partial:flowFailed,
-            has_more:flowHasMore,cursor:flowCursor,
+            has_more:flowHasMore,cursor:flowCursor,flow_coverage_first:flowCoverageFirst,
             date:points.length?dayKey(points.at(-1).t):dayKey(now())});
         if(flowOnly)return {success:true,source:'LS',session,points,candles:[],warnings,partial:flowFailed,
             has_more:flowHasMore,cursor:flowCursor,date:points.length?dayKey(points.at(-1).t):dayKey(now())};
@@ -268,7 +272,7 @@ function createLsFuturesTest({ http, getToken, directory, daytimeStore, dailyPro
         points = [...timeline.values()].sort((a, b) => a.t - b.t);
         const cursorOut = flowCursor;
         return { success: true, source: 'LS', session, contract: contract && { code: contract.shcode, name: contract.hname }, points, candles: candles.sort((a,b) => a.t-b.t), warnings, partial,
-            has_more: flowHasMore, cursor: cursorOut, price_cursor: priceCursor,
+            has_more: flowHasMore, cursor: cursorOut, price_cursor: priceCursor,flow_coverage_first:flowCoverageFirst,
             date: points.length ? dayKey(points.at(-1).t) : dayKey(now()) };
     }
     function mergeCombined(input, parts, failed = []) {
@@ -309,6 +313,7 @@ function createLsFuturesTest({ http, getToken, directory, daytimeStore, dailyPro
         const points = [...pointMap.values()].sort((a,b)=>a.t-b.t), candles = [...candleMap.values()].sort((a,b)=>a.t-b.t);
         const cursors = parts.map(p=>p.cursor).filter(Boolean).sort();
         return { success:true,source:'LS',session:'U',points,candles,warnings,
+            flow_coverage_first:parts.map(p=>p.flow_coverage_first).filter(Boolean).sort()[0] || null,
             partial:parts.length<2 || parts.some(p=>p.partial), has_more:parts.some(p=>p.has_more),
             cursor:cursors.at(-1) || null, date:points.length?dayKey(points.at(-1).t):dayKey(now()),
             contracts:parts.map(p=>({session:p.session,...p.contract})) };
@@ -342,7 +347,8 @@ function createLsFuturesTest({ http, getToken, directory, daytimeStore, dailyPro
     }
     function query(input = {}, onProgress = () => {}) {
         const code = input.code || 'futures', mode = input.mode || 'day', session = input.session || 'U', cursor = input.cursor || '';
-        if (typeof code !== 'string' || !Object.hasOwn(assets, code) || !['day', 'minute'].includes(mode) || !['D', 'N', 'U'].includes(session) || typeof cursor !== 'string' || (cursor && !validDate(cursor))) throw failure('잘못된 테스트 선물 조회 조건');
+        const referenceCursor=mode==='day' && dailyProvider && input.prices_only!=='1';
+        if (typeof code !== 'string' || !Object.hasOwn(assets, code) || !['day', 'minute'].includes(mode) || !['D', 'N', 'U'].includes(session) || typeof cursor !== 'string' || cursor.length>2048 || (cursor && !referenceCursor && !validDate(cursor))) throw failure('잘못된 테스트 선물 조회 조건');
         const pricesOnly=input.prices_only==='1',flowOnly=mode==='minute' && input.prices==='0' && !pricesOnly;
         if (session==='U') return interactiveCombined({code,mode,cursor,prices_only:input.prices_only,prices:input.prices},input.progressive==='1');
         const key = `${code}:${mode}:${session}:${cursor}:${pricesOnly}:${flowOnly}`, old = cache.get(key);

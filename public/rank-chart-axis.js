@@ -328,7 +328,7 @@
         }
         return {advanced,failures,exhausted,target,partial:showAvailable,metrics};
     }
-    function sharedRange(id,values,getDate,mode,start,count,draw) {
+    function sharedRange(id,values,getDate,mode,start,count,draw,initialRangeReady=true) {
         if(mode==='minute')scheduleVisibleHistory();
         scheduleHistoryButtons();
         const previous=minuteCharts.get(id);
@@ -342,8 +342,8 @@
             ? sliderRange(mode) : null;
         const atLatest=following && viewports.get(mode).last>=following.domain.last;
         const days=[...new Set(values.map(v=>dateParts(getDate(v)).slice(0,10)))].sort();
-        const signature=`${mode}:${first}:${last}:${days.join(',')}`;
-        const chart={id,dates:values.map(v=>dateParts(getDate(v)).slice(0,length)),signature,mode,first,last,days,draw,applied:previous?.applied,revision:previous?.revision};minuteCharts.set(id,chart);
+        const signature=`${mode}:${first}:${last}:${days.join(',')}:${initialRangeReady}`;
+        const chart={id,dates:values.map(v=>dateParts(getDate(v)).slice(0,length)),signature,mode,first,last,days,draw,initialRangeReady,applied:previous?.applied,revision:previous?.revision};minuteCharts.set(id,chart);
         const starts=[...minuteCharts.values()].filter(c=>c.mode==='minute' && c.first).map(c=>c.first);
         const overnight=minuteCharts.get('testMarketSupply');
         const today=overnight?.mode==='minute' && overnight.first ? overnight.first : new Date(Date.now()+9*3600000).toISOString().slice(0,10)+' 08:00';
@@ -357,6 +357,17 @@
             }
         }
         if(cutoff!==sharedCutoff || previous?.signature!==signature){sharedCutoff=cutoff;notifyCharts();}
+        if(mode==='day' && id==='testMarketSupply' && !(dailyHistory && dailyCutoff)){
+            const domain=dailyDomain();if(!domain)return viewportRange(chart,start,count);
+            const key=`initial:${domain.first}:${domain.last}`;
+            const index=values.findIndex(v=>dateParts(getDate(v)).slice(0,10)>=domain.first);
+            const first=index<0?values.length:index;
+            const end=values.findIndex(v=>dateParts(getDate(v)).slice(0,10)>domain.last);
+            const size=Math.max(0,(end<0?values.length:end)-first),changed=chart.applied!==key || size>0&&!previous?.size;
+            chart.applied=key;chart.size=size;
+            const visible=changed?size:Math.min(count??size,size);
+            return viewportRange(chart,changed?first:Math.max(first,Math.min(start,first+size-visible)),visible);
+        }
         if(mode!=='minute' && !(mode==='day' && dailyHistory && dailyCutoff))return viewportRange(chart,start,count);
         const effective=mode==='day'?dailyCutoff:cutoff;
         const index=values.findIndex(v=>dateParts(getDate(v)).slice(0,length)>=effective);
@@ -382,9 +393,13 @@
     }
     function dailyDomain() {
         const viewport=viewports.get('day');
-        const active=[...minuteCharts.values()].filter(c=>c.mode==='day' && c.dates.length);
-        const first=viewport?.first || (dailyHistory && dailyCutoff) || active.map(c=>c.first).sort()[0];
-        const last=viewport?.last || active.map(c=>c.last).filter(Boolean).sort().at(-1);
+        const active=[...minuteCharts.values()].filter(c=>c.mode==='day' && c.dates.length && c.initialRangeReady!==false);
+        // The comparison card follows the initial peer period. Its additional
+        // connected futures history must not widen every chart after reload.
+        const peers=active.filter(c=>c.id!=='testMarketSupply');
+        const basis=!dailyHistory && peers.length?peers:active;
+        const first=viewport?.first || (dailyHistory && dailyCutoff) || basis.map(c=>c.first).sort()[0];
+        const last=viewport?.last || basis.map(c=>c.last).filter(Boolean).sort().at(-1);
         const days=[...new Set([first,last,...active.flatMap(c=>c.days || [])])].filter(d=>d>=first && d<=last).sort();
         if(!days.length)return null;
         return {first,last,days};

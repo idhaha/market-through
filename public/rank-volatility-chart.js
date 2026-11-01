@@ -258,7 +258,7 @@ tip.hidden=false;}
             renderHoverInfo();
             if(breadth && breadthMode==='minute' && !candleArea.hidden && !breadthPriceSchedule){breadthPriceSchedule=true;queueMicrotask(()=>{breadthPriceSchedule=false;void loadCandles();});}
             window.RankChartAxis.candleLabel(candleArea,breadth && breadthMarket==='kosdaq'?'KOSDAQ':'KOSPI');
-            {const view=window.RankChartAxis.sharedRange(sentiment?'sentiment':breadth?'breadth':'volatility',dates,d=>d,breadth?breadthMode:'day',start,count,draw);start=view.start;count=view.count;}
+            {const view=window.RankChartAxis.sharedRange(sentiment?'sentiment':breadth?'breadth':'volatility',dates,d=>d,breadth?breadthMode:'day',start,count,draw,breadth || referenceRangeReady);start=view.start;count=view.count;}
             const n = Math.min(dates.length, count ?? dates.length);
             start = Math.max(0, Math.min(start, dates.length - n));
             const visible = dates.slice(start, start + n), indices = new Map(visible.map((date, index) => [date, index]));
@@ -443,6 +443,7 @@ tip.hidden=false;}
             panel.querySelectorAll('[data-breadth-mode]').forEach(item => { const active = item === button; item.classList.toggle('active',active); item.setAttribute('aria-pressed',String(active)); });
             void refreshBreadth(); save();
         }));
+        let referenceRangeReady=false;
         const referencePages = new Map();
         let referenceCursor = null, riskLoading = false;
         const riskMore = panel.querySelector('[data-risk-more]');
@@ -465,7 +466,7 @@ tip.hidden=false;}
                 const result = await response.json(); if (!response.ok) throw new Error(result.error || '지표 조회 실패');
                 if(current===controller){
                     data=Object.fromEntries(ids.map(id=>[id,(result.series?.[id]?.points || []).filter(p=>p.value!=null&&Number.isFinite(Number(p.value))).map(p=>({...p,value:Number(p.value)}))]));
-                    dates=[...new Set([...dates,...Object.values(data).flat().map(p=>p.date)])].sort();
+                    dates=candles.length?candles.map(p=>p.date):[...new Set([...dates,...Object.values(data).flat().map(p=>p.date)])].sort();
                     ids.forEach(id=>{const legend=panel.querySelector(`[data-volatility="${id}"]`);legend.querySelector('output').textContent=data[id].length?formatValue(data[id].at(-1).value,id):'—';});
                     draw();
                 }
@@ -489,7 +490,7 @@ tip.hidden=false;}
                     referenceError = error.message;
                 }
                 candles=[...new Map([...referencePages.values()].flatMap(p=>p.points || []).map(p=>[p.date,p])).values()].sort((a,b)=>a.t-b.t);
-                if(candles.length)dates=[...new Set([...dates,...candles.map(p=>p.date)])].sort();
+                if(candles.length){dates=candles.map(p=>p.date);referenceRangeReady=true;}
                 draw();
                 const topic=await topicJob;if(topic.error)throw topic.error;const result=topic.result;
                 if (current !== controller) return;

@@ -255,7 +255,7 @@
             panel.dataset.chartMode=mode;
             panel.dataset.market=selected;
             if (!showCandles) return;
-            if(mode==='minute' && !candleSchedule){
+            if((mode==='minute' || isTest && mode==='day') && !candleSchedule){
                 candleSchedule=true;queueMicrotask(()=>{candleSchedule=false;void loadCandles();});
             }
             const size = surface(candle, cc); timeAxis(cc, size.h);
@@ -299,7 +299,7 @@
             visibleFlowPoints:geometry?.rows.filter(p=>series.some(field=>Number.isFinite(p[field]))).length || 0,
             validCandles:candles.filter(window.RankChartAxis.validCandle).length,
             visiblePoints:geometry?.rows.length || 0,visibleCandles:candles.filter(p=>geometry?.rows.some(row=>row.t===p.t) && window.RankChartAxis.validCandle(p)).length,
-            first:points[0]?.t,last:points.at(-1)?.t,candleFirst:candles[0]?.t,candleLast:candles.at(-1)?.t});
+            first:points[0]?.t,last:points.at(-1)?.t,visibleFirst:geometry?.rows[0]?.t,visibleLast:geometry?.rows.at(-1)?.t,candleFirst:candles[0]?.t,candleLast:candles.at(-1)?.t});
         async function loadCandles(requestedRange) {
             if(candleEnsureActive && !requestedRange)return;
             if(!showCandles)return;
@@ -342,6 +342,10 @@
         });
         let todayOnly = true;
         function recordCoverage(result, requestedDay) {
+            if(mode==='day' && /^\d{4}-\d{2}-\d{2}$/.test(result.flow_coverage_first || '')){
+                if(!flowCoverageFirst || result.flow_coverage_first<flowCoverageFirst)flowCoverageFirst=result.flow_coverage_first;
+                return;
+            }
             const date = result.date || (requestedDay ? `${requestedDay.slice(0,4)}-${requestedDay.slice(4,6)}-${requestedDay.slice(6,8)}` : '');
             const first = mode === 'minute' && !(isTest && selected.startsWith('futures')) && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date + ' 00:00'
                 : (result.points || []).filter(p=>Number.isFinite(p.t) && (!(isTest && mode==='day') || ['individual','foreign','institution'].some(f=>Number.isFinite(p[f])))).map(p=>new Date(p.t+9*3600000).toISOString().slice(0,mode==='minute'?16:10).replace('T',' ')).sort()[0];

@@ -6,6 +6,27 @@ const { createSupplyService, quantity, timestamp, collectingAt, investorObservat
 const { createSupplyStore } = require('../../supply-store');
 
 const today = '20261020';
+test('initial daily price-only count uses the latest 600 bars without an arbitrary calendar fallback',async t=>{
+ const rows=Array.from({length:602},(_,i)=>({dt:new Date(timestamp(today)-i*86400000+32400000).toISOString().slice(0,10).replaceAll('-',''),open_pric:'100',high_pric:'110',low_pric:'90',cur_prc:'105'}));
+ const f=fixture(t,async api=>{assert.equal(api,'ka10081');return {data:{stk_dt_pole_chart_qry:rows},headers:{'cont-yn':'Y','next-key':'unused'}};});
+ f.setTime(timestamp(today,'210000'));await f.service.configure(['005930'],0);
+ const r=await f.service.candles({code:'005930',mode:'day',count:'600'});
+ assert.equal(r.points.length,600);assert.equal(r.points[0].t,timestamp(rows[599].dt));assert.equal(r.points.at(-1).t,timestamp(today));
+});
+test('daily candles honor an explicit shared range beyond one year, including continuation',async t=>{
+ let count=0;
+ const f=fixture(t,async(api,body)=>{
+  assert.equal(api,'ka10081');count++;
+  const dates=count===1?['20261020','20251029']:['20240514','20240513'];
+  return {data:{stk_dt_pole_chart_qry:dates.map(dt=>({dt,open_pric:'100',high_pric:'110',low_pric:'90',cur_prc:'105'}))},headers:count===1?{'cont-yn':'Y','next-key':'older'}:{}};
+ });
+ f.setTime(timestamp(today,'210000'));await f.service.configure(['005930'],0);
+ const result=await f.service.candles({code:'005930',mode:'day',from:'20240514',to:today});
+ assert.deepEqual(result.points.map(p=>day(p.t)),['2024-05-14','2025-10-29','2026-10-20']);
+ assert.equal(count,2);
+ await assert.rejects(f.service.candles({code:'005930',mode:'day',from:'20260230',to:today}));
+ function day(t){return new Date(t+32400000).toISOString().slice(0,10);}
+});
 test('daily candle endpoint requests only OHLC without investor or program queries',async t=>{
     const f=fixture(t,async api=>{
         assert.equal(api,'ka10081');
