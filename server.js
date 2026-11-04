@@ -283,6 +283,8 @@ const marketSupplyService = require('./market-supply-service').createMarketSuppl
 const lsMarketSupplyProvider = require('./ls-market-supply').createLsMarketSupply({
     directory: path.join(__dirname, 'data', 'ls-market-supply'), http: axios, supply: supplyService,
     validationDefaults: require('./ls-market-validation'),
+    // REST polling by default, which frees an LS websocket session. LS_MARKET_SUPPLY_MODE=websocket restores the socket.
+    mode: () => (process.env.LS_MARKET_SUPPLY_MODE || 'rest').trim(),
     credentials: () => ({ appKey: (process.env.LS_APPKEY || '').trim(), secretKey: (process.env.LS_SECRETKEY || '').trim() })
 });
 const marketAlertService = require('./market-alert-service').createMarketAlerts({

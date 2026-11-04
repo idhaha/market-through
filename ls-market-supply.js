@@ -18,8 +18,28 @@ function sourceTime(value, received) {
     return timestamp(dayKey(received).replaceAll('-', ''), clock);
 }
 
+// REST equivalents of the websocket feeds. On 2026-11-03 their values matched the stored
+// websocket data in the same raw units (UBT/BMT exactly or within 1, UPM within 1), so REST
+// rows are stored as the websocket raw value and converted by the same validation entry.
+const restSources = [
+    { entry: 'UBT:U001', tr: 't1602', endpoint: 'stock/investor', rows: 't1602OutBlock1', investor: true,
+        input: full => ({ market: '1', upcode: '001', gubun1: '2', gubun2: '0', cts_time: '', cts_idx: 0, cnt: full ? 900 : 40, gubun3: '', exchgubun: 'U' }) },
+    { entry: 'UBT:U301', tr: 't1602', endpoint: 'stock/investor', rows: 't1602OutBlock1', investor: true,
+        input: full => ({ market: '3', upcode: '301', gubun1: '2', gubun2: '0', cts_time: '', cts_idx: 0, cnt: full ? 900 : 40, gubun3: '', exchgubun: 'U' }) },
+    { entry: 'UPM:U0', tr: 't1662', endpoint: 'stock/program', rows: 't1662OutBlock',
+        input: () => ({ gubun: '0', gubun1: '0', gubun3: '0', exchgubun: 'U' }) },
+    { entry: 'UPM:U1', tr: 't1662', endpoint: 'stock/program', rows: 't1662OutBlock',
+        input: () => ({ gubun: '1', gubun1: '0', gubun3: '0', exchgubun: 'U' }) },
+    { entry: 'BMT:900', tr: 't1602', endpoint: 'stock/investor', rows: 't1602OutBlock1', investor: true,
+        input: full => ({ market: '1', upcode: '900', gubun1: '2', gubun2: '0', cts_time: '', cts_idx: 0, cnt: full ? 900 : 40, gubun3: '', exchgubun: 'U' }) }
+];
+const futuresClock = t => { const clock = new Date(t + 9 * 3600000).toISOString().slice(11, 16); return clock >= '08:45' && clock < '15:45'; };
+
 function createLsMarketSupply({ directory, http, credentials, supply, now = Date.now,
-    WebSocket = require('ws'), log = console.warn, validationDefaults = {} }) {
+    WebSocket = require('ws'), log = console.warn, validationDefaults = {},
+    // 'rest' polls the REST equivalents instead of opening a websocket session.
+    mode = () => 'websocket', restIntervalMs = 30000, pause = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+    const restMode = () => mode() === 'rest';
     // Raw source amounts are retained separately. Only verified conversions reach the chart.
     const raw = createSupplyStore({ directory: path.join(directory, 'raw'), now });
     const pending = new Map(), states = new Map();
@@ -207,6 +227,86 @@ function createLsMarketSupply({ directory, http, credentials, supply, now = Date
         }).finally(() => { connecting = null; });
         return connecting;
     }
+    let restTask = null, restDueAt = 0, restDay = '', restGeneration = 0;
+    const restSeen = new Map();
+    async function restCall(tr, endpoint, input) {
+        let lastError = 'LS ' + tr + ' 조회 실패';
+        // LS allows one call per second per TR and appkey, shared with other servers using the key.
+        for (let attempt = 0; attempt < 3; attempt++) {
+            if (attempt) await pause(1500 * attempt + Math.floor(Math.random() * 500));
+            try {
+                const response = await http.post(`https://openapi.ls-sec.co.kr:8080/${endpoint}`, { [`${tr}InBlock`]: input }, {
+                    headers: { authorization: `Bearer ${await accessToken()}`, 'Content-Type': 'application/json; charset=utf-8', tr_cd: tr, tr_cont: 'N', tr_cont_key: '' }, timeout: 10000 });
+                if (String(response.data?.rsp_cd) === '00000') return response.data;
+                lastError = `LS ${tr} 응답 ${String(response.data?.rsp_cd || '없음').slice(0, 12)}`;
+            } catch (error) {
+                if (error.response?.status === 401) { token = null; expires = 0; }
+                lastError = `LS ${tr} 조회 실패${error.response?.status ? ' (' + error.response.status + ')' : ''}`;
+            }
+        }
+        throw new Error(lastError);
+    }
+    async function pollRest() {
+        const date = dayKey(now());
+        if (restDay !== date) { restDay = date; restSeen.clear(); }
+        const spot = collectingAt(now()) && confirmedDay === date;
+        const futures = futuresClock(now()) && supply.futuresAllowed();
+        let first = true;
+        const generation = restGeneration;
+        for (const source of restSources) {
+            const entry = subscriptions.find(s => `${s.tr}:${s.key}` === source.entry);
+            if (entry.market === 'futures' ? !futures : !spot) continue;
+            if (!first) await pause(1100);
+            first = false;
+            if (generation !== restGeneration || !restMode()) return;
+            const previous = states.get(source.entry) || {};
+            try {
+                const seen = restSeen.get(source.entry) || 0;
+                const data = await restCall(source.tr, source.endpoint, source.input(!seen));
+                const received = now();
+                if (dayKey(received) !== date) return;
+                const code = codes[entry.market], latest = new Map(), rows = Array.isArray(data[source.rows]) ? data[source.rows] : [];
+                // Rows carry no date. Before today's first data LS may still answer with the previous
+                // session (times up to ~20:10), so a row later than now marks the whole response stale.
+                if (rows.some(row => sourceTime(row.time, received) > received + 120000)) throw new Error(`LS ${source.tr} 이전 거래일 응답`);
+                for (const row of rows) {
+                    const t = sourceTime(row.time, received);
+                    if (!Number.isFinite(t) || t > received || seen && t < seen - 60000) continue;
+                    if (entry.market === 'futures' ? !futuresClock(t) : !collectingAt(t)) continue;
+                    const values = source.investor
+                        ? { individual: quantity(row.sv_08), foreign: quantity(row.sv_17), institution: quantity(row.sv_18) }
+                        : { program: quantity(row.tot3) };
+                    if (Object.values(values).every(v => v == null)) continue;
+                    // Several rows per minute (t1602 every 30 s): keep the latest, like the websocket bucket.
+                    if ((latest.get(minute(t))?.t ?? -1) < t) latest.set(minute(t), { t, values });
+                }
+                const saved = new Map(raw.points(code, date).map(p => [p.t, p]));
+                const points = [];
+                let newest = seen;
+                for (const [bucket, { t, values }] of latest) {
+                    const point = { t };
+                    for (const [field, value] of Object.entries(values)) {
+                        if (value == null || saved.get(bucket)?.[`${field}_at`] > t) continue;
+                        point[field] = value; point[`${field}_at`] = t;
+                    }
+                    if (Object.keys(point).length > 1) points.push(point);
+                    newest = Math.max(newest, t);
+                }
+                if (points.length) { raw.mergeMany(code, points); lastFlush = now(); }
+                restSeen.set(source.entry, newest);
+                states.set(source.entry, { subscribed: true, checked_at: received, source_at: newest || null, error: '' });
+            } catch (error) {
+                states.set(source.entry, { ...previous, error: error.message });
+                connectionError = error.message;
+            }
+        }
+        if (restSources.every(source => !states.get(source.entry)?.error)) connectionError = '';
+    }
+    function scheduleRest() {
+        // Poll at :15 and :45 so requests stay away from minute boundaries.
+        const t = now(), slot = Math.floor((t - 15000) / restIntervalMs) * restIntervalMs + 15000;
+        restDueAt = slot + restIntervalMs;
+    }
     let collecting;
     function collect() {
         if (collecting) return collecting;
@@ -215,6 +315,15 @@ function createLsMarketSupply({ directory, http, credentials, supply, now = Date
             if (now() - lastArchive >= 60000) { raw.archiveCompleted(); lastArchive = now(); }
             if (!collectingAt(now())) confirmedDay = '';
             else if (confirmedDay !== dayKey(now()) && await supply.confirmMarket()) confirmedDay = dayKey(now());
+            if (restMode()) {
+                if (socket) { const old = socket; socket = null; old.close(); }
+                const due = collectingAt(now()) && confirmedDay === dayKey(now()) || futuresClock(now()) && supply.futuresAllowed();
+                if (!stopped && due && !restTask && now() >= restDueAt) {
+                    scheduleRest();
+                    restTask = pollRest().catch(() => { connectionError = 'LS 수급 조회 실패'; }).finally(() => { restTask = null; });
+                }
+                return;
+            }
             if(socket && subscribedSession!==activeSubscriptions().map(s=>s.tr+':'+s.key).join(',')){const old=socket;socket=null;old.close();}
             if (require('./trading-session').current() && !activeSubscriptions().length || !supply.futuresAllowed() && (!collectingAt(now()) || confirmedDay !== dayKey(now()))) {
                 if (socket) { const old = socket; socket = null; old.close(); }
@@ -246,7 +355,7 @@ function createLsMarketSupply({ directory, http, credentials, supply, now = Date
     };
     function warnings(market) {
         const entries = subscriptions.filter(s => s.market === market);
-        return ['LS 웹소켓 · 1분 마지막 수신값 · 미수집 구간 제외 · 금액: 백만원',
+        return [restMode() ? `LS 조회(REST) · ${restIntervalMs / 1000}초 주기 · 1분 마지막 조회값 · 금액: 백만원` : 'LS 웹소켓 · 1분 마지막 수신값 · 미수집 구간 제외 · 금액: 백만원',
             ...entries.filter(s => !verified(s)).map(s => `${s.tr} ${s.key}: 단위·누적·시장 검증 대기, 미제공`),
             ...entries.filter(s => verified(s)?.provisional).map(s => `${s.tr} ${s.key}: 잠정 표시 · 투자자 원본 억원 가정 · 단위·시장 검증 중`),
             ...(market.startsWith('futures') ? ['선물 프로그램 미제공', `캔들: ${market === 'futures' ? '코스피' : '코스닥'} 현물지수`] : [])];
@@ -266,9 +375,9 @@ function createLsMarketSupply({ directory, http, credentials, supply, now = Date
         run(); timer = setInterval(run, 1000); timer.unref?.();
     }
     function stop() {
-        stopped = true; clearInterval(timer); timer = null;
+        stopped = true; restGeneration++; clearInterval(timer); timer = null;
         const old = socket; socket = null; old?.close(); flush(true);
     }
-    return { store, collect, start, stop, receive, flush, warnings, status, accessToken, recover };
+    return { store, collect, start, stop, receive, flush, warnings, status, accessToken, recover, pollRest };
 }
-module.exports = { createLsMarketSupply, subscriptions, sourceTime };
+module.exports = { createLsMarketSupply, subscriptions, sourceTime, restSources };
