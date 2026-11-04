@@ -255,16 +255,24 @@ const breadthService = createBreadthService({
         : path.join(__dirname, 'data', 'volatility', 'new-highs-lows.json'),
     http: axios, getToken: () => getAccessToken(process.env.KIWOOM_APPKEY, process.env.KIWOOM_SECRETKEY), supply: supplyService
 });
+// One shared Kiwoom index series per market/mode: candle API, chart reference pages and
+// turnover all read it, so every card shows the same index candles.
+const indexCandleStore = require('./index-candle-store').createIndexCandleStore({
+    http: indexHttp,
+    getToken: () => {
+        const appKey = (process.env.KIWOOM_APPKEY || '').trim(), secretKey = (process.env.KIWOOM_SECRETKEY || '').trim();
+        if (!appKey || !secretKey) throw new Error('API 키 설정 필요');
+        return getAccessToken(appKey, secretKey);
+    }
+});
 const turnoverService = require('./turnover-service').createTurnoverService({
-    http: indexHttp, getToken: () => getAccessToken(process.env.KIWOOM_APPKEY, process.env.KIWOOM_SECRETKEY)
+    http: indexHttp, getToken: () => getAccessToken(process.env.KIWOOM_APPKEY, process.env.KIWOOM_SECRETKEY), indexCandles: indexCandleStore
 });
 app.get('/api/turnover/chart', async (req, res) => {
     try { res.set('Cache-Control', 'no-store').json(await turnoverService.query(req.query)); }
     catch (error) { res.status(error.status || 502).json({ error: error.message }); }
 });
-const chartReferenceService = require('./chart-reference-service').createChartReferenceService({
-    http: indexHttp, getToken: () => getAccessToken(process.env.KIWOOM_APPKEY, process.env.KIWOOM_SECRETKEY)
-});
+const chartReferenceService = require('./chart-reference-service').createChartReferenceService({ store: indexCandleStore });
 const marketSupplyService = require('./market-supply-service').createMarketSupplyService({
     futuresDaytimeOnly: true,
     directory: path.join(__dirname, 'data', 'market-supply'), http: kisHttp,
@@ -1938,50 +1946,14 @@ app.get('/api/adr/history', async (req, res) => {
     } catch (_) { res.status(502).json({ error: 'ADR 일별 데이터를 가져오지 못했습니다.' }); }
 });
 
+// Each chart receives a slice of the shared index series (indexCandleStore, defined above).
 app.get('/api/adr/candles', async (req, res) => {
     const market = req.query.market || 'kospi', mode = req.query.mode || 'minute';
     const from = String(req.query.from || ''), to = String(req.query.to || '');
     if (!['kospi', 'kosdaq'].includes(market) || !['day', 'minute'].includes(mode) || !/^\d{8}$/.test(from) || !/^\d{8}$/.test(to) || from > to) return res.status(400).json({ error: 'Invalid candle query' });
     try {
-        const appKey = (process.env.KIWOOM_APPKEY || '').trim(), secretKey = (process.env.KIWOOM_SECRETKEY || '').trim();
-        if (!appKey || !secretKey) throw new Error('API 키 설정 필요');
-        const token = await getAccessToken(appKey, secretKey);
-        const daily = mode === 'day', points = new Map();
-        let next = '', more = false;
-        for (let page = 0; page < 12; page++) {
-            const response = await indexHttp.post('https://api.kiwoom.com/api/dostk/chart', {
-                inds_cd: market === 'kospi' ? '001' : '101',
-                ...(daily ? { base_dt: to } : { tic_scope: '1' })
-            }, { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'api-id': daily ? 'ka20006' : 'ka20005',
-                'cont-yn': next ? 'Y' : 'N', 'next-key': next }, timeout: 10000 });
-            if (Number(response.data.return_code || 0) !== 0) throw new Error('시장 지수 조회 실패');
-            const rows = response.data[daily ? 'inds_dt_pole_qry' : 'inds_min_pole_qry'];
-            if (!Array.isArray(rows)) throw new Error('시장 지수 응답 형식 오류');
-            let oldest = to;
-            for (const row of rows) {
-                const raw = String(daily ? row.dt : row.cntr_tm || '');
-                if (!(daily ? /^\d{8}$/ : /^\d{14}$/).test(raw)) continue;
-                oldest = oldest < raw.slice(0, 8) ? oldest : raw.slice(0, 8);
-                if (raw.slice(0, 8) < from || raw.slice(0, 8) > to) continue;
-                const time = Date.parse(`${raw.slice(0,4)}-${raw.slice(4,6)}-${raw.slice(6,8)}T${daily ? '09:00:00' : `${raw.slice(8,10)}:${raw.slice(10,12)}:${raw.slice(12,14)}`}+09:00`);
-                const price = v => Math.abs(Number(String(v ?? '').replace(/,/g, ''))) / 100;
-                const point = { t: time, open: price(row.open_pric), high: price(row.high_pric), low: price(row.low_pric), close: price(row.cur_prc) };
-                if (daily) point.market_turnover = dailyTurnover(row).value;
-                else {
-                    const quantity = Number(String(row.trde_qty ?? '').replace(/,/g, ''));
-                    point.market_turnover_estimate = Number.isFinite(quantity) && quantity >= 0
-                        ? point.close * quantity * 10000 : null;
-                }
-                if ([point.t, point.open, point.high, point.low, point.close].every(Number.isFinite) && point.low > 0) points.set(time, point);
-            }
-            next = response.headers['cont-yn'] === 'Y' ? response.headers['next-key'] || '' : '';
-            more = Boolean(next && oldest > from);
-            if (!more || !rows.length) break;
-            await new Promise(resolve => setTimeout(resolve, 350));
-        }
-        res.set('Cache-Control', 'no-store').json({ points: [...points.values()].sort((a,b) => a.t-b.t), partial: more });
-    } catch (error) {
-        console.warn('[MarketIndexCandles] 조회 실패', { market, mode, httpStatus: error.response?.status || null, code: error.code || null, message: error.message });
+        res.set('Cache-Control', 'no-store').json(await indexCandleStore.range({ market, mode, from, to }));
+    } catch (_) {
         res.status(502).json({ error: '시장 지수 캔들 조회 실패' });
     }
 });

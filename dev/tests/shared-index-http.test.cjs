@@ -1,6 +1,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const {createSharedIndexHttp}=require('../../shared-index-http');
 const {createChartReferenceService}=require('../../chart-reference-service');
+const {createIndexCandleStore}=require('../../index-candle-store');
 const url='https://api.kiwoom.com/api/dostk/chart';
 const options=(api='ka20006',next='')=>({headers:{'api-id':api,'cont-yn':next?'Y':'N','next-key':next,Authorization:'Bearer test'}});
 test('closed spot sessions reuse matching cached pages past TTL and midnight, without mixing candle intervals',async t=>{
@@ -16,8 +17,9 @@ test('closed spot sessions reuse matching cached pages past TTL and midnight, wi
 });
 test('cross-card in-flight pages share one request and immutable snapshots',async()=>{
  let calls=0,at=Date.parse('2026-10-24T10:00:00+09:00'),resolve;
- const shared=createSharedIndexHttp({now:()=>at,http:{post:()=>{calls++;return new Promise(r=>resolve=r);}}});
- const ref=createChartReferenceService({http:shared,getToken:async()=> 'test',now:()=>at});
+ // The first page waits for the test; continuation pages answer at once with no further key.
+ const shared=createSharedIndexHttp({now:()=>at,http:{post:(u,b,o)=>{calls++;if(o.headers['next-key'])return Promise.resolve({data:{inds_dt_pole_qry:[]},headers:{}});return new Promise(r=>resolve=r);}}});
+ const ref=createChartReferenceService({store:createIndexCandleStore({http:shared,getToken:async()=> 'test',now:()=>at,pause:async()=>{},log:()=>{}})});
  const a=ref.query({mode:'day',market:'kospi'});
  const b=shared.post(url,{base_dt:'20261024',inds_cd:'001'},options());
  await new Promise(r=>setImmediate(r));assert.equal(calls,1);

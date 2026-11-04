@@ -1,15 +1,19 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const {createTurnoverService}=require('../../turnover-service');
+const {createIndexCandleStore}=require('../../index-candle-store');
 function fixture() {
  const calls=[];
  const row=(dt,minute=false)=>({[minute?'cntr_tm':'dt']:dt,open_pric:'10000',high_pric:'10200',low_pric:'9900',cur_prc:'10100',trde_qty:'2',trde_prica:'300'});
- const service=createTurnoverService({now:()=>Date.parse('2026-10-23T18:00:00+09:00'),getToken:async()=>'token',pause:async()=>{},http:{post:async(url,body,options)=>{
+ const now=()=>Date.parse('2026-10-23T18:00:00+09:00');
+ const http={post:async(url,body,options)=>{
   const api=options.headers['api-id'];calls.push({api,body});
   if(api==='ka10081')return {data:{stk_dt_pole_chart_qry:[row('20261020'),row('20261021'),row('20261022'),row('20261023')].filter(r=>r.dt>= (body.base_dt==='20261021'?'20261020':'20261022')&&r.dt<=body.base_dt)},headers:{'cont-yn':'Y'}};
   if(api==='ka20006')return {data:{inds_dt_pole_qry:[row('20261021'),row('20261022'),row('20261023')]},headers:{}};
   return {data:{inds_min_pole_qry:[row('20261023090200',true),row('20261023090100',true),row('20261022153000',true)]},headers:{}};
- }}});
+ }};
+ // Index candles come from the shared store built on the same Kiwoom transport.
+ const service=createTurnoverService({now,getToken:async()=>'token',pause:async()=>{},http,indexCandles:createIndexCandleStore({http,getToken:async()=>'token',now,pause:async()=>{},log:()=>{}})});
  return {service,calls};
 }
 test('daily uses the reference first page without a fixed count or range and caches it',async()=>{

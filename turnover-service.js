@@ -1,5 +1,5 @@
-const { dailyTurnover } = require('./concentration-chart');
-function createTurnoverService({ http, getToken, now = Date.now, pause = ms => new Promise(r=>setTimeout(r,ms)) }) {
+// Index candles are read from the shared index candle store (index-candle-store.js).
+function createTurnoverService({ http, getToken, indexCandles, now = Date.now, pause = ms => new Promise(r=>setTimeout(r,ms)) }) {
     const cache = new Map();
     const dayKey = t => new Date(t+9*3600000).toISOString().slice(0,10).replaceAll('-','');
     const time = (raw, daily) => Date.parse(`${raw.slice(0,4)}-${raw.slice(4,6)}-${raw.slice(6,8)}T${daily?'09:00:00':`${raw.slice(8,10)}:${raw.slice(10,12)}:${raw.slice(12,14)}`}+09:00`);
@@ -28,32 +28,13 @@ function createTurnoverService({ http, getToken, now = Date.now, pause = ms => n
         let from=daily?referenceDays[0]:referenceDays.at(-1), to=daily?referenceDays.at(-1):from;
         const markets={}, warnings=[]; let prior=null;
         for(const market of ['kospi','kosdaq']) {
-            const points=new Map();let next='',complete=false,previousDay=null;
-            for(let page=0;page<80;page++) {
-                let response;
-                try { response=await post(daily?'ka20006':'ka20005',{inds_cd:market==='kospi'?'001':'101',...(daily?{base_dt:to}:{tic_scope:'1'})},next); }
-                catch(error) { if(!points.size)throw error; warnings.push(`${market} 일부 구간 조회 실패`); break; }
-                const rows=response.data[daily?'inds_dt_pole_qry':'inds_min_pole_qry'];
-                if(!Array.isArray(rows))throw new Error('시장 지수 응답 형식 오류');
-                for(const row of rows) {
-                    const raw=String(daily?row.dt:row.cntr_tm || ''), day=raw.slice(0,8);
-                    if(!(daily?/^\d{8}$/:/^\d{14}$/).test(raw))continue;
-                    if(day<from){complete=true;if(!previousDay || day>previousDay)previousDay=day;continue;}
-                    if(day>to)continue;
-                    const price=v=>Math.abs(Number(String(v??'').replaceAll(',','')))/100;
-                    const point={t:time(raw,daily),open:price(row.open_pric),high:price(row.high_pric),low:price(row.low_pric),close:price(row.cur_prc)};
-                    if(daily)point.market_turnover=dailyTurnover(row).value;
-                    else { const volume=Number(String(row.trde_qty??'').replaceAll(',',''));point.estimate=Number.isFinite(volume)&&volume>=0?point.close*volume*10000:null; }
-                    if(Number.isFinite(point.t)&&point.t<=now())points.set(point.t,point);
-                }
-                const key=response.headers?.['cont-yn']==='Y'?String(response.headers['next-key']||''):'';
-                if(complete || !key || !rows.length){complete=true;break;}
-                if(key===next)throw new Error('시장 지수 연속조회 키 오류');
-                next=key;await pause(350);
-            }
-            if(!complete)warnings.push(`${market} 일부 구간만 제공`);
+            // Index candles come from the shared store, the same series every other card uses.
+            const result=await indexCandles.range({market,mode,from,to});
+            const points=new Map(result.points.map(p=>[p.t,p])),previousDay=result.previousDay;
+            if(result.partial)warnings.push(`${market} 일부 구간만 제공`);
             const values=[...points.values()].sort((a,b)=>a.t-b.t);
-            if(!daily){let total=0;for(const p of values){if(Number.isFinite(p.estimate))total+=p.estimate;p.market_turnover=Number.isFinite(p.estimate)?total:null;delete p.estimate;}}
+            // Minute turnover accumulates the per-minute estimate (close × volume) within the day.
+            if(!daily){let total=0;for(const p of values){const estimate=p.market_turnover_estimate;if(Number.isFinite(estimate))total+=estimate;p.market_turnover=Number.isFinite(estimate)?total:null;delete p.market_turnover_estimate;}}
             markets[market]=daily ? [...new Set(referenceDays)].map(day=>{const t=time(day,true);return points.get(t) || {t,market_turnover:null};}) : values;
             if(previousDay && (!prior || previousDay>prior))prior=previousDay;
         }
