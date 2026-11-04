@@ -3113,7 +3113,8 @@ async function requestEfriendAccessToken(domain, appKey, secretKey) {
 
 app.listen(PORT, async () => {
     tradingSession.start();await tradingSession.refresh();
-    marketAlertService.start();
+    // MARKET_ALERT_REALTIME=false keeps the market alert (JIF) LS websocket closed, freeing an LS session for tests.
+    if ((process.env.MARKET_ALERT_REALTIME || '').trim() !== 'false') marketAlertService.start();
     supplyService.start();
     kisStockSupplyService.start();
     lsStockSupplyService.start();
