@@ -6429,7 +6429,9 @@ function injectCaptureButtons() {
         btn.className = 'capture-btn-small btn-icon header-icon capture-camera-icon';
         btn.title = '이 탭 캡처';
         btn.innerHTML = captureSVG;
-        headerControls.insertBefore(btn, headerControls.firstChild);
+        // Keep the trading tab note button on the left of the capture button.
+        const note = headerControls.querySelector('#quickNoteButton');
+        headerControls.insertBefore(btn, note ? note.nextSibling : headerControls.firstChild);
     });
 }
 

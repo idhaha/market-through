@@ -544,14 +544,21 @@ input:checked+.slider:before {
 .table-wrapper table thead th {
     padding: 0.6rem 0.5rem;
     font-size: 0.8rem;
-    background: var(--bg-secondary);
+    /* Tinted header and solid row lines, matching the VI preview table. */
+    background: #eaf0f9;
+    border-bottom: 1px solid #d9e2f0;
     font-weight: 400;
     /* Header not bold */
 }
 
+.table-wrapper table tbody td {
+    /* Drawn as an inset shadow so the line does not add height: 20 rank rows must still fit at 28px. */
+    box-shadow: inset 0 -1px 0 #d9e2f0;
+}
+
 .table-wrapper table tbody tr:nth-child(even) {
-    background-color: #f8fafc;
-    /* Subtle zebra striping */
+    background-color: #f7f9fd;
+    /* Zebra striping: 40% of the header tint */
 }
 
 .table-wrapper table tbody tr:hover {

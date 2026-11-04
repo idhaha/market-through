@@ -12,12 +12,10 @@
         infoIcon.setAttribute('aria-label', '시장경보'); infoIcon.setAttribute('aria-haspopup', 'dialog'); infoIcon.setAttribute('aria-controls', 'marketAlertGuide');
         info.append(infoIcon);
         const controls = document.getElementById('rankIndependentControls');
-        // Keep the header order: native window, note, market information.
+        // Keep the header order: 수급 window, VI window, market information. The note sits beside the capture button.
         if (!independent && controls) {
-            const nativeButton = controls.querySelector('button:not(#quickNoteButton)');
+            const nativeButton = controls.querySelector('[data-independent="vi-status"]') || controls.querySelector('[data-independent="rank"]') || controls.querySelector('button:not(#quickNoteButton)');
             if (nativeButton) nativeButton.after(info); else controls.append(info);
-            const note = document.getElementById('quickNoteButton');
-            if (note) info.before(note);
         }
         else if (!independent) root.append(info);
         const area = document.createElement('section'); area.id = 'marketAlertArea'; area.setAttribute('aria-label', '시장경보');

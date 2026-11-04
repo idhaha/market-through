@@ -25,7 +25,7 @@
             const button = document.createElement('button');
             button.type = 'button'; button.className = 'main-rank-row-limit';
             button.setAttribute('aria-controls', tables.map(item => item.tBodies[0].id).join(' '));
-            button.innerHTML = '<svg width="18" height="20" viewBox="0 0 18 20" aria-hidden="true"><path d="M9 2v16M4 7l5-5 5 5M4 13l5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+            button.innerHTML = '<svg width="14" height="16" viewBox="0 0 18 20" aria-hidden="true"><path d="M9 3v14M6.2 5.8L9 3l2.8 2.8M6.2 14.2L9 17l2.8-2.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
             button.addEventListener('click', () => { limit = limit === 0 ? 10 : limit === 10 ? 5 : 0; update(); });
             group.append(button); buttons.push(button);
         }

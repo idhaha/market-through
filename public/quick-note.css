@@ -1,4 +1,4 @@
-#rankIndependentControls .quick-note-button { display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; padding:0 !important; color:var(--text-primary); }
+.quick-note-button { display:inline-flex; align-items:center; justify-content:center; width:38px; height:38px; padding:0 !important; color:var(--text-primary); }
 .quick-note-button svg { display:block; width:24px; height:24px; flex-shrink:0; }
 #rankIndependentControls { position:relative; }
 #rankIndependentControls > button { display:inline-flex; align-items:center; justify-content:center; font-family:inherit; font-size:13px; line-height:20px; padding-top:0 !important; padding-bottom:0 !important; }

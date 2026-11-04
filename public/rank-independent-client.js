@@ -200,7 +200,7 @@
         let rowBaseline = null, resetRowBaseline = false;
         let rowLimit = 0, defaultTableHeight = null;
         const rowLimitButton = document.createElement('button');
-        rowLimitButton.type = 'button'; rowLimitButton.className = 'independent-row-limit'; rowLimitButton.innerHTML = '<svg width="18" height="20" viewBox="0 0 18 20" aria-hidden="true" focusable="false"><path d="M9 2v16M4 7l5-5 5 5M4 13l5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        rowLimitButton.type = 'button'; rowLimitButton.className = 'independent-row-limit'; rowLimitButton.innerHTML = '<svg width="14" height="16" viewBox="0 0 18 20" aria-hidden="true" focusable="false"><path d="M9 3v14M6.2 5.8L9 3l2.8 2.8M6.2 14.2L9 17l2.8-2.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
         table.querySelector('h2').after(rowLimitButton);
         function fitTableRows(previousHeight) {
             if (table.classList.contains('independent-collapsed')) return;
