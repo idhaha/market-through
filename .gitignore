@@ -59,6 +59,7 @@ data/supply/
 data/market-supply/
 data/trading-session/
 data/ls-futures-test/
+data/vi-monitor/
 data/kis-concentration/
 data/breadth/
 
@@ -90,3 +91,7 @@ data/kiwoom-market-supply/
 data/ls-turnover/
 data/kis-turnover/
 data/market-alerts/
+
+# Runtime data (tokens, snapshots) and test/probe outputs stay local
+/data/
+/outputs/

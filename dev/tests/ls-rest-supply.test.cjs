@@ -3,6 +3,7 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
 const {createLsMarketSupply, subscriptions} = require('../../ls-market-supply');
+const {createBrokerStockSupply} = require('../../broker-stock-supply');
 const {timestamp} = require('../../supply-service');
 
 function marketFixture(t, responses) {
@@ -72,6 +73,34 @@ test('REST mode skips futures outside the day session and spot after the close',
     f.setTime(timestamp('20261104','202000'));
     f.calls.length = 0; await f.provider.collect(); await new Promise(r=>setImmediate(r));
     assert.equal(f.calls.length, 0);
+});
+
+test('LS stock program REST mode polls t1637 once a minute for selected codes and never opens UPH', async t => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ls-program-rest-'));
+    t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+    let time = timestamp('20261104','100030');
+    const calls = [];
+    const service = createBrokerStockSupply({broker:'ls', directory, now:()=>time, pause:async()=>{},
+        programMode:()=> 'rest', programRestCodes:()=>['005930'],
+        Socket: class { constructor(){ throw Error('UPH websocket must not open'); } },
+        credentials:()=>({}), getToken:async()=>'token',
+        supply:{summary:()=>({stocks:[{code:'005930'},{code:'000660'}]}),confirmMarket:async()=>true},
+        http:{post:async(url,body,options)=>{
+            const tr=options.headers.tr_cd,input=Object.values(body)[0];calls.push({tr,code:input.shcode});
+            if(tr==='t1717')return {data:{rsp_cd:'00000',t1717OutBlock:[]}};
+            return {data:{rsp_cd:'00000',t1637OutBlock1:[{date:'20261104',time:'100100',svolume:'99'},{date:'20261104',time:'100000',svolume:'-120'},{date:'20261104',time:'095900',svolume:'-100'}]}};
+        }}});
+    await service.collect();
+    assert.deepEqual(calls.filter(c=>c.tr==='t1637').map(c=>c.code),['005930']);
+    // The 10:01 row is in the future relative to 10:00:30 and is ignored.
+    assert.deepEqual(service.store.points('005930','2026-11-04').map(p=>[p.t,p.program]),
+        [[timestamp('20261104','095900'),-100],[timestamp('20261104','100000'),-120]]);
+    assert.equal(service.status.websocket,'조회 방식(REST)');
+    await service.collect();
+    assert.equal(calls.filter(c=>c.tr==='t1637').length,1,'same minute does not poll again');
+    time = timestamp('20261104','100130'); await service.collect();
+    assert.equal(calls.filter(c=>c.tr==='t1637').length,2);
+    assert.equal(service.store.points('005930','2026-11-04').at(-1).program,99);
 });
 
 test('a response still holding the previous session is not stored under today', async t => {

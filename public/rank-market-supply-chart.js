@@ -16,6 +16,35 @@
         return [...points.values()].sort((a,b) => a.t - b.t);
     }
     const displayFlow = source => source;
+    // Other markets' flow, shared by every card, so all markets in a card share one y scale.
+    const peerStore = new Map(), peerRedraws = new Set(), PEER_FRESH = 60000, PEER_PAGES = 20;
+    async function peerRequest(url) {
+        const response = await fetch(url, { cache: 'no-store' }), data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || '수급 조회 실패');
+        return data;
+    }
+    function ensurePeer(key, urlFor, fromDay) {
+        let entry = peerStore.get(key);
+        if (!entry) peerStore.set(key, entry = { points: [], cursor: undefined, hasMore: false, at: 0, failedAt: 0, job: null });
+        if (entry.job || Date.now() - entry.failedAt < PEER_FRESH) return;
+        const latest = urlFor('');
+        const stale = !entry.at || Date.now() - entry.at >= PEER_FRESH && window.TradingRefresh?.allowsUrl?.(new URL(latest, location.href)) !== false;
+        const earliest = () => { const p = entry.points.find(p => series.some(f => Number.isFinite(p[f]))); return p ? dayKey(p.t) : ''; };
+        const needsHistory = () => entry.hasMore && entry.cursor && fromDay && (!earliest() || earliest() > fromDay);
+        if (!stale && !needsHistory()) return;
+        const merge = data => { entry.points = mergeFlow(entry.points, (data.points || []).filter(p => Number.isFinite(p.t))); };
+        entry.job = (async () => {
+            if (stale) {
+                const data = await peerRequest(latest); merge(data);
+                if (entry.cursor === undefined) { entry.cursor = data.cursor; entry.hasMore = data.has_more === true; }
+                entry.at = Date.now();
+            }
+            for (let i = 0; i < PEER_PAGES && needsHistory(); i++) {
+                const previous = entry.cursor, data = await peerRequest(urlFor(previous)); merge(data);
+                entry.cursor = data.cursor; entry.hasMore = data.has_more === true && !!data.cursor && data.cursor !== previous;
+            }
+        })().catch(() => { entry.failedAt = Date.now(); }).finally(() => { entry.job = null; peerRedraws.forEach(redraw => redraw()); });
+    }
     async function request(url, options) {
         const response = await (window.RankChartCache?.fetch || fetch)(url, options), data = await response.json();
         if (!response.ok || !data.success) throw Object.assign(new Error(data.error || '수급 조회 실패'), { status: response.status });
@@ -76,13 +105,26 @@
         try { selected = selectionStorage.getItem(storageKey) || (isTest ? 'futures' : 'kospi'); if (!['kospi','kosdaq','futures','futuresKosdaq'].includes(selected)) selected='kospi'; } catch {}
         function remember() { try { selectionStorage.setItem(storageKey, selected); } catch {} }
         function setStatus() { status.textContent = [configError, chartMessage, candleMessage].filter(Boolean).join(' · '); status.title = status.textContent; }
-        const settings = () => ({ selected, mode, visibleSeries: [...visibleSeries] });
+        // Minute mode only: share the y range across the card's markets.
+        let ySync = true;
+        try { ySync = selectionStorage.getItem(storageKey + ':ySync') !== '0'; } catch {}
+        const ySyncLabel = document.createElement('label'); ySyncLabel.className = 'market-supply-y-sync';
+        ySyncLabel.title = '분봉에서 4개 시장의 Y축 범위를 가장 큰 금액 기준으로 맞춤';
+        ySyncLabel.innerHTML = '<input type="checkbox"><span>y축 동기화</span>';
+        const ySyncBox = ySyncLabel.querySelector('input'); ySyncBox.checked = ySync; panel.append(ySyncLabel);
+        function paintYSync() { const show = mode === 'minute'; ySyncLabel.hidden = !show; panel.classList.toggle('y-sync-visible', show); ySyncBox.checked = ySync; }
+        ySyncBox.addEventListener('change', () => {
+            ySync = ySyncBox.checked; try { selectionStorage.setItem(storageKey + ':ySync', ySync ? '1' : '0'); } catch {}
+            draw(); publish(); if (typeof saveAppData === 'function') saveAppData();
+        });
+        const settings = () => ({ selected, mode, visibleSeries: [...visibleSeries], ySync });
         window[api('getRankMarketSupplyDisplaySettings')] = settings;
         window[api('applyRankMarketSupplyDisplaySettings')] = value => {
             if (!value) return;
             const oldMarket = selected, oldMode = mode;
             if (['kospi','kosdaq','futures','futuresKosdaq'].includes(value.selected)) selected=value.selected;
             if (['day','minute'].includes(value.mode)) mode=value.mode;
+            if (typeof value.ySync === 'boolean') { ySync = value.ySync; try { selectionStorage.setItem(storageKey + ':ySync', ySync ? '1' : '0'); } catch {} }
             if (Array.isArray(value.visibleSeries) && value.visibleSeries.some(s=>series.includes(s))) { visibleSeries.clear();value.visibleSeries.filter(s=>series.includes(s)).forEach(s=>visibleSeries.add(s)); }
             panel.querySelectorAll('[data-series]').forEach(b=>b.setAttribute('aria-pressed',String(visibleSeries.has(b.dataset.series))));
             panel.querySelectorAll('[data-mode]').forEach(b=>{b.classList.toggle('active',b.dataset.mode===mode);b.setAttribute('aria-pressed',String(b.dataset.mode===mode));});
@@ -105,6 +147,22 @@
             priceCursor = null;
             candleMessage = ''; chartMessage = ''; draw();
         }
+        const marketCodes = () => mode === 'day' && !isKiwoom && !isLs && !combined ? ['kospi','kosdaq'] : ['kospi','kosdaq','futures','futuresKosdaq'];
+        const flowEndpoint = code => isTest && code.startsWith('futures') ? '/api/ls-futures-test/chart' : combined ? mode==='day'?'/api/ls-market-supply/chart':code.startsWith('futures')?'/api/market-supply/chart':'/api/kiwoom-market-supply/chart' : isKiwoom && code.startsWith('futures') ? mode==='day'?'/api/ls-market-supply/chart':'/api/market-supply/chart' : endpoint;
+        // Flow of the other markets inside the visible window, for a shared y scale.
+        function peerRows(rows) {
+            if (!rows.length || mode !== 'minute' || !ySync) return [];
+            const fromDay = dayKey(rows[0].t), toDay = dayKey(rows.at(-1).t), first = rows[0].t, last = rows.at(-1).t;
+            const inWindow = mode === 'day' ? p => { const d = dayKey(p.t); return d >= fromDay && d <= toDay; } : p => p.t >= first && p.t <= last;
+            const canFetch = !(window.rankManagedChartRefresh && !window.rankChartRefreshStarted);
+            return marketCodes().filter(code => code !== selected).flatMap(code => {
+                const path = flowEndpoint(code), key = `${path}|${code}|${mode}`;
+                const urlFor = page => `${path}?${new URLSearchParams({ code, mode, ...(mode === 'minute' && (path === '/api/market-supply/chart' || path === '/api/ls-futures-test/chart') ? { prices: '0' } : {}), ...(page ? { cursor: page } : {}) })}`;
+                if (canFetch) ensurePeer(key, urlFor, fromDay);
+                return (peerStore.get(key)?.points || []).filter(inWindow);
+            });
+        }
+        peerRedraws.add(() => draw());
         function surface(c, context) {
             const w = c.clientWidth, h = c.clientHeight, dpr = window.devicePixelRatio || 1;
             c.width = Math.round(w * dpr); c.height = Math.round(h * dpr);
@@ -129,10 +187,12 @@
             panel.querySelector('[aria-label="시장 수급 차트 축소"]').disabled = n >= points.length;
             more.hidden = false; more.disabled = !selected || !(hasMore || mode === 'minute' && priceCursor) || loading || mode === 'minute' && candleLoading;
             const values = rows.flatMap(p => [...visibleSeries].map(s => p[s])).filter(Number.isFinite);
-            let min = 0, max = 0; for (const value of values) { min = Math.min(min, value); max = Math.max(max, value); }
+            const others = peerRows(rows);
+            const scaleValues = values.concat(others.flatMap(p => [...visibleSeries].map(s => p[s])).filter(Number.isFinite));
+            let min = 0, max = 0; for (const value of scaleValues) { min = Math.min(min, value); max = Math.max(max, value); }
             const span = Math.max(1, max - min), padding = span * .08; min -= padding; max += padding;
             const y = v => bottom - (v - min) / (max - min) * (bottom - top);
-            geometry = { rows, left, right, top, bottom, x, y };
+            geometry = { rows, left, right, top, bottom, x, y, min, max, extents: {} };
             if (w <= 100 || h <= 50) return;
             const muted = getComputedStyle(panel).getPropertyValue('--text-muted').trim() || '#64748b';
             function grid(context, width, low, high, toY, unit = true, showLabels = true) {
@@ -161,9 +221,9 @@
                 const laneHeight=(bottom-top)/4;
                 series.forEach((field,i)=>{
                     const zero=top+laneHeight*(i+.5);
-                    const values=rows.map(p=>p[field]).filter(Number.isFinite);
-                    const extent=Math.max(1,...values.map(Math.abs));
-                    lanes.set(field,{zero,y:value=>zero-value/extent*(laneHeight/2-9)});
+                    let extent=1;
+                    for(const p of rows)if(Number.isFinite(p[field]))extent=Math.max(extent,Math.abs(p[field]));
+                    geometry.extents[field]=extent;lanes.set(field,{zero,y:value=>zero-value/extent*(laneHeight/2-9)});
                     ctx.save();ctx.strokeStyle='#64748b';ctx.lineWidth=1.5;ctx.setLineDash([]);ctx.beginPath();ctx.moveTo(left,zero);ctx.lineTo(right,zero);ctx.stroke();ctx.restore();
                     ctx.fillStyle=colors[field];ctx.textAlign='right';ctx.save();ctx.textBaseline='middle';ctx.fillText(names[field],w-4,zero);ctx.restore();
                 });
@@ -275,6 +335,7 @@
             if (hovered) valueBadge(cc, hovered.close, cy(hovered.close), '#000', size.h, hovered.close.toLocaleString('ko-KR'));
         }
         function paintStocks() {
+            paintYSync();
             if (mode === 'day' && !isKiwoom && !isLs && !combined && selected.startsWith('futures')) selected = selected === 'futuresKosdaq' ? 'kosdaq' : 'kospi';
             stockSelect.setChoices(mode === 'day' && !isKiwoom && !isLs && !combined ? [['kospi','KOSPI'],['kosdaq','KOSDAQ']] : [['kospi','KOSPI'],['kosdaq','KOSDAQ'],['futures','KOSPI선물'],['futuresKosdaq','KOSDAQ선물']]);
             stockSelect.value=selected;
@@ -299,7 +360,7 @@
             visibleFlowPoints:geometry?.rows.filter(p=>series.some(field=>Number.isFinite(p[field]))).length || 0,
             validCandles:candles.filter(window.RankChartAxis.validCandle).length,
             visiblePoints:geometry?.rows.length || 0,visibleCandles:candles.filter(p=>geometry?.rows.some(row=>row.t===p.t) && window.RankChartAxis.validCandle(p)).length,
-            first:points[0]?.t,last:points.at(-1)?.t,visibleFirst:geometry?.rows[0]?.t,visibleLast:geometry?.rows.at(-1)?.t,candleFirst:candles[0]?.t,candleLast:candles.at(-1)?.t});
+            first:points[0]?.t,last:points.at(-1)?.t,visibleFirst:geometry?.rows[0]?.t,visibleLast:geometry?.rows.at(-1)?.t,candleFirst:candles[0]?.t,candleLast:candles.at(-1)?.t,yMin:geometry?.min,yMax:geometry?.max,laneExtents:{...geometry?.extents}});
         async function loadCandles(requestedRange) {
             if(candleEnsureActive && !requestedRange)return;
             if(!showCandles)return;
@@ -359,7 +420,7 @@
             controller?.abort(); const current = controller = new AbortController(), id = ++revision;
             if(!candleLoading)candleRangeKey='';
             if (!selected) { loading = false; clearView(); chartMessage = '시장을 선택하세요.'; setStatus(); return; }
-            const queryEndpoint = isTest && selected.startsWith('futures') ? '/api/ls-futures-test/chart' : combined ? mode==='day'?'/api/ls-market-supply/chart':selected.startsWith('futures')?'/api/market-supply/chart':'/api/kiwoom-market-supply/chart' : isKiwoom && selected.startsWith('futures') ? mode==='day'?'/api/ls-market-supply/chart':'/api/market-supply/chart' : endpoint;
+            const queryEndpoint = flowEndpoint(selected);
             if(append){window.RankChartAxis.showHistory();todayOnly=false;}
             loading = true; flowLoading=true; chartMessage = append ? '과거 수급 조회 중…' : '수급 조회 중…'; setStatus(); draw();
             try {

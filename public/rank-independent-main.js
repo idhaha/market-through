@@ -28,7 +28,7 @@
     document.addEventListener('DOMContentLoaded', () => {
         const controls = document.getElementById('rankIndependentControls');
         if (!controls) return;
-        const button = document.createElement('button'); button.type = 'button'; button.textContent = '독립창'; button.className = 'btn-secondary';
+        const button = document.createElement('button'); button.type = 'button'; button.textContent = '수급'; button.title = '수급 독립창'; button.dataset.independent = 'rank'; button.className = 'btn-secondary';
         const statusRegion = document.createElement('span'); statusRegion.setAttribute('role', 'status');
         const message = document.createElement('span');
         statusRegion.append(message);

@@ -50,7 +50,7 @@ const { createRankIndependentRelay } = require('../../rank-independent');
         main.on('pageerror', e => errors.push(e.message)); child.on('pageerror', e => errors.push(e.message));
         await main.goto(origin + '/main');
         await main.waitForFunction(() => window.getRankCombinedSupplyState?.().points.length === 20);
-        await main.getByRole('button',{name:'독립창',exact:true}).click();
+        await main.getByRole('button',{name:'수급',exact:true}).click();
         await main.waitForFunction(() => window.testLaunchUrl);
         await child.goto(origin + '/rank-independent.html#' + new URLSearchParams({ id: ticket.id, token: ticket.token }));
         await child.waitForFunction(() => window.getRankSupplyState?.().points.length === 20);

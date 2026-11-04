@@ -132,6 +132,7 @@ const authSessionStore = createSessionStore({
 
 // 미들웨어 설정
 const quickNoteGrants = new Map();
+const viWindowAccess = require('./vi-monitor-routes').createViWindowAccess({ session: req => getSessionFromRequest(req) });
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -155,6 +156,7 @@ app.use((req, res, next) => {
 // Only the Google sign-in handshake and session lifecycle endpoints are public.
 app.use('/api', (req, res, next) => {
     if (req.method === 'OPTIONS' || ['/auth/login', '/auth/session', '/auth/logout'].includes(req.path)) return next();
+    if (viWindowAccess.handles(req)) return viWindowAccess.authorize(req, res, next);
     // This single endpoint uses a short-lived, scoped capability instead of browser cookies.
     if (req.method === 'POST' && /^\/rank-independent\/peer\/[a-f0-9]{32}$/.test(req.path)) return next();
     if (req.path === '/quick-note' && ['GET', 'POST'].includes(req.method) && req.headers['x-note-token']) {
@@ -290,6 +292,10 @@ const lsMarketSupplyProvider = require('./ls-market-supply').createLsMarketSuppl
 const marketAlertService = require('./market-alert-service').createMarketAlerts({
     directory: path.join(__dirname, 'data', 'market-alerts'), getToken: () => lsMarketSupplyProvider.accessToken()
 });
+const viMonitorService = require('./vi-monitor-service').createViMonitor({
+    directory: path.join(__dirname, 'data', 'vi-monitor'), getToken: () => lsMarketSupplyProvider.accessToken(), http: axios
+});
+viWindowAccess.mount(app, viMonitorService);
 app.get('/api/market-alerts', (req, res) => res.set('Cache-Control', 'no-store').json(marketAlertService.snapshot(req.authUser.email)));
 app.post('/api/market-alerts/acknowledge', (req, res) => {
     try { res.set('Cache-Control', 'no-store').json(marketAlertService.acknowledge(req.authUser.email, req.body.ids)); }
@@ -337,7 +343,10 @@ const kisStockSupplyService = createBrokerStockSupply({
 });
 const lsStockSupplyService = createBrokerStockSupply({
     broker: 'ls', directory: path.join(__dirname, 'data', 'ls-supply'), http: axios, supply: supplyService,
-    credentials: () => ({}), getToken: () => lsMarketSupplyProvider.accessToken()
+    credentials: () => ({}), getToken: () => lsMarketSupplyProvider.accessToken(),
+    programMode: () => (process.env.LS_STOCK_PROGRAM_MODE || '').trim(),
+    // Empty means every registered stock.
+    programRestCodes: () => { const codes = (process.env.LS_STOCK_PROGRAM_REST_CODES || '').split(',').map(s => s.trim()).filter(Boolean); return codes.length ? codes : null; }
 });
 const { createBrokerTurnoverData } = require('./broker-turnover-data');
 const kisTurnoverData = createBrokerTurnoverData({ broker: 'kis', directory: path.join(__dirname,'data','kis-turnover'),
@@ -3115,6 +3124,8 @@ app.listen(PORT, async () => {
     tradingSession.start();await tradingSession.refresh();
     // MARKET_ALERT_REALTIME=false keeps the market alert (JIF) LS websocket closed, freeing an LS session for tests.
     if ((process.env.MARKET_ALERT_REALTIME || '').trim() !== 'false') marketAlertService.start();
+    // VI_MONITOR_REALTIME=false keeps the VI window's LS websocket closed (local comparison tests).
+    if ((process.env.VI_MONITOR_REALTIME || '').trim() !== 'false') viMonitorService.start();
     supplyService.start();
     kisStockSupplyService.start();
     lsStockSupplyService.start();

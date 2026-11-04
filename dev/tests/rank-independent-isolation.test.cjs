@@ -53,7 +53,7 @@ const { createRankIndependentRelay } = require('../../rank-independent');
         await main.waitForFunction(()=>window.getRankCombinedSupplyState?.().points.length===20);
         await main.evaluate(()=>selectRankChartStock({code:'005930',name:'삼성전자',market:'K'}));
         await main.evaluate(()=>{document.getElementById('transactionBody').innerHTML=['005930','000660','000003'].map(code=>`<tr data-chart-code="${code}" data-chart-name="종목${code}" data-chart-market="K"><td>${code}</td></tr>`).join('');});
-        await main.getByRole('button',{name:'독립창',exact:true}).click();await main.waitForFunction(()=>window.testLaunchUrl);
+        await main.getByRole('button',{name:'수급',exact:true}).click();await main.waitForFunction(()=>window.testLaunchUrl);
         await child.goto(origin+'/rank-independent.html#'+new URLSearchParams({id:ticket.id,token:ticket.token}));
         await child.waitForFunction(()=>window.getRankSupplyState?.().points.length===20);
         await child.locator('#transactionBody tr').nth(1).click();

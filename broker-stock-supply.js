@@ -25,7 +25,10 @@ function lsInvestors(row) {
 }
 
 function createBrokerStockSupply({ broker, directory, http, credentials, getToken, supply,
-    now = Date.now, Socket = WebSocket, pause = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+    now = Date.now, Socket = WebSocket, pause = ms => new Promise(resolve => setTimeout(resolve, ms)),
+    // LS only: 'rest' replaces the UPH websocket with per-minute t1637 polling for programRestCodes().
+    // The shared LS socket is then not opened, so extra streams (turnover IJ_/US3) are not served.
+    programMode = () => 'websocket', programRestCodes = () => null }) {
     if (!['kis', 'ls'].includes(broker)) throw new Error('Unknown stock supply broker');
     const store = createSupplyStore({ directory, now });
     const pending = new Map(), subscribed = new Set(), dailyCache = createDailyQueryCache({ now }), historyCache = createHistoryCache({ now });
@@ -201,7 +204,41 @@ function createBrokerStockSupply({ broker, directory, http, credentials, getToke
             ? { header: { token: auth, tr_type: removing ? '4' : '3' }, body: { tr_cd: tr, tr_key: key } }
             : { header: { approval_key: auth, custtype: 'P', tr_type: removing ? '2' : '1', 'content-type': 'utf-8' }, body: { input: { tr_id: tr, tr_key: key } } }));
     }
+    const programRest = () => broker === 'ls' && programMode() === 'rest';
+    async function restRetry(tr, endpoint, params) {
+        // t1637 is shared with the daily program history (and other servers on the same appkey).
+        for (let attempt = 0; ; attempt++) {
+            try { return await rest(tr, endpoint, params); }
+            catch (error) { if (attempt >= 2) throw error; await pause(1500 * (attempt + 1) + Math.floor(Math.random() * 500)); }
+        }
+    }
+    const programSeen = new Map();
+    async function pollProgram(code) {
+        const date = confirmedDay.replaceAll('-', '');
+        const data = await restRetry('t1637', 'program', { gubun1: '0', gubun2: '0', shcode: code, date, time: '', cts_idx: 9999, exchgubun: 'U' });
+        if (!Array.isArray(data.t1637OutBlock1)) throw failure('LS t1637 응답 형식 오류', 502);
+        const at = now(), seenKey = `${code}:${date}`, seen = programSeen.get(seenKey) || 0;
+        if (dayKey(at) !== confirmedDay) return;
+        const saved = new Map(store.points(code, confirmedDay).map(p => [p.t, p]));
+        const points = [];
+        let newest = seen;
+        for (const row of data.t1637OutBlock1) {
+            if (row.date && String(row.date) !== date) continue;
+            const time = String(row.time || '');
+            if (!/^(?:[01]\d|2[0-3])[0-5]\d[0-5]\d$/.test(time)) continue;
+            const t = timestamp(date, time), value = quantity(row.svolume);
+            if (!Number.isFinite(t) || t > at || !collectingAt(t) || value === null || seen && t < seen - 60000) continue;
+            const bucket = Math.floor(t / 60000) * 60000;
+            if (saved.get(bucket)?.program_at > t) continue;
+            points.push({ t: bucket, program: value, program_at: t });
+            newest = Math.max(newest, t);
+        }
+        if (points.length) store.mergeMany(code, points);
+        programSeen.set(seenKey, newest);
+        status.last_data_at = now();
+    }
     async function connect() {
+        if (programRest()) { status.websocket = '조회 방식(REST)'; return; }
         if (broker === 'kis' && process.env.KIS_STOCK_REALTIME_ENABLED === 'false') { status.websocket = '실시간 수집 중지'; status.error = '한투 실시간 수집 중지: Oracle 우선 설정'; return; }
         if (stopped || connecting || socket || now() < nextConnect || !stocks().length && !streams.size) return;
         connecting = true; const revision = generation;
@@ -293,6 +330,14 @@ function createBrokerStockSupply({ broker, directory, http, credentials, getToke
                         individual_at: at, foreign_at: at, institution_at: at });
                     if (status.websocket === '구독 완료') status.error = null;
                 } catch { status.error = `${broker.toUpperCase()} 투자자 REST 조회 실패`; }
+            }
+            if (programRest()) {
+                const allowed = programRestCodes();
+                for (const stock of stocks()) {
+                    if (allowed && !allowed.includes(stock.code)) continue;
+                    try { await pollProgram(stock.code); if (status.error === 'LS 프로그램 REST 조회 실패') status.error = null; }
+                    catch { status.error = 'LS 프로그램 REST 조회 실패'; }
+                }
             }
         })().finally(() => { running = null; });
         return running;

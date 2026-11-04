@@ -1,0 +1,50 @@
+/* Same outer spacing as the trading independent window. */
+.vi-monitor { padding:8px; }
+.vi-panel { width:100%; padding:12px 14px; }
+.vi-panel .panel-header { margin-bottom:8px; }
+.vi-panel .panel-header h1 { margin:0; font-size:1.1rem; font-weight:700; }
+.vi-panel .vi-clock { color:var(--text-muted); font-size:12px; margin-left:auto; }
+.vi-panel .table-wrapper { overflow:auto; max-height:calc(100vh - 200px); }
+.vi-panel table { width:100%; min-width:1050px; border-collapse:collapse; }
+.vi-panel th, .vi-panel td { white-space:nowrap; text-align:center; }
+.vi-panel .table-wrapper table :is(th,td):nth-child(n) { width:auto; min-width:0; }
+.vi-panel .table-wrapper tbody { display:table-row-group; width:auto; max-height:none; overflow:visible; }
+.vi-panel .table-wrapper thead { width:auto; color:var(--text-primary); }
+.vi-panel .table-wrapper th { vertical-align:middle; }
+/* Cell font and padding come from the shared .table-wrapper rules (same as the trading tables). */
+.vi-panel td { font-variant-numeric:tabular-nums; }
+.vi-panel td.name { text-align:left; }
+.vi-panel td.amount { text-align:right; }
+.vi-panel .vi-summary { display:flex; flex-wrap:wrap; gap:16px; margin-top:0; font-size:13px; }
+.vi-panel .vi-status { color:var(--text-muted); font-size:12px; margin:4px 0 0; }
+.vi-panel .up { color:#e11d48; }
+.vi-panel .down { color:#2563eb; }
+.vi-panel .muted { color:var(--text-muted); }
+.vi-panel tbody tr.released td, .vi-panel tbody tr.released td * { color:var(--text-muted); opacity:.7; }
+.vi-panel .countdown { font-weight:700; }
+.vi-panel .countdown.soon { color:#e11d48; }
+.vi-panel th button { border:0; background:transparent; color:inherit; font:inherit; cursor:pointer; padding:0; }
+.vi-panel .comparison-group { border-bottom:1px solid #d9e2f0; }
+.vi-panel .table-wrapper thead tr:first-child th.comparison-group, .vi-panel .table-wrapper thead tr:nth-child(2) th { padding-block:.3rem; }
+.vi-panel .vi-controls { display:flex; align-items:center; gap:10px; font-size:12px; }
+.vi-panel .vi-empty { padding:36px; color:var(--text-muted); }
+.vi-panel th .interval-select { margin-left:4px; padding:1px 4px; font-size:.75rem; box-shadow:none; }
+.vi-panel footer { margin-top:8px; padding-top:0; }
+/* New VI rows blink with the side car alert colors until clicked. */
+.vi-panel tbody tr.vi-flash-up { --vi-dark:#c90000; --vi-bright:#ff9999; }
+.vi-panel tbody tr.vi-flash-down { --vi-dark:#2563eb; --vi-bright:#dbeafe; }
+.vi-panel tbody tr.vi-flash-up, .vi-panel tbody tr.vi-flash-down { cursor:pointer; }
+.vi-panel tbody tr.vi-flash-up td, .vi-panel tbody tr.vi-flash-down td { animation:vi-row-background 1.5s ease-in-out infinite; animation-delay:var(--vi-flash-delay,0s); }
+@keyframes vi-row-background { 0%,100% { background-color:var(--vi-dark); color:#fff; } 50% { background-color:var(--vi-bright); color:#172033; } }
+@media (prefers-reduced-motion:reduce) { .vi-panel tbody tr.vi-flash-up td, .vi-panel tbody tr.vi-flash-down td { animation:none; background-color:var(--vi-bright); color:#172033; } }
+/* Clock and "항상 위" share one vertical center and line height. */
+.vi-panel .vi-clock, .vi-panel .vi-controls { line-height:16px; }
+.vi-panel .vi-controls label { display:inline-flex; align-items:center; gap:4px; color:var(--text-muted); cursor:pointer; }
+.vi-panel .vi-controls input[type="checkbox"] { margin:0; width:13px; height:13px; }
+/* Sort icons (preview.html style): muted arrows, active direction darker; dot for inactive columns. */
+.vi-panel th button { display:inline-flex; align-items:center; gap:3px; }
+.vi-panel th .sort-icon { display:inline-flex; font-style:normal; }
+.vi-panel th .sort-icon svg { width:8px; height:12px; fill:none; stroke:var(--text-muted); stroke-width:1.3; stroke-linecap:round; stroke-linejoin:round; }
+.vi-panel th .sort-icon circle { fill:var(--text-muted); stroke:none; }
+.vi-panel th[aria-sort="ascending"] .sort-icon .u, .vi-panel th[aria-sort="descending"] .sort-icon .d { stroke:var(--text-primary); stroke-width:1.6; }
+.vi-panel th button:hover { color:var(--text-primary); text-decoration:underline; }

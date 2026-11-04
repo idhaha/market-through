@@ -39,7 +39,9 @@ const { promisify } = require('node:util');
         .replace('<main id="tab_rank">', '<span id="lastUpdate">-</span><span id="statusText">대기 중</span><main id="tab_rank">')
         .replace(/<link rel="stylesheet" href="rank-independent.css[^\"]*">/, '<style>#tab_rank { display:grid; grid-template-columns:1fr 1.45fr; gap:14px; }</style>')
         .replace('<main id="tab_rank">', '<div class="header-single-line"><div class="rank-title-group"><h1>Rank</h1><div id="rankIndependentControls"></div></div></div><main id="tab_rank">')
-        .replace(/<script src="rank-independent-client.js[^\"]*" defer><\/script>/, '<script src="rank-independent-main.js?v=20261011_v1" defer></script>')));
+        .replace(/<script src="rank-independent-client.js[^\"]*" defer><\/script>/, '<script src="rank-independent-main.js?v=20261011_v1" defer></script>')
+        // Same order as index.html: the VI launcher loads after market alerts.
+        .replace('</head>', '<script src="vi-monitor-launch.js" defer></script></head>')));
     // Capture protocol launches; a real external-app prompt blocks headless input.
     app.get('/rank-independent-main.js', (req, res) => res.type('js').send(fs.readFileSync('public/rank-independent-main.js', 'utf8')
         .replace("location.href = 'marketthrough://open?url=' + encodeURIComponent(url);", "window.testLaunchUrl = 'marketthrough://open?url=' + encodeURIComponent(url);")));
@@ -121,8 +123,11 @@ const { promisify } = require('node:util');
         });
         await main.waitForFunction(() => !getRankChartState().busy && getRankChartState().points.length === 40);
         const before = queries.length;
-        await main.getByRole('button', { name: '독립창', exact: true }).click();
-        assert.equal(await main.getByRole('button', { name: '독립창', exact: true }).isDisabled(), true);
+        // VI sits immediately to the right of the 수급 button.
+        assert.deepEqual(await main.evaluate(() => { const b = [...document.querySelectorAll('#rankIndependentControls button')].map(x => x.textContent); const k = b.indexOf('수급'); return b.slice(k, k + 2); }), ['수급', 'VI']);
+        assert.equal(await main.evaluate(() => { const c = document.getElementById('rankIndependentControls'), vi = c.querySelector('[data-independent="vi"]'), info = c.querySelector('.market-alert-info'); return !info || !!(vi.compareDocumentPosition(info) & Node.DOCUMENT_POSITION_FOLLOWING); }), true);
+        await main.getByRole('button', { name: '수급', exact: true }).click();
+        assert.equal(await main.getByRole('button', { name: '수급', exact: true }).isDisabled(), true);
         const child = await browser.newPage({ viewport: { width: 1350, height: 850 } }); child.on('pageerror', error => errors.push(error.message));
         await child.goto(`${origin}/rank-independent.html#id=${ticket.id}&token=${ticket.token}`);
         await child.waitForFunction(() => window.getRankChartState?.()?.points.length === 40);
@@ -270,10 +275,10 @@ const { promisify } = require('node:util');
         await verifyIndependentRefresh(main, child);
         // Native close notification enables the original button and leaves original content intact.
         await json(`/api/rank-independent/peer/${ticket.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ticket.token}` }, body: '{"close":true}' });
-        await main.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent === '독립창' && !button.disabled));
+        await main.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent === '수급' && !button.disabled));
         assert.equal(await main.locator('#transactionBody tr').count(), 2);
         await child.close();
-        await main.getByRole('button', { name: '독립창', exact: true }).click();
+        await main.getByRole('button', { name: '수급', exact: true }).click();
         const reopened = await browser.newPage();
         await reopened.goto(`${origin}/rank-independent.html#id=${ticket.id}&token=${ticket.token}`);
         await reopened.waitForFunction(() => window.getRankChartState?.()?.selection?.code === '000001');
@@ -310,13 +315,13 @@ const { promisify } = require('node:util');
             console.error('Installer fallback state:', await missingApp.locator('#rankIndependentControls').textContent());
             throw error;
         });
-        await missingApp.getByRole('button', { name: '독립창', exact: true }).click();
+        await missingApp.getByRole('button', { name: '수급', exact: true }).click();
         await missingApp.waitForFunction(() => window.testLaunchUrl);
         await missingApp.evaluate(() => { const original = Date.now.bind(Date); Date.now = () => original() + 21000; });
         const download = await downloadPromise;
         assert.equal(download.suggestedFilename(), 'MarketThroughSetup.exe');
-        assert.equal(await missingApp.getByRole('button', { name: '독립창', exact: true }).isDisabled(), false);
-        assert.match(await missingApp.locator('#rankIndependentControls [role="status"]').textContent(), /다운로드한 MarketThroughSetup.exe/);
+        assert.equal(await missingApp.getByRole('button', { name: '수급', exact: true }).isDisabled(), false);
+        assert.match(await missingApp.locator('#rankIndependentControls [role="status"]:not([data-independent="vi-status"])').textContent(), /다운로드한 MarketThroughSetup.exe/);
         await missingApp.waitForTimeout(1200);
         assert.equal(await missingApp.getByRole('link', { name: /설치/ }).count(), 0);
         console.log('PASS Rank relay security, one local initial query, isolated selection/mode, shared table conditions, independent zoom, close/reopen and owner shutdown');
