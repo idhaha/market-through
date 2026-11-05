@@ -32,10 +32,22 @@
     }
     function allows(id){
         if(['sentiment','volatility'].includes(id))return true;
-        const panelIds={combinedMarketSupply:'rankCombinedMarketSupplyChartPanel',combinedMarketSupplySecondary:'rankCombinedMarketSupplySecondaryChartPanel',testMarketSupply:'rankTestMarketSupplyChartPanel',marketSupply:'rankMarketSupplyChartPanel',lsMarketSupply:'rankLsMarketSupplyChartPanel',kiwoomMarketSupply:'rankKiwoomMarketSupplyChartPanel'};
+        const panelIds={combinedMarketSupply:'rankCombinedMarketSupplyChartPanel',combinedMarketSupplySecondary:'rankCombinedMarketSupplySecondaryChartPanel',testMarketSupply:'rankTestMarketSupplyChartPanel',testMarketSupplySecondary:'rankTestMarketSupplySecondaryChartPanel',marketSupply:'rankMarketSupplyChartPanel',lsMarketSupply:'rankLsMarketSupplyChartPanel',kiwoomMarketSupply:'rankKiwoomMarketSupplyChartPanel'};
         const panel=document.getElementById(panelIds[id]);
         const future=panel?.querySelector('input[value^="futures"]:checked');
         return future ? state?.futures===true : state?.spot===true;
+    }
+    // Latest close (ms) of the market a card or URL shows; null when unknown.
+    function closedAt(id){
+        if(['sentiment','volatility'].includes(id))return null;
+        const panelIds={combinedMarketSupply:'rankCombinedMarketSupplyChartPanel',combinedMarketSupplySecondary:'rankCombinedMarketSupplySecondaryChartPanel',testMarketSupply:'rankTestMarketSupplyChartPanel',testMarketSupplySecondary:'rankTestMarketSupplySecondaryChartPanel',marketSupply:'rankMarketSupplyChartPanel',lsMarketSupply:'rankLsMarketSupplyChartPanel',kiwoomMarketSupply:'rankKiwoomMarketSupplyChartPanel'};
+        const future=document.getElementById(panelIds[id])?.querySelector('input[value^="futures"]:checked');
+        const value=state?.closedAt?.[future?'futures':'spot'];return Number.isFinite(value)?value:null;
+    }
+    function closedAtUrl(url){
+        if(url.pathname.startsWith('/api/risk/') && url.pathname!=='/api/risk/breadth')return null;
+        const value=state?.closedAt?.[url.searchParams.get('code')?.startsWith('futures')?'futures':'spot'];
+        return Number.isFinite(value)?value:null;
     }
     function allowsUrl(url){
         if(!state)return true;
@@ -44,6 +56,6 @@
         return code?.startsWith('futures') ? state.futures : state.spot;
     }
     function accept(value){if(typeof value?.spot!=='boolean'||typeof value?.futures!=='boolean')return;state=value;acceptCalendar(value.days || {});checked=Date.now();}
-    window.TradingRefresh={update,accept,ensureCalendar,allows,allowsUrl,get state(){return state;}};
+    window.TradingRefresh={update,accept,ensureCalendar,allows,allowsUrl,closedAt,closedAtUrl,get state(){return state;}};
     if(!window.rankIndependentClient)void update();
 })();

@@ -44,7 +44,10 @@
     const minuteCharts=new Map();
     const viewports=new Map();
     let viewportSource=null,viewportBefore=null;
-    const viewportPanels={testMarketSupply:'rankTestMarketSupplyChartPanel',combinedMarketSupplySecondary:'rankCombinedMarketSupplySecondaryChartPanel',combinedMarketSupply:'rankCombinedMarketSupplyChartPanel',combinedSupply:'rankCombinedSupplyChartPanel',combinedTurnover:'rankCombinedTurnoverChartPanel',combinedConcentration:'combinedConcentrationChartPanel',lsConcentration:'lsConcentrationChartPanel',kisTurnover:'rankKisTurnoverChartPanel',lsTurnover:'rankLsTurnoverChartPanel',kiwoomMarketSupply:'rankKiwoomMarketSupplyChartPanel',kisSupply:'rankKisSupplyChartPanel',lsSupply:'rankLsSupplyChartPanel',lsMarketSupply:'rankLsMarketSupplyChartPanel',concentration:'concentrationChartPanel',kisConcentration:'kisConcentrationChartPanel',supply:'rankSupplyChartPanel',marketSupply:'rankMarketSupplyChartPanel',breadth:'rankBreadthChartPanel',turnover:'rankTurnoverChartPanel',adr:'rankAdrChartPanel',volatility:'rankVolatilityChartPanel',sentiment:'rankSentimentChartPanel'};
+    // The day+night market supply (test) cards show connected day+night futures: their minute axis spans the night session.
+    const testCards=['testMarketSupply','testMarketSupplySecondary'];
+    const overnightChart=()=>testCards.map(id=>minuteCharts.get(id)).filter(c=>c?.mode==='minute' && c.first).sort((a,b)=>a.first.localeCompare(b.first))[0];
+    const viewportPanels={testMarketSupply:'rankTestMarketSupplyChartPanel',testMarketSupplySecondary:'rankTestMarketSupplySecondaryChartPanel',combinedMarketSupplySecondary:'rankCombinedMarketSupplySecondaryChartPanel',combinedMarketSupply:'rankCombinedMarketSupplyChartPanel',combinedSupply:'rankCombinedSupplyChartPanel',combinedTurnover:'rankCombinedTurnoverChartPanel',combinedConcentration:'combinedConcentrationChartPanel',lsConcentration:'lsConcentrationChartPanel',kisTurnover:'rankKisTurnoverChartPanel',lsTurnover:'rankLsTurnoverChartPanel',kiwoomMarketSupply:'rankKiwoomMarketSupplyChartPanel',kisSupply:'rankKisSupplyChartPanel',lsSupply:'rankLsSupplyChartPanel',lsMarketSupply:'rankLsMarketSupplyChartPanel',concentration:'concentrationChartPanel',kisConcentration:'kisConcentrationChartPanel',supply:'rankSupplyChartPanel',marketSupply:'rankMarketSupplyChartPanel',breadth:'rankBreadthChartPanel',turnover:'rankTurnoverChartPanel',adr:'rankAdrChartPanel',volatility:'rankVolatilityChartPanel',sentiment:'rankSentimentChartPanel'};
     const hoverCharts=new Map();
     function hoverKey(value,mode) { return value==null?null:dateParts(value).slice(0,mode==='minute'?16:10); }
     function registerHover(id,getMode,getValue,apply) { hoverCharts.set(id,{getMode,getValue,apply}); }
@@ -122,13 +125,20 @@
         scheduleHistoryButtons();
     }
     function showToday(){resetHistoryWork();viewports.delete('minute');historyMode=false;sharedCutoff=new Date(Date.now()+9*3600000).toISOString().slice(0,10)+' 08:00';rangeRevision++;for(const chart of minuteCharts.values())chart.applied=undefined;notifyCharts();}
-    const refreshOrder=['concentration','combinedConcentration','supply','marketSupply','breadth','turnover','adr','sentiment','volatility','kisConcentration','lsMarketSupply','kisSupply','lsSupply','kiwoomMarketSupply','lsConcentration','kisTurnover','lsTurnover','combinedTurnover','combinedSupply','combinedMarketSupply','combinedMarketSupplySecondary','testMarketSupply'];
-    const refreshMethods={testMarketSupply:'refreshRankTestMarketSupplyChart',combinedMarketSupplySecondary:'refreshRankCombinedMarketSupplySecondaryChart',combinedMarketSupply:'refreshRankCombinedMarketSupplyChart',combinedSupply:'refreshRankCombinedSupplyChart',combinedTurnover:'refreshRankCombinedTurnoverChart',combinedConcentration:'refreshConcentrationChart',lsConcentration:'refreshLsConcentrationChart',kisTurnover:'refreshRankKisTurnoverChart',lsTurnover:'refreshRankLsTurnoverChart',kiwoomMarketSupply:'refreshRankKiwoomMarketSupplyChart',kisSupply:'refreshRankKisSupplyChart',lsSupply:'refreshRankLsSupplyChart',lsMarketSupply:'refreshRankLsMarketSupplyChart',concentration:'refreshConcentrationChart',kisConcentration:'refreshKisConcentrationChart',supply:'refreshRankSupplyChart',marketSupply:'refreshRankMarketSupplyChart',breadth:'refreshRankBreadthChart',turnover:'refreshRankTurnoverChart',adr:'refreshRankAdrChart',sentiment:'refreshRankSentimentChart',volatility:'refreshRankVolatilityChart'};
+    const refreshOrder=['concentration','combinedConcentration','supply','marketSupply','breadth','turnover','adr','sentiment','volatility','kisConcentration','lsMarketSupply','kisSupply','lsSupply','kiwoomMarketSupply','lsConcentration','kisTurnover','lsTurnover','combinedTurnover','combinedSupply','combinedMarketSupply','combinedMarketSupplySecondary','testMarketSupply','testMarketSupplySecondary'];
+    const refreshMethods={testMarketSupply:'refreshRankTestMarketSupplyChart',testMarketSupplySecondary:'refreshRankTestMarketSupplySecondaryChart',combinedMarketSupplySecondary:'refreshRankCombinedMarketSupplySecondaryChart',combinedMarketSupply:'refreshRankCombinedMarketSupplyChart',combinedSupply:'refreshRankCombinedSupplyChart',combinedTurnover:'refreshRankCombinedTurnoverChart',combinedConcentration:'refreshConcentrationChart',lsConcentration:'refreshLsConcentrationChart',kisTurnover:'refreshRankKisTurnoverChart',lsTurnover:'refreshRankLsTurnoverChart',kiwoomMarketSupply:'refreshRankKiwoomMarketSupplyChart',kisSupply:'refreshRankKisSupplyChart',lsSupply:'refreshRankLsSupplyChart',lsMarketSupply:'refreshRankLsMarketSupplyChart',concentration:'refreshConcentrationChart',kisConcentration:'refreshKisConcentrationChart',supply:'refreshRankSupplyChart',marketSupply:'refreshRankMarketSupplyChart',breadth:'refreshRankBreadthChart',turnover:'refreshRankTurnoverChart',adr:'refreshRankAdrChart',sentiment:'refreshRankSentimentChart',volatility:'refreshRankVolatilityChart'};
+    const closeReads=new Map();
     function refreshCharts({skipConcentration=false,mode=null,automatic=false}={}) {
         window.rankChartRefreshStarted=true;
         const pending=[];
         for(const id of refreshOrder){
-            if(automatic && window.TradingRefresh && !window.TradingRefresh.allows(id))continue;
+            // After a close, read each card once more (past the server's write grace) so a screen
+            // left open picks up the final minutes; the chart cache refetches only if its copy predates the close.
+            if(automatic && window.TradingRefresh && !window.TradingRefresh.allows(id)){
+                const closedAt=window.TradingRefresh.closedAt?.(id);
+                if(closedAt==null || Date.now()<closedAt+2*60000 || closeReads.get(id)===closedAt)continue;
+                closeReads.set(id,closedAt);
+            }
             if(id==='concentration' && minuteCharts.has('combinedConcentration') || id==='combinedConcentration' && !minuteCharts.has('combinedConcentration'))continue;
             if(mode && minuteCharts.get(id)?.mode!==mode)continue;
             if(skipConcentration && id==='concentration')continue;
@@ -345,7 +355,7 @@
         const signature=`${mode}:${first}:${last}:${days.join(',')}:${initialRangeReady}`;
         const chart={id,dates:values.map(v=>dateParts(getDate(v)).slice(0,length)),signature,mode,first,last,days,draw,initialRangeReady,applied:previous?.applied,revision:previous?.revision};minuteCharts.set(id,chart);
         const starts=[...minuteCharts.values()].filter(c=>c.mode==='minute' && c.first).map(c=>c.first);
-        const overnight=minuteCharts.get('testMarketSupply');
+        const overnight=overnightChart();
         const today=overnight?.mode==='minute' && overnight.first ? overnight.first : new Date(Date.now()+9*3600000).toISOString().slice(0,10)+' 08:00';
         const candidate=historyMode && starts.length?starts.sort().at(-1):today;
         const cutoff=historyBusy ? (sharedCutoff || today) : historyMode && sharedCutoff && candidate>sharedCutoff ? sharedCutoff : candidate;
@@ -357,7 +367,7 @@
             }
         }
         if(cutoff!==sharedCutoff || previous?.signature!==signature){sharedCutoff=cutoff;notifyCharts();}
-        if(mode==='day' && id==='testMarketSupply' && !(dailyHistory && dailyCutoff)){
+        if(mode==='day' && testCards.includes(id) && !(dailyHistory && dailyCutoff)){
             const domain=dailyDomain();if(!domain)return viewportRange(chart,start,count);
             const key=`initial:${domain.first}:${domain.last}`;
             const index=values.findIndex(v=>dateParts(getDate(v)).slice(0,10)>=domain.first);
@@ -396,7 +406,7 @@
         const active=[...minuteCharts.values()].filter(c=>c.mode==='day' && c.dates.length && c.initialRangeReady!==false);
         // The comparison card follows the initial peer period. Its additional
         // connected futures history must not widen every chart after reload.
-        const peers=active.filter(c=>c.id!=='testMarketSupply');
+        const peers=active.filter(c=>!testCards.includes(c.id));
         const basis=!dailyHistory && peers.length?peers:active;
         const first=viewport?.first || (dailyHistory && dailyCutoff) || basis.map(c=>c.first).sort()[0];
         const last=viewport?.last || basis.map(c=>c.last).filter(Boolean).sort().at(-1);
@@ -424,7 +434,7 @@
         const today=new Date(Date.now()+9*3600000).toISOString().slice(0,10);
         const localFirst=dates[0]?.slice(0,10) || today;
         const viewport=useViewport?viewports.get('minute'):null;
-        const overnight=minuteCharts.get('testMarketSupply');
+        const overnight=overnightChart();
         if(overnight?.mode==='minute' && overnight.first){
             const first=viewport?.first || sharedCutoff || overnight.first;
             const last=viewport?.last || active.map(c=>c.last).filter(v=>v && v>=first).sort().at(-1) || first;

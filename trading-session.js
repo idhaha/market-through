@@ -20,7 +20,22 @@ function createTradingSession({directory,loadCalendar,now=Date.now}){
         const date=nightDay(t);return openDate(date)===true;
     }
     function futuresAt(t=now()){const d=new Date(t+9*3600000),m=d.getUTCHours()*60+d.getUTCMinutes();return fresh() && m>=525 && m<945 && openDate(day(t))===true || nightAt(t);}
-    function snapshot(){return {date:day(now()),spot:spotAt(),futures:futuresAt(),night:nightAt(),calendarKnown:openDate(day(now()))===false || fresh() && openDate(day(now()))!==null,checkedDay:saved.checkedDay,calendarFresh:fresh(),days:{...saved.days}};}
+    // Latest session end at or before now (ms), so clients can tell whether a saved
+    // response predates it. Futures close twice: day 15:45 and night 06:00 next day.
+    // Uses saved calendar days even when today is not yet validated (weekends skip validation);
+    // past open days are settled, and a wrong guess only costs or skips one refetch.
+    function closedAt(t=now()){
+        let spot=null,futures=null;
+        for(let i=0;i<=14;i++){
+            const date=day(t-i*86400000);if(openDate(date)!==true)continue;
+            const base=dateTime(date),ends={spot:[base+1200*60000],futures:[base+945*60000,base+1800*60000]};
+            for(const v of ends.spot)if(v<=t&&(spot===null||v>spot))spot=v;
+            for(const v of ends.futures)if(v<=t&&(futures===null||v>futures))futures=v;
+            if(spot!==null&&futures!==null&&i>0)break;
+        }
+        return {spot,futures};
+    }
+    function snapshot(){return {date:day(now()),spot:spotAt(),futures:futuresAt(),night:nightAt(),closedAt:closedAt(),calendarKnown:openDate(day(now()))===false || fresh() && openDate(day(now()))!==null,checkedDay:saved.checkedDay,calendarFresh:fresh(),days:{...saved.days}};}
     function persist(){fs.mkdirSync(directory,{recursive:true});fs.writeFileSync(file+'.tmp',JSON.stringify(saved));fs.renameSync(file+'.tmp',file);}
     function merge(rows){
         if(!Array.isArray(rows))throw Error('Invalid market calendar');
@@ -61,6 +76,6 @@ function createTradingSession({directory,loadCalendar,now=Date.now}){
             return snapshot();
         })().finally(()=>{pending=null;});return pending;
     }
-    return {spotAt,nightAt,futuresAt,openDate,snapshot,calendarRange,refresh,start(){if(timer)return;void refresh();timer=setInterval(()=>void refresh(),60000);timer.unref?.();},stop(){clearInterval(timer);timer=null;}};
+    return {spotAt,nightAt,futuresAt,closedAt,openDate,snapshot,calendarRange,refresh,start(){if(timer)return;void refresh();timer=setInterval(()=>void refresh(),60000);timer.unref?.();},stop(){clearInterval(timer);timer=null;}};
 }
 module.exports={createTradingSession,install,current};

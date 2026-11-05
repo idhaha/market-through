@@ -49,7 +49,10 @@ for(const testFirst of [true,false])test(`actual test card follows daily peer bo
   });
   await page.goto('http://test-domain.test/');await page.addStyleTag({content:fs.readFileSync('public/style.css','utf8')});
   for(const file of ['rank-chart-axis.js','rank-market-supply-chart.js'])await page.addScriptTag({path:'public/'+file});
-  await page.waitForFunction(testFirst=>testFirst?getTestMarketSupplyCandleDiagnostics().points>0:getCombinedMarketSupplyCandleDiagnostics().points>0,testFirst);
+  // Peer card: the trading tab's other daily cards. Registered directly because this page only loads the market supply cards.
+  const addPeer=()=>page.evaluate(()=>{const peer=()=>RankChartAxis.sharedRange('volatility',['2024-05-13','2026-10-30'],v=>v,'day',0,null,peer);peer();RankChartAxis.registerHistoryLoader('volatility',async()=>{},()=>false,()=>({hasMore:false}));});
+  if(testFirst)await page.waitForFunction(()=>getTestMarketSupplyCandleDiagnostics().points>0);
+  await addPeer();
   const card=page.locator('#rankTestMarketSupplyChartPanel');
   await card.locator('.concentration-candle-toggle').click();
   if(!testFirst){
@@ -57,8 +60,8 @@ for(const testFirst of [true,false])test(`actual test card follows daily peer bo
    assert.equal(await page.evaluate(()=>getTestMarketSupplyCandleDiagnostics().flowPoints),0,'Price candles render before the held topic response');
   }
   release();
-  await page.waitForFunction(()=>getCombinedMarketSupplyCandleDiagnostics().points>0&&getTestMarketSupplyCandleDiagnostics().flowPoints===3);
-  await page.waitForFunction(()=>getTestMarketSupplyCandleDiagnostics().visibleFirst===Date.parse('2024-05-13T00:00:00+09:00')).catch(async e=>{console.log(await page.evaluate(()=>({domain:RankChartAxis.dailyDomain(),test:getTestMarketSupplyCandleDiagnostics(),peer:getCombinedMarketSupplyCandleDiagnostics()})));throw e;});
+  await page.waitForFunction(()=>getTestMarketSupplyCandleDiagnostics().flowPoints===3);
+  await page.waitForFunction(()=>getTestMarketSupplyCandleDiagnostics().visibleFirst===Date.parse('2024-05-13T00:00:00+09:00')).catch(async e=>{console.log(await page.evaluate(()=>({domain:RankChartAxis.dailyDomain(),test:getTestMarketSupplyCandleDiagnostics()})));throw e;});
   assert.equal(await page.evaluate(()=>RankChartAxis.dailyDomain().first),'2024-05-13');
   assert.equal(await page.evaluate(()=>getTestMarketSupplyCandleDiagnostics().visibleCandles),2);
   await page.evaluate(()=>RankChartAxis.requestHistory('day'));

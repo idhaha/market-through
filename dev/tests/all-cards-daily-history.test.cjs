@@ -56,7 +56,7 @@ test('all daily cards advance twice with the real futures provider and opaque re
    window.rankMainCandleOpen=true;
    applyConcentrationDisplaySettings({...getConcentrationDisplaySettings(),mode:'day',candleOpen:true});selectRankChartStock({code:'005930',name:'Stock',market:'K'});
    applyRankCombinedSupplySettings({selected:'005930',mode:'day',showCandles:true});
-   for(const name of ['CombinedMarketSupply','CombinedMarketSupplySecondary','TestMarketSupply']){window['applyRank'+name+'DisplaySettings']({selected:'futures',mode:'day'});window['applyRank'+name+'CandleOpen'](true);}
+   for(const name of ['TestMarketSupply','TestMarketSupplySecondary']){window['applyRank'+name+'DisplaySettings']({selected:'futures',mode:'day'});window['applyRank'+name+'CandleOpen'](true);}
    applyRankBreadthDisplaySettings({mode:'day',candleOpen:true});applyRankSentimentDisplaySettings({candleOpen:true});applyRankVolatilityDisplaySettings({candleOpen:true});applyRankCombinedTurnoverCandleOpen(true);
    applyRankAdrCandleOpen(true);
    window.rankChartRefreshStarted=true;await RankChartAxis.refreshCharts();
@@ -65,7 +65,7 @@ test('all daily cards advance twice with the real futures provider and opaque re
    const result=await page.evaluate(()=>RankChartAxis.requestHistory('day'));
    assert.deepEqual(result.failures,[]);assert.equal(result.advanced,true);assert.equal(await page.evaluate(()=>RankChartAxis.dailyDomain().first),first);
    assert.equal(result.metrics.cards.combinedSupply.pages,1,'Stock flow also advances its own history page');
-   await page.waitForFunction(()=>Object.values(window.paintDates).filter(n=>n>0).length>=10,null,{timeout:8000}).catch(async error=>{console.log('Daily paint diagnostics',await page.evaluate(()=>({paint:window.paintDates,errors:[...document.querySelectorAll('.rank-adr-status')].map(p=>p.textContent),candles:[...document.querySelectorAll('.concentration-candle-toggle')].map(p=>({panel:p.closest('.panel')?.id,open:p.getAttribute('aria-expanded')}))})));throw error;});
+   await page.waitForFunction(()=>Object.values(window.paintDates).filter(n=>n>0).length>=9,null,{timeout:8000}).catch(async error=>{console.log('Daily paint diagnostics',await page.evaluate(()=>({paint:window.paintDates,errors:[...document.querySelectorAll('.rank-adr-status')].map(p=>p.textContent),candles:[...document.querySelectorAll('.concentration-candle-toggle')].map(p=>({panel:p.closest('.panel')?.id,open:p.getAttribute('aria-expanded')}))})));throw error;});
    assert.ok((await page.evaluate(()=>getRankCombinedSupplyState().candles)).some(p=>p.t===timestamp(first.replaceAll('-',''))));
    assert.ok((await page.evaluate(()=>getCombinedRankChartState().points)).some(p=>p.time===first.replaceAll('-','')&&p.stock_price===105));
    assert.equal(await page.evaluate(()=>getTestMarketSupplyCandleDiagnostics().visibleFirst),timestamp(first.replaceAll('-','')));

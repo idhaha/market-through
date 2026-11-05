@@ -25,8 +25,9 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=requ
   await page.waitForFunction(()=>window.getRankCombinedSupplyState?.().selected==='005930');
   await page.evaluate(async()=>{
    applyRankCombinedSupplySettings({selected:'005930',mode:'minute',showCandles:true});
-   applyRankCombinedMarketSupplyDisplaySettings({selected:'futures',mode:'minute'});
-   applyRankCombinedMarketSupplyCandleOpen(true);
+   // The test market supply card on a spot market draws the same index candles.
+   applyRankTestMarketSupplyDisplaySettings({selected:'kospi',mode:'minute'});
+   applyRankTestMarketSupplyCandleOpen(true);
   });
   await page.waitForFunction(()=>Object.values(loaders).every(l=>!l.busy()));
   // A partially received candle day must not become a permanent cache hit.
@@ -40,11 +41,11 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=requ
   assert.equal(await page.evaluate(()=>loaders.combinedSupply.state().coverageFirst),'2026-10-23 00:00');
   // The same market price range must be retried after an HTTP failure.
   marketFailure=true;
-  const failed=await page.evaluate(()=>loaders.combinedMarketSupply.state().ensureRange('2026-10-20 09:00').then(()=>false,()=>true));
+  const failed=await page.evaluate(()=>loaders.testMarketSupply.state().ensureRange('2026-10-20 09:00').then(()=>false,()=>true));
   assert.equal(failed,true);
   const failedCalls=calls.filter(u=>u.startsWith('/api/adr/candles')&&u.includes('20261020')).length;
   marketFailure=false;
-  await page.evaluate(()=>loaders.combinedMarketSupply.state().ensureRange('2026-10-20 09:00'));
+  await page.evaluate(()=>loaders.testMarketSupply.state().ensureRange('2026-10-20 09:00'));
   assert.ok(calls.filter(u=>u.startsWith('/api/adr/candles')&&u.includes('20261020')).length>failedCalls);
   // Explicit ADR/breadth price requests must survive automatic redraw requests.
   await page.evaluate(()=>document.querySelector('#rankAdrChartPanel [data-adr-mode=minute]').click());

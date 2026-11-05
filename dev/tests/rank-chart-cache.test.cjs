@@ -119,3 +119,59 @@ test('reference cache revalidation retains minute mode and does not become an al
  const read=()=>page.evaluate(async()=>{const r=await RankChartCache.fetch('/api/chart-reference?mode=minute&market=kospi');return r.json();});await read();value=2;await page.evaluate(()=>window.now+=2000);await read();await page.waitForFunction(()=>window.refreshModes.length===1);assert.deepEqual(await page.evaluate(()=>window.refreshModes),['minute']);
  }finally{await browser.close();}
 });
+test('closed market replaces a response saved during the session once, so today is not cut off',async()=>{
+ const browser=await chromium.launch({headless:true,channel:'msedge'});
+ try{
+  // A 52-week high/low KOSDAQ minute response read at 10:00 stops at 10:00; after the close the server has the whole day.
+  const page=await browser.newPage();let calls=0,full=false;
+  await page.route('https://closed-today.test/**',route=>{
+   const url=new URL(route.request().url());
+   if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<html></html>'});
+   if(url.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:'today@example.test'}}});
+   calls++;const dates=full?['2026-11-05 09:59','2026-11-05 19:59']:['2026-11-05 09:59'];
+   return route.fulfill({json:{mode:'minute',market:'kosdaq',dates,series:{highs:{points:dates.map(date=>({date,value:3}))},lows:{points:dates.map(date=>({date,value:-9}))}},has_more:false}});
+  });
+  const start=async open=>{await page.goto('https://closed-today.test/');await page.evaluate(open=>{window.TradingRefresh={allowsUrl:()=>open};},open);await page.addScriptTag({path:'public/rank-chart-cache.js'});};
+  const read=()=>page.evaluate(async()=>(await (await RankChartCache.fetch('/api/risk/breadth?market=kosdaq&mode=minute&cursor=')).json()).dates.at(-1));
+  await start(true);assert.equal(await read(),'2026-11-05 09:59');assert.equal(calls,1);
+  full=true;
+  await start(false);assert.equal(await read(),'2026-11-05 09:59','cached response is shown first');
+  await page.waitForFunction(()=>true);for(let i=0;i<50&&calls<2;i++)await page.waitForTimeout(100);
+  assert.equal(calls,2,'a response saved while the market was open is refetched once after the close');
+  await page.waitForTimeout(300);assert.equal(await read(),'2026-11-05 19:59');
+  await start(false);assert.equal(await read(),'2026-11-05 19:59');await page.waitForTimeout(500);
+  assert.equal(calls,2,'a response saved after the close is not requested again');
+ }finally{await browser.close();}
+});
+test('futures response saved after the day close is refetched once after the night close, not during the write grace',async()=>{
+ const browser=await chromium.launch({headless:true,channel:'msedge'});
+ try{
+  // Read at 16:00 (day session closed) it has no night rows; after the 06:00 night close the server has them.
+  const page=await browser.newPage();let calls=0,night=false;
+  await page.route('https://night-close.test/**',route=>{
+   const url=new URL(route.request().url());
+   if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<html></html>'});
+   if(url.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:'night@example.test'}}});
+   calls++;const dates=night?['2026-11-05 15:45','2026-11-06 05:59']:['2026-11-05 15:45'];
+   return route.fulfill({json:{mode:'minute',market:'futures',dates,series:{foreign:{points:dates.map(date=>({date,value:1}))}},has_more:false}});
+  });
+  // closedAt is set relative to the moment of each read, as the server reports it.
+  const start=async()=>{await page.goto('https://night-close.test/');await page.evaluate(()=>{window.closedAt=null;window.TradingRefresh={allowsUrl:()=>false,closedAtUrl:url=>url.searchParams.get('code')==='futures'?window.closedAt:null};});await page.addScriptTag({path:'public/rank-chart-cache.js'});};
+  const read=closedAgo=>page.evaluate(async ago=>{window.closedAt=ago==null?null:Date.now()-ago;return (await (await RankChartCache.fetch('/api/market-supply/chart?code=futures&mode=minute')).json()).dates.at(-1);},closedAgo);
+  const settle=async n=>{for(let i=0;i<30&&calls<n;i++)await page.waitForTimeout(100);await page.waitForTimeout(200);};
+  await start();assert.equal(await read(3600000),'2026-11-05 15:45');assert.equal(calls,1);
+  night=true;
+  await start();assert.equal(await read(3600000),'2026-11-05 15:45');await settle(2);
+  assert.equal(calls,1,'saved after the same close: complete, not requested again');
+  await start();assert.equal(await read(30000),'2026-11-05 15:45');await settle(2);
+  assert.equal(calls,1,'within two minutes of a new close the server may still be writing, so wait');
+  await start();assert.equal(await read(0),'2026-11-05 15:45');await settle(2);
+  assert.equal(calls,1,'right at the close, still waiting');
+  // Two minutes past the night close: the 16:00 copy predates it.
+  await page.evaluate(()=>{const base=Date.now;Date.now=()=>base()+180000;});
+  assert.equal(await page.evaluate(async()=>{window.closedAt=Date.now()-180000;return (await (await RankChartCache.fetch('/api/market-supply/chart?code=futures&mode=minute')).json()).dates.at(-1);}),'2026-11-05 15:45');
+  await settle(2);assert.equal(calls,2,'refetched once after the night close');
+  assert.equal(await page.evaluate(async()=>(await (await RankChartCache.fetch('/api/market-supply/chart?code=futures&mode=minute')).json()).dates.at(-1)),'2026-11-06 05:59');
+  await page.waitForTimeout(300);assert.equal(calls,2,'not requested again for the same close');
+ }finally{await browser.close();}
+});

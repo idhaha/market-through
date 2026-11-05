@@ -3145,17 +3145,17 @@ body { height:100dvh; min-height:0; overflow:hidden; display:flex; flex-directio
 /* Trading charts follow the three ranking tables. */
 .rank-chart-row > #combinedConcentrationChartPanel { grid-column:1; grid-row:1; order:0; }
 .rank-chart-row > #rankCombinedSupplyChartPanel { grid-column:2; grid-row:1; order:1; }
-.rank-chart-row > #rankCombinedMarketSupplyChartPanel { grid-column:3; grid-row:1; order:2; }
+/* Column 3 rows 1-2: two day+night market supply (test) cards titled 시장 수급, replacing the combined cards; row 3 is left empty. */
+.rank-chart-row > #rankTestMarketSupplyChartPanel { grid-column:3; grid-row:1; order:2; }
 .rank-chart-row > #rankBreadthChartPanel { grid-column:1; grid-row:2; order:3; }
 .rank-chart-row > #rankAdrChartPanel { grid-column:1; grid-row:3; order:6; }
 .rank-chart-row > #rankCombinedTurnoverChartPanel { grid-column:2; grid-row:2; order:4; }
-.rank-chart-row > #rankCombinedMarketSupplySecondaryChartPanel { grid-column:3; grid-row:2; order:5; }
+.rank-chart-row > #rankTestMarketSupplySecondaryChartPanel { grid-column:3; grid-row:2; order:5; }
 .rank-chart-row > #rankVolatilityChartPanel { grid-column:2; grid-row:3; order:7; }
 .rank-chart-row > #rankSentimentChartPanel { grid-column:1; grid-row:4; order:9; }
-.rank-chart-row > #rankTestMarketSupplyChartPanel { grid-column:3; grid-row:3; order:8; }
 .market-test-session { font-size:12px; white-space:nowrap; }
 @media(max-width:700px) {
-    .rank-chart-row > #rankTestMarketSupplyChartPanel { grid-column:1 / -1!important; grid-row:auto!important; }
+    .rank-chart-row > :is(#rankTestMarketSupplyChartPanel,#rankTestMarketSupplySecondaryChartPanel) { grid-column:1 / -1!important; grid-row:auto!important; }
 }
 
 .panel > .rank-market-pin { position:absolute; top:14px; right:42px; width:24px; height:20px; padding:0; border:0; background:transparent; color:var(--text-muted,#94a3b8); cursor:pointer; display:flex; align-items:center; justify-content:center; z-index:3; }

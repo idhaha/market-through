@@ -55,12 +55,12 @@
         const combined = broker === 'combined' || isTest;
         const isLs = broker === 'ls', isKiwoom = broker === 'kiwoom';
         const format = (n, signed = true) => Number.isFinite(n) ? `${formatAmount(n / 100, signed)}억원` : formatAmount(n, signed);
-        const axisId = isTest ? 'testMarketSupply' : combined ? (secondary ? 'combinedMarketSupplySecondary' : 'combinedMarketSupply') : isKiwoom ? 'kiwoomMarketSupply' : isLs ? 'lsMarketSupply' : 'marketSupply';
-        const panelId = isTest ? 'rankTestMarketSupplyChartPanel' : combined ? (secondary ? 'rankCombinedMarketSupplySecondaryChartPanel' : 'rankCombinedMarketSupplyChartPanel') : isKiwoom ? 'rankKiwoomMarketSupplyChartPanel' : isLs ? 'rankLsMarketSupplyChartPanel' : 'rankMarketSupplyChartPanel';
-        const eventName = name => isTest ? name.replace('rank-market-supply', 'rank-test-market-supply') : combined ? name.replace('rank-market-supply', secondary ? 'rank-combined-market-supply-secondary' : 'rank-combined-market-supply') : isKiwoom ? name.replace('rank-market-supply', 'rank-kiwoom-market-supply') : isLs ? name.replace('rank-market-supply', 'rank-ls-market-supply') : name;
-        const api = name => isTest ? name.replace('MarketSupply', 'TestMarketSupply') : combined ? name.replace('MarketSupply', secondary ? 'CombinedMarketSupplySecondary' : 'CombinedMarketSupply') : isKiwoom ? name.replace('MarketSupply', 'KiwoomMarketSupply') : isLs ? name.replace('MarketSupply', 'LsMarketSupply') : name;
+        const axisId = isTest ? (secondary ? 'testMarketSupplySecondary' : 'testMarketSupply') : combined ? (secondary ? 'combinedMarketSupplySecondary' : 'combinedMarketSupply') : isKiwoom ? 'kiwoomMarketSupply' : isLs ? 'lsMarketSupply' : 'marketSupply';
+        const panelId = isTest ? (secondary ? 'rankTestMarketSupplySecondaryChartPanel' : 'rankTestMarketSupplyChartPanel') : combined ? (secondary ? 'rankCombinedMarketSupplySecondaryChartPanel' : 'rankCombinedMarketSupplyChartPanel') : isKiwoom ? 'rankKiwoomMarketSupplyChartPanel' : isLs ? 'rankLsMarketSupplyChartPanel' : 'rankMarketSupplyChartPanel';
+        const eventName = name => isTest ? name.replace('rank-market-supply', secondary ? 'rank-test-market-supply-secondary' : 'rank-test-market-supply') : combined ? name.replace('rank-market-supply', secondary ? 'rank-combined-market-supply-secondary' : 'rank-combined-market-supply') : isKiwoom ? name.replace('rank-market-supply', 'rank-kiwoom-market-supply') : isLs ? name.replace('rank-market-supply', 'rank-ls-market-supply') : name;
+        const api = name => isTest ? name.replace('MarketSupply', secondary ? 'TestMarketSupplySecondary' : 'TestMarketSupply') : combined ? name.replace('MarketSupply', secondary ? 'CombinedMarketSupplySecondary' : 'CombinedMarketSupply') : isKiwoom ? name.replace('MarketSupply', 'KiwoomMarketSupply') : isLs ? name.replace('MarketSupply', 'LsMarketSupply') : name;
         const endpoint = isKiwoom ? '/api/kiwoom-market-supply/chart' : isLs ? '/api/ls-market-supply/chart' : '/api/market-supply/chart';
-        const storageKey = isTest ? 'rankTestMarketSupplySelectedV1' : combined ? (secondary ? 'rankCombinedMarketSupplySecondarySelectedV1' : 'rankCombinedMarketSupplySelectedV1') : isKiwoom ? 'rankKiwoomMarketSupplySelectedV1' : isLs ? 'rankLsMarketSupplySelectedV1' : 'rankMarketSupplySelectedV1';
+        const storageKey = isTest ? (secondary ? 'rankTestMarketSupplySecondarySelectedV1' : 'rankTestMarketSupplySelectedV1') : combined ? (secondary ? 'rankCombinedMarketSupplySecondarySelectedV1' : 'rankCombinedMarketSupplySelectedV1') : isKiwoom ? 'rankKiwoomMarketSupplySelectedV1' : isLs ? 'rankLsMarketSupplySelectedV1' : 'rankMarketSupplySelectedV1';
         if (window.rankIndependentClient) return;
         const breadth = document.getElementById('rankBreadthChartPanel'), row = window.rankIndependentClient ? document.getElementById('tab_rank') : breadth?.closest('.rank-chart-row');
         if (!row || document.getElementById(panelId)) return;
@@ -77,7 +77,7 @@
             <button type="button" data-action="more" class="concentration-icon-button" title="과거 데이터 더 불러오기" aria-label="과거 데이터 더 불러오기"><svg width="28" height="28" viewBox="0 0 34 34" shape-rendering="crispEdges" aria-hidden="true"><rect x="1" y="1" width="32" height="32" fill="#ededed"/><path d="M10 5v20" stroke="#737373" stroke-width="2"/><rect x="6" y="9" width="9" height="12" fill="#505050"/><path d="M22 5v20" stroke="#c0c0c0" stroke-width="2"/><rect x="18" y="9" width="9" height="12" fill="#969696"/><path d="M25 21v10M21 26h10" stroke="#444444" stroke-width="4"/></svg></button><p class="rank-adr-status" role="status"></p>`;
         row.append(panel);
         if (isLs) panel.classList.add('rank-ls-market-supply-panel');
-        panel.querySelector('h2').textContent = isTest ? '시장수급(테스트)' : combined ? '시장 수급' : `시장 수급(${isKiwoom ? '키움' : isLs ? 'LS' : '한투'})`;
+        panel.querySelector('h2').textContent = isTest ? '시장 수급' : combined ? '시장 수급' : `시장 수급(${isKiwoom ? '키움' : isLs ? 'LS' : '한투'})`;
         if (!isTest) window.RankSupplyGuide?.attach(panel, 'market', combined ? 'combined' : isKiwoom ? 'kiwoom' : isLs ? 'ls' : 'kis');
         panel.querySelector('.rank-adr-controls').append(panel.querySelector('.supply-legend'));
         const latestDate = document.createElement('span'); latestDate.className = 'supply-latest-date'; latestDate.textContent = '—';
@@ -88,11 +88,12 @@
         const info = panel.querySelector('.chart-hover-info'), status = panel.querySelector('[role="status"]');
         const slider = panel.querySelector('input[type="range"]');
         const more = panel.querySelector('[data-action="more"]');
-        const stockSelect = window.RankChartAxis.marketChoice(isTest ? 'test-market-supply' : combined ? (secondary ? 'combined-market-supply-secondary' : 'combined-market-supply') : isKiwoom ? 'kiwoom-market-supply' : isLs ? 'ls-market-supply' : 'market-supply',[], 'kospi','시장 수급 시장 선택');
+        const stockSelect = window.RankChartAxis.marketChoice(isTest ? (secondary ? 'test-market-supply-secondary' : 'test-market-supply') : combined ? (secondary ? 'combined-market-supply-secondary' : 'combined-market-supply') : isKiwoom ? 'kiwoom-market-supply' : isLs ? 'ls-market-supply' : 'market-supply',[], 'kospi','시장 수급 시장 선택');
         panel.querySelector('.concentration-chart-header h2').after(stockSelect);
         stockSelect.addEventListener('change', () => { if (stockSelect.value) choose(stockSelect.value); });
         let flowCoverageFirst = '';
-        let selected = isTest ? 'futures' : 'kospi', mode = 'day', cursor = null, hasMore = false, loading = false, historyLoaded = false;
+        const defaultSelected = isTest ? (secondary ? 'futuresKosdaq' : 'futures') : 'kospi';
+        let selected = defaultSelected, mode = 'day', cursor = null, hasMore = false, loading = false, historyLoaded = false;
         let flowLoading=false;
         const minuteDays = new Set();
         let priceCursor = null, candleLoading = false;
@@ -102,7 +103,7 @@
         let candleRangeKey='', candleRangePending='', candleSchedule=false, candleRangeError='', candleEnsureActive=false;
         const visibleSeries = new Set(series);
         const selectionStorage=window.rankIndependentClient?sessionStorage:localStorage;
-        try { selected = selectionStorage.getItem(storageKey) || (isTest ? 'futures' : 'kospi'); if (!['kospi','kosdaq','futures','futuresKosdaq'].includes(selected)) selected='kospi'; } catch {}
+        try { selected = selectionStorage.getItem(storageKey) || defaultSelected; if (!['kospi','kosdaq','futures','futuresKosdaq'].includes(selected)) selected='kospi'; } catch {}
         function remember() { try { selectionStorage.setItem(storageKey, selected); } catch {} }
         function setStatus() { status.textContent = [configError, chartMessage, candleMessage].filter(Boolean).join(' · '); status.title = status.textContent; }
         // Minute mode only: share the y range across the card's markets.
@@ -150,10 +151,32 @@
         const marketCodes = () => mode === 'day' && !isKiwoom && !isLs && !combined ? ['kospi','kosdaq'] : ['kospi','kosdaq','futures','futuresKosdaq'];
         const flowEndpoint = code => isTest && code.startsWith('futures') ? '/api/ls-futures-test/chart' : combined ? mode==='day'?'/api/ls-market-supply/chart':code.startsWith('futures')?'/api/market-supply/chart':'/api/kiwoom-market-supply/chart' : isKiwoom && code.startsWith('futures') ? mode==='day'?'/api/ls-market-supply/chart':'/api/market-supply/chart' : endpoint;
         // Flow of the other markets inside the visible window, for a shared y scale.
-        function peerRows(rows) {
+        // The window must not depend on the selected market: spot shows 08:00-20:00 while futures also
+        // show the preceding night, so the full view matches trading days (night 18:00+ belongs to the
+        // next open day) and a zoomed view uses the shared time axis.
+        function tradingDay(t) {
+            const clock = new Date(t + 9 * 3600000);
+            let day = clock.toISOString().slice(0, 10);
+            if (clock.getUTCHours() < 18) return day;
+            const calendar = window.TradingRefresh?.state?.days || {};
+            for (let i = 0; i < 10; i++) {
+                day = new Date(Date.parse(day + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10);
+                if (![0, 6].includes(new Date(day + 'T00:00:00Z').getUTCDay()) && calendar[day] !== false) break;
+            }
+            return day;
+        }
+        function peerRows(rows, zoomed = false) {
             if (!rows.length || mode !== 'minute' || !ySync) return [];
-            const fromDay = dayKey(rows[0].t), toDay = dayKey(rows.at(-1).t), first = rows[0].t, last = rows.at(-1).t;
-            const inWindow = mode === 'day' ? p => { const d = dayKey(p.t); return d >= fromDay && d <= toDay; } : p => p.t >= first && p.t <= last;
+            const fromDay = dayKey(rows[0].t);
+            let inWindow;
+            if (zoomed) {
+                const domain = window.RankChartAxis.minuteDomain?.(rows, p => p.t), at = s => Date.parse(String(s).replace(' ', 'T') + ':00+09:00');
+                const first = Number.isFinite(at(domain?.first)) ? at(domain.first) : rows[0].t, last = Number.isFinite(at(domain?.last)) ? at(domain.last) + 59999 : rows.at(-1).t;
+                inWindow = p => p.t >= first && p.t <= last;
+            } else {
+                const days = new Set(rows.map(p => tradingDay(p.t)));
+                inWindow = p => days.has(tradingDay(p.t));
+            }
             const canFetch = !(window.rankManagedChartRefresh && !window.rankChartRefreshStarted);
             return marketCodes().filter(code => code !== selected).flatMap(code => {
                 const path = flowEndpoint(code), key = `${path}|${code}|${mode}`;
@@ -187,7 +210,7 @@
             panel.querySelector('[aria-label="시장 수급 차트 축소"]').disabled = n >= points.length;
             more.hidden = false; more.disabled = !selected || !(hasMore || mode === 'minute' && priceCursor) || loading || mode === 'minute' && candleLoading;
             const values = rows.flatMap(p => [...visibleSeries].map(s => p[s])).filter(Number.isFinite);
-            const others = peerRows(rows);
+            const others = peerRows(rows, n < points.length);
             const scaleValues = values.concat(others.flatMap(p => [...visibleSeries].map(s => p[s])).filter(Number.isFinite));
             let min = 0, max = 0; for (const value of scaleValues) { min = Math.min(min, value); max = Math.max(max, value); }
             const span = Math.max(1, max - min), padding = span * .08; min -= padding; max += padding;
@@ -201,7 +224,8 @@
                     context.strokeStyle = '#b8c1cc'; context.setLineDash([3, 5]); context.lineWidth = 1;
                     context.beginPath(); context.moveTo(left, py); context.lineTo(right, py); context.stroke();
                     context.fillStyle = muted; context.textAlign = 'right';
-                    if (showLabels) context.fillText(unit ? format(Math.round(value) || 0, false) : value.toLocaleString('ko-KR', { maximumFractionDigits: 1 }), width - 4, py + 4);
+                    // Amounts are in 백만원: axis labels show whole 억원 (rounded).
+                    if (showLabels) context.fillText(unit ? format((Math.round(value / 100) || 0) * 100, false) : value.toLocaleString('ko-KR', { maximumFractionDigits: 1 }), width - 4, py + 4);
                 }
                 context.setLineDash([]);
             }
@@ -262,7 +286,7 @@
                 }
                 ctx.strokeStyle = colors[s]; ctx.lineWidth = 2; ctx.beginPath(); let previous;
                 rows.forEach(p => {
-                    if (!Number.isFinite(p[s]) || (!isTest && p[s] === 0)) { previous = null; return; }
+                    if (!Number.isFinite(p[s]) || p[s] === 0) { previous = null; return; }
                     const gap = mode === 'minute' && previous && p.t - previous.t > 60000;
                     if (!previous || gap) ctx.moveTo(x(p.t), y(p[s])); else ctx.lineTo(x(p.t), y(p[s]));
                     previous = p;
@@ -276,7 +300,7 @@
                     });ctx.stroke();ctx.restore();
                 }
                 rows.forEach(p => {
-                    if (!Number.isFinite(p[s]) || (!isTest && p[s] === 0)) return;
+                    if (!Number.isFinite(p[s]) || p[s] === 0) return;
                     if (p.t === last?.t || p.t === hover || rows.length === 1) {
                         ctx.fillStyle = p.t === last?.t && dayKey(p.t) === dayKey(Date.now()) ? '#f97316' : colors[s];
                         ctx.beginPath(); ctx.arc(x(p.t), y(p[s]), 3, 0, Math.PI * 2); ctx.fill();
@@ -590,7 +614,7 @@
         paintStocks(); resize(); document.dispatchEvent(new Event(eventName('rank-market-supply-ready')));
         if (!window.rankIndependentClient && !window.rankManagedChartRefresh) window[api('refreshRankMarketSupplyChart')]();
     }
-    const initializeBoth = () => { initialize('combined'); initialize('combined', true); initialize('test'); };
-    document.addEventListener('DOMContentLoaded', () => { const panel=document.getElementById('rankTestMarketSupplyChartPanel'); if(panel)panel.parentElement.append(panel); }, {once:true});
+    // Trading tab column 3: two independent day+night futures market supply cards titled 시장 수급 (they replaced the combined cards).
+    const initializeBoth = () => { initialize('test'); initialize('test', true); };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initializeBoth, { once: true }); else initializeBoth();
 })();

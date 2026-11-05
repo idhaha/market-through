@@ -22,11 +22,12 @@ return route.fulfill({contentType:'text/html',body:html});});
 await page.goto('http://market-page.test/');await page.addStyleTag({content:fs.readFileSync('public/style.css','utf8')+'#loginOverlay{display:none!important}#tabContents,#tab_rank{display:block!important}'});
 for(const file of ['rank-chart-cache.js','rank-chart-axis.js','rank-supply-guide.js','concentration-chart.js','rank-adr-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js','rank-connection-status.js'])await page.addScriptTag({path:'public/'+file});
 await page.evaluate(()=>document.dispatchEvent(new Event('DOMContentLoaded')));
-const card=page.locator('#rankCombinedMarketSupplyChartPanel'),sync=card.locator('.market-supply-y-sync'),box=sync.locator('input');
-const diag=()=>page.evaluate(()=>getCombinedMarketSupplyCandleDiagnostics());
-const waitRange=async(market,expected)=>{try{await page.waitForFunction(([m,e])=>{const d=getCombinedMarketSupplyCandleDiagnostics();return d.market===m&&d.mode==='minute'&&Math.round(d.yMin)===e[0]&&Math.round(d.yMax)===e[1];},[market,expected],{timeout:10000});}catch(e){console.error('diag',JSON.stringify(await diag()),'expected',expected);throw e;}};
+const card=page.locator('#rankTestMarketSupplyChartPanel'),sync=card.locator('.market-supply-y-sync'),box=sync.locator('input');
+const diag=()=>page.evaluate(()=>getTestMarketSupplyCandleDiagnostics());
+const waitRange=async(market,expected)=>{try{await page.waitForFunction(([m,e])=>{const d=getTestMarketSupplyCandleDiagnostics();return d.market===m&&d.mode==='minute'&&Math.round(d.yMin)===e[0]&&Math.round(d.yMax)===e[1];},[market,expected],{timeout:10000});}catch(e){console.error('diag',JSON.stringify(await diag()),'expected',expected);throw e;}};
 // Daily mode: no checkbox.
-await page.waitForFunction(()=>getCombinedMarketSupplyCandleDiagnostics().visibleFlowPoints===3);
+// The test card's daily window follows its peer cards (one mocked day here), so count loaded days.
+await page.waitForFunction(()=>getTestMarketSupplyCandleDiagnostics().flowPoints===3);
 assert.equal(await sync.isVisible(),false,'checkbox hidden in daily mode');
 // Minute mode: checkbox visible, checked by default, left of the pin.
 await card.locator('[data-mode=minute]').click();
@@ -48,16 +49,16 @@ await card.locator('[aria-label="시장 수급 차트 축소"]').click();await w
 await box.uncheck();await waitRange('kospi',expectRange(['kospi'],minute,minute+(N-1)*60000));
 await card.locator('[aria-label="시장 수급 차트 확대"]').click();d=await diag();
 await waitRange('kospi',expectRange(['kospi'],d.visibleFirst,d.visibleLast));
-assert.equal((await page.evaluate(()=>getRankCombinedMarketSupplyDisplaySettings())).ySync,false);
-assert.equal(await page.evaluate(()=>localStorage.getItem('rankCombinedMarketSupplySelectedV1:ySync')),'0');
+assert.equal((await page.evaluate(()=>getRankTestMarketSupplyDisplaySettings())).ySync,false);
+assert.equal(await page.evaluate(()=>localStorage.getItem('rankTestMarketSupplySelectedV1:ySync')),'0');
 // Other cards keep their own default.
-assert.equal(await page.locator('#rankCombinedMarketSupplySecondaryChartPanel .market-supply-y-sync input').isChecked(),true);
+assert.equal(await page.locator('#rankTestMarketSupplySecondaryChartPanel .market-supply-y-sync input').isChecked(),true);
 // Restoring saved settings re-enables the sync.
-await page.evaluate(()=>applyRankCombinedMarketSupplyDisplaySettings({...getRankCombinedMarketSupplyDisplaySettings(),ySync:true}));
+await page.evaluate(()=>applyRankTestMarketSupplyDisplaySettings({...getRankTestMarketSupplyDisplaySettings(),ySync:true}));
 assert.equal(await box.isChecked(),true);d=await diag();await waitRange('kospi',expectRange(markets,d.visibleFirst,d.visibleLast));
 // Daily lanes: selected market only, even with sync checked.
 await card.locator('[data-mode=day]').click();assert.equal(await sync.isVisible(),false);
-await page.waitForFunction(()=>{const d=getCombinedMarketSupplyCandleDiagnostics();return d.mode==='day'&&d.visibleFlowPoints===3&&d.laneExtents.foreign===100;});
+await page.waitForFunction(()=>{const d=getTestMarketSupplyCandleDiagnostics();return d.mode==='day'&&d.flowPoints===3&&d.laneExtents.foreign===100;});
 assert.deepEqual((await diag()).laneExtents,{program:10,foreign:100,institution:20,individual:30});
 assert.deepEqual(errors,[]);
 await card.locator('[data-mode=minute]').click();await card.screenshot({path:'dev/output/market-supply-y-sync.png'});

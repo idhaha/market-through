@@ -11,18 +11,10 @@ taskkill /f /pid PID번호
 3. git 반영
 git checkout -b "br_oracle"
 git add .
-git commit -m "added independant window of Rank tab"
-git tag -a v3.0.24 -m "added independant window of Rank tab"
+git commit -m "synchronized y-axis for all the markets in market invester chart."
+git tag -a v3.0.102 -m "synchronized y-axis for all the markets in market invester chart."
 git push origin br_oracle
-git push origin v3.0.24
-
-git checkout -b "br_oracle"
-git add .
-git commit -m "fixed interest calendar-1"
-git tag -a v3.0.16 -m "fixed interest calendar-1"
-git push origin br_oracle
-git push origin v3.0.16
-
+git push origin v3.0.102
 
 만일 새로운 폴더나 파일을 커밋하고 github에 올리려면
 git add docs/SYSTEM_SPECIFICATION.md
@@ -33,7 +25,7 @@ git push origin br_oracle
 PS D:\Program\Kiwoom> ssh -i C:\Users\yg.gb5pro\.ssh\id_rsa ubuntu@134.185.111.202 
 
 5. 서버에 코드 적용후 재시작
-ubuntu@instance-20260127-2105:~/kiwoom_realtimerank$ ~/update-kiwoom_2.sh
+ubuntu@instance-20260127-2105:~/kiwoom_realtimerank$ ~/update-market_2.sh
 
 단, sh파일을 새 파일로 만들었다면, 실행권한을 부여한 후 실행
 chmod +x ~/update-market_2.sh

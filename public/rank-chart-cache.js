@@ -1,7 +1,7 @@
 (() => {
     'use strict';
     const TTL=16*3600000,FRESH=60000,MAX_BYTES=24*1024*1024,MAX_ENTRIES=180;
-    const nativeFetch=window.fetch.bind(window),memory=new Map(),pending=new Map(),blocked=new Set(),handoff=new Map();
+    const nativeFetch=window.fetch.bind(window),memory=new Map(),pending=new Map(),blocked=new Set(),handoff=new Map(),closedRefresh=new Map(),CLOSE_GRACE=2*60000;
     let database,identity,identityAt=0,identityJob,revision=0;
     const routes=/^\/api\/(?:concentration-chart|kis-concentration-chart|ls-concentration-chart|chart-reference|(?:kis-|ls-)?turnover\/chart|(?:kis-|ls-)?supply\/chart|(?:kiwoom-|ls-)?market-supply\/chart|adr\/(?:candles|history|today)|risk\/(?:breadth|sentiment|volatility))$/;
     const day=()=>new Date(Date.now()+32400000).toISOString().slice(0,10);
@@ -70,7 +70,8 @@
                 if(r.ok&&data.pending){blocked.add(key);if(background){handoff.set(key,{data,at:Date.now()});while(handoff.size>MAX_ENTRIES)handoff.delete(handoff.keys().next().value);notify(url);}return r;}
                 blocked.delete(key);
                 if(r.ok&&safe(data)&&hasValues(data)){
-                    const entry={key,at:Date.now(),data,bytes:JSON.stringify(data).length*2,scope:owner};
+                    // open: fetched while the market was open, so today's data may still be growing.
+                    const entry={key,at:Date.now(),data,bytes:JSON.stringify(data).length*2,scope:owner,open:window.TradingRefresh?.allowsUrl?.(url)!==false};
                     if(entry.bytes<5*1024*1024){memory.delete(key);memory.set(key,entry);let size=0;for(const value of memory.values())size+=value.bytes;while(memory.size>MAX_ENTRIES||size>MAX_BYTES){const first=memory.keys().next().value;size-=memory.get(first).bytes;memory.delete(first);}
                         const saved=body?{...entry,data:{...data,cursor:null,has_more:false}}:entry;
                         await storage('put',key,saved);void prune();
@@ -89,13 +90,24 @@
             if(body && !entry.data.cursor)return network();
             const isHistorical=method==='GET'&&historical(url);
             // Persisted POST responses deliberately have no reusable pagination cursor.
-            if(!isHistorical && window.TradingRefresh?.allowsUrl(url)!==false && (Date.now()-entry.at>=1000||body&&!entry.data.cursor))void network(true).catch(()=>{});
+            const marketOpen=window.TradingRefresh?.allowsUrl(url)!==false;
+            if(!isHistorical && marketOpen && (Date.now()-entry.at>=1000||body&&!entry.data.cursor))void network(true).catch(()=>{});
+            // Closed market: a response saved while it was open stops partway through today, so replace
+            // it once in the background. Responses saved after the close are complete and stay as they are.
+            // closedAt is the latest close of this URL's market (futures also close after the night
+            // session), so the check repeats at every close. Within the grace period the server may
+            // still be writing the last minutes, so wait for a read after it.
+            else if(!isHistorical && !marketOpen){
+                const closedAt=window.TradingRefresh?.closedAtUrl?.(url),mark=closedAt??'open';
+                const stale=closedAt!=null ? Date.now()>=closedAt+CLOSE_GRACE && entry.at<closedAt+CLOSE_GRACE : entry.open!==false;
+                if(stale && closedRefresh.get(key)!==mark){closedRefresh.set(key,mark);void network(true).catch(()=>{});}
+            }
             return response(entry.data);
         }
         if(entry)await storage('delete',key);
         return network();
     }
-    function invalidateIdentity(){identityAt=0;identity=null;revision++;memory.clear();blocked.clear();handoff.clear();}
+    function invalidateIdentity(){identityAt=0;identity=null;revision++;memory.clear();blocked.clear();handoff.clear();closedRefresh.clear();}
     window.RankChartCache={fetch:request,invalidateIdentity,ttl:TTL};
     const refreshers={
         '/api/concentration-chart':'refreshConcentrationChart','/api/kis-concentration-chart':'refreshKisConcentrationChart','/api/ls-concentration-chart':'refreshLsConcentrationChart',

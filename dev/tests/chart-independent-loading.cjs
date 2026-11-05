@@ -40,9 +40,8 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=requ
    applyConcentrationDisplaySettings({...getConcentrationDisplaySettings(),mode,candleOpen:true});
    selectRankChartStock({code:'005930',name:'Stock',market:'K'});
    applyRankCombinedSupplySettings({selected:'005930',mode,showCandles:true});
-   applyRankCombinedMarketSupplyDisplaySettings({selected:'futures',mode});applyRankCombinedMarketSupplyCandleOpen(true);
-   applyRankCombinedMarketSupplySecondaryDisplaySettings({selected:'futures',mode});applyRankCombinedMarketSupplySecondaryCandleOpen(true);
    applyRankTestMarketSupplyDisplaySettings({selected:'futures',mode});applyRankTestMarketSupplyCandleOpen(true);
+   applyRankTestMarketSupplySecondaryDisplaySettings({selected:'futures',mode});applyRankTestMarketSupplySecondaryCandleOpen(true);
    applyRankBreadthDisplaySettings({mode,candleOpen:true});
    applyRankSentimentDisplaySettings({candleOpen:true});applyRankVolatilityDisplaySettings({candleOpen:true});
    document.querySelector(`#rankAdrChartPanel [data-adr-mode="${mode}"]`).click();
@@ -50,11 +49,11 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=requ
    window.rankChartRefreshStarted=true;void RankChartAxis.refreshCharts();
   },mode);
   if(blocked==='topic'){
-   for(const id of ['combinedConcentrationChartPanel','rankCombinedSupplyChartPanel','rankCombinedMarketSupplyChartPanel','rankCombinedMarketSupplySecondaryChartPanel','rankTestMarketSupplyChartPanel','rankCombinedTurnoverChartPanel','rankAdrChartPanel','rankBreadthChartPanel','rankSentimentChartPanel','rankVolatilityChartPanel']){
+   for(const id of ['combinedConcentrationChartPanel','rankCombinedSupplyChartPanel','rankTestMarketSupplyChartPanel','rankTestMarketSupplySecondaryChartPanel','rankCombinedTurnoverChartPanel','rankAdrChartPanel','rankBreadthChartPanel','rankSentimentChartPanel','rankVolatilityChartPanel']){
     await page.waitForFunction(id=>window.candleRects[id]?.length>0,id,{timeout:10000}).catch(error=>{throw Error(`${mode}: price must draw while topic is blocked: ${id}: ${error.message}`);});
    }
   }else{
-   await page.waitForFunction(()=>getCombinedRankChartState().points.some(p=>p.value===25)&&getRankCombinedSupplyState().points.some(p=>p.foreign===100)&&getCombinedMarketSupplyCandleDiagnostics().flowPoints>0&&getCombinedMarketSupplySecondaryCandleDiagnostics().flowPoints>0&&getTestMarketSupplyCandleDiagnostics().flowPoints>0&&getRankCombinedTurnoverState().markets.kospi.some(p=>p.market_turnover>0)&&getAdrCandleDiagnostics().points>0&&getRankBreadthDataState().data.highs.length>0&&getRankSentimentDataState().data['fear-greed'].length>0&&getRankVolatilityDataState().data.vix.length>0,null,{timeout:10000}).catch(async error=>{console.log(await page.evaluate(()=>({concentration:getCombinedRankChartState(),supply:getRankCombinedSupplyState().points,market:getCombinedMarketSupplyCandleDiagnostics(),secondary:getCombinedMarketSupplySecondaryCandleDiagnostics(),test:getTestMarketSupplyCandleDiagnostics(),turnover:getRankCombinedTurnoverState(),adr:getAdrCandleDiagnostics(),breadth:getRankBreadthDataState(),sentiment:getRankSentimentDataState(),volatility:getRankVolatilityDataState()})));console.log(errors);throw error;});
+   await page.waitForFunction(()=>getCombinedRankChartState().points.some(p=>p.value===25)&&getRankCombinedSupplyState().points.some(p=>p.foreign===100)&&getTestMarketSupplyCandleDiagnostics().flowPoints>0&&getTestMarketSupplySecondaryCandleDiagnostics().flowPoints>0&&getRankCombinedTurnoverState().markets.kospi.some(p=>p.market_turnover>0)&&getAdrCandleDiagnostics().points>0&&getRankBreadthDataState().data.highs.length>0&&getRankSentimentDataState().data['fear-greed'].length>0&&getRankVolatilityDataState().data.vix.length>0,null,{timeout:10000}).catch(async error=>{console.log(await page.evaluate(()=>({concentration:getCombinedRankChartState(),supply:getRankCombinedSupplyState().points,market:getTestMarketSupplyCandleDiagnostics(),secondary:getTestMarketSupplySecondaryCandleDiagnostics(),test:getTestMarketSupplyCandleDiagnostics(),turnover:getRankCombinedTurnoverState(),adr:getAdrCandleDiagnostics(),breadth:getRankBreadthDataState(),sentiment:getRankSentimentDataState(),volatility:getRankVolatilityDataState()})));console.log(errors);throw error;});
   }
   hold=false;release.forEach(resolve=>resolve());
   await page.waitForFunction(()=>!getCombinedRankChartState().busy);

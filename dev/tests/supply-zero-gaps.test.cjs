@@ -10,7 +10,7 @@ test('stock and market supply leave zero slots blank without connecting across t
  await page.route('http://zero.test/**',route=>{
   const u=new URL(route.request().url());let data;
   if(u.pathname==='/api/supply/watchlist')data={success:true,stocks:[{code:'005930',name:'삼성전자'}],archive:[{code:'005930',name:'삼성전자'}],revision:1};
-  else if(u.pathname==='/api/supply/chart'||u.pathname==='/api/market-supply/chart')data={success:true,points:rows,candles:[],has_more:false,warnings:[],date:day};
+  else if(u.pathname.endsWith('supply/chart'))data={success:true,points:rows,candles:[],has_more:false,warnings:[],date:day};
   else if(u.pathname.startsWith('/api/'))data={success:true,points:[],has_more:false};
   if(data)return route.fulfill({json:data});
   return route.fulfill({contentType:'text/html',body:'<div id="tab_rank"><div class="rank-chart-row"><section id="concentrationChartPanel" class="panel" style="height:450px"></section><section id="rankBreadthChartPanel" class="panel"></section></div></div>'});
@@ -22,17 +22,20 @@ test('stock and market supply leave zero slots blank without connecting across t
   for(const method of ['beginPath','moveTo','lineTo','stroke','arc']){
    const original=proto[method];proto[method]=function(...args){
     const panel=this.canvas.closest('section')?.id;
+    // Solid series strokes only: the dashed intraday-gap connector is drawn after each series.
     if(this.canvas.closest('.rank-adr-area')){
      if(method==='beginPath')this.recorded=[];
      if(method==='moveTo'||method==='lineTo'||method==='arc')(this.recorded||=[]).push([method,...args]);
-     if(method==='stroke'&&this.lineWidth===2){(window.paths[panel]||={})[this.strokeStyle]=[...(this.recorded||[])];}
+     if(method==='stroke'&&this.lineWidth===2&&!this.getLineDash().length){(window.paths[panel]||={})[this.strokeStyle]=[...(this.recorded||[])];}
     }
     return original.apply(this,args);
    };
   }
  });
  for(const name of ['rank-chart-axis','rank-supply-chart','rank-market-supply-chart'])await page.addScriptTag({path:`public/${name}.js`});
- for(const id of ['rankSupplyChartPanel','rankMarketSupplyChartPanel']){
+ for(const id of ['rankCombinedSupplyChartPanel','rankTestMarketSupplyChartPanel']){
+  // The market supply card opens on futures; check the spot KOSPI minute lines (Kiwoom source).
+  if(id==='rankTestMarketSupplyChartPanel')await page.evaluate(()=>document.querySelector('#rankTestMarketSupplyChartPanel .rank-market-choice input[value=kospi]').click());
   await page.locator(`#${id} [data-mode="minute"]`).click();
   await page.waitForFunction(id=>window.paths[id]?.['#339af0']?.length===3,id);
   const draws=await page.evaluate(id=>window.paths[id],id);

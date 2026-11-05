@@ -84,3 +84,15 @@ test('frontend calendar requests include the prior night date, coalesce reads an
  assert.equal(window.TradingRefresh.state.days['2026-10-08'],true);
  assert.ok(events.includes('trading-calendar-updated'));
 });
+test('closedAt reports the latest spot close and both futures closes, including the night session',async t=>{
+ const f=fixture(t);await f.policy.refresh();
+ const at=(d,h)=>timestamp(d,h),check=(d,h,spot,futures)=>{f.setTime(d,h);const v=f.policy.closedAt();assert.equal(v.spot,spot,d+h+' spot');assert.equal(v.futures,futures,d+h+' futures');};
+ check('20261030','120000',at('20261029','200000'),at('20261030','060000'));
+ check('20261030','160000',at('20261029','200000'),at('20261030','154500'));
+ check('20261030','210000',at('20261030','200000'),at('20261030','154500'));
+ f.setTime('20261031','070000');await f.policy.refresh();
+ check('20261031','070000',at('20261030','200000'),at('20261031','060000'));
+ f.setTime('20261102','070000');await f.policy.refresh();
+ check('20261102','070000',at('20261030','200000'),at('20261031','060000'));
+ assert.deepEqual(f.policy.snapshot().closedAt,{spot:at('20261030','200000'),futures:at('20261031','060000')});
+});
