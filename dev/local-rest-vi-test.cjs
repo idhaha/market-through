@@ -19,9 +19,13 @@ const kst = t => new Date(t + 9 * 3600000).toISOString().slice(0, 19).replace('T
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const log = (state, detail = {}) => fs.appendFileSync(path.join(out, 'runner.jsonl'), JSON.stringify({ at: kst(Date.now()), state, ...detail }) + '\n');
 const overrides = { LS_MARKET_SUPPLY_MODE: 'rest', LS_STOCK_PROGRAM_MODE: 'rest', LS_STOCK_PROGRAM_REST_CODES: '005930',
-    KIS_STOCK_REALTIME_ENABLED: 'false', VI_MONITOR_REALTIME: 'false' };
+    KIS_STOCK_REALTIME_ENABLED: 'false', VI_MONITOR_REALTIME: 'false',
+    // 2026-11-05: user allowed market alerts off on both servers for this test.
+    MARKET_ALERT_REALTIME: 'false' };
 // Local server after the test: no VI window or stock program LS websocket (Oracle keeps those sessions).
-const afterTest = { LS_STOCK_PROGRAM_MODE: 'rest', LS_STOCK_PROGRAM_REST_CODES: '005930', VI_MONITOR_REALTIME: 'false' };
+const afterTest = { LS_STOCK_PROGRAM_MODE: 'rest', LS_STOCK_PROGRAM_REST_CODES: '005930', VI_MONITOR_REALTIME: 'false',
+    // 2026-11-05: until the 11/6 NVI key probe ends, Oracle keeps JIF + program and the probe needs the third LS session.
+    MARKET_ALERT_REALTIME: 'false' };
 
 function serverUp() {
     return new Promise(resolve => {
@@ -48,6 +52,13 @@ async function startServer(env, label) {
 }
 async function main() {
     fs.mkdirSync(out, { recursive: true });
+    // --restart-after-only: just restart the local server with the after-test settings.
+    // --restart-trace <file>: after-test settings but market alert ON and LS sockets traced (dev/trace-ls-sockets.cjs).
+    if (process.argv.includes('--restart-trace')) {
+        const traceEnv = { ...afterTest, MARKET_ALERT_REALTIME: 'true', NODE_OPTIONS: '--require ' + path.join(root, 'dev', 'trace-ls-sockets.cjs'), LS_SOCKET_TRACE_OUT: arg('restart-trace', 'outputs/ls-socket-trace/trace.jsonl') };
+        await stopServer(); await startServer(traceEnv, 'LS trace'); log('restarted_trace', { traceEnv }); return;
+    }
+    if (process.argv.includes('--restart-after-only')) { await stopServer(); await startServer(afterTest, 'LS shared'); log('restarted_after_only', { afterTest }); return; }
     if (Date.now() >= at('20:00')) throw Error('Test window already ended');
     log('started', { overrides });
     await stopServer();

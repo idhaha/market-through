@@ -106,7 +106,8 @@ async function main(){
         assert.equal(await page.locator('#viBody tr').first().evaluate(el=>el.classList.contains('vi-flash-up')),true);
         // Shared table style: tinted header and solid row lines.
         assert.equal(await page.locator('thead th').first().evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(234, 240, 249)');
-        assert.equal(await page.locator('#viBody td').first().evaluate(el=>getComputedStyle(el).borderBottom),'1px solid rgb(217, 226, 240)');
+        // The row line is an inset shadow (style.css) so it adds no row height.
+        assert.equal(await page.locator('#viBody td').first().evaluate(el=>getComputedStyle(el).boxShadow),'rgb(217, 226, 240) 0px -1px 0px 0px inset');
         assert.deepEqual(await page.locator('thead tr').first().locator('th').allTextContents(),['순위','시장','종목명','등락률','거래대금(백만)','거래소','구분','발동 시각','해제 시각','해제까지(예상)','KRX대비']);
         // Default (발동 시각 newest first): every sortable column shows arrows, none shows a dot.
         const sortIcons=()=>page.evaluate(()=>Object.fromEntries([...document.querySelectorAll('[data-sort]')].map(b=>[b.dataset.sort,(b.querySelector('circle')?'dot':'arrows')+':'+b.closest('th').getAttribute('aria-sort')])));

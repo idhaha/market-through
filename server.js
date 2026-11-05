@@ -344,7 +344,9 @@ const kisStockSupplyService = createBrokerStockSupply({
 const lsStockSupplyService = createBrokerStockSupply({
     broker: 'ls', directory: path.join(__dirname, 'data', 'ls-supply'), http: axios, supply: supplyService,
     credentials: () => ({}), getToken: () => lsMarketSupplyProvider.accessToken(),
-    programMode: () => (process.env.LS_STOCK_PROGRAM_MODE || '').trim(),
+    // t1637 polling by default, which frees an LS websocket session (LS turnover IJ_/US3 then comes from REST only).
+    // LS_STOCK_PROGRAM_MODE=websocket restores the UPH socket.
+    programMode: () => (process.env.LS_STOCK_PROGRAM_MODE || 'rest').trim(),
     // Empty means every registered stock.
     programRestCodes: () => { const codes = (process.env.LS_STOCK_PROGRAM_REST_CODES || '').split(',').map(s => s.trim()).filter(Boolean); return codes.length ? codes : null; }
 });
