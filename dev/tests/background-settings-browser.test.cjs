@@ -41,7 +41,8 @@ test('settings gear, account box, persisted toggle and collection survive browse
  await page.locator('#backgroundRefreshEnabled').check();await page.waitForFunction(()=>!document.getElementById('backgroundRefreshEnabled').disabled);await service.tick();assert.equal(service.status().enabled,true);
  assert.equal(calls,0,'The replacement must not query while the real browser is connected');
  await page.evaluate(()=>Object.defineProperty(document,'hidden',{configurable:true,value:true}));at+=60000;await service.tick();assert.equal(calls,0,'A hidden tab is still an open browser');
- const shots=path.resolve('outputs/background-settings');fs.mkdirSync(shots,{recursive:true});await page.screenshot({path:path.join(shots,'desktop.png')});
+ // Screenshots are for manual review only; keep them outside the repository.
+ const shots=path.join(os.tmpdir(),'market-through-tests','background-settings');fs.mkdirSync(shots,{recursive:true});await page.screenshot({path:path.join(shots,'desktop.png')});
  const otherComputer=await open();assert.equal(service.status().browserCount,2);
  await first.context.close();at+=60000;await service.tick();assert.equal(calls,0,'Another computer still has Market Through open');
  await otherComputer.context.close();await new Promise(resolve=>setImmediate(resolve));const before=calls;await service.tick();assert.equal(calls,before,'The last disconnect starts a reload grace period');
