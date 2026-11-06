@@ -5,14 +5,34 @@ const {timestamp}=require('../../supply-service');
 const at=clock=>timestamp('20261026',clock);
 test('past stored concentration amounts bypass REST and preserve sparse minute gaps',async t=>{
  const f=fixture(t);f.setTime(timestamp('20261028','100000'));
+ // The saved day covers the regular session (09:00..15:30), so its missing 09:02 stays missing.
+ const later=Array.from({length:387},(_,i)=>({t:at('090400')+i*60000,amount:6000000+i*1000000}));
  f.data.store.mergeMany('005930',[
-  {t:at('090000'),amount:1000000},{t:at('090100'),amount:3000000},{t:at('090300'),amount:5000000}
+  {t:at('090000'),amount:1000000},{t:at('090100'),amount:3000000},{t:at('090300'),amount:5000000},...later
  ]);
  const [bars,total]=await Promise.all([f.data.amounts('005930','minute',['20261026']),f.data.amounts('005930','minute',['20261026'],true)]);
  assert.equal(f.calls.length,0);
  assert.equal(bars.values.get(at('090100')),2000000);
  assert.equal(bars.values.has(at('090300')),false);
  assert.equal(total.values.get(at('090300')),5000000);
+});
+test('a past day saved only in part is read from LS REST, so an interrupted collection does not blank the day',async t=>{
+ // 2026-11-02 on Oracle: LS session limit left 000660 with 20 minutes (08:16..16:07) and no index file.
+ const f=fixture(t,'ls',[{date:'20261026',time:'090100',value:10},{date:'20261026',time:'090200',value:20},{date:'20261026',time:'153000',value:30}]);
+ f.setTime(timestamp('20261028','100000'));
+ f.data.store.mergeMany('000660',[{t:at('101500'),amount:7000000},{t:at('160600'),amount:9000000}]);
+ const bars=await f.data.amounts('000660','minute',['20261026']);
+ assert.equal(f.calls.length,1,'partial saved day is requested from REST');
+ assert.equal(bars.values.get(at('090000')),10000000);assert.equal(bars.values.get(at('090100')),20000000);assert.equal(bars.values.get(at('153000')),30000000);
+ const late=fixture(t,'ls',[]);late.setTime(timestamp('20261028','100000'));
+ late.data.store.mergeMany('000660',[{t:at('093000'),amount:1000000},{t:at('195900'),amount:9000000}]);
+ await late.data.amounts('000660','minute',['20261026']);
+ assert.equal(late.calls.length,1,'a day starting 09:30 misses the opening and is also requested');
+ // Both ends present but only a few minutes between them, as 000660 had on 2026-11-02.
+ const sparse=fixture(t,'ls',[]);sparse.setTime(timestamp('20261028','100000'));
+ sparse.data.store.mergeMany('000660',[{t:at('081600'),amount:1000000},{t:at('120000'),amount:5000000},{t:at('160700'),amount:9000000}]);
+ await sparse.data.amounts('000660','minute',['20261026']);
+ assert.equal(sparse.calls.length,1,'a sparse day spanning the session is also requested');
 });
 test('background turnover watch survives browser owner expiry and releases its own subscription when disabled',t=>{
  const f=fixture(t);f.data.setBackgroundStocks(['000660']);assert.ok(f.streams.some(s=>s.tr==='US3'&&s.key==='U000660   '));

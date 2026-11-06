@@ -136,9 +136,18 @@ function createBrokerTurnoverData({ broker, directory, transport, http, getToken
         const code=marketCodes[instrument] || instrument;
         const savedDays=mode==='minute'?new Set(store.dates(code).map(compact)):new Set();
         const today=compact(dayKey(now()));
-        // Past saved days are authoritative, including genuine missing minutes.
-        // Do not traverse REST history again before reading those same files.
-        const restDates=mode==='minute'?dates.filter(date=>date>=today || !savedDays.has(date)):dates;
+        // A past saved day that covers the regular session is authoritative, including genuine
+        // missing minutes, so REST history is not traversed again. A day saved only in part
+        // (realtime collection interrupted, e.g. LS session limit on 2026-11-02) is read from REST.
+        // Covered = spans 09:00..15:30 and holds at least 80% of its 391 minutes; REST is only slower.
+        const covered=date=>{
+            const times=store.points(code,`${date.slice(0,4)}-${date.slice(4,6)}-${date.slice(6,8)}`).map(p=>p.t);
+            if(!times.length)return false;
+            const clock=t=>new Date(t+9*3600000).toISOString().slice(11,19).replaceAll(':','');
+            const regular=times.filter(t=>clock(t)>='090000'&&clock(t)<='153000').length;
+            return clock(Math.min(...times))<='090000' && clock(Math.max(...times))>='153000' && regular>=Math.ceil(391*0.8);
+        };
+        const restDates=mode==='minute'?dates.filter(date=>date>=today || !savedDays.has(date) || !covered(date)):dates;
         const data=await series(instrument,mode,restDates), result=new Map();
         // REST history can remain cached while new completed websocket minutes arrive.
         const ws=mode==='minute'?dates.flatMap(date=>store.points(code,`${date.slice(0,4)}-${date.slice(4,6)}-${date.slice(6,8)}`)).filter(p=>p.t<Math.floor(now()/60000)*60000):[];
