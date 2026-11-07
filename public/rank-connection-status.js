@@ -3,6 +3,7 @@
     const cardSources = [
         ['#rankTestMarketSupplyChartPanel','LS(선물 수급·가격)·한투(주간 보완)'], ['#rankTestMarketSupplySecondaryChartPanel','LS(선물 수급·가격)·한투(주간 보완)'],
         ['#rankCombinedMarketSupplySecondaryChartPanel','일봉 LS·분봉 현물 키움/선물 한투·키움(가격)'], ['#rankCombinedMarketSupplyChartPanel','일봉 LS·분봉 현물 키움/선물 한투·키움(가격)'], ['#rankCombinedSupplyChartPanel','일봉 키움·분봉 한투(수급)·키움(가격)'], ['#rankCombinedTurnoverChartPanel','일봉 키움·분봉 LS(거래대금)·키움(가격)'], ['#combinedConcentrationChartPanel','일봉 키움·분봉 LS(거래대금)·키움(가격)'], ['#lsConcentrationChartPanel','LS(거래대금)·키움(가격)'], ['#rankKisTurnoverChartPanel','한투(거래대금)·키움(가격)'], ['#rankLsTurnoverChartPanel','LS(거래대금)·키움(가격)'],
+        ['#rankFuturesSupplyChartPanel', 'LS(수급·연결선물 가격)'],
         ['#rankKiwoomMarketSupplyChartPanel', '키움'],
         ['#rankKisSupplyChartPanel', '한투(수급)·키움(가격)'], ['#rankLsSupplyChartPanel', 'LS(수급)·키움(가격)'],
         ['#transactionTable', '키움'], ['#stockTable', '키움'],
@@ -22,6 +23,7 @@
         }
         if(['rankCombinedMarketSupplyChartPanel','rankCombinedMarketSupplySecondaryChartPanel'].includes(panel.id)){const minute=!!panel.querySelector('[data-mode=minute].active'),future=!!panel.querySelector('input[value^=futures]:checked');source=minute?(future?'한투(주간)·LS(야간)·키움(현물가격)':'키움'):'LS(수급)·키움(가격)';const credit=panel.querySelector('.rank-card-source');if(credit&&credit.textContent!=='출처: '+source)credit.textContent='출처: '+source;}
         if(panel.id==='rankCombinedSupplyChartPanel'){source=panel.querySelector('[data-mode=minute].active')?'한투(수급)·키움(가격)':'키움';const credit=panel.querySelector('.rank-card-source');if(credit&&credit.textContent!=='출처: '+source)credit.textContent='출처: '+source;}
+        if(panel.id==='rankFuturesSupplyChartPanel'){source=panel.querySelector('[data-mode=minute].active')?'LS(수급)·한투(가격)':'LS(수급·연결선물 가격)';const credit=panel.querySelector('.rank-card-source');if(credit&&credit.textContent!=='출처: '+source)credit.textContent='출처: '+source;}
         if(panel.id==='rankCombinedTurnoverChartPanel'){source=panel.querySelector('[data-mode=minute].active')?'LS(거래대금)·키움(가격)':'키움';const credit=panel.querySelector('.rank-card-source');if(credit&&credit.textContent!=='출처: '+source)credit.textContent='출처: '+source;}
         if(panel.id==='combinedConcentrationChartPanel')source=panel.querySelector('[data-chart-mode=minute].active')?'LS(거래대금)·키움(가격)':'키움';
         if(panel.id==='combinedConcentrationChartPanel'){const credit=panel.querySelector('.rank-card-source');if(credit&&credit.textContent!=='출처: '+source)credit.textContent='출처: '+source;}
@@ -48,7 +50,10 @@
             }
         });
         if (!dot) { dot = document.createElement('span'); dot.className = 'rank-connection-dot'; dot.setAttribute('role','img'); panel.prepend(dot); }
-        const interval = Number(document.querySelector('#refreshInterval option:checked')?.dataset.interval) || 600000;
+        // 실시간 조회 순위 refreshes on its own choice (당일누적·30초 30 s, 1분, 10분, 1시간), not the tab interval.
+        const rankingPeriods={'4':30000,'5':30000,'1':60000,'2':600000,'3':3600000};
+        const interval = panel.querySelector('#stockTable') ? rankingPeriods[document.getElementById('rankQueryTp')?.value] || 30000
+            : Number(document.querySelector('#refreshInterval option:checked')?.dataset.interval) || 600000;
         const healthy = navigator.onLine && state?.ok && Date.now() - state.at < interval * 2 + 90000;
         dot.classList.toggle('is-connected', !!healthy);
         dot.title = healthy ? '정상 연결 · 최근 조회 성공' : '연결 확인 필요 · 미수신, 조회 실패 또는 갱신 지연';
@@ -63,7 +68,7 @@
     const original=window.fetch;
     window.fetch=async function(input,options){
         const path=new URL(typeof input==='string'?input:input.url,location.href).pathname;
-        const targets=path==='/api/transaction_rank'?['#transactionTable']:path==='/api/stock'?['#stockTable','#efriendStockTable']:path==='/api/watchlist_rank'?['#watchlistTable']:[];
+        const targets=path==='/api/transaction_rank'?['#transactionTable']:path==='/api/stock'?(new URL(typeof input==='string'?input:input.url,location.href).searchParams.get('kiwoom')==='0'?['#efriendStockTable']:['#stockTable','#efriendStockTable']):path==='/api/watchlist_rank'?['#watchlistTable']:[];
         try {const response=await original.call(this,input,options);if(targets.length){let data;try{data=await response.clone().json();}catch{}for(const target of targets)window.setRankCardConnection(target,response.ok&&data?.success===true&&!data?.error);}return response;}
         catch(error){if(error.name!=='AbortError')targets.forEach(target=>window.setRankCardConnection(target,false));throw error;}
     };

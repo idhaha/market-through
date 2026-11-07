@@ -940,6 +940,20 @@ const tableBody = document.getElementById('tableBody');
 const lastUpdate = document.getElementById('lastUpdate');
 const statusText = document.getElementById('statusText');
 const refreshIntervalSelect = document.getElementById('refreshInterval');
+// 실시간 조회 순위 [키움] keeps its own ka00198 qry_tp and refresh cycle, apart from the trading tab auto refresh.
+const rankQuerySelect = document.getElementById('rankQueryTp');
+const RANK_QUERY_PERIODS = { '4': 30000, '5': 30000, '1': 60000, '2': 600000, '3': 3600000 };
+const rankQueryValue = () => Object.hasOwn(RANK_QUERY_PERIODS, rankQuerySelect?.value) ? rankQuerySelect.value : '4';
+// Saved settings: the old '당일누적' trading choice ('4') becomes 30초 there. The ranking table defaults to 당일누적.
+function applyRankRefreshSettings(data) {
+    const legacy = data.rankInterval;
+    const interval = legacy === '4' ? '5' : legacy;
+    if (interval && refreshIntervalSelect && [...refreshIntervalSelect.options].some(o => o.value === interval)) refreshIntervalSelect.value = interval;
+    else if (refreshIntervalSelect) refreshIntervalSelect.value = '2';
+    lastSavedSettings.rankInterval = refreshIntervalSelect?.value || '2';
+    const query = Object.hasOwn(RANK_QUERY_PERIODS, data.rankQueryTp) ? data.rankQueryTp : '4';
+    if (rankQuerySelect) rankQuerySelect.value = query;
+}
 const manualRefreshBtn = document.getElementById('manualRefresh');
 const globalRefreshBtn = document.getElementById('globalRefreshBtn');
 
@@ -1490,7 +1504,7 @@ function followEfriendProgress(scan) {
             const latest = result.scan;
             // The table must load its new snapshot before showing completion.
             if (!latest.running && latest.completedAt && latest.completedAt !== efriendDisplayedCompletion) {
-                await loadData({ refreshLendable: false });
+                await loadData({ refreshLendable: false, ranking: false });
                 return;
             }
             followEfriendProgress(latest);
@@ -1500,7 +1514,7 @@ function followEfriendProgress(scan) {
     }, 2000);
 }
 
-async function loadData({ refreshLendable = true } = {}) {
+async function loadData({ refreshLendable = true, ranking = true } = {}) {
     console.log('[TEST] loadData() 시작');    //Andrew
     if (isCapturing) { console.log('[Capture] loadData() skipped (isCapturing)'); return; }
     if (refreshLendable) setEfriendLoading(true);
@@ -1512,12 +1526,12 @@ async function loadData({ refreshLendable = true } = {}) {
         if (errorMessage) errorMessage.style.display = 'none';
         updateStatus('loading', '데이터 로딩 중...');
 
-        const selectedOption = refreshIntervalSelect.options[refreshIntervalSelect.selectedIndex];
-        const qryTp = selectedOption.value;
+        // ranking false: only the 대주가능 종목 [한투] table (kiwoom=0); 실시간 조회 순위 [키움] refreshes on its own cycle.
+        const rankingQuery = ranking ? `qry_tp=${rankQueryValue()}` : 'kiwoom=0';
 
-console.log('[TEST] /api/stock 호출 직전:', `${API_URL}?qry_tp=${qryTp}`); //Andrew
+console.log('[TEST] /api/stock 호출 직전:', `${API_URL}?${rankingQuery}`); //Andrew
 
-        const response = await fetch(`${API_URL}?qry_tp=${qryTp}${refreshLendable ? '' : '&efriend_refresh=0'}`, {
+        const response = await fetch(`${API_URL}?${rankingQuery}${refreshLendable ? '' : '&efriend_refresh=0'}`, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
@@ -1548,8 +1562,8 @@ console.log('[TEST] /api/stock 응답 완료:', response.status); //Andrew
         }
 
         // result.data now contains { kiwoom: [], efriend: [] }
-        if (result.data && typeof result.data === 'object' && result.data.kiwoom) {
-            renderTable(result.data.kiwoom);
+        if (result.data && typeof result.data === 'object' && ('kiwoom' in result.data)) {
+            if (Array.isArray(result.data.kiwoom)) renderTable(result.data.kiwoom);
             renderEfriendTable(result.data.efriend || []);
             const scan = result.data.efriend_scan;
             efriendDisplayedCompletion = scan?.completedAt || 0;
@@ -1594,13 +1608,14 @@ function startAutoRefresh() {
 
     console.log(`[Rank] 🔄 자동 새로고침 시작 (간격: ${intervalMs}ms, qry_tp: ${selectedOption.value})`);
 
+    startRankingRefresh();
     autoRefreshInterval = setInterval(async () => {
         if (isCapturing) { console.log('[Capture] Auto-refresh skipped (isCapturing)'); return; }
         const now = new Date().toLocaleTimeString();
         console.log(`[Rank] ⚡ 자동 새로고침 실행 (${now})`);
         const session=window.TradingRefresh ? await window.TradingRefresh.update() : {spot:true};
         if(session.spot){
-            loadData();
+            loadData({ ranking: false });
             loadTransactionRank({refreshMarketCharts:false});
             loadWatchlistRank();
         }
@@ -1608,20 +1623,55 @@ function startAutoRefresh() {
     }, intervalMs);
 }
 
+let rankingRefreshTimer = null, rankingRefreshPeriod = 0;
+// Restarts only when the ranking choice changed, so a trading tab interval change leaves its schedule alone.
+function startRankingRefresh(force = false) {
+    const period = RANK_QUERY_PERIODS[rankQueryValue()];
+    if (rankingRefreshTimer && rankingRefreshPeriod === period && !force) return;
+    clearInterval(rankingRefreshTimer);
+    rankingRefreshPeriod = period;
+    rankingRefreshTimer = setInterval(async () => {
+        if (isCapturing) return;
+        const session = window.TradingRefresh ? await window.TradingRefresh.update() : { spot: true };
+        if (session.spot) loadData({ refreshLendable: false });
+    }, period);
+}
 function stopAutoRefresh() {
     if (autoRefreshInterval) {
         clearInterval(autoRefreshInterval);
         autoRefreshInterval = null;
     }
+    clearInterval(rankingRefreshTimer); rankingRefreshTimer = null; rankingRefreshPeriod = 0;
 }
 
 refreshIntervalSelect.addEventListener('change', (e) => {
     console.log('[Rank] 새로고침 설정 변경');
     lastSavedSettings.rankInterval = e.target.value;
-    loadData();
+    loadData({ ranking: false });
     loadTransactionRank();
     loadWatchlistRank();
     startAutoRefresh();
+    saveAppData();
+});
+
+// i guide of the ranking table: opens below the header, closes on a second click, Esc or a click outside.
+(() => {
+    const button = document.querySelector('.rank-query-info-button'), guide = document.getElementById('rankQueryGuide');
+    if (!button || !guide) return;
+    const panel = button.closest('.panel');
+    const hide = () => { guide.hidden = true; guide.classList.remove('is-visible'); button.setAttribute('aria-expanded', 'false'); };
+    button.addEventListener('click', event => {
+        event.stopPropagation();
+        if (!guide.hidden) { hide(); return; }
+        guide.style.top = `${button.getBoundingClientRect().bottom - panel.getBoundingClientRect().top + 8}px`;
+        guide.hidden = false; guide.classList.add('is-visible'); button.setAttribute('aria-expanded', 'true');
+    });
+    document.addEventListener('click', event => { if (!guide.hidden && !guide.contains(event.target)) hide(); });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape' && !guide.hidden) { hide(); button.focus(); } });
+})();
+rankQuerySelect?.addEventListener('change', () => {
+    loadData({ refreshLendable: false });
+    startRankingRefresh(true);
     saveAppData();
 });
 
@@ -1905,6 +1955,7 @@ function getSerializedState(sourceData = null) {
         tabs: capturedTabs,
         contents: dataToSerialize,
         rankInterval: refreshIntervalSelect ? refreshIntervalSelect.value : "2",
+        rankQueryTp: rankQueryValue(),
         rankSources: { market: mrktTpSelect?.value || '000', exchange: stexTpSelect?.value || '3' },
         watchlistGroupId: watchlistGroupId,
         tabSidebar: { ...tabSidebarState },
@@ -2077,14 +2128,7 @@ function applyData(data) {
             createTabContentElement(t.id);
         });
 
-        if (data.rankInterval) {
-            lastSavedSettings.rankInterval = data.rankInterval;
-            refreshIntervalSelect.value = data.rankInterval;
-        } else {
-            // Enforce default 10 min if not saved
-            refreshIntervalSelect.value = '2';
-            lastSavedSettings.rankInterval = '2';
-        }
+        applyRankRefreshSettings(data);
         startAutoRefresh();
         // Only switch tabs IF this is the INITIAL local load (when we don't have a specific trigger)
         // Manual refresh/sync should stay on the current tab (activeContent exists).
@@ -5673,8 +5717,8 @@ function applyFullStateBackup(data) {
     // 4. 전역 설정 복구
     if(['000','001','101'].includes(data.rankSources?.market))mrktTpSelect.value=data.rankSources.market;
     if(['1','2','3'].includes(data.rankSources?.exchange))stexTpSelect.value=data.rankSources.exchange;
-    if (data.rankInterval && refreshIntervalSelect) {
-        refreshIntervalSelect.value = data.rankInterval;
+    if ((data.rankInterval || data.rankQueryTp) && refreshIntervalSelect) {
+        applyRankRefreshSettings(data);
         startAutoRefresh();
     }
     // 5. 메모 복구

@@ -15,13 +15,18 @@
         const value = thousands ? Math.trunc(n / 1000) : n;
         return `${signed && value > 0 ? '+' : ''}${value.toLocaleString('ko-KR')}${thousands ? '천주' : '주'}`;
     };
-    // 종목 선물 수급: net contracts (LS t8463/t8462).
-    const formatContracts = (n, signed = true) => {
-        if (!Number.isFinite(n)) return '미제공';
-        const thousands = Math.abs(n) >= 10000;
-        const value = thousands ? Math.trunc(n / 1000) : n;
-        return `${signed && value > 0 ? '+' : ''}${value.toLocaleString('ko-KR')}${thousands ? '천계약' : '계약'}`;
-    };
+    // 종목 선물 수급 arrives in net contracts; × the contract multiplier (10 stocks, 100 ETF, from the server) gives
+    // shares so it reads on the same 주/천주 scale as 종목 수급.
+    function contractShares(result) {
+        const multiplier = Number(result.multiplier) > 0 ? Number(result.multiplier) : 10;
+        return (result.points || []).filter(p => Number.isFinite(p.t)).map(p => {
+            const next = { ...p };
+            for (const field of ['individual', 'foreign', 'institution']) if (Number.isFinite(p[field])) next[field] = p[field] * multiplier;
+            return next;
+        });
+    }
+    // Minute y range shared between 종목 수급 (combined) and 종목 선물 수급 (futures) for the same stock.
+    const yPeers = new Map();
     function mergeFlow(previous, incoming) {
         const points = new Map(previous.map(point => [point.t, point]));
         for (const point of incoming) {
@@ -59,7 +64,7 @@
         const combined = broker === 'combined', futures = broker === 'futures';
         // The futures card keeps the program series for the same layout as 종목 수급; LS has no stock futures program
         // trading, so it shows as 미제공 (empty lane on the day chart).
-        const cardSeries = series, format = futures ? formatContracts : formatShares;
+        const cardSeries = series, format = formatShares;
         const suffix = combined ? 'CombinedSupply' : futures ? 'FuturesSupply' : broker === 'kis' ? 'KisSupply' : broker === 'ls' ? 'LsSupply' : 'Supply';
         const panelId = `rank${suffix}ChartPanel`, axisId = broker ? `${broker}Supply` : 'supply';
         const api = name => name.replace('Supply', suffix);
@@ -76,7 +81,7 @@
             <div class="rank-adr-controls"><select class="supply-stock-select" aria-label="수급 종목 선택"></select><button type="button" data-mode="day" class="active" aria-pressed="true">일봉</button><button type="button" data-mode="minute" aria-pressed="false">1분봉(누적)</button>
             <button type="button" class="concentration-candle-toggle" aria-expanded="false">캔들차트</button></div>
             <div class="supply-legend">${cardSeries.map(s => `<button type="button" data-series="${s}" aria-label="${names[s]} 표시" title="${names[s]} 표시 전환" aria-pressed="true" style="color:${colors[s]}"><span>${Array.from(names[s])[0]}</span><output><span class="supply-value-number">—</span><span class="supply-value-unit"></span></output></button>`).join('')}</div>
-            <div class="chart-hover-info" hidden></div><div class="rank-adr-area"><canvas role="img" aria-label="${futures ? '개인 외국인 기관 순매수 계약 차트 (프로그램 미제공)' : '개인 외국인 기관 프로그램 순매수수량 차트'}"></canvas></div>
+            <div class="chart-hover-info" hidden></div><div class="rank-adr-area"><canvas role="img" aria-label="${futures ? '개인 외국인 기관 순매수수량 차트 (선물 계약×승수, 프로그램 미제공)' : '개인 외국인 기관 프로그램 순매수수량 차트'}"></canvas></div>
             <div class="rank-adr-candle-area" hidden><canvas role="img" aria-label="${futures ? '선택 종목 주식선물(연결선물) 가격 캔들차트' : '선택 종목 가격 캔들차트'}"></canvas></div>
             <div class="concentration-chart-footer rank-adr-zoom"><input type="range" min="0" max="0" value="0" aria-label="수급 과거 구간 이동" disabled><div class="concentration-controls"><button type="button" aria-label="수급 차트 축소">−</button><button type="button" aria-label="수급 차트 확대">+</button></div></div>
             <button type="button" data-action="more" class="concentration-icon-button" title="과거 데이터 더 불러오기" aria-label="과거 데이터 더 불러오기"><svg width="28" height="28" viewBox="0 0 34 34" shape-rendering="crispEdges" aria-hidden="true"><rect x="1" y="1" width="32" height="32" fill="#ededed"/><path d="M10 5v20" stroke="#737373" stroke-width="2"/><rect x="6" y="9" width="9" height="12" fill="#505050"/><path d="M22 5v20" stroke="#c0c0c0" stroke-width="2"/><rect x="18" y="9" width="9" height="12" fill="#969696"/><path d="M25 21v10M21 26h10" stroke="#444444" stroke-width="4"/></svg></button><p class="rank-adr-status" role="status"></p>`;
@@ -94,10 +99,13 @@
         const stockSelect = panel.querySelector('.supply-stock-select'), addButton = panel.querySelector('[data-action="add-stock"]');
         stockSelect.addEventListener('change', () => { if (stockSelect.value) choose(stockSelect.value); });
         addButton.addEventListener('click', openPicker);
-        let config = { stocks: [], archive: [], revision: 0 }, selected = '', mode = 'day', cursor = null, hasMore = false, loading = false, historyLoaded = false;
+        let multiplier = 10, config = { stocks: [], archive: [], revision: 0 }, selected = '', mode = 'day', cursor = null, hasMore = false, loading = false, historyLoaded = false;
         let flowLoading=false, flowCoverageFirst='', candleError='';
         const minuteDays = new Set(), candleCache = new Map(), priceHistory = new Map();
         let priceCursor = null, candleLoading = false;
+        // The candle cursor only counts while it points at a day not requested yet: while that day's candles are
+        // still loading, reusing it would ask the same day again (2026-11-07 Oracle: "과거 조회가 진행되지 않았습니다").
+        const nextPriceCursor = () => priceCursor && !minuteDays.has(`${priceCursor.slice(0,4)}-${priceCursor.slice(4,6)}-${priceCursor.slice(6,8)}`) ? priceCursor : null;
         let points = [], candles = [], start = 0, count = null, hover = null, drag = null, geometry;
         let controller, candleController, revision = 0, candleRevision = 0, refreshing = false, refreshPending = false;
         let showCandles = false, candleMessage = '', chartMessage = '', configError = '';
@@ -106,9 +114,26 @@
         try { selected = selectionStorage.getItem(selectionKey) || ''; } catch {}
         function remember() { try { selectionStorage.setItem(selectionKey, selected); } catch {} }
         function setStatus() { status.textContent = [configError, chartMessage, candleMessage].filter(Boolean).join(' · '); status.title = status.textContent; }
-        const settings = () => ({ selected, mode, showCandles, visibleSeries: [...visibleSeries] });
+        // 분봉 y축 동기화 with the other card (종목 수급 ↔ 종목 선물 수급), checked by default.
+        const yPeerKey = window.rankIndependentClient ? '' : combined ? 'futures' : futures ? 'combined' : '';
+        let ySync = true, yShared = '';
+        try { ySync = localStorage.getItem(`${panelId}YSync`) !== '0'; } catch {}
+        const ySyncLabel = document.createElement('label'); ySyncLabel.className = 'supply-y-sync'; ySyncLabel.hidden = true;
+        ySyncLabel.innerHTML = `<input type="checkbox"><span>${futures ? '종목수급과' : '종목선물수급과'} y축 동기화</span>`;
+        ySyncLabel.title = `분봉에서 같은 종목의 ${futures ? '종목 수급' : '종목 선물 수급'} 카드와 Y축 범위를 맞춤`;
+        const ySyncBox = ySyncLabel.querySelector('input'); ySyncBox.checked = ySync;
+        if (yPeerKey) panel.append(ySyncLabel);
+        function paintYSync() { const show = !!yPeerKey && mode === 'minute'; ySyncLabel.hidden = !show; panel.classList.toggle('y-sync-visible', show); ySyncBox.checked = ySync; }
+        ySyncBox.addEventListener('change', () => {
+            ySync = ySyncBox.checked; try { localStorage.setItem(`${panelId}YSync`, ySync ? '1' : '0'); } catch {}
+            draw(); publish(); if (typeof saveAppData === 'function') saveAppData();
+        });
+        if (yPeerKey) yPeers.set(broker, { selected: () => selected, mode: () => mode, visible: () => [...visibleSeries], draw: () => draw(),
+            rows: (first, last) => displayFlow(points, mode).filter(p => p.t >= first && p.t <= last) });
+        const settings = () => ({ selected, mode, showCandles, visibleSeries: [...visibleSeries], ySync });
         window[api('getRankSupplyDisplaySettings')] = settings;
         function publish() { if (broker) { try { localStorage.setItem(`${panelId}Settings`, JSON.stringify(settings())); } catch {} } document.dispatchEvent(new CustomEvent(eventName('rank-supply-state'), { detail: settings() })); }
+        window[api('getRankSupplyYRange')] = () => ({ mode, selected, multiplier, min: geometry?.min, max: geometry?.max, first: geometry?.rows[0]?.t, last: geometry?.rows.at(-1)?.t });
         window[api('getRankSupplyState')] = () => ({ ...settings(), config, points, candles, flowCoverageFirst, cursor, hasMore, priceCursor, minuteDays: [...minuteDays], priceHistory: [...priceHistory], chartMessage, connection: window.getRankCardConnectionState?.(panel) });
         window[api('applyRankSupplySettings')] = (value, fetchData = true) => {
             if (!value || !['day', 'minute'].includes(value.mode)) return;
@@ -116,6 +141,7 @@
             if (changed) { controller?.abort(); candleController?.abort(); ++revision; ++candleRevision; loading = candleLoading = false; selected = value.selected || ''; mode = value.mode; clearView(); remember(); }
             showCandles = !window.rankIndependentClient && typeof window.rankMainCandleOpen==='boolean' ? window.rankMainCandleOpen : value.showCandles === true; candleArea.hidden = !showCandles;
             panel.querySelector('.concentration-candle-toggle').setAttribute('aria-expanded', String(showCandles));
+            if (typeof value.ySync === 'boolean') { ySync = value.ySync; try { localStorage.setItem(`${panelId}YSync`, ySync ? '1' : '0'); } catch {} }
             if (Array.isArray(value.visibleSeries)) { visibleSeries.clear(); value.visibleSeries.filter(s => cardSeries.includes(s)).forEach(s => visibleSeries.add(s)); }
             panel.querySelectorAll('[data-series]').forEach(b => b.setAttribute('aria-pressed', String(visibleSeries.has(b.dataset.series))));
             panel.querySelectorAll('[data-mode]').forEach(b => { b.classList.toggle('active', b.dataset.mode === mode); b.setAttribute('aria-pressed', String(b.dataset.mode === mode)); });
@@ -186,12 +212,22 @@
             window.RankChartAxis.updateSlider(axisId,slider);
             panel.querySelector('[aria-label="수급 차트 확대"]').disabled = n <= 10;
             panel.querySelector('[aria-label="수급 차트 축소"]').disabled = n >= points.length;
-            more.hidden = false; more.disabled = !selected || !(hasMore || mode === 'minute' && priceCursor) || loading || mode === 'minute' && candleLoading;
+            more.hidden = false; more.disabled = !selected || !(hasMore || mode === 'minute' && nextPriceCursor()) || loading || mode === 'minute' && candleLoading;
             const values = rows.flatMap(p => [...visibleSeries].map(s => p[s])).filter(Number.isFinite);
             let min = 0, max = 0; for (const value of values) { min = Math.min(min, value); max = Math.max(max, value); }
+            if (yPeerKey && mode === 'minute' && rows.length) {
+                // Tell the other card when this card's own range changes, so both redraw on the same scale.
+                const own = [selected, rows[0].t, rows.at(-1).t, min, max, [...visibleSeries]].join('|');
+                if (own !== yShared) { yShared = own; const other = yPeers.get(yPeerKey); if (other) requestAnimationFrame(() => other.draw()); }
+                const peer = ySync ? yPeers.get(yPeerKey) : null;
+                if (peer && peer.selected() === selected && peer.mode() === 'minute') {
+                    const fields = peer.visible();
+                    for (const p of peer.rows(rows[0].t, rows.at(-1).t)) for (const field of fields) if (Number.isFinite(p[field])) { min = Math.min(min, p[field]); max = Math.max(max, p[field]); }
+                }
+            }
             const span = Math.max(1, max - min), padding = span * .08; min -= padding; max += padding;
             const y = v => bottom - (v - min) / (max - min) * (bottom - top);
-            geometry = { rows, left, right, top, bottom, x, y };
+            geometry = { rows, left, right, top, bottom, x, y, min, max };
             if (w <= 100 || h <= 50) return;
             const muted = getComputedStyle(panel).getPropertyValue('--text-muted').trim() || '#64748b';
             function grid(context, width, low, high, toY, unit = true) {
@@ -333,6 +369,7 @@
             if (hovered) valueBadge(cc, hovered.close, cy(hovered.close), '#000', size.h, hovered.close.toLocaleString('ko-KR'));
         }
         function paintStocks() {
+            paintYSync();
             stockSelect.replaceChildren();
             config.stocks.forEach(stock => {
                 const button = new Option(Array.from(stock.name).slice(0, 6).join(''), stock.code);
@@ -424,7 +461,7 @@
         window.RankChartAxis.todayButton(panel,'[data-mode="minute"]',()=>mode,()=>{todayOnly=true;draw();void load();});
         async function load(append = false, restoreWindow = null) {
             if(window.rankManagedChartRefresh && !window.rankChartRefreshStarted)return;
-            const nextCursor = append ? [hasMore ? cursor : null, mode === 'minute' ? priceCursor : null].filter(Boolean).sort().at(-1) : null;
+            const nextCursor = append ? [hasMore ? cursor : null, mode === 'minute' ? nextPriceCursor() : null].filter(Boolean).sort().at(-1) : null;
             if (append && (loading || !nextCursor)) return;
             controller?.abort(); const current = controller = new AbortController(), id = ++revision;
 
@@ -442,7 +479,8 @@
                 const coverageDate=result.date || (append && nextCursor ? `${nextCursor.slice(0,4)}-${nextCursor.slice(4,6)}-${nextCursor.slice(6,8)}` : '');
                 const coverage=mode==='minute' && coverageDate ? coverageDate+' 00:00' : (result.points || []).filter(p=>Number.isFinite(p.t)).map(p=>new Date(p.t+9*3600000).toISOString().slice(0,mode==='minute'?16:10).replace('T',' ')).sort()[0];
                 if(coverage && (!flowCoverageFirst || coverage<flowCoverageFirst))flowCoverageFirst=coverage;
-                const fresh = (result.points || []).filter(p => Number.isFinite(p.t));
+                const fresh = futures ? contractShares(result) : (result.points || []).filter(p => Number.isFinite(p.t));
+                if (futures && Number(result.multiplier) > 0) multiplier = Number(result.multiplier);
                 points = mergeFlow(points, fresh);
                 if (mode === 'day') {
                     candles = [...new Map([...candles, ...(result.candles || [])].map(p => [p.t, p])).values()].sort((a,b) => a.t - b.t);
@@ -458,7 +496,7 @@
                         const past=await request(`${(combined || window.rankIndependentClient) && mode === 'minute' ? '/api/kis-supply/chart' : endpoint}?${params}`,{signal:current.signal});
                         if(id!==revision)return;
                         const first=day+' 00:00';if(!flowCoverageFirst || first<flowCoverageFirst)flowCoverageFirst=first;
-                        points=mergeFlow(points,(past.points || []).filter(p=>Number.isFinite(p.t)));
+                        points=mergeFlow(points,futures?contractShares(past):(past.points || []).filter(p=>Number.isFinite(p.t)));
                     }
                     const previous=(result.available_dates || []).filter(day=>day<restoreWindow.first.slice(0,10)).sort().at(-1);
                     cursor=previous?previous.replaceAll('-',''):null;hasMore=!!previous;historyLoaded=true;
@@ -472,7 +510,7 @@
                 const hasFlow = points.some(point => cardSeries.some(field => Number.isFinite(point[field])));
                 const periodPoints=mode==='minute' && todayOnly?points.filter(p=>dayKey(p.t)===window.RankChartAxis.sessionDay()):points;
                 const period = periodPoints.length ? `${dayKey(periodPoints[0].t)}${dayKey(periodPoints[0].t) === dayKey(periodPoints.at(-1).t) ? '' : ' ~ ' + dayKey(periodPoints.at(-1).t)}` : '당일 자료 없음';
-                const message = mode === 'minute' ? `${period}` : `일별 순매수${futures ? ' 계약' : '수량'} · ${points.length.toLocaleString()}봉`;
+                const message = mode === 'minute' ? `${period}` : `일별 순매수수량${futures ? ` (계약×${multiplier})` : ''} · ${points.length.toLocaleString()}봉`;
                 let warnings = (result.warnings || []).filter(text => !text.startsWith('1분마다 관측한 당일 누적 순매수수량'));
                 warnings = window.RankSupplyGuide?.loadingWarnings(panel, mode, warnings) || warnings;
                 chartMessage = `${hasFlow ? message : '수급 기록 없음'}${warnings.length ? ` · ${warnings.join(' · ')}` : ''}${result.status?.error && mode === 'minute' ? ` · ${result.status.error}` : ''}`;
@@ -489,6 +527,8 @@
                 } while(true);
             } catch (error) {
                 if (error.name === 'AbortError' || id !== revision) return;
+                // A stock with no source (e.g. no stock futures, 404) has no history to page through either.
+                if (error.status === 404) { hasMore = false; cursor = null; priceCursor = null; priceHistory.clear(); }
                 chartMessage = `${error.message}${points.length ? ' · 이전 데이터 표시' : ''}`; setStatus();
                 window.setRankCardConnection?.(panel, false);
             }
@@ -521,11 +561,11 @@
         slider.addEventListener('input', () => { start = Number(slider.value); draw(); });
         panel.querySelectorAll('[data-mode]').forEach(button => button.addEventListener('click', () => {
             if (mode === button.dataset.mode) return;
-            mode = button.dataset.mode; todayOnly=true;clearView();
+            mode = button.dataset.mode; todayOnly=true;clearView();paintYSync();
             panel.querySelectorAll('[data-mode]').forEach(b => { b.classList.toggle('active', b === button); b.setAttribute('aria-pressed', String(b === button)); });
             load();
         }));
-        window.RankChartAxis.registerHistoryLoader(axisId,()=>load(true),()=>loading,()=>({identity:selected,coverageFirst:flowCoverageFirst,ensureRange:async target=>{await loadCandles(target);if(candleError)throw new Error(candleError);},hasMore:!!selected && (hasMore || mode==='minute' && !!priceCursor),cursor:[cursor,priceCursor].join(':')}));
+        window.RankChartAxis.registerHistoryLoader(axisId,()=>load(true),()=>loading || mode==='minute' && candleLoading,()=>({identity:selected,coverageFirst:flowCoverageFirst,ensureRange:async target=>{await loadCandles(target);if(candleError)throw new Error(candleError);},hasMore:!!selected && (hasMore || mode==='minute' && !!nextPriceCursor()),cursor:[cursor,nextPriceCursor()].join(':')}));
         more.addEventListener('click', () => window.RankChartAxis.requestHistory(mode));
         panel.querySelectorAll('[data-series]').forEach(button => button.addEventListener('click', () => {
             const field = button.dataset.series;

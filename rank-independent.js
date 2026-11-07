@@ -30,7 +30,7 @@ function createRankIndependentRelay({ now = Date.now, refresh, request, schedule
         }
         channel.peerSeen = now(); return channel;
     }
-    const intervals = { '5': 30000, '1': 60000, '2': 600000, '3': 3600000, '4': 30000 };
+    const intervals = { '5': 30000, '1': 60000, '2m': 120000, '3m': 180000, '4m': 240000, '5m': 300000, '2': 600000, '3': 3600000, '4': 30000 };
     const intervalFor = channel => intervals[channel.snapshot?.conditions?.refreshInterval] || 600000;
     async function update(channel) {
         if (!refresh || !channel.snapshot || channel.refreshing || channel.closed) return;

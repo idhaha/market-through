@@ -47,9 +47,12 @@ test('independent-window presence leases suspend fallback and expire after an un
  f.advance(30000);await f.service.tick();assert.ok(f.calls.length>0);
 });
 test('server honors saved cadence, picks up changed settings and disables without deleting archives',async t=>{
- const f=fixture(t);f.service.configure(true);await f.service.tick();const count=f.calls.length;
- f.advance(59000);await f.service.tick();assert.equal(f.calls.length,count);
- f.advance(1000);await f.service.tick();assert.equal(f.calls.length,count*2);
+ // 실시간 조회 순위 keeps its own period (default 당일누적: 30 s); every other job follows the saved tab interval.
+ const f=fixture(t),others=()=>f.calls.filter(j=>j.name!=='종목조회 순위'),ranking=()=>f.calls.filter(j=>j.name==='종목조회 순위');
+ f.service.configure(true);await f.service.tick();const count=others().length;assert.equal(ranking().length,1);
+ f.advance(30000);await f.service.tick();assert.equal(others().length,count);assert.equal(ranking().length,2);
+ f.advance(29000);await f.service.tick();assert.equal(others().length,count);
+ f.advance(1000);await f.service.tick();assert.equal(others().length,count*2);assert.equal(ranking().length,3);
  f.setSettings({...f.getSettings(),rankInterval:'5',rankChartDisplay:{mode:'minute',selection:{code:'005930',name:'Samsung'}}});
  await f.service.tick();assert.ok(f.calls.some(j=>j.params.code==='005930'));assert.deepEqual(f.watched.at(-1),['005930']);
  f.service.configure(false);const stopped=f.calls.length;f.advance(60000);await f.service.tick();assert.equal(f.calls.length,stopped);assert.deepEqual(f.watched.at(-1),[]);

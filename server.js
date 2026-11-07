@@ -592,14 +592,18 @@ app.get('/api/stock', async (req, res) => {
         // 2. 실시간종목조회순위 API 호출 (전체 순위를 먼저 가져옴) 및 eFriend 호출 병렬
         console.log("Step 2: 전체 종목 순위(Global Rank) 및 eFriend 조회 중...");
 
-        const qryTp = req.query.qry_tp || "1";
+        // ka00198 qry_tp: 1:1분, 2:10분, 3:1시간, 4:당일 누적, 5:30초 (키움 가이드), chosen on the 실시간 조회 순위 table.
+        const rawQryTp = String(req.query.qry_tp || "1");
+        const qryTp = ["1", "2", "3", "4", "5"].includes(rawQryTp) ? rawQryTp : "1";
+        // kiwoom=0: only the 대주가능 종목 [한투] table refreshes (trading tab auto refresh); 실시간 조회 순위 [키움] keeps its own cycle.
+        const includeRanking = req.query.kiwoom !== '0';
 
         let totalResp = null;
         let efriendStocks = [];
         let efriendScanStatus = null;
         const dataPromises = [];
 
-        dataPromises.push(
+        if (includeRanking) dataPromises.push(
             axios.post(
                 "https://api.kiwoom.com/api/dostk/stkinfo",
                 {
@@ -769,13 +773,13 @@ app.get('/api/stock', async (req, res) => {
         }
 
         // 상세 로그 추가: 응답 본문 전체 확인
-        console.log("DEBUG: ka00198 Full Response Data:", JSON.stringify(totalResp.data, null, 2));
+        if (includeRanking) console.log("DEBUG: ka00198 Full Response Data:", JSON.stringify(totalResp.data, null, 2));
 
-        const stocks = totalResp.data.item_inq_rank || [];
-        fileLog(`[Rank] /api/stock ka00198 received ${stocks.length} items (return_code=${totalResp.data.return_code ?? 'n/a'})`);
+        const stocks = includeRanking ? (totalResp.data.item_inq_rank || []) : [];
+        if (includeRanking) fileLog(`[Rank] /api/stock ka00198 received ${stocks.length} items (return_code=${totalResp.data.return_code ?? 'n/a'})`);
 
         // 토큰 에러 발생 시 캐시 초기화
-        if (totalResp.data.return_code === 3 || (totalResp.data.return_msg && totalResp.data.return_msg.includes("Token이 유효하지 않습니다"))) {
+        if (includeRanking && (totalResp.data.return_code === 3 || (totalResp.data.return_msg && totalResp.data.return_msg.includes("Token이 유효하지 않습니다")))) {
             console.warn("⚠️ 토큰 만료/유효하지 않음 감지. 캐시를 초기화합니다.");
             cachedToken = null;
             tokenExpiryTime = 0;
@@ -895,7 +899,7 @@ app.get('/api/stock', async (req, res) => {
             await new Promise(resolve => setTimeout(resolve, 100));
         }
 
-        const { items: watchStocksWithConcentration } = await addConcentrationRates(enrichedStocks, accessToken, 'trde_amt');
+        const { items: watchStocksWithConcentration } = includeRanking ? await addConcentrationRates(enrichedStocks, accessToken, 'trde_amt') : { items: null };
 
 
         console.log("Step 5: 데이터 보정 및 병합 완료");

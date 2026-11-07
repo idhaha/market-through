@@ -3169,6 +3169,15 @@ body { height:100dvh; min-height:0; overflow:hidden; display:flex; flex-directio
 .panel > .market-supply-y-sync[hidden] { display:none; }
 .panel > .market-supply-y-sync input { margin:0; cursor:pointer; }
 .rank-market-supply-panel.y-sync-visible .concentration-chart-header { padding-right:150px; }
+.panel > .supply-y-sync { position:absolute; top:14px; right:42px; height:20px; display:flex; align-items:center; gap:3px; font-size:12px; color:var(--text-muted,#64748b); white-space:nowrap; cursor:pointer; z-index:3; }
+.panel > .supply-y-sync[hidden] { display:none; }
+.panel > .supply-y-sync input { margin:0; cursor:pointer; }
+.rank-supply-panel.y-sync-visible .concentration-chart-header { padding-right:190px; }
+/* 실시간 조회 순위 [키움]: i button beside the ranking period menu, guide below the header. */
+.rank-query-panel { position:relative; }
+.rank-query-panel .panel-controls { display:flex; align-items:center; gap:8px; }
+.rank-query-panel .rank-query-info-button { position:static; flex:none; cursor:help; }
+.rank-query-panel .rank-query-guide { z-index:30; text-align:left; }
 /* Trading tab table sorting (rank-table-sort.js): same arrows and dot as the VI window. */
 :is(#transactionTable, #stockTable, #efriendStockTable) th .rank-sort-button { display:inline-flex; align-items:center; gap:3px; border:0; background:transparent; color:inherit; font:inherit; cursor:pointer; padding:0; }
 :is(#transactionTable, #stockTable, #efriendStockTable) th .rank-sort-button:hover { color:var(--text-primary); text-decoration:underline; }

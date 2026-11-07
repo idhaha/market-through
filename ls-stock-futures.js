@@ -52,6 +52,20 @@ function createLsStockFutures({ http, getToken, directory, supply, now = Date.no
         })().finally(() => { masterTask = null; });
         return masterTask;
     }
+    // Contract multiplier (shares per contract), rounded: 10 for stocks (10.08 for adjusted contracts), 100 for ETF
+    // futures (t8402 mulcnt, 2026-11-08). The card multiplies net contracts by it to compare with 종목 수급 shares.
+    const multipliers = new Map();
+    async function multiplierOf(code, item) {
+        const today = dayKey(now()), cached = multipliers.get(code);
+        if (cached && (cached.day === today || now() - cached.at < 600000)) return cached.value;
+        let value = null;
+        try { const n = Number((await rest('t8402', 'market-data', { focode: item.nearest })).t8402OutBlock?.mulcnt); if (n > 0) value = Math.round(n); } catch {}
+        // Fallback when t8402 fails: ETF names → 100, others 10; retried after 10 minutes.
+        const estimated = !value;
+        if (estimated) value = /^(KODEX|TIGER|PLUS|SOL|ACE|RISE|KBSTAR|HANARO|ARIRANG|KOSEF|KIWOOM|TIMEFOLIO|1Q)\b/i.test(item.name || '') ? 100 : 10;
+        multipliers.set(code, { day: estimated ? '' : today, at: now(), value });
+        return value;
+    }
     async function contractOf(code) {
         if (!validCode(code)) throw failure('잘못된 종목 코드입니다.');
         const item = (await contracts()).get(code);
@@ -154,10 +168,10 @@ function createLsStockFutures({ http, getToken, directory, supply, now = Date.no
                 if (fetched?.day === date) saved = fetched;
             }
         }
-        const dates = storedDays(code), earlier = dates.filter(d => d < date).at(-1);
-        return { success: true, mode: 'minute', date, available_dates: dates, points: (saved?.points || []).filter(p => p.t < Math.floor(now() / 60000) * 60000 || date !== today),
+        const dates = storedDays(code), earlier = dates.filter(d => d < date).at(-1), multiplier = await multiplierOf(code, item);
+        return { success: true, mode: 'minute', date, multiplier, available_dates: dates, points: (saved?.points || []).filter(p => p.t < Math.floor(now() / 60000) * 60000 || date !== today),
             has_more: !!earlier, cursor: earlier ? compact(earlier) : null, contract: saved?.contract || item.nearest,
-            warnings: ['주식선물 투자자 30초 누적을 분마다 표시 · 선물 프로그램 미제공 · 과거 분봉은 수집한 날부터'],
+            warnings: [], // How the values are collected is in the card's i guide, not the status line (it overflowed the card).
             status: { error: status.get(code)?.error || '' }, collecting: collectingAt(now()) };
     }
     // ---- day query: t8462, up to 179 days per call, newest first; the cursor is the day before the oldest row
@@ -179,8 +193,8 @@ function createLsStockFutures({ http, getToken, directory, supply, now = Date.no
         }
         const points = rows.filter(r => /^\d{8}$/.test(String(r.date))).map(r => ({ t: at(String(r.date)), individual: num(r.sv_08), foreign: num(r.sv_17), institution: num(r.sv_18) })).sort((a, b) => a.t - b.t);
         const oldest = points[0] ? compact(dayKey(points[0].t - 86400000)) : null;
-        const result = { success: true, mode: 'day', points, has_more: false, cursor: null, oldest: points[0] ? dayKey(points[0].t) : null,
-            warnings: ['일별 순매수 계약 · 마감 뒤 확정값 · LS 제공 시작일 이전은 없음'] };
+        const result = { success: true, mode: 'day', multiplier: await multiplierOf(code, item), points, has_more: false, cursor: null, oldest: points[0] ? dayKey(points[0].t) : null,
+            warnings: [] };
         dailyFlow.set(key, { at: now(), result }); if (dailyFlow.size > 60) dailyFlow.delete(dailyFlow.keys().next().value);
         return result;
     }

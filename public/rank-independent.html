@@ -11,8 +11,8 @@
 <script src="rank-chart-cache.js?v=20261107_futures_card" defer></script>
 <script src="rank-chart-axis.js?v=20261107_today_session" defer></script>
     <script src="rank-supply-guide.js?v=20261107_futures_kis_only" defer></script>
-    <script src="concentration-chart.js?v=20261107_fixed100_line60" defer></script>
-<script src="rank-supply-chart.js?v=20261107_futures_program" defer></script></head>
+    <script src="concentration-chart.js?v=20261108_futures_candle_open" defer></script>
+<script src="rank-supply-chart.js?v=20261108_futures_catchup" defer></script></head>
 <body class="rank-independent"><div class="independent-toolbar">
 <span id="rankRefreshStatus" role="status"><span id="independentStatusText">대기 중</span> | <span id="independentLastUpdate">-</span></span>
 <span id="rankConnectionStatus" role="status">메인 페이지 연결 중</span>
@@ -21,9 +21,12 @@
 <label>갱신 <select id="refreshInterval" class="interval-select">
                                     <option value="5" data-interval="30000">30초 간격</option>
                                     <option value="1" data-interval="60000">1분 간격</option>
+                                    <option value="2m" data-interval="120000">2분 간격</option>
+                                    <option value="3m" data-interval="180000">3분 간격</option>
+                                    <option value="4m" data-interval="240000">4분 간격</option>
+                                    <option value="5m" data-interval="300000">5분 간격</option>
                                     <option value="2" data-interval="600000" selected>10분 간격</option>
                                     <option value="3" data-interval="3600000">1시간 간격</option>
-                                    <option value="4" data-interval="30000">당일누적</option>
                                 </select></label>
 <button type="button" id="rankIndependentRefresh" class="btn-primary">조회</button>
 </div></div>

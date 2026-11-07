@@ -129,7 +129,7 @@ flowchart TD
 
 #### [패널 2] 실시간 조회 순위 [키움]
 * **연동 백엔드 API**: `GET /api/stock?qry_tp={qry_tp}`. 패널 3의 eFriend 조회도 같은 요청에서 함께 수행한다.
-* **요청 쿼리 파라미터**: `qry_tp` (1: 30초, 2: 1분, 3: 10분, 4: 1시간, 5: 당일누적). 값은 Rank 갱신 주기 선택 메뉴에서 전달한다.
+* **요청 쿼리 파라미터**: `qry_tp` (키움 ka00198 기준 1: 1분, 2: 10분, 3: 1시간, 4: 당일 누적, 5: 30초). 표 우측 상단 선택 메뉴(`#rankQueryTp`: 당일누적·30초·1분·10분·1시간)의 값을 전달하며, 이 표는 그 선택대로 갱신한다(당일누적·30초 30초, 1분, 10분, 1시간). 트레이딩 탭 자동갱신은 `kiwoom=0`으로 대주가능 종목 [한투] 표만 갱신하고 ka00198을 호출하지 않는다.
 * **공통 키움 인증**: 1.1.3 패널 1의 키움 토큰 발급 절차를 사용한다. 아래 키움 요청은 `Content-Type: application/json`, `Authorization: Bearer <access_token>`, `api-id` 헤더를 보낸다.
 * **연동 원천 API 파이프라인**:
   1. `ka00198` (실시간종목조회순위): `POST https://api.kiwoom.com/api/dostk/stkinfo`, 제한 시간 5초. 요청 본문은 `qry_tp`(화면에서 받은 값), `mrkt_tp: "000"`, `sort_tp: "1"`, `trde_qty_tp: "0000"`, `stk_cnd: "0"`, `crd_cnd: "0"`, `stex_tp: "1"`이다. `api-id: ka00198`을 보낸다. 응답의 `item_inq_rank` 배열을 순위 원본으로 사용한다.

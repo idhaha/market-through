@@ -1,5 +1,9 @@
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),zlib=require('node:zlib');
-const intervals={'5':30000,'1':60000,'2':600000,'3':3600000,'4':30000};
+const intervals={'5':30000,'1':60000,'2m':120000,'3m':180000,'4m':240000,'5m':300000,'2':600000,'3':3600000,'4':30000};
+// 실시간 조회 순위 has its own ka00198 qry_tp (1:1분, 2:10분, 3:1시간, 4:당일 누적, 5:30초) and refresh period;
+// settings without rankQueryTp use the default 당일누적 ('4').
+const rankQueryPeriods={'4':30000,'5':30000,'1':60000,'2':600000,'3':3600000};
+const rankQuery=settings=>Object.hasOwn(rankQueryPeriods,settings.rankQueryTp)?settings.rankQueryTp:'4';
 const dateAt=t=>new Date(t+32400000).toISOString().slice(0,10);
 const canonical=o=>JSON.stringify(Object.fromEntries(Object.entries(o||{}).map(([k,v])=>[k,String(v)]).sort(([a],[b])=>a.localeCompare(b))));
 function requestKey(method,url,params){return method+':'+url+':'+canonical(params);}
@@ -26,13 +30,15 @@ function mergeSnapshot(old,next,date){
 }
 function buildJobs(settings={},now=Date.now()){
  const display=settings.rankChartDisplay||{},mode=display.mode==='minute'?'minute':'day',jobs=new Map();
- const add=(name,url,params,market='spot',method='GET')=>{
+ const add=(name,url,params,market='spot',method='GET',period)=>{
   const key=requestKey(method,url,params),id=name+'-'+crypto.createHash('sha256').update(key).digest('hex').slice(0,16);
-  if(!jobs.has(key))jobs.set(key,{id,name,url,params,market,method,key});
+  if(!jobs.has(key))jobs.set(key,{id,name,url,params,market,method,key,...(period?{period}:{})});
  };
  const valid=code=>typeof code==='string'&&/^[0-9A-Za-z]{6}$/.test(code);
  const stock=display.selection?.code,stocks=settings.backgroundSupply?.stocks||[];
- add('종목조회 순위','/api/stock',{qry_tp:Object.hasOwn(intervals,settings.rankInterval)?settings.rankInterval:'2'});
+ const query=rankQuery(settings);
+ add('종목조회 순위','/api/stock',{qry_tp:query,efriend_refresh:'0'},'spot','GET',rankQueryPeriods[query]);
+ add('대주가능 종목','/api/stock',{kiwoom:'0'});
  add('거래대금 순위','/api/transaction_rank',{mrkt_tp:['000','001','101'].includes(settings.rankSources?.market)?settings.rankSources.market:'000',stex_tp:['1','2','3'].includes(settings.rankSources?.exchange)?settings.rankSources.exchange:'3'});
  // 관심종목 순위 is not refreshed in the background (collection stopped by request, 2026-11-07); the card queries it on screen.
  if(valid(stock)){
@@ -137,7 +143,7 @@ function createBackgroundRefresh({directory,readSettings,execute,policy,setStock
       if(/^[0-9A-Za-z]{6}$/.test(code))fallbackStock={code,name:first.stk_nm||first.name||code};
      }
     }catch{s.error='조회 또는 저장 실패';}
-    finally{s.running=false;s.next=epoch===generation?now()+period:0;}
+    finally{s.running=false;s.next=epoch===generation?now()+(job.period||period):0;}
     })();return s.promise;
    }));
   })();
