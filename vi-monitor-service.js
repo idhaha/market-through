@@ -198,8 +198,26 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
     function onQuote(q) {
         if(!['KRX','NXT','FUT'].includes(q.exchange)||!(q.price>0))return;
         const id=q.exchange+':'+q.key,old=quotes.get(id);
-        quotes.set(id,{price:q.price,rate:q.rate??old?.rate??null,amount:q.amount??old?.amount??null,receivedAt:q.receivedAt??now(),source:'NH '+(q.via==='WS'?'실시간':'조회')});
+        quotes.set(id,{price:q.price,rate:q.rate??old?.rate??null,amount:q.amount??old?.amount??null,amountVia:q.amount!=null?q.via:old?.amountVia,
+            amountAt:q.amount!=null?q.receivedAt??now():old?.amountAt,receivedAt:q.receivedAt??now(),source:'NH '+(q.via==='WS'?'실시간':'조회')});
         emit();
+    }
+    // Unit check of NH trade value (million KRW, like the trading tab tables): when the Kiwoom table
+    // (ka10032 · ka00198, million KRW) lists a VI stock, record both values. Kiwoom _AL is KRX+NXT and NH oc
+    // is KRX only, so a ratio near 1 (not 1,000 or 0.001) confirms the unit. One line per stock per 10 minutes.
+    const amountChecked=new Map();
+    function compareAmounts(source,items) {
+        if(!directory||!Array.isArray(items))return 0;
+        let written=0;
+        for(const item of items) {
+            const code=String(item?.code||'').replace(/^A/,'').replace(/_(AL|NX)$/,''),kiwoom=num(String(item?.amount??'').replace(/[+,]/g,''));
+            const quote=quotes.get('KRX:'+code);
+            if(!quote||!(quote.amount>0)||!(kiwoom>0)||now()-(quote.amountAt||0)>120000||now()-(amountChecked.get(code)||0)<600000)continue;
+            amountChecked.set(code,now());
+            try{fs.mkdirSync(directory,{recursive:true});fs.appendFileSync(path.join(directory,'amount-check-'+day+'.jsonl'),JSON.stringify({at:new Date(now()).toISOString(),code,source,
+                kiwoomMillion:kiwoom,nhMillion:quote.amount,nhVia:quote.amountVia,nhAgeMs:now()-quote.amountAt,ratio:Math.round(quote.amount/kiwoom*1000)/1000})+'\n');written++;}catch{}
+        }
+        return written;
     }
     function receive(raw) {
         let m;try{m=typeof raw==='object'&&!Buffer.isBuffer(raw)?raw:JSON.parse(String(raw));}catch{return;}
@@ -260,6 +278,6 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
         return true;
     }
     if(!enabled())state=disabledState;
-    return {start,stop,receive,onQuote,snapshot,dismissFlash,subscribe(listener){listeners.add(listener);listener(snapshot());return()=>listeners.delete(listener);}};
+    return {start,stop,receive,onQuote,compareAmounts,snapshot,dismissFlash,subscribe(listener){listeners.add(listener);listener(snapshot());return()=>listeners.delete(listener);}};
 }
 module.exports={createViMonitor,eventTime,parseKiwoomVi};

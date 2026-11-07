@@ -26,14 +26,17 @@
             return (x===y||x==null?0:(x>y?1:-1)*sort.direction)||(b.startedAt??-Infinity)-(a.startedAt??-Infinity)||a.code.localeCompare(b.code)||a.exchange.localeCompare(b.exchange);
         });
     }
+    // 해제까지(예상): minutes:seconds:milliseconds, redrawn every frame like a stopwatch countdown.
+    const remaining=ms=>String(Math.floor(ms/60000)).padStart(2,'0')+':'+String(Math.floor(ms/1000)%60).padStart(2,'0')+':'+String(ms%1000).padStart(3,'0');
     function countdown() {
-        document.getElementById('viClock').textContent=new Date().toLocaleString('ko-KR',{timeZone:'Asia/Seoul',hour12:false});
         for(const el of body.querySelectorAll('[data-until]')) {
-            const seconds=Math.max(0,Math.ceil((Number(el.dataset.until)-Date.now())/1000));
-            el.textContent=seconds?String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0'):'해제 수신 대기';
-            el.className='countdown'+(seconds>0&&seconds<=30?' soon':'');
+            const ms=Math.max(0,Math.ceil(Number(el.dataset.until)-Date.now()));
+            el.textContent=ms?remaining(ms):'해제 수신 대기';
+            el.className='countdown'+(ms>0&&ms<=30000?' soon':'');
         }
     }
+    const tickClock=()=>{document.getElementById('viClock').textContent=new Date().toLocaleString('ko-KR',{timeZone:'Asia/Seoul',hour12:false});};
+    const frame=()=>{countdown();requestAnimationFrame(frame);};
     function render() {
         const fragment=document.createDocumentFragment();
         sorted().forEach((r,i)=>{
@@ -106,5 +109,5 @@
     }
     window.refreshNativeViCredentials=newToken=>{token=newToken;sessionStorage.setItem('vi-window-token',token);clearTimeout(retryTimer);void connect();};
     window.addEventListener('pagehide',()=>{closed=true;clearTimeout(retryTimer);controller?.abort();});
-    setInterval(countdown,1000);countdown();void connect();
+    setInterval(tickClock,1000);tickClock();requestAnimationFrame(frame);void connect();
 })();

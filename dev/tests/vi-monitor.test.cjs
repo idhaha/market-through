@@ -157,6 +157,9 @@ async function main(){
         assert.equal(await page.locator('#viBody tr[data-code="005930"][data-exchange="KRX"]').evaluate(el=>el.classList.contains('vi-flash-up')),true);
         await pause(150);const beforeRestart=createViMonitor({directory,now:()=>clock,policy:()=>null});assert.equal(beforeRestart.snapshot().rows.find(r=>r.code==='000660').flashDismissed,true,'Dismissal survives a server restart');beforeRestart.stop();
         event('000660','2','090450');await page.waitForFunction(()=>document.querySelector('#viBody tr[data-code="000660"]')?.classList.contains('vi-flash-down'));
+        // 해제까지(예상) counts down as minutes:seconds:milliseconds (activation 09:04:50 + 2 min, clock 09:05:00).
+        assert.equal(await page.locator('#viBody tr[data-code="000660"] td').nth(9).textContent(),'01:50:000');
+        assert.equal(await page.locator('h1').textContent(),'VI 실시간 모니터링');
         const releasedColor=await page.locator('#viBody tr.released td').first().evaluate(el=>getComputedStyle(el).color);assert.equal(releasedColor,'rgb(100, 116, 139)');
         const boxes=await page.locator('.panel').count();assert.equal(boxes,1);
         const aligned=await page.evaluate(()=>{

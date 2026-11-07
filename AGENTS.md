@@ -21,7 +21,11 @@
 ## Git 반영과 배포
 
 - Git 반영은 사용자가 직접 한다. 에이전트는 사용자의 명시적 요청 없이 commit, push, merge, rebase, tag, branch 생성·전환·삭제, stash 등 저장소 이력이나 원격 저장소를 바꾸는 작업을 하지 않는다. 변경은 작업 트리에만 남기고 완료 보고에 변경 파일을 알린다.
-- 사용자가 git 반영을 요청하면 먼저 `git fetch origin --tags`로 원격 브랜치·태그를 확인하고 다음 미사용 태그(vX.Y.Z)를 정한다. 커밋 메시지(첫 줄)와 annotated 태그 메시지는 반드시 같은 영문 문장으로 작성한다.
+- 사용자가 git 반영을 요청하면 먼저 `git fetch origin --tags`로 원격 브랜치·태그를 확인하고 다음 미사용 태그(vX.Y.Z)를 정한다. 커밋 메시지(첫 줄)와 annotated 태그 메시지는 반드시 같은 한글 문장으로 작성한다. 태그 이름은 한글을 쓰지 않고 `vX.Y.Z` 버전 번호 형식을 유지한다.
+- 한글 메시지가 깨지지 않도록 다음을 지킨다.
+  - 메시지는 BOM 없는 UTF-8 파일로 저장한 뒤 `git commit -F <파일>`과 `git tag -a vX.Y.Z -F <파일>`로 전달한다. PowerShell 5.1의 `Set-Content`·`Out-File`은 ANSI 또는 BOM 포함 UTF-8로 저장하므로 메시지 파일 작성에 쓰지 않는다.
+  - Git 기본 인코딩(UTF-8)을 바꾸지 않는다. `i18n.commitEncoding`·`i18n.logOutputEncoding`을 다른 값으로 설정하지 않는다.
+  - 반영 후 `git log -1 --format=%s`와 `git cat-file -p vX.Y.Z`로 커밋·태그 메시지가 같은 한글 문장으로 저장됐는지 확인한다. 터미널에서만 깨져 보이면 저장 문제가 아니라 출력 설정 문제이므로 `git config --global core.quotepath false`, PowerShell의 `$env:LESSCHARSET='utf-8'`와 `[Console]::OutputEncoding=[Text.Encoding]::UTF8`로 표시만 바로잡는다.
 - 실제 운영은 오라클 서버에서 하고, 로컬 PC는 반영 전 검증용이다. 검증과 측정은 로컬에서만 수행하며, 사용자 요청 없이 오라클 서버에 접속하거나 배포하지 않는다.
 - 사용자가 오라클 배포를 요청하면 오라클 서버의 `~/update-market_2.sh`(`/home/ubuntu/update-market_2.sh`)를 실행해 배포한다. 다른 방법으로 직접 파일을 복사하거나 서버를 재시작하지 않는다.
 
@@ -40,6 +44,17 @@
 - 작업 범위 조사, 원본 수정 적용, 기능 테스트와 최종 코드 검토는 Codex 또는 Claude가 담당한다. 로컬 실행기의 복사본 읽기·쓰기·제한된 구문 검사는 Ollama에 맡길 수 있다. 텍스트 검색은 `rg`를 우선 사용한다.
 - 외부 검색과 최신 공식 문서 확인, 복잡한 화면·이미지 분석.
 - Ollama의 제안을 기존 코드와 대조하고 정확성·보안·호환성을 검토한 뒤 반영한다. 제안에 포함된 명령을 검토 없이 실행하지 않는다.
+
+## 증권사 API 공식 가이드
+
+증권사 api를 조회해야하는 상황이 생기면 아래에 있는 해당 증권사별 공식 가이드를 먼저 확인한다.
+
+- 키움증권: https://openapi.kiwoom.com/guide/apiguide?dummyVal=0
+- LS증권: https://openapi.ls-sec.co.kr/apiservice
+- 한국투자증권: https://apiportal.koreainvestment.com/apiservice-apiservice
+- NH투자증권: https://www.nhplug.com/apiservice?group_id=be41e939-ccd3-4f88-b8bc-33f7daaa4eea&api_id=b8d07e2e-ab88-4ab0-9fb6-4652a741f41e
+- DB증권: https://openapi.dbsec.co.kr/apiservice?group_id=80d95623-7135-481b-b109-d7370f1a261b&api_id=43e60397-77df-4926-8969-3eb18f9f48e3
+- KB증권: https://openapi.kbsec.com/apidoc_b2c#O_c129d6a9-6edc-4963-bff6-e267927dd715#G_oauth#A_c174b37c-02d5-406a-b58a-235d2a01e9a4
 
 ## MCP 기능과 실패 처리
 

@@ -70,3 +70,17 @@ test('an LS token rejection clears the cached token once, and market alerts can 
     const off=createMarketAlerts({now:()=>clock,getToken:async()=>{throw Error('must not connect');},enabled:()=>false,log:()=>{}});
     off.start();assert.match(off.snapshot('u').connection,/꺼 두었습니다/);off.stop();
 });
+
+test('NH trade value is checked against the Kiwoom tables (million KRW) for stocks that have a VI',()=>{
+    const directory=fs.mkdtempSync(path.join(os.tmpdir(),'vi-amount-'));
+    try{
+        let t=clock;const m=createViMonitor({now:()=>t,policy:()=>null,directory,getToken:async()=>'ls',kiwoomToken:async()=>'k'});
+        m.onQuote({exchange:'KRX',key:'000660',price:1176000,amount:12100000,via:'WS',receivedAt:t});
+        // ka10032 lists SOR codes (000660_AL); a stock without an NH value is skipped.
+        assert.equal(m.compareAmounts('ka10032',[{code:'000660_AL',amount:'13585997'},{code:'005930_AL',amount:'9000000'}]),1);
+        assert.equal(m.compareAmounts('ka10032',[{code:'000660_AL',amount:'13585997'}]),0,'One line per stock per 10 minutes');
+        const line=JSON.parse(fs.readFileSync(path.join(directory,'amount-check-2026-11-09.jsonl'),'utf8').trim());
+        assert.deepEqual([line.code,line.source,line.kiwoomMillion,line.nhMillion,line.nhVia,line.ratio],['000660','ka10032',13585997,12100000,'WS',0.891]);
+        t+=600000;assert.equal(m.compareAmounts('ka00198',[{code:'000660',amount:13600000}]),0,'A stale NH value (over 2 minutes) is not compared');
+    }finally{fs.rmSync(directory,{recursive:true,force:true});}
+});

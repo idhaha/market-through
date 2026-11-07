@@ -849,6 +849,8 @@ app.get('/api/stock', async (req, res) => {
         }
 
         const { items: watchStocksWithConcentration } = await addConcentrationRates(enrichedStocks, accessToken, 'trde_amt');
+        // NH trade value unit check against this table (million KRW) for stocks that also have a VI.
+        viMonitorService.compareAmounts('ka00198', watchStocksWithConcentration.map(item => ({ code: item.stk_cd, amount: item.trde_amt })));
 
 
         console.log("Step 5: 데이터 보정 및 병합 완료");
@@ -1010,6 +1012,7 @@ async function transactionRankHandler(req, res) {
         }
 
         const { items: dataWithConcentration, marketTurnover } = await addConcentrationRates(enrichedItems, accessToken, 'trde_amt');
+        viMonitorService.compareAmounts('ka10032', dataWithConcentration.map(item => ({ code: item.stk_cd, amount: item.trde_prica })));
 
         fileLog(`[Rank] /api/transaction_rank response counts: items=${dataWithConcentration.length}`);
 

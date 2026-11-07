@@ -52,3 +52,5 @@
 .vi-panel .vi-controls .vi-info-button { position:static; width:20px; height:20px; padding:0; flex-shrink:0; cursor:help; }
 .vi-panel .vi-controls .vi-info-button:focus-visible { outline:3px solid #2563eb; outline-offset:3px; }
 .data-collection-dialog .vi-guide-close { float:right; padding:6px 12px; border:1px solid #64748b; background:transparent; color:inherit; border-radius:6px; cursor:pointer; }
+/* The millisecond countdown keeps a fixed width so the column does not jitter. */
+.vi-panel .countdown { font-variant-numeric:tabular-nums; }
