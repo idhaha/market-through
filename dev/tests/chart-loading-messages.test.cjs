@@ -16,10 +16,11 @@ for(const file of ['rank-chart-cache.js','rank-chart-axis.js','rank-supply-guide
 await page.evaluate(()=>document.dispatchEvent(new Event('DOMContentLoaded')));await page.waitForFunction(()=>document.getElementById('rankTestMarketSupplyChartPanel')&&document.getElementById('rankTestMarketSupplySecondaryChartPanel'));
 
 
-const rows=[['combinedConcentrationChartPanel','rankCombinedSupplyChartPanel','rankTestMarketSupplyChartPanel'],['rankBreadthChartPanel','rankCombinedTurnoverChartPanel','rankTestMarketSupplySecondaryChartPanel'],['rankAdrChartPanel','rankVolatilityChartPanel'],['rankSentimentChartPanel']];
+// Column 2 (2026-11-07): 종목 수급, 종목 선물 수급, 시장 거래대금, 변동성.
+const rows=[['combinedConcentrationChartPanel','rankCombinedSupplyChartPanel','rankTestMarketSupplyChartPanel'],['rankBreadthChartPanel','rankFuturesSupplyChartPanel','rankTestMarketSupplySecondaryChartPanel'],['rankAdrChartPanel','rankCombinedTurnoverChartPanel'],['rankSentimentChartPanel','rankVolatilityChartPanel']];
 let bottom=0;
 for(const ids of rows){const rects=await page.evaluate(ids=>ids.map(id=>{const r=document.getElementById(id).getBoundingClientRect();return{top:r.top,left:r.left,bottom:r.bottom};}),ids);assert.ok(rects[0].top>=bottom);for(let i=1;i<rects.length;i++){assert.equal(rects[i].top,rects[0].top);assert.ok(rects[i].left>rects[i-1].left);}bottom=Math.max(...rects.map(r=>r.bottom));}
-assert.equal(await page.locator('.rank-chart-row>.panel').count(),9);
+assert.equal(await page.locator('.rank-chart-row>.panel').count(),10);
 await page.setViewportSize({width:600,height:1000});
 const mobile=await page.evaluate(ids=>ids.flat().map(id=>{const r=document.getElementById(id).getBoundingClientRect();return{top:r.top,left:r.left,bottom:r.bottom};}),rows);
 for(let i=1;i<mobile.length;i++){assert.equal(mobile[i].left,mobile[0].left);assert.ok(mobile[i].top>=mobile[i-1].bottom);}

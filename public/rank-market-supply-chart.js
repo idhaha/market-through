@@ -376,7 +376,7 @@
             const restoreRange=mode==='minute'?window.RankChartAxis.minuteDomain():window.RankChartAxis.dailyDomain();
             selected = code; remember(); clearView(); paintStocks();
             panel.querySelector('.rank-selection-history-notice')?.remove();
-            if(restoreRange && mode==='minute')todayOnly=restoreRange.first.slice(0,10)===dayKey(Date.now());
+            if(restoreRange && mode==='minute')todayOnly=restoreRange.first.slice(0,10)===window.RankChartAxis.sessionDay();
             void load(false,restoreRange).then(()=>{if(selected===code)return window.RankChartAxis.restoreHistoryRange(axisId,restoreRange);});
         }
         window[api('getMarketSupplyCandleDiagnostics')] = () => ({market:selected,mode,points:points.length,candles:candles.length,
@@ -484,7 +484,7 @@
                     if (append && nextCursor) minuteDays.add(`${nextCursor.slice(0,4)}-${nextCursor.slice(4,6)}-${nextCursor.slice(6,8)}`);
                 }
                 const hasFlow = points.some(point => series.some(field => Number.isFinite(point[field])));
-                const periodPoints=!isTest && mode==='minute' && todayOnly?points.filter(p=>dayKey(p.t)===dayKey(Date.now())):points;
+                const periodPoints=!isTest && mode==='minute' && todayOnly?points.filter(p=>dayKey(p.t)===window.RankChartAxis.sessionDay()):points;
                 const period = periodPoints.length ? `${dayKey(periodPoints[0].t)}${dayKey(periodPoints[0].t) === dayKey(periodPoints.at(-1).t) ? '' : ' ~ ' + dayKey(periodPoints.at(-1).t)}` : '당일 자료 없음';
                 const message = mode === 'minute' ? `${period}` : `일별 순매수대금 · ${points.length.toLocaleString()}봉`;
                 let warnings = (result.warnings || []).filter(text => !text.startsWith('1분마다 관측한 당일 누적 순매수대금')).map(text => isLs ? text.replace('금액: 백만원', '금액: 억원') : text);

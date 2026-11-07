@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=20261106_test_title">
+    <link rel="stylesheet" href="style.css?v=20261107_futures_card">
     <script src="background-presence.js?v=20261101_1" defer></script>
     <script src="browser-live-check.js?v=20261106_test_title" defer></script>
     <script src="background-settings.js?v=20261101_presence" defer></script>
@@ -19,23 +19,24 @@
     <script src="rank-connection-status.js?v=20261106_test_title" defer></script>
     <script>window.rankManagedChartRefresh = true;</script>
     <script src="trading-refresh.js?v=20261106_close_times" defer></script>
-    <script src="rank-chart-cache.js?v=20261106_close_times" defer></script>
-<script src="rank-chart-axis.js?v=20261106_close_times" defer></script>
-    <script src="rank-supply-guide.js?v=20261107_rest_sources" defer></script>
-    <script src="concentration-chart.js?v=20261106_test_title" defer></script>
-    <script src="rank-adr-chart.js?v=20261031_independent_prices" defer></script>
+    <script src="rank-chart-cache.js?v=20261107_futures_card" defer></script>
+<script src="rank-chart-axis.js?v=20261107_today_session" defer></script>
+    <script src="rank-supply-guide.js?v=20261107_futures_kis_only" defer></script>
+    <script src="concentration-chart.js?v=20261107_fixed100_line60" defer></script>
+    <script src="rank-adr-chart.js?v=20261107_today_session" defer></script>
     <script src="rank-turnover-chart.js?v=20261031_independent_prices" defer></script>
     <script src="rank-volatility-chart.js?v=20261031_independent_prices" defer></script>
     <script src="rank-table-fold.js?v=20261102_mid_arrow" defer></script>
+    <script src="rank-table-sort.js?v=20261107_table_sort" defer></script>
     <script src="auth-session-status.js?v=20261024_v1" defer></script>
     <script src="server-storage.js?v=20261025_available_percent" defer></script>
-    <script src="rank-supply-chart.js?v=20261101_local_sync" defer></script>
-    <script src="rank-market-supply-chart.js?v=20261106_zero_gaps" defer></script>
+    <script src="rank-supply-chart.js?v=20261107_futures_program" defer></script>
+    <script src="rank-market-supply-chart.js?v=20261107_today_session" defer></script>
     <script src="rank-independent-main.js?v=20261102_supply_label" defer></script>
     <script src="market-alert-data.js?v=20261031_1" defer></script>
     <script src="market-alerts.js?v=20261107_release_countdown" defer></script>
     <script src="quick-note.js?v=20261103_note_capture" defer></script>
-    <script src="data-collection-info.js?v=20261107_kiwoom_nh" defer></script>
+    <script src="data-collection-info.js?v=20261107_futures_kis_only" defer></script>
     <script src="vi-monitor-launch.js?v=20261102_live_zoom" defer></script>
     <script src="us-links.js?v=20261018_v13" defer></script>
     <script src="app.js?v=20261103_note_capture" defer></script>
@@ -274,35 +275,6 @@
                         </div>
                     </div>
 
-                    <div class="panel" id="watchlistRankPanel" style="display: none;">
-                        <div class="panel-header">
-                            <h2>관심종목 하락률 순위</h2>
-                            <div class="panel-controls">
-                                <select id="watchlistGroupSelect" class="interval-select">
-                                    <option value="074" selected>074</option>
-                                </select>
-                                <input type="text" id="watchlistGroupNameInput" class="interval-select" placeholder="그룹명/ID" style="width: 100px;" value="074">
-                            </div>
-                        </div>
-                        <div id="watchlistDataContainer">
-                            <div class="table-wrapper">
-                                <table id="watchlistTable">
-                                    <thead>
-                                        <tr>
-                                            <th>순위</th>
-                                            <th>시장</th>
-                                            <th>종목명</th>
-                                            <th>등락률</th>
-                                            <th class="align-right">거래대금(백만)</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="watchlistBody">
-                                        <!-- 관심종목 데이터가 동적으로 삽입됩니다 -->
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
                 </div>
                 <div class="rank-chart-row">
                 <section class="panel concentration-chart-panel" id="concentrationChartPanel" aria-label="쏠림율 차트">
@@ -361,6 +333,38 @@
                     <div class="rank-adr-area"><canvas role="img" aria-label="당일 ADR 분봉 차트"></canvas><div class="concentration-tooltip" hidden></div></div>
                     <p role="status" class="rank-adr-status">당일 데이터 대기 중</p>
                 </section>
+                </div>
+                <!-- 관심종목 카드: 트레이딩 탭 맨 아래. 백그라운드 수집은 하지 않고 화면 새로고침 때만 조회한다. -->
+                <div class="grid-container rank-watchlist-row">
+                    <div class="panel" id="watchlistRankPanel">
+                        <div class="panel-header">
+                            <h2>관심종목 하락률 순위</h2>
+                            <div class="panel-controls">
+                                <select id="watchlistGroupSelect" class="interval-select">
+                                    <option value="074" selected>074</option>
+                                </select>
+                                <input type="text" id="watchlistGroupNameInput" class="interval-select" placeholder="그룹명/ID" style="width: 100px;" value="074">
+                            </div>
+                        </div>
+                        <div id="watchlistDataContainer">
+                            <div class="table-wrapper">
+                                <table id="watchlistTable">
+                                    <thead>
+                                        <tr>
+                                            <th>순위</th>
+                                            <th>시장</th>
+                                            <th>종목명</th>
+                                            <th>등락률</th>
+                                            <th class="align-right">거래대금(백만)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="watchlistBody">
+                                        <!-- 관심종목 데이터가 동적으로 삽입됩니다 -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

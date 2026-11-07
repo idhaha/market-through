@@ -34,7 +34,7 @@ function buildJobs(settings={},now=Date.now()){
  const stock=display.selection?.code,stocks=settings.backgroundSupply?.stocks||[];
  add('종목조회 순위','/api/stock',{qry_tp:Object.hasOwn(intervals,settings.rankInterval)?settings.rankInterval:'2'});
  add('거래대금 순위','/api/transaction_rank',{mrkt_tp:['000','001','101'].includes(settings.rankSources?.market)?settings.rankSources.market:'000',stex_tp:['1','2','3'].includes(settings.rankSources?.exchange)?settings.rankSources.exchange:'3'});
- add('관심종목 순위','/api/watchlist_rank',{grp_id:typeof settings.watchlistGroupId==='string'&&settings.watchlistGroupId.length<=80?settings.watchlistGroupId:'074'});
+ // 관심종목 순위 is not refreshed in the background (collection stopped by request, 2026-11-07); the card queries it on screen.
  if(valid(stock)){
   const params={code:stock,mode,interval:[1,3,5,10,15,30,45,60].includes(Number(display.interval))?Number(display.interval):1};
   add('쏠림율',mode==='minute'?'/api/ls-concentration-chart':'/api/concentration-chart',params,'spot','POST');
@@ -53,6 +53,9 @@ function buildJobs(settings={},now=Date.now()){
   const m=supply.mode==='minute'?'minute':supply.mode==='day'?'day':mode;
   // Same source as the combined stock supply card: KIS minute, Kiwoom day.
   add('종목수급',m==='minute'?'/api/kis-supply/chart':'/api/supply/chart',{code:selected,mode:m});
+  // 종목 선물 수급 follows the stock supply card's stock (LS t8463 minute / t8462 day); its minute data is also
+  // collected by the server every minute, so this read is cheap.
+  add('종목선물수급','/api/ls-stock-futures/chart',{code:selected,mode:m});
   add('수급 종목 가격','/api/supply/candles',{code:selected,mode:m});
  }
  add('시장 거래대금',mode==='minute'?'/api/ls-turnover/chart':'/api/turnover/chart',{mode});

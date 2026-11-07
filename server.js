@@ -296,7 +296,13 @@ const lsMarketSupplyProvider = require('./ls-market-supply').createLsMarketSuppl
 {
     const { lsTokenRejected } = require('./ls-market-supply');
     const isLs = config => { const url = String(config?.url || ''); return url.startsWith('https://openapi.ls-sec.co.kr:8080/') && !url.includes('/oauth2/'); };
-    const check = response => { if (isLs(response?.config) && lsTokenRejected(response.status, response.data) && lsMarketSupplyProvider.invalidateToken()) console.warn('[LS] 토큰 거절 · 다음 조회에서 다시 발급'); };
+    // KIS answers an invalid or expired token with msg_cd EGW00121 / EGW00123 (often HTTP 500).
+    const isKis = config => String(config?.url || '').includes('/uapi/');
+    const kisTokenRejected = data => ['EGW00121', 'EGW00123'].includes(String(data?.msg_cd || ''));
+    const check = response => {
+        if (isLs(response?.config) && lsTokenRejected(response.status, response.data) && lsMarketSupplyProvider.invalidateToken()) console.warn('[LS] 토큰 거절 · 다음 조회에서 다시 발급');
+        if (isKis(response?.config) && kisTokenRejected(response.data) && invalidateKisToken()) console.warn('[KIS] 토큰 거절 · 다음 조회에서 다시 발급');
+    };
     axios.interceptors.response.use(response => { check(response); return response; }, error => { check(error.response); throw error; });
 }
 const marketAlertService = require('./market-alert-service').createMarketAlerts({
@@ -399,6 +405,30 @@ for (const [broker, service] of [['kis', kisStockSupplyService], ['ls', lsStockS
         catch (error) { res.status(error.status || 502).json({ success: false, error: error.message }); }
     });
 }
+// 종목 선물 수급 card: LS t8463/t8462 investor contracts, t8406/t8405 futures candles (registered stocks).
+const lsStockFuturesService = require('./ls-stock-futures').createLsStockFutures({
+    http: axios, getToken: () => lsMarketSupplyProvider.accessToken(), directory: path.join(__dirname, 'data', 'ls-stock-futures'),
+    supply: supplyService, log: message => fileLog(message),
+    // Past 1-minute futures bars (days LS t8406 no longer serves): KIS FHKIF03020200, stock futures market JF.
+    kisMinute: async ({ code, date, hour }) => {
+        const domain = (process.env.EFRIEND_DOMAIN || '').trim(), appKey = (process.env.EFRIEND_APPKEY || '').trim(), secretKey = (process.env.EFRIEND_SECRETKEY || '').trim();
+        if (!domain || !appKey || !secretKey) throw Error('한투 키 없음');
+        const response = await kisHttp.get(domain + '/uapi/domestic-futureoption/v1/quotations/inquire-time-fuopchartprice', {
+            params: { FID_COND_MRKT_DIV_CODE: 'JF', FID_INPUT_ISCD: code, FID_HOUR_CLS_CODE: '60', FID_PW_DATA_INCU_YN: 'Y', FID_FAKE_TICK_INCU_YN: 'N', FID_INPUT_DATE_1: date, FID_INPUT_HOUR_1: hour },
+            headers: { authorization: 'Bearer ' + await getEfriendAccessToken(domain, appKey, secretKey), appkey: appKey, appsecret: secretKey, tr_id: 'FHKIF03020200', custtype: 'P' }, timeout: 15000
+        });
+        if (String(response.data?.rt_cd) !== '0') throw Error(`FHKIF03020200 ${response.data?.msg_cd || ''} ${response.data?.msg1 || ''}`.trim());
+        return response.data?.output2 || [];
+    }
+});
+app.get('/api/ls-stock-futures/chart', async (req, res) => {
+    try { res.set('Cache-Control', 'no-store').json(await lsStockFuturesService.query(req.query)); }
+    catch (error) { res.status(error.status || 502).json({ success: false, error: error.message }); }
+});
+app.get('/api/ls-stock-futures/candles', async (req, res) => {
+    try { res.set('Cache-Control', 'no-store').json(await lsStockFuturesService.candles(req.query)); }
+    catch (error) { res.status(error.status || 502).json({ success: false, error: error.message }); }
+});
 app.get('/api/ls-market-supply/chart', async (req, res) => {
     try {
         const result = await lsMarketSupplyService.query(req.query);
@@ -619,7 +649,7 @@ app.get('/api/stock', async (req, res) => {
                             const pricePromises = chunk.map(async (stock) => {
                                 if (!stock.pdno) return;
 
-                                // J:KRX, NX:NXT 등 시장구분이 필요한데 기본값 J(KRX)로 처리
+                                // 시장구분: UN(KRX+NXT 통합). ETN만 J(KRX).
                                 let iscd = stock.pdno.trim();
                                 if (iscd.length === 6 && (iscd.startsWith('5') || iscd.startsWith('7'))) {
                                     iscd = "Q" + iscd; // ETN 예외처리 (CSV 명세서 권장사항)
@@ -638,7 +668,10 @@ app.get('/api/stock', async (req, res) => {
                                                 "custtype": "P"
                                             },
                                             params: {
-                                                "FID_COND_MRKT_DIV_CODE": "J",
+                                                // UN (KRX+NXT 통합): before the KRX open (NXT 08:00~08:50) J has no trade yet and
+                                                // returns no change rate. The Kiwoom tables also use integrated (_AL) prices.
+                                                // ETNs (Q prefix) stay on J, as UN support for them is not confirmed.
+                                                "FID_COND_MRKT_DIV_CODE": iscd.startsWith('Q') ? "J" : "UN",
                                                 "FID_INPUT_ISCD": iscd
                                             },
                                             timeout: 3000
@@ -668,6 +701,18 @@ app.get('/api/stock', async (req, res) => {
                             await new Promise(resolve => setTimeout(resolve, 50));
                         }
                         console.log("Step 2.5: eFriend 현재가 조회 완료. 등락률, 현재가 병합됨.");
+                        // Check record for the NXT pre-market change rate (UN since 2026-11-07): how many rows got a
+                        // non-zero rate. At most one line per 5 minutes, data/lendable-rates/YYYY-MM-DD.jsonl.
+                        try {
+                            const at = Date.now(), day = new Date(at + 9 * 3600000).toISOString().slice(0, 10);
+                            if (at - (global.__lendableRateLogAt || 0) >= 300000) {
+                                global.__lendableRateLogAt = at;
+                                const rated = efriendStocks.filter(s => Number.isFinite(Number(s.prdy_ctrt)) && Number(s.prdy_ctrt) !== 0);
+                                const dir = path.join(__dirname, 'data', 'lendable-rates'); fs.mkdirSync(dir, { recursive: true });
+                                fs.appendFileSync(path.join(dir, day + '.jsonl'), JSON.stringify({ at: new Date(at + 9 * 3600000).toISOString().slice(11, 19), count: efriendStocks.length,
+                                    withRate: rated.length, sample: efriendStocks.slice(0, 5).map(s => [String(s.pdno || '').trim(), s.prdy_ctrt, s.stck_prpr]) }) + '\n');
+                            }
+                        } catch {}
                     }
 
                     // 대주가능 목록의 종목 데이터는 eFriend에서 유지하고, 시장구분은
@@ -3043,6 +3088,10 @@ app.get('*', (req, res) => {
 // 토큰 캐싱을 위한 전역 변수
 let cachedToken = null;
 let tokenExpiryTime = 0;
+// The Kiwoom token is kept on disk: a restart reuses it, and local scripts (dev/breadth-backfill.cjs) share it
+// instead of issuing their own. It is read once at startup, so a token rejected later is never read back.
+const kiwoomTokenFile = path.join(__dirname, 'data', 'kiwoom-token', 'token.json');
+let kiwoomTokenFileRead = false;
 
 /**
  * Access Token 발급 함수 (캐싱 포함)
@@ -3051,6 +3100,15 @@ async function getAccessToken(appKey, secretKey) {
     // 1. 캐시된 토큰이 있고, 만료시간이 5분 이상 남았으면 캐시 반환
     if (cachedToken && Date.now() < (tokenExpiryTime - 300000)) {
         return cachedToken;
+    }
+    if (!kiwoomTokenFileRead) {
+        kiwoomTokenFileRead = true;
+        try {
+            const saved = JSON.parse(fs.readFileSync(kiwoomTokenFile, 'utf8'));
+            if (typeof saved.token === 'string' && saved.token && saved.expires > Date.now() + 300000) {
+                cachedToken = saved.token; tokenExpiryTime = saved.expires; return cachedToken;
+            }
+        } catch {}
     }
 
     fileLog("새로운 Access Token 발급 시도...");
@@ -3087,6 +3145,11 @@ async function getAccessToken(appKey, secretKey) {
     const expiresIn = response.data.expires_in || 86400; // 초 단위
     cachedToken = token;
     tokenExpiryTime = Date.now() + (expiresIn * 1000);
+    try {
+        fs.mkdirSync(path.dirname(kiwoomTokenFile), { recursive: true });
+        fs.writeFileSync(kiwoomTokenFile + '.tmp', JSON.stringify({ token, expires: tokenExpiryTime, issuedAt: Date.now() }), { mode: 0o600 });
+        fs.renameSync(kiwoomTokenFile + '.tmp', kiwoomTokenFile);
+    } catch {}
 
     fileLog(`토큰 발급 완료 (만료: ${new Date(tokenExpiryTime).toLocaleString()})`);
     return token;
@@ -3096,9 +3159,31 @@ async function getAccessToken(appKey, secretKey) {
 let efriendCachedToken = null;
 let efriendTokenExpiryTime = 0;
 let efriendTokenRequest = null;
+// KIS token on disk (data/kis-token): a restart reuses it instead of issuing again (KIS limits reissuing).
+// Tied to the domain and app key; read once at startup so a token rejected later is never read back.
+const kisTokenFile = path.join(__dirname, 'data', 'kis-token', 'token.json');
+const kisTokenOwner = (domain, appKey) => crypto.createHash('sha256').update(String(domain) + '|' + String(appKey)).digest('hex').slice(0, 16);
+let kisTokenFileRead = false, efriendTokenIssuedAt = 0;
+// KIS rejected the cached token (EGW00121 invalid, EGW00123 expired): drop it so the next call issues a new one.
+// A token issued within the last minute is kept, so two servers sharing the app key cannot loop.
+function invalidateKisToken() {
+    if (!efriendCachedToken || Date.now() - efriendTokenIssuedAt < 60000) return false;
+    try { if (JSON.parse(fs.readFileSync(kisTokenFile, 'utf8')).token === efriendCachedToken) fs.rmSync(kisTokenFile, { force: true }); } catch {}
+    efriendCachedToken = null; efriendTokenExpiryTime = 0; return true;
+}
 
 function getEfriendAccessToken(domain, appKey, secretKey) {
     if (efriendCachedToken && Date.now() < efriendTokenExpiryTime - 300000) return Promise.resolve(efriendCachedToken);
+    if (!kisTokenFileRead) {
+        kisTokenFileRead = true;
+        try {
+            const saved = JSON.parse(fs.readFileSync(kisTokenFile, 'utf8'));
+            if (saved.owner === kisTokenOwner(domain, appKey) && typeof saved.token === 'string' && saved.token && saved.expires > Date.now() + 300000) {
+                efriendCachedToken = saved.token; efriendTokenExpiryTime = saved.expires; efriendTokenIssuedAt = Number(saved.issuedAt) || 0;
+                return Promise.resolve(efriendCachedToken);
+            }
+        } catch {}
+    }
     // Background collectors and browser queries may authenticate at the same startup instant.
     if (!efriendTokenRequest) efriendTokenRequest = requestEfriendAccessToken(domain, appKey, secretKey)
         .finally(() => { efriendTokenRequest = null; });
@@ -3135,6 +3220,12 @@ async function requestEfriendAccessToken(domain, appKey, secretKey) {
             const expiresIn = response.data.expires_in || 86400; // 초 단위
             efriendCachedToken = token;
             efriendTokenExpiryTime = Date.now() + (expiresIn * 1000);
+            efriendTokenIssuedAt = Date.now();
+            try {
+                fs.mkdirSync(path.dirname(kisTokenFile), { recursive: true });
+                fs.writeFileSync(kisTokenFile + '.tmp', JSON.stringify({ owner: kisTokenOwner(domain, appKey), token, expires: efriendTokenExpiryTime, issuedAt: efriendTokenIssuedAt }), { mode: 0o600 });
+                fs.renameSync(kisTokenFile + '.tmp', kisTokenFile);
+            } catch {}
             fileLog(`eFriend 토큰 발급 완료`);
             return token;
         } else {
@@ -3154,16 +3245,23 @@ app.listen(PORT, async () => {
     if ((process.env.MARKET_ALERT_REALTIME || '').trim() !== 'false') marketAlertService.start();
     // VI_MONITOR_REALTIME=false keeps the VI window's LS websocket closed (local comparison tests).
     if ((process.env.VI_MONITOR_REALTIME || '').trim() !== 'false') viMonitorService.start();
-    supplyService.start();
+    // Alternative sources that no card shows are not collected since 2026-11-07: Kiwoom stock minute (ka10060·ka90008),
+    // LS stock (t1717·t1637), LS market minute (t1602·t1662) and KIS index minute (FHKUP03500200). Their chart
+    // queries still answer (day charts query on demand). ALT_SUPPLY_COLLECTION=on collects them again.
+    // KIS index turnover (H0UPCNT0) is one of them: without kisTurnoverData.start() it is not subscribed, while the
+    // same KIS websocket keeps H0UNPGM0 for the stock supply card.
+    const altCollection = (process.env.ALT_SUPPLY_COLLECTION || '').trim() === 'on';
+    if (altCollection) supplyService.start();
     kisStockSupplyService.start();
-    lsStockSupplyService.start();
-    kisTurnoverData.start();
+    if (altCollection) lsStockSupplyService.start();
+    if (altCollection) kisTurnoverData.start();
     lsTurnoverData.start();
     marketSupplyService.start();
     lsFuturesTestService.start();
     kiwoomMarketSupplyService.start();
-    lsMarketSupplyService.start();
-    kisConcentrationChartService.start();
+    lsStockFuturesService.start();
+    if (altCollection) lsMarketSupplyService.start();
+    if (altCollection) kisConcentrationChartService.start();
     breadthService.start();
     backgroundRefreshService.start();
     // Keep the daily archive current even when no chart is open.

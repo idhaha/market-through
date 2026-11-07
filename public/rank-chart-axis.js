@@ -33,7 +33,7 @@
         return result;
     }
     function todayRange(values,getDate) {
-        const day=new Date(Date.now()+9*3600000).toISOString().slice(0,10);
+        const day=sessionDay();
         const start=values.findIndex(v=>dateParts(getDate(v)).slice(0,10)===day);
         return start<0?{start:values.length,count:0}:{start,count:values.slice(start).filter(v=>dateParts(getDate(v)).slice(0,10)===day).length};
     }
@@ -47,7 +47,7 @@
     // The day+night market supply (test) cards show connected day+night futures: their minute axis spans the night session.
     const testCards=['testMarketSupply','testMarketSupplySecondary'];
     const overnightChart=()=>testCards.map(id=>minuteCharts.get(id)).filter(c=>c?.mode==='minute' && c.first).sort((a,b)=>a.first.localeCompare(b.first))[0];
-    const viewportPanels={testMarketSupply:'rankTestMarketSupplyChartPanel',testMarketSupplySecondary:'rankTestMarketSupplySecondaryChartPanel',combinedMarketSupplySecondary:'rankCombinedMarketSupplySecondaryChartPanel',combinedMarketSupply:'rankCombinedMarketSupplyChartPanel',combinedSupply:'rankCombinedSupplyChartPanel',combinedTurnover:'rankCombinedTurnoverChartPanel',combinedConcentration:'combinedConcentrationChartPanel',lsConcentration:'lsConcentrationChartPanel',kisTurnover:'rankKisTurnoverChartPanel',lsTurnover:'rankLsTurnoverChartPanel',kiwoomMarketSupply:'rankKiwoomMarketSupplyChartPanel',kisSupply:'rankKisSupplyChartPanel',lsSupply:'rankLsSupplyChartPanel',lsMarketSupply:'rankLsMarketSupplyChartPanel',concentration:'concentrationChartPanel',kisConcentration:'kisConcentrationChartPanel',supply:'rankSupplyChartPanel',marketSupply:'rankMarketSupplyChartPanel',breadth:'rankBreadthChartPanel',turnover:'rankTurnoverChartPanel',adr:'rankAdrChartPanel',volatility:'rankVolatilityChartPanel',sentiment:'rankSentimentChartPanel'};
+    const viewportPanels={testMarketSupply:'rankTestMarketSupplyChartPanel',testMarketSupplySecondary:'rankTestMarketSupplySecondaryChartPanel',combinedMarketSupplySecondary:'rankCombinedMarketSupplySecondaryChartPanel',combinedMarketSupply:'rankCombinedMarketSupplyChartPanel',combinedSupply:'rankCombinedSupplyChartPanel',futuresSupply:'rankFuturesSupplyChartPanel',combinedTurnover:'rankCombinedTurnoverChartPanel',combinedConcentration:'combinedConcentrationChartPanel',lsConcentration:'lsConcentrationChartPanel',kisTurnover:'rankKisTurnoverChartPanel',lsTurnover:'rankLsTurnoverChartPanel',kiwoomMarketSupply:'rankKiwoomMarketSupplyChartPanel',kisSupply:'rankKisSupplyChartPanel',lsSupply:'rankLsSupplyChartPanel',lsMarketSupply:'rankLsMarketSupplyChartPanel',concentration:'concentrationChartPanel',kisConcentration:'kisConcentrationChartPanel',supply:'rankSupplyChartPanel',marketSupply:'rankMarketSupplyChartPanel',breadth:'rankBreadthChartPanel',turnover:'rankTurnoverChartPanel',adr:'rankAdrChartPanel',volatility:'rankVolatilityChartPanel',sentiment:'rankSentimentChartPanel'};
     const hoverCharts=new Map();
     function hoverKey(value,mode) { return value==null?null:dateParts(value).slice(0,mode==='minute'?16:10); }
     function registerHover(id,getMode,getValue,apply) { hoverCharts.set(id,{getMode,getValue,apply}); }
@@ -118,15 +118,36 @@
             void restoreHistoryRange(id,range).finally(()=>{visibleHistoryRunning.delete(id);});
         }
     }
-    function showHistory(){if(historyBusy)return;historyMode=true;for(const chart of minuteCharts.values())chart.applied=undefined;notifyCharts();}
+    function showHistory(){if(historyBusy)return;historyMode=true;todayPinned=false;for(const chart of minuteCharts.values())chart.applied=undefined;notifyCharts();}
     function resetHistoryWork(){
         historyEpoch++;historyBusy=false;pendingHistoryTargets.clear();
         if(typeof document!=='undefined')document.querySelectorAll('#tab_rank .rank-history-notice').forEach(notice=>notice.remove());
         scheduleHistoryButtons();
     }
-    function showToday(){resetHistoryWork();viewports.delete('minute');historyMode=false;sharedCutoff=new Date(Date.now()+9*3600000).toISOString().slice(0,10)+' 08:00';rangeRevision++;for(const chart of minuteCharts.values())chart.applied=undefined;notifyCharts();}
-    const refreshOrder=['concentration','combinedConcentration','supply','marketSupply','breadth','turnover','adr','sentiment','volatility','kisConcentration','lsMarketSupply','kisSupply','lsSupply','kiwoomMarketSupply','lsConcentration','kisTurnover','lsTurnover','combinedTurnover','combinedSupply','combinedMarketSupply','combinedMarketSupplySecondary','testMarketSupply','testMarketSupplySecondary'];
-    const refreshMethods={testMarketSupply:'refreshRankTestMarketSupplyChart',testMarketSupplySecondary:'refreshRankTestMarketSupplySecondaryChart',combinedMarketSupplySecondary:'refreshRankCombinedMarketSupplySecondaryChart',combinedMarketSupply:'refreshRankCombinedMarketSupplyChart',combinedSupply:'refreshRankCombinedSupplyChart',combinedTurnover:'refreshRankCombinedTurnoverChart',combinedConcentration:'refreshConcentrationChart',lsConcentration:'refreshLsConcentrationChart',kisTurnover:'refreshRankKisTurnoverChart',lsTurnover:'refreshRankLsTurnoverChart',kiwoomMarketSupply:'refreshRankKiwoomMarketSupplyChart',kisSupply:'refreshRankKisSupplyChart',lsSupply:'refreshRankLsSupplyChart',lsMarketSupply:'refreshRankLsMarketSupplyChart',concentration:'refreshConcentrationChart',kisConcentration:'refreshKisConcentrationChart',supply:'refreshRankSupplyChart',marketSupply:'refreshRankMarketSupplyChart',breadth:'refreshRankBreadthChart',turnover:'refreshRankTurnoverChart',adr:'refreshRankAdrChart',sentiment:'refreshRankSentimentChart',volatility:'refreshRankVolatilityChart'};
+    // The day 당일 shows: today once its session started (08:00), otherwise the last open day (weekend, holiday,
+    // before 08:00). A closure the calendar does not know is covered by never going past the latest minute data.
+    const openDay=date=>![0,6].includes(new Date(date+'T00:00:00Z').getUTCDay()) && (window.TradingRefresh?.state?.days || {})[date]!==false;
+    function previousOpenDay(day){let t=Date.parse(day+'T00:00:00Z');for(let i=0;i<14;i++){t-=86400000;const d=new Date(t).toISOString().slice(0,10);if(openDay(d))return d;}return day;}
+    function sessionDay(){
+        const kst=new Date(Date.now()+9*3600000);
+        let day=kst.toISOString().slice(0,10);
+        if(!openDay(day) || kst.getUTCHours()*60+kst.getUTCMinutes()<480)day=previousOpenDay(day);
+        const latest=[...minuteCharts.values()].filter(c=>c.mode==='minute' && c.last).map(c=>c.last.slice(0,10)).sort().at(-1);
+        return latest && latest<day ? latest : day;
+    }
+    // Start of 당일 on a day/night card: the night session (from 18:00 of the previous open day) belongs to the
+    // session day, so its first minute starts the view; without night rows the view starts at 08:00.
+    // The card's first loaded minute is not used: after 더 불러오기 it lies days earlier.
+    // Used only after 당일 (todayPinned): before that the card loads just the current session, so its first minute is it.
+    let todayPinned=false;
+    function overnightStart(chart){
+        if(!todayPinned)return chart.first;
+        const day=sessionDay(),night=previousOpenDay(day)+' 18:00',first=(chart.dates || []).find(date=>date>=night);
+        return first && first<day+' 08:00' ? first : day+' 08:00';
+    }
+    function showToday(){resetHistoryWork();viewports.delete('minute');historyMode=false;todayPinned=true;sharedCutoff=sessionDay()+' 08:00';rangeRevision++;for(const chart of minuteCharts.values())chart.applied=undefined;notifyCharts();}
+    const refreshOrder=['concentration','combinedConcentration','supply','marketSupply','breadth','turnover','adr','sentiment','volatility','kisConcentration','lsMarketSupply','kisSupply','lsSupply','kiwoomMarketSupply','lsConcentration','kisTurnover','lsTurnover','combinedTurnover','combinedSupply','futuresSupply','combinedMarketSupply','combinedMarketSupplySecondary','testMarketSupply','testMarketSupplySecondary'];
+    const refreshMethods={testMarketSupply:'refreshRankTestMarketSupplyChart',testMarketSupplySecondary:'refreshRankTestMarketSupplySecondaryChart',combinedMarketSupplySecondary:'refreshRankCombinedMarketSupplySecondaryChart',combinedMarketSupply:'refreshRankCombinedMarketSupplyChart',combinedSupply:'refreshRankCombinedSupplyChart',futuresSupply:'refreshRankFuturesSupplyChart',combinedTurnover:'refreshRankCombinedTurnoverChart',combinedConcentration:'refreshConcentrationChart',lsConcentration:'refreshLsConcentrationChart',kisTurnover:'refreshRankKisTurnoverChart',lsTurnover:'refreshRankLsTurnoverChart',kiwoomMarketSupply:'refreshRankKiwoomMarketSupplyChart',kisSupply:'refreshRankKisSupplyChart',lsSupply:'refreshRankLsSupplyChart',lsMarketSupply:'refreshRankLsMarketSupplyChart',concentration:'refreshConcentrationChart',kisConcentration:'refreshKisConcentrationChart',supply:'refreshRankSupplyChart',marketSupply:'refreshRankMarketSupplyChart',breadth:'refreshRankBreadthChart',turnover:'refreshRankTurnoverChart',adr:'refreshRankAdrChart',sentiment:'refreshRankSentimentChart',volatility:'refreshRankVolatilityChart'};
     const closeReads=new Map();
     function refreshCharts({skipConcentration=false,mode=null,automatic=false}={}) {
         window.rankChartRefreshStarted=true;
@@ -199,6 +220,7 @@
             try{return await work();}finally{card[kind]+=Date.now()-started;}
         };
         let before=mode==='day'?dailyCutoff:sharedCutoff;
+        if(mode==='minute')todayPinned=false;
         historyBusy=true;scheduleHistoryButtons();
         const participants=[...minuteCharts.entries()].filter(([id,c])=>c.mode===mode && historyLoaders.has(id)).sort(([a],[b])=>(refreshOrder.indexOf(a)<0?99:refreshOrder.indexOf(a))-(refreshOrder.indexOf(b)<0?99:refreshOrder.indexOf(b)));
         const failures=[], exhausted=[];
@@ -356,7 +378,7 @@
         const chart={id,dates:values.map(v=>dateParts(getDate(v)).slice(0,length)),signature,mode,first,last,days,draw,initialRangeReady,applied:previous?.applied,revision:previous?.revision};minuteCharts.set(id,chart);
         const starts=[...minuteCharts.values()].filter(c=>c.mode==='minute' && c.first).map(c=>c.first);
         const overnight=overnightChart();
-        const today=overnight?.mode==='minute' && overnight.first ? overnight.first : new Date(Date.now()+9*3600000).toISOString().slice(0,10)+' 08:00';
+        const today=overnight?.mode==='minute' && overnight.first ? overnightStart(overnight) : sessionDay()+' 08:00';
         const candidate=historyMode && starts.length?starts.sort().at(-1):today;
         const cutoff=historyBusy ? (sharedCutoff || today) : historyMode && sharedCutoff && candidate>sharedCutoff ? sharedCutoff : candidate;
         if(atLatest){
@@ -431,12 +453,12 @@
     function minuteDomain(values=[],getDate=v=>v,useViewport=true) {
         const active=[...minuteCharts.values()].filter(c=>c.mode==='minute');
         const dates=values.map(v=>dateParts(getDate(v)).slice(0,16));
-        const today=new Date(Date.now()+9*3600000).toISOString().slice(0,10);
+        const today=sessionDay();
         const localFirst=dates[0]?.slice(0,10) || today;
         const viewport=useViewport?viewports.get('minute'):null;
         const overnight=overnightChart();
         if(overnight?.mode==='minute' && overnight.first){
-            const first=viewport?.first || sharedCutoff || overnight.first;
+            const first=viewport?.first || sharedCutoff || overnightStart(overnight);
             const last=viewport?.last || active.map(c=>c.last).filter(v=>v && v>=first).sort().at(-1) || first;
             const calendar=window.TradingRefresh?.state?.days || {};
             const open=date=>![0,6].includes(new Date(date+'T00:00:00Z').getUTCDay()) && calendar[date]!==false;
@@ -800,5 +822,5 @@
         }
         return result;
     }
-    window.RankChartAxis={dayBoundaryPositions,drawDayBoundaries,concentrationCumulative,loadingBar,intradayGap,restoreHistoryRange,marketChoice,validCandle,candleLabel,selectViewport,plotBounds,registerHover,synchronizeHover,matchesHover,updateSlider,scrollViewport,synchronizeViewport,refreshOrder,refreshCharts,registerHistoryLoader,requestHistory,showHistory,showToday,sharedRange,dailyDomain,minuteDomain,ticks,todayRange,limitToday,sessionRange,limitSessions,sessionX,eightTick,sessionStartLabel,candleLayout,todayButton};
+    window.RankChartAxis={dayBoundaryPositions,drawDayBoundaries,concentrationCumulative,loadingBar,intradayGap,restoreHistoryRange,marketChoice,validCandle,candleLabel,selectViewport,plotBounds,registerHover,synchronizeHover,matchesHover,updateSlider,scrollViewport,synchronizeViewport,refreshOrder,refreshCharts,registerHistoryLoader,requestHistory,showHistory,showToday,sessionDay,sharedRange,dailyDomain,minuteDomain,ticks,todayRange,limitToday,sessionRange,limitSessions,sessionX,eightTick,sessionStartLabel,candleLayout,todayButton};
 })();

@@ -311,14 +311,8 @@
             {const view=window.RankChartAxis.sharedRange(chartKey,state.points,p=>p.time,state.mode,state.start,state.visible,draw);state.start=view.start;state.visible=view.count ?? state.visible;}
             const points = state.points.slice(state.start, state.start + state.visible);
             const cumulative=state.mode==='minute'?window.RankChartAxis.concentrationCumulative(state.points):new Map();
-            const maximum = points.reduce((max, point) => Math.max(max,Number.isFinite(point.value)?point.value:0,Number.isFinite(cumulative.get(point.time))?cumulative.get(point.time):0), 0);
-            let tickStep = 10;
-            if (maximum > 70) {
-                const target = maximum / 7;
-                const magnitude = 10 ** Math.floor(Math.log10(target));
-                tickStep = [1, 2, 2.5, 5, 10].find(factor => factor * magnitude >= target) * magnitude;
-            }
-            const axisMaximum = Math.max(70, Math.ceil(maximum * 1.15 / tickStep) * tickStep);
+            // A share of market turnover is always shown on a fixed 0~100% axis (10% ticks).
+            const tickStep = 10, axisMaximum = 100;
             const tickCount = Math.round(axisMaximum / tickStep);
             ctx.font = '12px Inter, sans-serif';
             const maxPrice = points.reduce((max, point) => Math.max(max, point.stock_high || 0), 0);
@@ -327,19 +321,21 @@
             Object.assign(plot,window.RankChartAxis.plotBounds(chartKey,width,plot.left,plot.right));
             const xLabels = [];
             const boundaries = [];
-            canvas.setAttribute('aria-label', `시장 거래대금 대비 종목 거래대금 비율 차트, 세로축 0~${axisMaximum.toLocaleString()}%, 자동 범위`);
+            canvas.setAttribute('aria-label', `시장 거래대금 대비 종목 거래대금 비율 차트, 세로축 0~100% 고정`);
             const sessionX=window.RankChartAxis.sessionX(points,p=>p.time,plot.left,plot.right,state.mode==='minute',state.mode==='day');
             const x = index => sessionX?sessionX(points[index].time):points.length <= 1 ? (plot.left + plot.right) / 2
                 : plot.left + index / (points.length - 1) * (plot.right - plot.left);
-            const y = value => plot.bottom - value / axisMaximum * (plot.bottom - plot.top);
+            // A value above the 100% top (a data glitch) is drawn at the top edge rather than outside the plot.
+            const y = value => plot.bottom - Math.min(value, axisMaximum) / axisMaximum * (plot.bottom - plot.top);
             geometry = { plot, points, x, y, width, height };
             ctx.font = '12px Inter, sans-serif';
             ctx.textAlign = 'left';
             ctx.textBaseline = 'middle';
             ctx.fillStyle = '#64748b';
-            for (let tick = 0; tick <= tickCount; tick++) {
-                const percent = tick * tickStep;
-                ctx.beginPath(); ctx.setLineDash([3, 5]); ctx.strokeStyle = '#b8c1cc';
+            // 60% is a reference level: always labelled and drawn as a solid line (the other ticks stay dotted).
+            const reference = 60, ticks = [...new Set([...Array.from({ length: tickCount + 1 }, (_, tick) => tick * tickStep), reference])].sort((a, b) => a - b);
+            for (const percent of ticks) {
+                ctx.beginPath(); ctx.setLineDash(percent === reference ? [] : [3, 5]); ctx.strokeStyle = percent === reference ? '#64748b' : '#b8c1cc'; ctx.lineWidth = 1;
                 ctx.moveTo(plot.left, y(percent)); ctx.lineTo(plot.right, y(percent)); ctx.stroke();
                 ctx.textAlign = 'right'; ctx.fillText(`${percent.toLocaleString()}%`, width - 4, y(percent));
             }

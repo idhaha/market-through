@@ -5,7 +5,7 @@ const t=Date.parse('2026-10-23T09:00:00+09:00'),p={t,open:2500,high:2510,low:249
 await page.route('http://market-page.test/**',route=>{const url=new URL(route.request().url());
 if(url.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:'chart-test@example.test'}}});
 if(['/api/concentration-chart','/api/kis-concentration-chart','/api/ls-concentration-chart'].includes(url.pathname)){
- const input=route.request().postDataJSON(),ratio=url.pathname.includes('ls-')?30:url.pathname.includes('kis-')?20:10;
+ const input=route.request().postDataJSON(),ratio=url.pathname.includes('ls-')?95:url.pathname.includes('kis-')?20:10;
  return route.fulfill({json:{success:true,mode:input.mode,market:'K',points:[{time:input.mode==='minute'?'20261023090000':'20261023',value:ratio,stock_price:100,stock_open:99,stock_high:101,stock_low:98}],warnings:[],has_more:false}});
 }
 if(['/api/kis-turnover/chart','/api/ls-turnover/chart'].includes(url.pathname))return route.fulfill({json:{success:true,markets:{kospi:[{...p,market_turnover:url.pathname.includes('ls-')?3e12:2e12}],kosdaq:[{...p,market_turnover:1e12}]},warnings:[],has_more:false}});
@@ -17,15 +17,19 @@ await page.evaluate(()=>document.dispatchEvent(new Event('DOMContentLoaded')));a
 assert.equal(await page.locator('#combinedConcentrationChartPanel h2').innerText(),'쏠림율');
 await page.evaluate(()=>selectRankChartStock({code:'000660',name:'SK하이닉스',market:'K'}));
 await page.waitForFunction(()=>window.getCombinedRankChartState?.().points[0]?.value===10&&!getCombinedRankChartState().busy);
+// The axis is fixed at 0~100% even when every value is small (10% used to give a 0~70% axis).
+assert.match(await page.locator('#combinedConcentrationChartPanel canvas[aria-label*="세로축"]').getAttribute('aria-label'),/세로축 0~100% 고정/);
 await page.locator('#combinedConcentrationChartPanel [data-chart-mode="minute"]').click();
-await page.waitForFunction(()=>getCombinedRankChartState().mode==='minute'&&getCombinedRankChartState().points[0]?.value===30&&!getCombinedRankChartState().busy);
-assert.equal(await page.locator('#combinedConcentrationCurrentRate').innerText(),'30.0%');
+await page.waitForFunction(()=>getCombinedRankChartState().mode==='minute'&&getCombinedRankChartState().points[0]?.value===95&&!getCombinedRankChartState().busy);
+assert.equal(await page.locator('#combinedConcentrationCurrentRate').innerText(),'95.0%');
+// 95% stays on the same fixed 0~100% axis.
+assert.match(await page.locator('#combinedConcentrationChartPanel canvas[aria-label*="세로축"]').getAttribute('aria-label'),/세로축 0~100%/);
 assert.match(await page.locator('#combinedConcentrationChartPanel .rank-card-source').innerText(),/LS/);
 await page.locator('#combinedConcentrationChartPanel [data-chart-mode="day"]').click();
 await page.waitForFunction(()=>getCombinedRankChartState().mode==='day'&&getCombinedRankChartState().points[0]?.value===10&&!getCombinedRankChartState().busy);
 assert.match(await page.locator('#combinedConcentrationChartPanel .rank-card-source').innerText(),/키움/);
 const settings=await page.evaluate(()=>getConcentrationDisplaySettings());assert.equal(settings.mode,'day');
 const layout=await page.evaluate(()=>{const p=document.getElementById('combinedConcentrationChartPanel'),r=p.getBoundingClientRect(),others=[...document.querySelectorAll('.rank-chart-row>.panel')].filter(e=>e!==p);return{count:others.length+1,top:r.top,previousBottom:Math.max(...others.filter(e=>!['rankCombinedTurnoverChartPanel','rankCombinedSupplyChartPanel','rankCombinedMarketSupplyChartPanel'].includes(e.id)).map(e=>e.getBoundingClientRect().bottom)),height:p.querySelector('canvas').getBoundingClientRect().height,ids:[...document.querySelectorAll('[id]')].map(e=>e.id)};});
-assert.equal(layout.count,9);assert.deepEqual(await page.locator('#combinedConcentrationChartPanel').evaluate(p=>[getComputedStyle(p).gridRowStart,getComputedStyle(p).gridColumnStart]),['1','1']);assert.ok(layout.height>200);assert.equal(new Set(layout.ids).size,layout.ids.length);assert.deepEqual(errors,[]);
+assert.equal(layout.count,10);assert.deepEqual(await page.locator('#combinedConcentrationChartPanel').evaluate(p=>[getComputedStyle(p).gridRowStart,getComputedStyle(p).gridColumnStart]),['1','1']);assert.ok(layout.height>200);assert.equal(new Set(layout.ids).size,layout.ids.length);assert.deepEqual(errors,[]);
 await page.locator('#combinedConcentrationChartPanel').screenshot({path:'dev/output/combined-concentration-card.png'});console.log('Combined concentration: Kiwoom day / LS minute, separate state, original cards and current grid layout passed');
 }finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

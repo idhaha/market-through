@@ -92,3 +92,8 @@ test('background stock supply uses the same source as the combined card: KIS min
  assert.equal(job('minute').url,'/api/kis-supply/chart');assert.deepEqual(job('minute').params,{code:'000660',mode:'minute'});
  assert.equal(job('day').url,'/api/supply/chart');
 });
+test('the watchlist ranking is not refreshed in the background (collection stopped on request); the other rankings are',()=>{
+ const {buildJobs}=require('../../background-refresh'),jobs=buildJobs({watchlistGroupId:'074'},Date.parse('2026-11-09T10:00:00+09:00'));
+ assert.equal(jobs.some(j=>j.url==='/api/watchlist_rank'),false);
+ assert.ok(jobs.some(j=>j.url==='/api/stock')&&jobs.some(j=>j.url==='/api/transaction_rank'));
+});

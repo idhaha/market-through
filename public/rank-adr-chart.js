@@ -126,7 +126,7 @@
             if (closing) values.push(closing.adr);
             const min = Math.floor((Math.min(60, ...values) - 5) / 10) * 10, max = Math.ceil((Math.max(140, ...values) + 5) / 10) * 10;
             const y = v => bottom - (v - min) / (max - min) * (bottom - top);
-            const start = visiblePoints[0]?.t ?? (mode==='minute' && todayOnly ? Date.parse(`${dateKey(Date.now())}T08:00:00+09:00`) : closing?.t ?? Date.parse(`${chartDay}T08:00:00+09:00`));
+            const start = visiblePoints[0]?.t ?? (mode==='minute' && todayOnly ? Date.parse(`${window.RankChartAxis.sessionDay()}T08:00:00+09:00`) : closing?.t ?? Date.parse(`${chartDay}T08:00:00+09:00`));
             const end = visiblePoints.at(-1)?.t ?? start;
             const sessionX=window.RankChartAxis.sessionX(visiblePoints,p=>p.t,left,right,mode==='minute',mode==='day');
             const x = t => {

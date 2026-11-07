@@ -9,11 +9,18 @@
         const clock = new Date(t + 9 * 3600000);
         return clock.getUTCHours() * 60 + clock.getUTCMinutes() > 930;
     };
-    const format = (n, signed = true) => {
+    const formatShares = (n, signed = true) => {
         if (!Number.isFinite(n)) return '미제공';
         const thousands = Math.abs(n) >= 1000;
         const value = thousands ? Math.trunc(n / 1000) : n;
         return `${signed && value > 0 ? '+' : ''}${value.toLocaleString('ko-KR')}${thousands ? '천주' : '주'}`;
+    };
+    // 종목 선물 수급: net contracts (LS t8463/t8462).
+    const formatContracts = (n, signed = true) => {
+        if (!Number.isFinite(n)) return '미제공';
+        const thousands = Math.abs(n) >= 10000;
+        const value = thousands ? Math.trunc(n / 1000) : n;
+        return `${signed && value > 0 ? '+' : ''}${value.toLocaleString('ko-KR')}${thousands ? '천계약' : '계약'}`;
     };
     function mergeFlow(previous, incoming) {
         const points = new Map(previous.map(point => [point.t, point]));
@@ -49,28 +56,32 @@
     }
     function initialize(broker = '') {
         if (broker && window.rankIndependentClient) return;
-        const combined = broker === 'combined';
-        const suffix = combined ? 'CombinedSupply' : broker === 'kis' ? 'KisSupply' : broker === 'ls' ? 'LsSupply' : 'Supply';
+        const combined = broker === 'combined', futures = broker === 'futures';
+        // The futures card keeps the program series for the same layout as 종목 수급; LS has no stock futures program
+        // trading, so it shows as 미제공 (empty lane on the day chart).
+        const cardSeries = series, format = futures ? formatContracts : formatShares;
+        const suffix = combined ? 'CombinedSupply' : futures ? 'FuturesSupply' : broker === 'kis' ? 'KisSupply' : broker === 'ls' ? 'LsSupply' : 'Supply';
         const panelId = `rank${suffix}ChartPanel`, axisId = broker ? `${broker}Supply` : 'supply';
         const api = name => name.replace('Supply', suffix);
         const eventName = name => broker ? name.replace('rank-supply', `rank-${broker}-supply`) : name;
-        const endpoint = combined ? '/api/supply/chart' : broker ? `/api/${broker}-supply/chart` : '/api/supply/chart';
+        const endpoint = futures ? '/api/ls-stock-futures/chart' : combined ? '/api/supply/chart' : broker ? `/api/${broker}-supply/chart` : '/api/supply/chart';
+        const candleEndpoint = futures ? '/api/ls-stock-futures/candles' : '/api/supply/candles';
         const selectionKey = broker ? `rank${suffix}SelectedV1` : 'rankSupplySelectedV1';
         const breadth = document.getElementById('rankBreadthChartPanel'), row = window.rankIndependentClient ? document.getElementById('tab_rank') : breadth?.closest('.rank-chart-row');
         if (!row || document.getElementById(panelId)) return;
         const panel = document.createElement('section');
-        panel.id = panelId; panel.className = 'panel rank-adr-panel rank-supply-panel' + (broker ? ' rank-broker-supply-panel' : '');
-        panel.setAttribute('aria-label', '종목별 수급 차트');
-        panel.innerHTML = `<div class="concentration-chart-header"><h2>종목 수급${combined ? '' : broker === 'kis' ? '(한투)' : broker === 'ls' ? '(LS)' : window.rankIndependentClient ? '' : '(키움)'}</h2><button type="button" data-action="add-stock" aria-haspopup="dialog" aria-expanded="false">+ 종목 추가</button></div>
+        panel.id = panelId; panel.className = 'panel rank-adr-panel rank-supply-panel' + (futures ? ' rank-futures-supply-panel' : broker ? ' rank-broker-supply-panel' : '');
+        panel.setAttribute('aria-label', futures ? '종목 선물 수급 차트' : '종목별 수급 차트');
+        panel.innerHTML = `<div class="concentration-chart-header"><h2>${futures ? '종목 선물 수급' : '종목 수급'}${combined || futures ? '' : broker === 'kis' ? '(한투)' : broker === 'ls' ? '(LS)' : window.rankIndependentClient ? '' : '(키움)'}</h2><button type="button" data-action="add-stock" aria-haspopup="dialog" aria-expanded="false">+ 종목 추가</button></div>
             <div class="rank-adr-controls"><select class="supply-stock-select" aria-label="수급 종목 선택"></select><button type="button" data-mode="day" class="active" aria-pressed="true">일봉</button><button type="button" data-mode="minute" aria-pressed="false">1분봉(누적)</button>
             <button type="button" class="concentration-candle-toggle" aria-expanded="false">캔들차트</button></div>
-            <div class="supply-legend">${series.map(s => `<button type="button" data-series="${s}" aria-label="${names[s]} 표시" title="${names[s]} 표시 전환" aria-pressed="true" style="color:${colors[s]}"><span>${Array.from(names[s])[0]}</span><output><span class="supply-value-number">—</span><span class="supply-value-unit"></span></output></button>`).join('')}</div>
-            <div class="chart-hover-info" hidden></div><div class="rank-adr-area"><canvas role="img" aria-label="개인 외국인 기관 프로그램 순매수수량 차트"></canvas></div>
-            <div class="rank-adr-candle-area" hidden><canvas role="img" aria-label="선택 종목 가격 캔들차트"></canvas></div>
+            <div class="supply-legend">${cardSeries.map(s => `<button type="button" data-series="${s}" aria-label="${names[s]} 표시" title="${names[s]} 표시 전환" aria-pressed="true" style="color:${colors[s]}"><span>${Array.from(names[s])[0]}</span><output><span class="supply-value-number">—</span><span class="supply-value-unit"></span></output></button>`).join('')}</div>
+            <div class="chart-hover-info" hidden></div><div class="rank-adr-area"><canvas role="img" aria-label="${futures ? '개인 외국인 기관 순매수 계약 차트 (프로그램 미제공)' : '개인 외국인 기관 프로그램 순매수수량 차트'}"></canvas></div>
+            <div class="rank-adr-candle-area" hidden><canvas role="img" aria-label="${futures ? '선택 종목 주식선물(연결선물) 가격 캔들차트' : '선택 종목 가격 캔들차트'}"></canvas></div>
             <div class="concentration-chart-footer rank-adr-zoom"><input type="range" min="0" max="0" value="0" aria-label="수급 과거 구간 이동" disabled><div class="concentration-controls"><button type="button" aria-label="수급 차트 축소">−</button><button type="button" aria-label="수급 차트 확대">+</button></div></div>
             <button type="button" data-action="more" class="concentration-icon-button" title="과거 데이터 더 불러오기" aria-label="과거 데이터 더 불러오기"><svg width="28" height="28" viewBox="0 0 34 34" shape-rendering="crispEdges" aria-hidden="true"><rect x="1" y="1" width="32" height="32" fill="#ededed"/><path d="M10 5v20" stroke="#737373" stroke-width="2"/><rect x="6" y="9" width="9" height="12" fill="#505050"/><path d="M22 5v20" stroke="#c0c0c0" stroke-width="2"/><rect x="18" y="9" width="9" height="12" fill="#969696"/><path d="M25 21v10M21 26h10" stroke="#444444" stroke-width="4"/></svg></button><p class="rank-adr-status" role="status"></p>`;
         row.append(panel);
-        window.RankSupplyGuide?.attach(panel, 'stock', window.rankIndependentClient ? 'combined' : broker || 'kiwoom');
+        window.RankSupplyGuide?.attach(panel, futures ? 'futures' : 'stock', futures ? 'ls' : window.rankIndependentClient ? 'combined' : broker || 'kiwoom');
         panel.querySelector('.rank-adr-controls').append(panel.querySelector('.supply-legend'));
         const latestDate = document.createElement('span'); latestDate.className = 'supply-latest-date'; latestDate.textContent = '—';
         panel.querySelector('.supply-legend').prepend(latestDate);
@@ -90,7 +101,7 @@
         let points = [], candles = [], start = 0, count = null, hover = null, drag = null, geometry;
         let controller, candleController, revision = 0, candleRevision = 0, refreshing = false, refreshPending = false;
         let showCandles = false, candleMessage = '', chartMessage = '', configError = '';
-        const visibleSeries = new Set(series);
+        const visibleSeries = new Set(cardSeries);
         const selectionStorage=window.rankIndependentClient?sessionStorage:localStorage;
         try { selected = selectionStorage.getItem(selectionKey) || ''; } catch {}
         function remember() { try { selectionStorage.setItem(selectionKey, selected); } catch {} }
@@ -105,7 +116,7 @@
             if (changed) { controller?.abort(); candleController?.abort(); ++revision; ++candleRevision; loading = candleLoading = false; selected = value.selected || ''; mode = value.mode; clearView(); remember(); }
             showCandles = !window.rankIndependentClient && typeof window.rankMainCandleOpen==='boolean' ? window.rankMainCandleOpen : value.showCandles === true; candleArea.hidden = !showCandles;
             panel.querySelector('.concentration-candle-toggle').setAttribute('aria-expanded', String(showCandles));
-            if (Array.isArray(value.visibleSeries)) { visibleSeries.clear(); value.visibleSeries.filter(s => series.includes(s)).forEach(s => visibleSeries.add(s)); }
+            if (Array.isArray(value.visibleSeries)) { visibleSeries.clear(); value.visibleSeries.filter(s => cardSeries.includes(s)).forEach(s => visibleSeries.add(s)); }
             panel.querySelectorAll('[data-series]').forEach(b => b.setAttribute('aria-pressed', String(visibleSeries.has(b.dataset.series))));
             panel.querySelectorAll('[data-mode]').forEach(b => { b.classList.toggle('active', b.dataset.mode === mode); b.setAttribute('aria-pressed', String(b.dataset.mode === mode)); });
             paintStocks(); resize(); if (changed && fetchData) void load();
@@ -159,7 +170,7 @@
                     queueMicrotask(()=>{if(mode==='day'&&selected&&showCandles)void loadCandles(undefined,true);});
                 }
             }
-            if(window.rankIndependentClient)panel.querySelector('h2').textContent='종목 수급';
+            if(window.rankIndependentClient && !futures)panel.querySelector('h2').textContent='종목 수급';
             window.RankChartAxis.loadingBar(canvas.parentElement,flowLoading,'수급');
             window.RankChartAxis.loadingBar(candleArea,candleLoading,'캔들');
             window.RankChartAxis.candleLabel(candleArea,config.archive.find(stock=>stock.code===selected)?.name || selected);
@@ -206,14 +217,18 @@
             }
             const lanes = new Map();
             if (mode === 'day') {
-                const laneHeight=(bottom-top)/4;
-                ['program','foreign','institution','individual'].forEach((field,i)=>{
-                    const zero=top+laneHeight*(i+.5);
+                let laneHeight2;
+                const laneFields=['program','foreign','institution','individual'].filter(field=>cardSeries.includes(field));
+                laneHeight2=(bottom-top)/laneFields.length;
+                laneFields.forEach((field,i)=>{
+                    const zero=top+laneHeight2*(i+.5);
                     const values=rows.map(p=>p[field]).filter(Number.isFinite);
                     const extent=Math.max(1,...values.map(Math.abs));
-                    lanes.set(field,{zero,y:value=>zero-value/extent*(laneHeight/2-9)});
+                    lanes.set(field,{zero,y:value=>zero-value/extent*(laneHeight2/2-9)});
                     ctx.save();ctx.strokeStyle='#64748b';ctx.lineWidth=1.5;ctx.setLineDash([]);ctx.beginPath();ctx.moveTo(left,zero);ctx.lineTo(right,zero);ctx.stroke();ctx.restore();
-                    ctx.fillStyle=colors[field];ctx.textAlign='right';ctx.save();ctx.textBaseline='middle';ctx.fillText(names[field],w-4,zero);ctx.restore();
+                    ctx.fillStyle=colors[field];ctx.textAlign='right';ctx.save();ctx.textBaseline='middle';ctx.fillText(names[field],w-4,zero);
+                    // A source without this series (stock futures program) keeps its lane empty, marked 미제공.
+                    if(!values.length && rows.length){ctx.fillStyle='#94a3b8';ctx.textAlign='center';ctx.fillText('미제공',(left+right)/2,zero-10);}ctx.restore();
                 });
             } else grid(ctx, w, min, max, y);
             boundaries(ctx,top,bottom);
@@ -227,12 +242,12 @@
                 ticks.forEach(({label,labelX})=>context.fillText(label,labelX,height-8));
             }
             timeAxis(ctx, h);
-            const latestDates = [...new Set(series.map(s => points.findLast(point => Number.isFinite(point[s])))
+            const latestDates = [...new Set(cardSeries.map(s => points.findLast(point => Number.isFinite(point[s])))
                 .filter(Boolean).map(point => dayKey(point.t)))].sort();
             latestDate.textContent = latestDates.length > 1 ? `${latestDates[0]} ~ ${latestDates.at(-1)}` : latestDates[0] || '—';
-            series.forEach(s => {
+            cardSeries.forEach(s => {
                 const button = panel.querySelector(`[data-series="${s}"]`), last = points.findLast(point => Number.isFinite(point[s]));
-                const label=last ? format(last[s]) : points.length ? '미제공' : '—', unit=label.match(/(억원|천주|주)$/)?.[0] || '';
+                const label=last ? format(last[s]) : points.length ? '미제공' : '—', unit=label.match(/(억원|천주|주|천계약|계약)$/)?.[0] || '';
                 button.querySelector('.supply-value-number').textContent=unit ? label.slice(0,-unit.length) : label;
                 button.querySelector('.supply-value-unit').textContent=unit;
                 button.querySelector('output').title = last ? `${label} · ${dayKey(last.t)} ${clock(last.t)} 기준` : '관측값 없음';
@@ -292,7 +307,7 @@
             if (hover != null && indices.has(hover)) {
                 const point = rows.find(p => p.t === hover);
                 info.replaceChildren(document.createTextNode(`${dayKey(hover)}${mode === 'minute' ? ` ${clock(hover)}` : ''}`));
-                series.forEach(s => {
+                cardSeries.forEach(s => {
                     const label = document.createElement('span'); label.style.color = colors[s];
                     const carriedAt = point[`${s}_carried_from`];
                     label.textContent = ` · ${names[s]} ${format(point[s])}${Number.isFinite(carriedAt) ? ` (${clock(carriedAt)} 최종 관측값)` : ''}`; info.append(label);
@@ -347,7 +362,7 @@
             const restoreWindow=mode==='minute'?window.RankChartAxis.minuteDomain():null;
             selected = code; remember(); clearView(); paintStocks();
             if (broadcast) document.dispatchEvent(new CustomEvent('rank-stock-supply-selection', { detail: { code,stock:config.stocks.find(stock=>stock.code===code)||config.archive.find(stock=>stock.code===code),source:axisId } }));
-            if(restoreWindow && restoreWindow.first.slice(0,10)<dayKey(Date.now()))todayOnly=false;
+            if(restoreWindow && restoreWindow.first.slice(0,10)<window.RankChartAxis.sessionDay())todayOnly=false;
             void load(false,restoreWindow);
         }
         function loadCandles(target, onlyCoverage = false) {
@@ -375,7 +390,7 @@
                     let result = candleCache.get(key);
                     if (!result || day === dayKey(Date.now()) || !day) {
                         const params = new URLSearchParams({ code: selected, mode, ...(dailyRange?dailyRange:day ? { date: day } : {}) });
-                        result = await request(`/api/supply/candles?${params}`, { signal: current.signal });
+                        result = await request(`${candleEndpoint}?${params}`, { signal: current.signal });
                         if (id !== candleRevision) return;
                         if(!result.partial)candleCache.set(key, result); if (candleCache.size > 60) candleCache.delete(candleCache.keys().next().value);
                     }
@@ -454,10 +469,10 @@
                     for (const point of fresh) minuteDays.add(dayKey(point.t));
                     if (append && nextCursor) minuteDays.add(`${nextCursor.slice(0,4)}-${nextCursor.slice(4,6)}-${nextCursor.slice(6,8)}`);
                 }
-                const hasFlow = points.some(point => series.some(field => Number.isFinite(point[field])));
-                const periodPoints=mode==='minute' && todayOnly?points.filter(p=>dayKey(p.t)===dayKey(Date.now())):points;
+                const hasFlow = points.some(point => cardSeries.some(field => Number.isFinite(point[field])));
+                const periodPoints=mode==='minute' && todayOnly?points.filter(p=>dayKey(p.t)===window.RankChartAxis.sessionDay()):points;
                 const period = periodPoints.length ? `${dayKey(periodPoints[0].t)}${dayKey(periodPoints[0].t) === dayKey(periodPoints.at(-1).t) ? '' : ' ~ ' + dayKey(periodPoints.at(-1).t)}` : '당일 자료 없음';
-                const message = mode === 'minute' ? `${period}` : `일별 순매수수량 · ${points.length.toLocaleString()}봉`;
+                const message = mode === 'minute' ? `${period}` : `일별 순매수${futures ? ' 계약' : '수량'} · ${points.length.toLocaleString()}봉`;
                 let warnings = (result.warnings || []).filter(text => !text.startsWith('1분마다 관측한 당일 누적 순매수수량'));
                 warnings = window.RankSupplyGuide?.loadingWarnings(panel, mode, warnings) || warnings;
                 chartMessage = `${hasFlow ? message : '수급 기록 없음'}${warnings.length ? ` · ${warnings.join(' · ')}` : ''}${result.status?.error && mode === 'minute' ? ` · ${result.status.error}` : ''}`;
@@ -704,6 +719,7 @@
         resize(); document.dispatchEvent(new Event(eventName('rank-supply-ready')));
         if (!window.rankIndependentClient && !window.rankManagedChartRefresh) window[api('refreshRankSupplyChart')]();
     }
-    const initializeAll = () => { if (window.rankIndependentClient) initialize(); else initialize('combined'); };
+    // Main page: the combined stock supply card and the 종목 선물 수급 card (same selection and refresh policy).
+    const initializeAll = () => { if (window.rankIndependentClient) initialize(); else { initialize('combined'); initialize('futures'); } };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initializeAll, { once: true }); else initializeAll();
 })();

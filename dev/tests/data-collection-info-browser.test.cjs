@@ -24,10 +24,10 @@ test('trading tab 데이터 수집 i sits just left of the note and opens a read
    const tables=[...d.querySelectorAll('table')].map(t=>({width:t.getBoundingClientRect().width,scroll:t.parentElement.scrollWidth-t.parentElement.clientWidth}));
    const text=d.textContent;
    return {open:d.open,width:r.width,titles,body,tables,gap:d.querySelectorAll('.data-collection-category')[1].getBoundingClientRect().top-d.querySelectorAll('.data-collection-category')[0].getBoundingClientRect().bottom,
-    has:['※ 키움 ka10060 · ka90008 [정기-키움종목]로도 수집 가능','※ LS t1717(투자자) · t1637(프로그램) [정기-LS종목]로도 수집 가능','kiwoom-market-supply','저장 안 함','t1717은 투자자, t1637은 프로그램','트레이딩 탭의 표 3개는 저장하지 않고','[조회]','실시간-키움VI','VI 모니터 (별도 창)','로컬 서버에서만'].map(s=>text.includes(s)),noRequest:!text.includes('요청')&&!text.includes('LS2')&&!text.includes('변경 예정')};});
+    has:['※ 키움 ka10060 · ka90008 [정기-키움종목]로도 수집 가능','※ LS t1717(투자자) · t1637(프로그램) [정기-LS종목]로도 수집 가능','kiwoom-market-supply','저장 안 함','t1717은 투자자, t1637은 프로그램','트레이딩 탭의 표 4개는 저장하지 않고','[조회]','실시간-키움VI','VI 모니터 (별도 창)','로컬 서버에서만'].map(s=>text.includes(s)),noRequest:!text.includes('요청')&&!text.includes('오늘 추가')&&text.includes('EGW00121')&&!text.includes('대체 원천으로 수집만')&&text.includes('ALT_SUPPLY_COLLECTION=on')&&!text.includes('LS2')&&!text.includes('변경 예정')};});
   assert.equal(view.open,true);
   assert.ok(view.width>=1400,JSON.stringify(view.width));
-  assert.deepEqual(view.titles.map(t=>t.text),['받는 방식 묶음','표 4개','차트 9개']);
+  assert.deepEqual(view.titles.map(t=>t.text),['받는 방식 묶음','표 5개','차트 10개','토큰']);
   for(const t of view.titles)assert.ok(t.size>view.body+2,JSON.stringify(view));
   assert.ok(view.gap>=24,String(view.gap));
   for(const t of view.tables)assert.ok(t.scroll<=1&&t.width<=view.width,JSON.stringify(view.tables));

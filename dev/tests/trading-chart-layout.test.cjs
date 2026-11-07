@@ -17,10 +17,11 @@ await page.evaluate(()=>document.dispatchEvent(new Event('DOMContentLoaded')));a
 
 
 // Column 3 holds two test market supply cards (rows 1-2); its row 3 is empty.
-const rows=[['combinedConcentrationChartPanel','rankCombinedSupplyChartPanel','rankTestMarketSupplyChartPanel'],['rankBreadthChartPanel','rankCombinedTurnoverChartPanel','rankTestMarketSupplySecondaryChartPanel'],['rankAdrChartPanel','rankVolatilityChartPanel'],['rankSentimentChartPanel']];
+// Column 2 (2026-11-07): 종목 수급, 종목 선물 수급, 시장 거래대금, 변동성.
+const rows=[['combinedConcentrationChartPanel','rankCombinedSupplyChartPanel','rankTestMarketSupplyChartPanel'],['rankBreadthChartPanel','rankFuturesSupplyChartPanel','rankTestMarketSupplySecondaryChartPanel'],['rankAdrChartPanel','rankCombinedTurnoverChartPanel'],['rankSentimentChartPanel','rankVolatilityChartPanel']];
 let bottom=0;
 for(const ids of rows){const rects=await page.evaluate(ids=>ids.map(id=>{const r=document.getElementById(id).getBoundingClientRect();return{top:r.top,left:r.left,bottom:r.bottom};}),ids);assert.ok(rects[0].top>=bottom);for(let i=1;i<rects.length;i++){assert.equal(rects[i].top,rects[0].top);assert.ok(rects[i].left>rects[i-1].left);}bottom=Math.max(...rects.map(r=>r.bottom));}
-assert.equal(await page.locator('.rank-chart-row>.panel').count(),9);
+assert.equal(await page.locator('.rank-chart-row>.panel').count(),10);
 assert.equal(await page.locator('#rankCombinedMarketSupplyChartPanel,#rankCombinedMarketSupplySecondaryChartPanel').count(),0);
 assert.deepEqual(await page.locator('.rank-chart-row>.panel h2').evaluateAll(h=>h.map(x=>x.textContent).filter(t=>t==='시장 수급')),['시장 수급','시장 수급']);
 await page.setViewportSize({width:600,height:1000});
