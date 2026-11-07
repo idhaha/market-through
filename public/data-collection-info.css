@@ -1,0 +1,15 @@
+/* Trading tab "데이터 수집 i" popup. Wide enough to read; columns shrink to their content. */
+.data-collection-info { margin-right:4px; }
+.data-collection-dialog { width:min(1500px, calc(100vw - 32px)); max-width:calc(100vw - 32px); box-sizing:border-box; max-height:90vh; margin:auto; padding:24px 28px; border:1px solid #64748b; border-radius:12px; color:var(--text-primary,#172033); background:var(--bg-secondary,#fff); overflow:auto; font-size:14px; line-height:1.55; }
+.data-collection-dialog::backdrop { background:#0f172a99; }
+.data-collection-dialog h2 { margin:0 0 6px; font-size:21px; }
+.data-collection-category + .data-collection-category { margin-top:34px; }
+.data-collection-category h3 { margin:18px 0 8px; font-size:18px; }
+.data-collection-note { margin:0 0 8px; color:var(--text-secondary,#475569); }
+.data-collection-scroll { overflow-x:auto; }
+.data-collection-dialog table { width:auto; max-width:100%; border-collapse:collapse; table-layout:auto; }
+.data-collection-dialog th,.data-collection-dialog td { border:1px solid #94a3b8; padding:6px 10px; text-align:left; vertical-align:top; white-space:pre-line; }
+.data-collection-dialog thead th { background:#e2e8f033; white-space:nowrap; }
+.data-collection-dialog tbody th { white-space:nowrap; font-weight:600; }
+.data-collection-dialog .data-collection-group { font-weight:700; background:#94a3b822; }
+.data-collection-dialog button:focus-visible { outline:3px solid #2563eb; outline-offset:3px; }

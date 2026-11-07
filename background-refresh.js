@@ -51,7 +51,8 @@ function buildJobs(settings={},now=Date.now()){
  const supply=display.combinedSupply||{},selected=valid(supply.selected)?supply.selected:stocks[0]?.code;
  if(valid(selected)&&stocks.some(s=>s.code===selected)){
   const m=supply.mode==='minute'?'minute':supply.mode==='day'?'day':mode;
-  add('종목수급',m==='minute'?'/api/ls-supply/chart':'/api/supply/chart',{code:selected,mode:m});
+  // Same source as the combined stock supply card: KIS minute, Kiwoom day.
+  add('종목수급',m==='minute'?'/api/kis-supply/chart':'/api/supply/chart',{code:selected,mode:m});
   add('수급 종목 가격','/api/supply/candles',{code:selected,mode:m});
  }
  add('시장 거래대금',mode==='minute'?'/api/ls-turnover/chart':'/api/turnover/chart',{mode});

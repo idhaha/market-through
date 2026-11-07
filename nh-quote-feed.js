@@ -8,6 +8,10 @@ const path = require('node:path');
 const REST = 'https://api.nhplug.com:8443', SOCKET = 'wss://api.nhplug.com:7070/websocket';
 const channels = { KRX: 'oc', NXT: 'nc', FUT: 'vC' };
 const num = v => v == null || String(v).trim() === '' || !Number.isFinite(Number(v)) ? null : Number(v);
+// NH stock ticks (oc/nc): chrate is unsigned in the spec sample, so the sign code decides the direction
+// (4/5/8/9 = 하한/하락). value is the accumulated trade value in million KRW, the VI table's unit.
+const falling = sign => ['4', '5', '8', '9'].includes(String(sign || '').trim());
+const signedRate = (rate, sign) => { const n = num(rate); return n == null ? null : falling(sign) && n > 0 ? -n : n; };
 const redact = text => String(text || '').replace(/[A-Za-z0-9_\-+\/=.]{24,}/g, '[redacted]').slice(0, 160);
 
 function createNhQuoteFeed({ credentials, tokenFile, fetch = globalThis.fetch, WebSocket = require('ws'), now = Date.now,
@@ -73,7 +77,7 @@ function createNhQuoteFeed({ credentials, tokenFile, fetch = globalThis.fetch, W
         if (!stats.has(key)) stats.set(key, { key, ticks: 0, rest: 0, priceChanges: 0, subscribedAt: null, firstTickAt: null, lastTickAt: null, gaps: [], lastPrice: null, errors: 0 });
         return stats.get(key);
     }
-    function deliver(exchange, key, price, sourceTime, via) {
+    function deliver(exchange, key, price, sourceTime, via, extra = {}) {
         const s = stat(id(exchange, key)), t = now();
         if (via === 'WS') {
             if (s.lastTickAt) { s.gaps.push(t - s.lastTickAt); if (s.gaps.length > 5000) s.gaps.splice(0, 2500); }
@@ -81,7 +85,7 @@ function createNhQuoteFeed({ credentials, tokenFile, fetch = globalThis.fetch, W
         } else s.rest++;
         if (price !== s.lastPrice) s.priceChanges++;
         s.lastPrice = price;
-        onQuote({ exchange, key, price, sourceTime, via, receivedAt: t });
+        onQuote({ exchange, key, price, sourceTime, via, receivedAt: t, ...extra });
     }
     function receive(raw) {
         let message; try { message = JSON.parse(String(raw)); } catch { return; }
@@ -111,7 +115,8 @@ function createNhQuoteFeed({ credentials, tokenFile, fetch = globalThis.fetch, W
         }
         const price = num(exchange === 'FUT' ? b.fucurr : b.price);
         if (!(price > 0)) return;
-        deliver(exchange, key, price, String(exchange === 'FUT' ? b.futime : b.time || ''), 'WS');
+        deliver(exchange, key, price, String(exchange === 'FUT' ? b.futime : b.time || ''), 'WS',
+            exchange === 'FUT' ? {} : { rate: signedRate(b.chrate, b.sign), amount: num(b.value) });
     }
     function send(trType, key, entry) {
         socket.send(JSON.stringify({ header: { token, tr_type: trType }, body: { tr_cd: channels[entry.exchange], tr_key: entry.key } }));
@@ -186,7 +191,10 @@ function createNhQuoteFeed({ credentials, tokenFile, fetch = globalThis.fetch, W
                     ? rest('/krfuture/quote/v1/day', { iem_cd: 'K' + entry.key })
                     : rest('/krstock/quote/v1/currentPrice', { market_cd: entry.exchange, iem_cd: entry.key }));
                 const price = num(entry.exchange === 'FUT' ? output.prpr : output.stck_prpr);
-                if (price > 0) deliver(entry.exchange, entry.key, price, '', 'REST');
+                // REST acml_tr_pbmn is in KRW (the websocket value is in million KRW).
+                const amount = num(output.acml_tr_pbmn);
+                if (price > 0) deliver(entry.exchange, entry.key, price, '', 'REST',
+                    entry.exchange === 'FUT' ? {} : { rate: signedRate(output.prdy_ctrt, output.prdy_vrss_sign), amount: amount == null ? null : amount / 1e6 });
             } catch (error) {
                 if (entry.exchange === 'NXT' && error.code === '00500') { markNxtUnavailable(entry.code); continue; }
                 stat(key).errors++; event('rest_error', { key, message: redact(error.message) });
@@ -197,19 +205,21 @@ function createNhQuoteFeed({ credentials, tokenFile, fetch = globalThis.fetch, W
         restTimer = setTimeout(async () => { await pollRest().catch(() => {}); if (!stopped) scheduleRest(); }, restIntervalMs);
         restTimer.unref?.();
     }
-    // code: 6-digit stock; future: 8-character LS/NH futures code (e.g. A116B000).
+    // code: 6-digit stock; futures: 8-character LS/NH futures codes (e.g. A116B000), nearest first.
     function markNxtUnavailable(code) {
         nxtTradable.set(code, false);
         if (wanted.delete(id('NXT', code))) { event('nxt_unavailable', { key: id('NXT', code) }); sync(); }
     }
-    function addKeys(code, future) {
-        for (const [exchange, key] of [['KRX', code], ...(nxtTradable.get(code) === false ? [] : [['NXT', code]]), ...(future ? [['FUT', future]] : [])])
+    function addKeys(code, futures) {
+        for (const [exchange, key] of [['KRX', code], ...(nxtTradable.get(code) === false ? [] : [['NXT', code]]), ...futures.map(f => ['FUT', f])])
             if (!wanted.has(id(exchange, key))) wanted.set(id(exchange, key), { exchange, key, code });
         sync(); void connect();
     }
-    function watch(code, { future } = {}) {
-        requested.set(code, future);
-        if (nxtTradable.has(code)) return addKeys(code, future);
+    function watch(code, { future, futures = future ? [future] : [] } = {}) {
+        futures = futures.filter(Boolean);
+        // A later call (e.g. once the futures months are known) adds keys; keys already wanted stay.
+        requested.set(code, futures);
+        if (nxtTradable.has(code)) return addKeys(code, futures);
         // Ask once whether NXT lists the stock before giving it a subscription slot.
         if (!probes.has(code)) probes.set(code, paced(() => rest('/krstock/quote/v1/currentPrice', { market_cd: 'NXT', iem_cd: code }))
             .then(() => true, error => error.code !== '00500')

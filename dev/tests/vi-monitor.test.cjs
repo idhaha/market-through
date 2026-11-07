@@ -6,7 +6,7 @@ const path=require('node:path');
 const {EventEmitter}=require('node:events');
 const express=require('express');
 const {chromium}=require('playwright');
-const {createViMonitor}=require('../../vi-monitor-service');
+const {createViMonitor,parseKiwoomVi}=require('../../vi-monitor-service');
 const {createViWindowAccess}=require('../../vi-monitor-routes');
 const {createQuoteCadence}=require('../../quote-cadence');
 const {execFile}=require('node:child_process');
@@ -14,7 +14,8 @@ const {promisify}=require('node:util');
 class FakeSocket extends EventEmitter {
     static OPEN=1; static instances=[];
     constructor(){super();this.readyState=1;this.sent=[];FakeSocket.instances.push(this);setImmediate(()=>this.emit('open'));}
-    send(raw){const m=JSON.parse(raw);this.sent.push(m);setImmediate(()=>this.emit('message',JSON.stringify({header:{tr_cd:m.body.tr_cd,rsp_cd:'00000'},body:{}})));}
+    // Kiwoom websocket: LOGIN and REG are answered with return_code 0.
+    send(raw){const m=JSON.parse(raw);this.sent.push(m);if(['LOGIN','REG'].includes(m.trnm))setImmediate(()=>this.emit('message',JSON.stringify({trnm:m.trnm,return_code:0})));}
     ping(){this.emit('pong');}
     terminate(){if(this.readyState===3)return;this.readyState=3;this.emit('close');}
     close(){this.terminate();}
@@ -26,17 +27,28 @@ async function main(){
     assert.equal(cadence.receive('VI_',{price:100,chetime:'090000',shcode:'005930'},0),false);
     for(const [at,price,chetime]of [[0,100,'090000'],[100,100,'090000'],[400,101,'090000'],[1000,101,'090001']])cadence.receive('S3_',{price,chetime,shcode:'005930'},at);
     const measured=cadence.snapshot()[0];assert.equal(measured.messages,4);assert.equal(measured.priceChanges,1);assert.equal(measured.sameSecondMessages,2);assert.equal(measured.meanMs,1000/3);assert.equal(measured.medianMs,300);assert.equal(measured.p95Ms,600);
+    // Real Kiwoom 1h records from 2026-11-05 (outputs/vi-compare-20261105): a release repeats 1223 and 9068 and fills 1224.
+    const real=(item,time,release)=>({type:'1h',item,values:{'1223':time,'1224':release,'9068':'1','9069':'1','9008':'001','1221':'265000','1236':'218000','1237':'0'}});
+    assert.deepEqual(parseKiwoomVi(real('005930_NX','080000','000000')),{code:'005930',exchange:'NXT',kind:'1',clock:'080000',direction:'up',market:'K'});
+    assert.deepEqual(parseKiwoomVi(real('005930_NX','080000','080200')),{code:'005930',exchange:'NXT',kind:'0',clock:'080200',direction:'up',market:'K'},'A Kiwoom release uses 1224 as its time');
+    assert.equal(parseKiwoomVi(real('005930_AL','080000','000000')),null,'SOR copies are skipped');
+    assert.equal(parseKiwoomVi(real('005930','080000','000000')).exchange,'KRX');
+    const extension=real('005930','080000','000000');extension.values['9068']='4';
+    assert.equal(parseKiwoomVi(extension),null,'VI 연장 is not a new activation');
     let clock=Date.parse('2026-11-02T09:05:00+09:00');
     const directory=fs.mkdtempSync(path.join(os.tmpdir(),'vi-monitor-'));
     const http={post:async(url,body,{headers})=>{
         const tr=headers.tr_cd;const data={rsp_cd:'00000'};
         if(tr==='t8436')data.t8436OutBlock=[{shcode:'005930',hname:'삼성전자',gubun:'1'},{shcode:'000660',hname:'SK하이닉스',gubun:'1'}];
         if(tr==='t8401')data.t8401OutBlock=[{basecode:'A005930',shcode:'111V2000',hname:'삼성전자 F 202701'},{basecode:'A005930',shcode:'D116B6CS',hname:'삼성전자 SP 2611-2'},{basecode:'A005930',shcode:'111V1000',hname:'삼성전자 F 202612'}];
-        if(tr==='t1102')data.t1102OutBlock={price:100,diff:1,value:50};
         if(tr==='t8402')data.t8402OutBlock={price:body.t8402InBlock.focode==='111V1000'?103:104,lastmonth:body.t8402InBlock.focode==='111V1000'?'20261210':'20270114'};
         return {data};
     }};
-    const service=createViMonitor({now:()=>clock,policy:()=>null,directory,http,getToken:async()=>'test-secret',WebSocket:FakeSocket});
+    const feed={watched:new Map(),unwatched:[],started:0,watch(code,{futures=[]}={}){this.watched.set(code,futures);},unwatch(code){this.watched.delete(code);this.unwatched.push(code);},start(){this.started++;},stop(){},state(){return {wanted:this.watched.size,subscribed:this.watched.size,rest:0};}};
+    // A server with VI_MONITOR_REALTIME=false never opens the Kiwoom socket, even when a VI window starts it.
+    const off=createViMonitor({now:()=>clock,policy:()=>null,http,getToken:async()=>'x',kiwoomToken:async()=>'x',WebSocket:FakeSocket,enabled:()=>false,quoteFeed:feed});
+    off.start();assert.equal(FakeSocket.instances.length,0);assert.equal(feed.started,0);assert.match(off.snapshot().connection,/꺼 두었습니다/);
+    const service=createViMonitor({now:()=>clock,policy:()=>null,directory,http,getToken:async()=>'ls-test',kiwoomToken:async()=>'test-secret',WebSocket:FakeSocket,quoteFeed:feed,releaseGraceMs:50});
     const app=express();app.use(express.json());let sessionValid=true;
     const session=req=>sessionValid&&req.headers.cookie==='login=valid'?{email:'user@test'}:null;
     const access=createViWindowAccess({session,now:()=>clock});
@@ -80,10 +92,12 @@ async function main(){
         assert.equal((await fetch(origin+'/api/vi-monitor/window-scale',{method:'POST',headers:{cookie:'login=valid','Content-Type':'application/json'},body:JSON.stringify({token:grant.token,scale:1.25})})).status,200);
         await page.waitForFunction(()=>window.__native.includes('page-scale:1.25'));
         assert.equal((await fetch(origin+'/api/vi-monitor/window-scale',{method:'POST',headers:{cookie:'login=valid','Content-Type':'application/json'},body:JSON.stringify({token:'0'.repeat(64),scale:1})})).status,404);
-        assert.equal((await fetch(origin+'/api/vi-monitor/window-scale',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:grant.token,scale:1})})).status,401);await page.waitForFunction(()=>document.getElementById('viStatus').textContent.includes('구독 중'));
-        const socket=FakeSocket.instances[0];assert.ok(socket.sent.some(m=>m.body.tr_cd==='VI_'&&m.body.tr_key==='000000'));assert.ok(socket.sent.some(m=>m.body.tr_cd==='NVI'&&m.body.tr_key==='N000000   '));
-        const event=(tr,code,kind,time)=>socket.emit('message',JSON.stringify({header:{tr_cd:tr},body:{vi_gubun:kind,shcode:code,ex_shcode:tr==='NVI'?'N'+code:undefined,time,vi_trgprice:code==='000660'?90:120,svi_recprice:100,dvi_recprice:100}}));
-        event('VI_','005930','1','090000');event('VI_','000660','2','090100');event('NVI','005930','3','090200');
+        assert.equal((await fetch(origin+'/api/vi-monitor/window-scale',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:grant.token,scale:1})})).status,401);await page.waitForFunction(()=>document.getElementById('viStatus').textContent.includes('VI 실시간 수신 중'));
+        const socket=FakeSocket.instances[0];
+        assert.deepEqual(socket.sent.map(m=>m.trnm+':'+(m.data?m.data[0].item[0]:m.token)),['LOGIN:test-secret','REG:','REG:_NX']);
+        // Kiwoom 1h: item suffix _NX = NXT, _AL = SOR copy; 1224 is 000000 until the release.
+        const event=(item,kind,time,release='000000')=>socket.emit('message',JSON.stringify({trnm:'REAL',data:[{type:'1h',item,values:{'1223':time,'1224':release,'9068':kind,'9069':item.startsWith('000660')?'2':'1','9008':'001','1221':item.startsWith('000660')?'90':'120','1236':'100','1237':'100'}}]}));
+        event('005930','1','090000');event('000660','2','090100');event('005930_NX','3','090200');event('005930_AL','3','090200');
         await page.waitForFunction(()=>document.querySelectorAll('#viBody tr[data-code]').length===3);
         assert.equal(await page.locator('#viBody tr').first().getAttribute('data-exchange'),'NXT');
         assert.equal(await page.locator('#viBody tr').first().locator('td').nth(6).textContent(),'동적,정적');
@@ -114,14 +128,18 @@ async function main(){
         assert.deepEqual(await sortIcons(),{rate:'arrows:none',amount:'arrows:none',startedAt:'arrows:descending',nxtRate:'arrows:none',futureRate:'arrows:none'});
         // Activation time is already beyond 2 minutes: do not falsely release a VI on a timer.
         assert.equal(await page.locator('#viBody tr').first().locator('td').nth(9).textContent(),'해제 수신 대기');
-        event('NVI','005930','0','090400');await page.waitForFunction(()=>document.querySelector('#viBody tr[data-exchange="NXT"]').classList.contains('released'));
+        // The release repeats the activation time (1223 = 09:02:00); the shown release time must be 1224.
+        event('005930_NX','3','090200','090400');await page.waitForFunction(()=>document.querySelector('#viBody tr[data-exchange="NXT"]').classList.contains('released'));
         assert.equal(await page.locator('#viBody tr').count(),3);assert.equal(await page.locator('#viBody tr[data-exchange="NXT"] td').nth(8).textContent(),'09:04:00');
         assert.equal(await page.locator('#viBody tr[data-exchange="NXT"]').getAttribute('class'),'released');
         assert.equal(await page.locator('#viBody tr[data-exchange="NXT"] td').first().evaluate(el=>getComputedStyle(el).animationName),'none');
         // An older activation must not revive a released event.
-        event('NVI','005930','2','090300');assert.equal(service.snapshot().rows.find(r=>r.exchange==='NXT').active,false);
-        const quote=(tr,b)=>socket.emit('message',JSON.stringify({header:{tr_cd:tr},body:{chetime:'090459',...b}}));
-        quote('S3_',{shcode:'005930',price:100,drate:1.25,value:123456});quote('NS3',{ex_shcode:'N005930',price:102,drate:2,value:55});quote('JC0',{futcode:'111V1000',price:103});quote('JC0',{futcode:'111V2000',price:104});
+        event('005930_NX','2','090300');assert.equal(service.snapshot().rows.find(r=>r.exchange==='NXT').active,false);
+        // NH prices arrive through the quote feed; the monitor asked it for the stock and both futures months.
+        for(let i=0;i<500&&feed.watched.get('005930')?.length!==2;i++)await pause(20);
+        assert.deepEqual(feed.watched.get('005930'),['111V1000','111V2000']);assert.ok(feed.watched.has('000660'));
+        const quote=q=>service.onQuote({via:'WS',receivedAt:clock,...q});
+        quote({exchange:'KRX',key:'005930',price:100,rate:1.25,amount:123456});quote({exchange:'NXT',key:'005930',price:102,rate:2,amount:55});quote({exchange:'FUT',key:'111V1000',price:103});quote({exchange:'FUT',key:'111V2000',price:104});
         await page.waitForFunction(()=>[...document.querySelectorAll('#viBody tr[data-code="005930"]')].some(tr=>tr.cells[10].textContent==='+2.00%'));
         // Wait for the actual REST enrichment path to assign the current/next contracts.
         await page.waitForFunction(()=>[...document.querySelectorAll('#viBody tr[data-code="005930"]')].some(tr=>tr.cells[11].textContent==='+3.00%'),null,{timeout:20000});
@@ -138,7 +156,7 @@ async function main(){
         assert.equal(await page.locator('#viBody tr[data-code="000660"]').evaluate(el=>el.classList.contains('vi-flash-down')),false);
         assert.equal(await page.locator('#viBody tr[data-code="005930"][data-exchange="KRX"]').evaluate(el=>el.classList.contains('vi-flash-up')),true);
         await pause(150);const beforeRestart=createViMonitor({directory,now:()=>clock,policy:()=>null});assert.equal(beforeRestart.snapshot().rows.find(r=>r.code==='000660').flashDismissed,true,'Dismissal survives a server restart');beforeRestart.stop();
-        event('VI_','000660','2','090450');await page.waitForFunction(()=>document.querySelector('#viBody tr[data-code="000660"]')?.classList.contains('vi-flash-down'));
+        event('000660','2','090450');await page.waitForFunction(()=>document.querySelector('#viBody tr[data-code="000660"]')?.classList.contains('vi-flash-down'));
         const releasedColor=await page.locator('#viBody tr.released td').first().evaluate(el=>getComputedStyle(el).color);assert.equal(releasedColor,'rgb(100, 116, 139)');
         const boxes=await page.locator('.panel').count();assert.equal(boxes,1);
         const aligned=await page.evaluate(()=>{
@@ -151,6 +169,9 @@ async function main(){
         if(process.argv.includes('--native')) {
             const result=await promisify(execFile)(path.resolve(__dirname,'../../desktop/build/ViNativeSmoke.exe'),[origin+'/vi-monitor.html#token='+grant.token],{cwd:path.resolve(__dirname,'../../desktop/build'),timeout:45000});process.stdout.write(result.stdout);
         }
+        // Prices stop a grace period after the stock's last VI ends, and not while one is active.
+        await pause(120);assert.equal(feed.unwatched.length,0);
+        event('005930','1','090000','090410');await pause(150);assert.deepEqual(feed.unwatched,['005930']);
         await pause(150);const restored=createViMonitor({directory,now:()=>clock,policy:()=>null});assert.equal(restored.snapshot().rows.length,3);assert.equal(restored.snapshot().rows.find(r=>r.exchange==='NXT').active,false);assert.equal(restored.snapshot().rows.find(r=>r.code==='000660').flashDismissed,undefined,'A later activation resets the dismissal');restored.stop();
         clock+=86400000;assert.equal(service.snapshot().rows.length,0);
         sessionValid=false;assert.equal((await fetch(origin+'/api/vi-monitor/stream',{headers:{'X-VI-Token':grant.token}})).status,401);

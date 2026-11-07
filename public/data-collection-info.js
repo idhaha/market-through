@@ -1,0 +1,127 @@
+(() => {
+    'use strict';
+    // Trading tab "데이터 수집 i": which broker, transport and file each table/chart uses.
+    // Keep in step with the server services when a source changes (checked 2026-11-07).
+    const groups = {
+        title: '받는 방식 묶음',
+        note: [
+            '같은 묶음 이름은 같은 연결 또는 같은 조회에서 받는 데이터입니다. 저장 경로는 서버의 data 폴더 기준입니다.',
+            '파일 저장: 서버가 직접 받는 실시간 연결과 정기 조회는 NH 현재가를 빼고 모두 data 아래 폴더에 저장됩니다. 화면 조회는 서버 메모리에만 잠시 보관합니다. 예외는 ADR 분봉(adr-minutes), 선물 주간 LS 조회분(ls-futures-test), 변동성·심리(volatility)입니다. 트레이딩 탭의 표 3개는 저장하지 않고, VI 모니터는 당일 VI 목록과 종목 정보를 vi-monitor에 저장합니다.',
+            '로컬 서버에서만: 장운영 알림[실시간-LS1]과 VI 모니터[실시간-키움VI · 실시간-NH · 정기-LS종목정보]는 로컬 서버에서만 켭니다. 오라클은 꺼 두어 화면에 "꺼 두었습니다"로 표시합니다.',
+            'LS 종목 수급 TR: t1717은 투자자, t1637은 프로그램입니다.'
+        ],
+        head: ['묶음', '증권사 · TR', '받는 데이터', '파일 저장'],
+        sections: [
+            ['실시간 연결 · 연결 하나에 여러 항목이 함께 들어옵니다', [
+                ['실시간-LS1', 'LS 웹소켓 1개 · JIF', '장운영 알림(사이드카 · 서킷브레이커) · 로컬 서버에서만', 'market-alerts (당일 경보 · 상태)'],
+                ['실시간-키움VI', '키움 웹소켓 1개 · 1h (전체 종목, _NX)', 'VI 모니터의 VI 발동 · 해제(KRX · NXT) · 로컬 서버에서만', 'vi-monitor (당일 VI 목록)'],
+                ['실시간-NH', 'NH 웹소켓 1개 · oc, nc, vC (최대 30건)', 'VI 걸린 종목의 KRX · NXT · 주식선물 현재가와 등락률 · 거래대금. 한도를 넘는 종목은 NH 조회(5초) · 로컬 서버에서만', '저장 안 함'],
+                ['실시간-한투', '한투 웹소켓 1개 · H0UNPGM0, H0UPCNT0', '등록 종목 프로그램 매매, KOSPI · KOSDAQ 지수 거래대금', 'kis-supply (프로그램)\nkis-turnover (지수 거래대금)']
+            ]],
+            ['서버 정기 조회 · 화면과 관계없이 장중에 서버가 조회해 저장합니다', [
+                ['정기-키움시장', '키움 ka10051, ka90005 · 1분', '현물 시장 투자자 · 프로그램', 'kiwoom-market-supply'],
+                ['정기-한투선물', '한투 FHPTJ04030000 · 1분', '선물 주간 투자자', 'market-supply'],
+                ['정기-LS야간', 'LS t8463(야간) · 1분', '선물 야간 투자자', 'market-supply'],
+                ['정기-한투종목', '한투 HHPTJ04160200 · 1분', '등록 종목 외국인 · 기관', 'kis-supply'],
+                ['정기-키움신고신저', '키움 ka10016 · 1분', '52주 신고가 · 신저가 종목 수', 'breadth'],
+                ['정기-지표', 'jusikbot risk-history · 1시간', '변동성 · Fear & Greed · 하이일드', 'volatility'],
+                ['정기-LS종목정보', 'LS t8436, t8401 · 하루 1회\nLS t8402 · 종목마다 하루 1회','VI 모니터의 종목명 · 시장, 주식선물 대응 · 만기(그날 첫 VI 때 조회) · 로컬 서버에서만', 'vi-monitor (masters.json)']
+            ]],
+            ['서버 정기 조회 · 화면에는 쓰지 않고 대체 원천으로 수집만 합니다', [
+                ['정기-LS시장', 'LS t1602(30초), t1662(1분)', 'KOSPI · KOSDAQ · 선물 투자자, 현물 프로그램', 'ls-market-supply'],
+                ['정기-LS종목', 'LS t1717(투자자), t1637(프로그램) · 1분', '등록 종목 투자자 · 프로그램', 'ls-supply'],
+                ['정기-키움종목', '키움 ka10060, ka90008 · 1분', '등록 종목 투자자 · 프로그램', 'supply'],
+                ['정기-한투지수', '한투 FHKUP03500200 · 1분', 'KOSPI · KOSDAQ 지수 분별 거래대금', 'kis-concentration']
+            ]],
+            ['화면 조회', [
+                ['조회', '표 · 차트별 TR (아래 표 참고)', '브라우저 자동 새로고침(기본 30초)이나 조작 때 서버가 증권사에 조회합니다.', '저장 안 함 (서버 메모리 캐시)\n예외는 아래 표에 표시'],
+                ['백그라운드 갱신', '화면 조회와 같은 TR', '브라우저가 하나도 없을 때 서버가 화면 조회를 대신 실행합니다(새로고침 간격 설정을 따름).', 'background-refresh (최근 결과)']
+            ]]
+        ]
+    };
+    const tables = {
+        title: '표 4개',
+        head: ['표', '증권사 · TR', '방식', '파일 저장'],
+        sections: [[null, [
+            ['거래대금 상위', '키움 ka10032, 종목정보 ka10100', '[조회] 장중에만 새로고침', '저장 안 함'],
+            ['실시간 조회 순위', '키움 ka00198', '[조회] 장중에만 새로고침', '저장 안 함'],
+            ['대주가능 종목', '한투 CTSC2702R(대주 수량), FHKST01010100(현재가), 한투 종목 마스터 파일', '[조회] 실시간 조회 순위를 받을 때 함께 조회', '저장 안 함'],
+            ['VI 모니터 (별도 창)', 'VI 발동 · 해제: 키움 1h\n현재가 · 등락률 · 거래대금: NH oc · nc · vC\n종목명 · 선물 대응 · 만기: LS t8436 · t8401 · t8402', '[실시간-키움VI] · [실시간-NH] · [정기-LS종목정보]\n로컬 서버에서만 수신 · 자세한 내용은 VI 창의 i', 'vi-monitor (당일 VI 목록, 종목 정보)\n현재가는 저장 안 함']
+        ]]]
+    };
+    const index = '키움 지수 ka20005(분) · ka20006(일)\n[조회] · 저장 안 함';
+    const charts = {
+        title: '차트 9개',
+        head: ['차트', '분봉', '일봉', '가격 캔들'],
+        sections: [[null, [
+            ['쏠림율', 'LS 종목 t8452 ÷ 시장 t8409\n[조회] · 저장 안 함\n※ 한투 지수 거래대금 FHKUP03500200 [정기-한투지수] · H0UPCNT0 [실시간-한투]로도 수집 가능',
+                '키움 종목 ka10081 ÷ 시장 ka20006\n[조회] · 저장 안 함', '키움 ka10080(분) · ka10081(일)\n[조회] · 저장 안 함'],
+            ['시장 거래대금', 'LS t8409\n[조회] · 저장 안 함\n※ 한투 H0UPCNT0 [실시간-한투] · FHKUP03500200 [정기-한투지수]로도 수집 가능',
+                '키움 ka20006\n[조회] · 저장 안 함', index],
+            ['종목 수급', '외국인 · 기관: 한투 HHPTJ04160200 [정기-한투종목]\n개인: 미제공\n프로그램: 한투 H0UNPGM0 [실시간-한투]\n저장: kis-supply\n※ 키움 ka10060 · ka90008 [정기-키움종목]로도 수집 가능\n※ LS t1717(투자자) · t1637(프로그램) [정기-LS종목]로도 수집 가능',
+                '키움 ka10060(투자자) · ka90013(프로그램)\n[조회] · 저장 안 함', '키움 ka10080(분) · ka10081(일)\n[조회] · 저장 안 함'],
+            ['시장 수급 (KOSPI · KOSDAQ)', '키움 ka10051 · ka90005 [정기-키움시장]\n저장: kiwoom-market-supply\n※ LS t1602 · t1662 [정기-LS시장]로도 수집 가능',
+                'LS t1665(투자자) · t1633(프로그램)\n[조회] · 저장 안 함', index],
+            ['시장 수급 (선물)', '주간: 한투 FHPTJ04030000 [정기-한투선물] 저장값을 먼저 보이고 LS t8463(주간) [조회]으로 보완\n야간: LS t8463 [정기-LS야간]\n저장: market-supply, ls-futures-test(LS 주간 조회분)\n※ LS t1602(선물 900/901) [정기-LS시장]로도 수집 가능',
+                'LS t8462(주간만)\n[조회] · 저장 안 함', 'LS t8465(주간 분) · t8461(야간 분) · t2214(주간 일) · t8459(야간 일)\n[조회] · 저장 안 함'],
+            ['52주 신고/신저', '키움 ka10016 [정기-키움신고신저]\n저장: breadth', '같은 저장값으로 만든 일별 값\n저장: breadth', index],
+            ['ADR', 'jusikbot adr/today\n[조회] · 저장: adr-minutes', 'jusikbot adr/history\n[조회] · 저장 안 함', index],
+            ['변동성', '없음 (일봉만)', 'jusikbot risk-history\n[조회] · [정기-지표]\n저장: volatility', '없음'],
+            ['Fear & Greed · 하이일드', '없음 (일봉만)', 'jusikbot risk-history (변동성과 같은 조회)\n[조회] · [정기-지표]\n저장: volatility', '없음']
+        ]]]
+    };
+
+    function build(dialog, spec) {
+        const block = document.createElement('section'); block.className = 'data-collection-category';
+        const title = document.createElement('h3'); title.textContent = spec.title; block.append(title);
+        for (const line of spec.note || []) { const note = document.createElement('p'); note.className = 'data-collection-note'; note.textContent = line; block.append(note); }
+        const scroll = document.createElement('div'); scroll.className = 'data-collection-scroll'; block.append(scroll);
+        const table = document.createElement('table'); scroll.append(table);
+        const headRow = table.createTHead().insertRow();
+        for (const label of spec.head) { const th = document.createElement('th'); th.scope = 'col'; th.textContent = label; headRow.append(th); }
+        const body = table.createTBody();
+        for (const [caption, rows] of spec.sections) {
+            if (caption) { const cell = body.insertRow().insertCell(); cell.colSpan = spec.head.length; cell.className = 'data-collection-group'; cell.textContent = caption; }
+            for (const values of rows) {
+                const row = body.insertRow();
+                values.forEach((value, i) => {
+                    const cell = document.createElement(i ? 'td' : 'th'); if (!i) cell.scope = 'row';
+                    cell.textContent = value; row.append(cell);
+                });
+            }
+        }
+        dialog.append(block);
+    }
+
+    window.MarketThroughGuide = { build };
+
+    function initialize() {
+        // The VI window loads this file only for build(); it has no trading tab.
+        const controls = document.querySelector('#tab_rank .header-controls');
+        if (!controls || document.getElementById('dataCollectionGuide')) return;
+        const info = document.createElement('span'); info.className = 'market-alert-info data-collection-info'; info.append('데이터 수집');
+        const icon = document.createElement('button');
+        icon.type = 'button'; icon.className = 'chart-info-button market-alert-info-icon'; icon.textContent = 'i';
+        icon.setAttribute('aria-label', '데이터 수집 안내'); icon.setAttribute('aria-haspopup', 'dialog'); icon.setAttribute('aria-controls', 'dataCollectionGuide');
+        info.append(icon);
+        // Just left of the note button; the note sits left of the capture button.
+        const note = document.getElementById('quickNoteButton');
+        if (note && note.parentElement === controls) controls.insertBefore(info, note);
+        else controls.insertBefore(info, controls.querySelector('.capture-btn-small') || controls.firstChild);
+
+        const dialog = document.createElement('dialog'); dialog.id = 'dataCollectionGuide'; dialog.className = 'data-collection-dialog';
+        dialog.setAttribute('aria-labelledby', 'dataCollectionGuideTitle');
+        const close = document.createElement('button'); close.type = 'button'; close.className = 'market-alert-dialog-close'; close.textContent = '닫기';
+        close.addEventListener('click', () => dialog.close()); dialog.append(close);
+        const heading = document.createElement('h2'); heading.id = 'dataCollectionGuideTitle'; heading.textContent = '데이터 수집 안내'; dialog.append(heading);
+        for (const spec of [groups, tables, charts]) build(dialog, spec);
+        document.body.append(dialog);
+        icon.addEventListener('click', () => dialog.showModal());
+        dialog.addEventListener('click', event => {
+            if (event.target !== dialog) return;
+            const r = dialog.getBoundingClientRect();
+            if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) dialog.close();
+        });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initialize, { once: true }); else initialize();
+})();

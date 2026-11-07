@@ -289,12 +289,34 @@ const lsMarketSupplyProvider = require('./ls-market-supply').createLsMarketSuppl
     mode: () => (process.env.LS_MARKET_SUPPLY_MODE || 'rest').trim(),
     credentials: () => ({ appKey: (process.env.LS_APPKEY || '').trim(), secretKey: (process.env.LS_SECRETKEY || '').trim() })
 });
+// Every LS REST caller shares this axios and one LS token. A token rejection clears it so the next
+// call issues a new one; before 2026-11-07 a rejected token was kept until it expired (11/6 outage).
+{
+    const { lsTokenRejected } = require('./ls-market-supply');
+    const isLs = config => { const url = String(config?.url || ''); return url.startsWith('https://openapi.ls-sec.co.kr:8080/') && !url.includes('/oauth2/'); };
+    const check = response => { if (isLs(response?.config) && lsTokenRejected(response.status, response.data) && lsMarketSupplyProvider.invalidateToken()) console.warn('[LS] 토큰 거절 · 다음 조회에서 다시 발급'); };
+    axios.interceptors.response.use(response => { check(response); return response; }, error => { check(error.response); throw error; });
+}
 const marketAlertService = require('./market-alert-service').createMarketAlerts({
-    directory: path.join(__dirname, 'data', 'market-alerts'), getToken: () => lsMarketSupplyProvider.accessToken()
+    directory: path.join(__dirname, 'data', 'market-alerts'), getToken: () => lsMarketSupplyProvider.accessToken(),
+    rejectToken: () => lsMarketSupplyProvider.invalidateToken(),
+    enabled: () => (process.env.MARKET_ALERT_REALTIME || '').trim() !== 'false'
+});
+// VI: Kiwoom realtime 1h events, NH current prices, LS daily masters. Run it on one server only:
+// VI_MONITOR_REALTIME=false (Oracle since 2026-11-07) keeps it off even when a VI window opens.
+let viQuoteHandler = () => {};
+const viQuoteFeed = require('./nh-quote-feed').createNhQuoteFeed({
+    credentials: () => ({ appKey: (process.env.NAMU_APPKEY || '').trim(), secretKey: (process.env.NAMU_SECRETKEY || '').trim() }),
+    tokenFile: path.join(__dirname, 'data', 'nh-plug', 'token.json'), onQuote: quote => viQuoteHandler(quote)
 });
 const viMonitorService = require('./vi-monitor-service').createViMonitor({
-    directory: path.join(__dirname, 'data', 'vi-monitor'), getToken: () => lsMarketSupplyProvider.accessToken(), http: axios
+    directory: path.join(__dirname, 'data', 'vi-monitor'), getToken: () => lsMarketSupplyProvider.accessToken(), http: axios,
+    enabled: () => (process.env.VI_MONITOR_REALTIME || '').trim() !== 'false',
+    kiwoomToken: () => getAccessToken((process.env.KIWOOM_APPKEY || '').trim(), (process.env.KIWOOM_SECRETKEY || '').trim()),
+    rejectKiwoomToken: () => { cachedToken = null; },
+    quoteFeed: viQuoteFeed
 });
+viQuoteHandler = viMonitorService.onQuote;
 viWindowAccess.mount(app, viMonitorService);
 app.get('/api/market-alerts', (req, res) => res.set('Cache-Control', 'no-store').json(marketAlertService.snapshot(req.authUser.email)));
 app.post('/api/market-alerts/acknowledge', (req, res) => {

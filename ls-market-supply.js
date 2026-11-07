@@ -61,6 +61,13 @@ function createLsMarketSupply({ directory, http, credentials, supply, now = Date
             && typeof item.evidence === 'string' && item.evidence.trim()
             && Number.isFinite(item.toMillionWon) && item.toMillionWon > 0 ? item : null;
     }
+    // LS rejected the cached token (replaced or expired early): drop it so the next call issues a new one.
+    // A token issued within the last minute is kept, so two servers sharing the app key cannot loop.
+    let issuedAt = 0;
+    function invalidateToken() {
+        if (!token || now() - issuedAt < 60000) return false;
+        token = ''; expires = 0; return true;
+    }
     async function accessToken() {
         if (token && expires > now() + 60000) return token;
         if (tokenTask) return tokenTask;
@@ -72,7 +79,7 @@ function createLsMarketSupply({ directory, http, credentials, supply, now = Date
                     new URLSearchParams({ grant_type: 'client_credentials', appkey: appKey, appsecretkey: secretKey, scope: 'oob' }).toString(),
                     { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 10000 });
                 if (!response.data.access_token) throw new Error('token');
-                token = response.data.access_token;
+                token = response.data.access_token; issuedAt = now();
                 expires = now() + Math.max(60, Number(response.data.expires_in || response.data.expire_in) || 3600) * 1000;
                 return token;
             } catch (error) {
@@ -378,6 +385,13 @@ function createLsMarketSupply({ directory, http, credentials, supply, now = Date
         stopped = true; restGeneration++; clearInterval(timer); timer = null;
         const old = socket; socket = null; old?.close(); flush(true);
     }
-    return { store, collect, start, stop, receive, flush, warnings, status, accessToken, recover, pollRest };
+    return { store, collect, start, stop, receive, flush, warnings, status, accessToken, invalidateToken, recover, pollRest };
 }
-module.exports = { createLsMarketSupply, subscriptions, sourceTime, restSources };
+// LS answers a stale token with HTTP 401 or an error message about the token. The exact code was
+// not captured during the 2026-11-06 outage, so the message is matched as well.
+function lsTokenRejected(status, data) {
+    if (status === 401) return true;
+    const code = String(data?.rsp_cd ?? '');
+    return !!code && !/^0+$/.test(code) && /토큰|token/i.test(String(data?.rsp_msg || ''));
+}
+module.exports = { createLsMarketSupply, subscriptions, sourceTime, restSources, lsTokenRejected };

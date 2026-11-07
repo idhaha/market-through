@@ -11,7 +11,7 @@ const codes = {
     '66': ['sidecar', 'buy', 'start'], '67': ['sidecar', 'buy', 'release']
 };
 
-function createMarketAlerts({ directory, now = Date.now, getToken, WebSocket = require('ws'), log = console.warn } = {}) {
+function createMarketAlerts({ directory, now = Date.now, getToken, rejectToken = () => {}, enabled = () => true, WebSocket = require('ws'), log = console.warn } = {}) {
     const file = directory && path.join(directory, 'state.json');
     let state = { day: dayKey(now()), version: 0, events: [], acknowledged: {}, closed: [], diagnostics: [] };
     const epoch = crypto.randomUUID();
@@ -74,6 +74,8 @@ function createMarketAlerts({ directory, now = Date.now, getToken, WebSocket = r
         rollover();
         const header = message.header, body = message.body || {};
         if (header.rsp_cd != null && !['00000', '000000', '0'].includes(String(header.rsp_cd))) {
+            // A rejected token would be resent on every reconnect; let the provider issue a new one.
+            if (/토큰|token/i.test(String(header.rsp_msg || ''))) rejectToken();
             connection = 'JIF 구독 거부'; socket?.terminate(); return;
         }
         clearTimeout(ackTimer); ackTimer = null;
@@ -154,7 +156,9 @@ function createMarketAlerts({ directory, now = Date.now, getToken, WebSocket = r
         } catch { connection = 'LS 인증/연결 실패 · 설정 확인 필요'; log('[MarketAlerts] LS 인증/연결 실패'); retry(); }
         finally { connecting = false; }
     }
-    function start() { if (!stopped) return; stopped = false; void connect();
+    // MARKET_ALERT_REALTIME=false: alerts are received on the other server (local since 2026-11-07).
+    if (!enabled()) connection = '이 서버에서는 경보 수신을 꺼 두었습니다 (로컬 서버에서 수신)';
+    function start() { if (!enabled() || !stopped) return; stopped = false; void connect();
         if(require('./trading-session').current()){sessionTimer=setInterval(()=>{
             const open=require('./trading-session').current()?.spotAt(now());
             if(!open){clearTimeout(retryTimer);retryTimer=null;cleanup();const old=socket;socket=null;old?.terminate();connection='장외';}

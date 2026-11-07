@@ -48,3 +48,7 @@
 .vi-panel th .sort-icon circle { fill:var(--text-muted); stroke:none; }
 .vi-panel th[aria-sort="ascending"] .sort-icon .u, .vi-panel th[aria-sort="descending"] .sort-icon .d { stroke:var(--text-primary); stroke-width:1.6; }
 .vi-panel th button:hover { color:var(--text-primary); text-decoration:underline; }
+/* Top-right "i": VI sources, planned change, caveats and test results (vi-monitor-info.js). */
+.vi-panel .vi-controls .vi-info-button { position:static; width:20px; height:20px; padding:0; flex-shrink:0; cursor:help; }
+.vi-panel .vi-controls .vi-info-button:focus-visible { outline:3px solid #2563eb; outline-offset:3px; }
+.data-collection-dialog .vi-guide-close { float:right; padding:6px 12px; border:1px solid #64748b; background:transparent; color:inherit; border-radius:6px; cursor:pointer; }

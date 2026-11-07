@@ -93,7 +93,7 @@
                 buffer+=decoder.decode(value,{stream:true});
                 let end;while((end=buffer.indexOf('\n\n'))>=0){const frame=buffer.slice(0,end);buffer=buffer.slice(end+2);
                     if(frame.startsWith('event: scale\ndata: ')){try{applyScale(JSON.parse(frame.slice(frame.indexOf('data: ')+6)).scale);}catch{}continue;}
-                    if(frame.startsWith('data: ')){data=JSON.parse(frame.slice(6));status.textContent=[data.connection,data.storageError,data.historyWarning].filter(Boolean).join(' · ');render();}
+                    if(frame.startsWith('data: ')){data=JSON.parse(frame.slice(6));status.textContent=[data.connection,data.quoteConnection,data.storageError,data.historyWarning].filter(Boolean).join(' · ');render();}
                 }
             }
             if(!closed)throw Error('연결 중단');

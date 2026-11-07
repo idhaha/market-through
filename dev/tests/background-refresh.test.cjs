@@ -86,3 +86,9 @@ test('HTTP setting changes require admin; cached GETs retain pagination while PO
  const post=f.calls.find(j=>j.method==='POST');assert.equal(f.service.cached('POST',post.url,post.params),null);
  const invalid=await fetch(url,{method:'PUT',headers:{'Content-Type':'application/json','x-test-admin':'yes'},body:'{"enabled":"yes"}'});assert.equal(invalid.status,400);
 });
+test('background stock supply uses the same source as the combined card: KIS minute, Kiwoom day',()=>{
+ const {buildJobs}=require('../../background-refresh'),at=Date.parse('2026-11-06T10:00:00+09:00');
+ const job=mode=>buildJobs({rankChartDisplay:{mode,combinedSupply:{selected:'000660',mode}},backgroundSupply:{stocks:[{code:'000660'}]}},at).find(j=>j.name==='종목수급');
+ assert.equal(job('minute').url,'/api/kis-supply/chart');assert.deepEqual(job('minute').params,{code:'000660',mode:'minute'});
+ assert.equal(job('day').url,'/api/supply/chart');
+});
