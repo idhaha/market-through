@@ -17,11 +17,8 @@ fs.mkdirSync(out, { recursive: true });
 const wait = ms => new Promise(r => setTimeout(r, ms));
 let token = '', last = 0;
 async function ls(tr, endpoint, input, timeoutMs = 30000) {
-    if (!token) {
-        const r = await fetch('https://openapi.ls-sec.co.kr:8080/oauth2/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: AbortSignal.timeout(15000),
-            body: new URLSearchParams({ grant_type: 'client_credentials', appkey: process.env.LS_APPKEY || '', appsecretkey: process.env.LS_SECRETKEY || '', scope: 'oob' }) });
-        token = (await r.json()).access_token; if (!token) throw Error('LS 토큰 발급 실패');
-    }
+    // The running local server's LS token (data/ls-token/token.json); this script never issues one.
+    if (!token) token = await require('./server-ls-token.cjs').serverLsToken({ waitMs: 60000 });
     // One call per 1.1 s overall keeps every TR under the LS 1 call/s limit.
     await wait(Math.max(0, last + 1100 - Date.now())); last = Date.now();
     const started = Date.now();

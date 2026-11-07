@@ -202,22 +202,23 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
             amountAt:q.amount!=null?q.receivedAt??now():old?.amountAt,receivedAt:q.receivedAt??now(),source:'NH '+(q.via==='WS'?'실시간':'조회')});
         emit();
     }
-    // Unit check of NH trade value (million KRW, like the trading tab tables): when the Kiwoom table
-    // (ka10032 · ka00198, million KRW) lists a VI stock, record both values. Kiwoom _AL is KRX+NXT and NH oc
-    // is KRX only, so a ratio near 1 (not 1,000 or 0.001) confirms the unit. One line per stock per 10 minutes.
-    const amountChecked=new Map();
-    function compareAmounts(source,items) {
-        if(!directory||!Array.isArray(items))return 0;
-        let written=0;
-        for(const item of items) {
-            const code=String(item?.code||'').replace(/^A/,'').replace(/_(AL|NX)$/,''),kiwoom=num(String(item?.amount??'').replace(/[+,]/g,''));
-            const quote=quotes.get('KRX:'+code);
-            if(!quote||!(quote.amount>0)||!(kiwoom>0)||now()-(quote.amountAt||0)>120000||now()-(amountChecked.get(code)||0)<600000)continue;
-            amountChecked.set(code,now());
-            try{fs.mkdirSync(directory,{recursive:true});fs.appendFileSync(path.join(directory,'amount-check-'+day+'.jsonl'),JSON.stringify({at:new Date(now()).toISOString(),code,source,
-                kiwoomMillion:kiwoom,nhMillion:quote.amount,nhVia:quote.amountVia,nhAgeMs:now()-quote.amountAt,ratio:Math.round(quote.amount/kiwoom*1000)/1000})+'\n');written++;}catch{}
-        }
-        return written;
+    // NH trade value unit check: when the 거래대금 상위 table (Kiwoom ka10032, million KRW) is fetched, ask NH
+    // for 삼성전자 and record both. Kiwoom 005930_AL is KRX+NXT and NH KRX is KRX only, so NH (in million KRW)
+    // / Kiwoom a little below 1 confirms the unit. Only where the VI monitor is on; once per 10 minutes.
+    let samsungCheckedAt=0;
+    async function checkSamsungAmount(kiwoomAmount) {
+        const kiwoom=num(String(kiwoomAmount??'').replace(/[+,]/g,''));
+        if(!enabled()||!quoteFeed?.rest||!directory||!(kiwoom>0)||now()-samsungCheckedAt<600000)return null;
+        samsungCheckedAt=now();
+        const line={at:new Date(now()).toISOString(),code:'005930',kiwoomMillion:kiwoom};
+        try {
+            const o=await quoteFeed.rest('/krstock/quote/v1/currentPrice',{market_cd:'KRX',iem_cd:'005930'});
+            const raw=num(o.acml_tr_pbmn),ws=quotes.get('KRX:005930');
+            Object.assign(line,{nhRestRaw:raw,nhRestMillion:raw==null?null:raw/1e6,ratio:raw==null?null:Math.round(raw/1e6/kiwoom*1000)/1000,
+                nhWsMillion:ws?.amountVia==='WS'&&now()-(ws.amountAt||0)<120000?ws.amount:null});
+        } catch(error) { line.error=String(error.message||error).slice(0,80); }
+        try{fs.mkdirSync(directory,{recursive:true});fs.appendFileSync(path.join(directory,'amount-check-'+dayKey(now())+'.jsonl'),JSON.stringify(line)+'\n');}catch{}
+        return line;
     }
     function receive(raw) {
         let m;try{m=typeof raw==='object'&&!Buffer.isBuffer(raw)?raw:JSON.parse(String(raw));}catch{return;}
@@ -278,6 +279,6 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
         return true;
     }
     if(!enabled())state=disabledState;
-    return {start,stop,receive,onQuote,compareAmounts,snapshot,dismissFlash,subscribe(listener){listeners.add(listener);listener(snapshot());return()=>listeners.delete(listener);}};
+    return {start,stop,receive,onQuote,checkSamsungAmount,snapshot,dismissFlash,subscribe(listener){listeners.add(listener);listener(snapshot());return()=>listeners.delete(listener);}};
 }
 module.exports={createViMonitor,eventTime,parseKiwoomVi};

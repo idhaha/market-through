@@ -284,6 +284,8 @@ const marketSupplyService = require('./market-supply-service').createMarketSuppl
 });
 const lsMarketSupplyProvider = require('./ls-market-supply').createLsMarketSupply({
     directory: path.join(__dirname, 'data', 'ls-market-supply'), http: axios, supply: supplyService,
+    // Shared with local scheduled scripts (dev/server-ls-token.cjs) so they never issue their own LS token.
+    tokenFile: path.join(__dirname, 'data', 'ls-token', 'token.json'),
     validationDefaults: require('./ls-market-validation'),
     // REST polling by default, which frees an LS websocket session. LS_MARKET_SUPPLY_MODE=websocket restores the socket.
     mode: () => (process.env.LS_MARKET_SUPPLY_MODE || 'rest').trim(),
@@ -849,8 +851,6 @@ app.get('/api/stock', async (req, res) => {
         }
 
         const { items: watchStocksWithConcentration } = await addConcentrationRates(enrichedStocks, accessToken, 'trde_amt');
-        // NH trade value unit check against this table (million KRW) for stocks that also have a VI.
-        viMonitorService.compareAmounts('ka00198', watchStocksWithConcentration.map(item => ({ code: item.stk_cd, amount: item.trde_amt })));
 
 
         console.log("Step 5: 데이터 보정 및 병합 완료");
@@ -1012,7 +1012,8 @@ async function transactionRankHandler(req, res) {
         }
 
         const { items: dataWithConcentration, marketTurnover } = await addConcentrationRates(enrichedItems, accessToken, 'trde_amt');
-        viMonitorService.compareAmounts('ka10032', dataWithConcentration.map(item => ({ code: item.stk_cd, amount: item.trde_prica })));
+        // NH trade value unit check: 삼성전자 in this table (million KRW) against NH, once per 10 minutes.
+        void viMonitorService.checkSamsungAmount(dataWithConcentration.find(item => String(item.stk_cd).startsWith('005930'))?.trde_prica);
 
         fileLog(`[Rank] /api/transaction_rank response counts: items=${dataWithConcentration.length}`);
 

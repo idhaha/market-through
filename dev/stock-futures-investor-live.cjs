@@ -23,12 +23,9 @@ const write = (file, v) => fs.appendFileSync(path.join(out, file), JSON.stringif
 
 let token = '', queue = Promise.resolve();
 async function auth() {
+    // The running local server's LS token (data/ls-token/token.json); this script never issues one.
     if (token) return token;
-    const r = await fetch('https://openapi.ls-sec.co.kr:8080/oauth2/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: AbortSignal.timeout(15000),
-        body: new URLSearchParams({ grant_type: 'client_credentials', appkey: process.env.LS_APPKEY || '', appsecretkey: process.env.LS_SECRETKEY || '', scope: 'oob' }) });
-    const j = await r.json().catch(() => ({}));
-    if (!j.access_token) throw Error('LS 토큰 발급 실패');
-    return token = j.access_token;
+    return token = await require('./server-ls-token.cjs').serverLsToken();
 }
 function ls(tr, endpoint, input) {
     const task = queue.then(async () => {
@@ -42,7 +39,8 @@ function ls(tr, endpoint, input) {
                 const j = await r.json().catch(() => ({}));
                 if (j.rsp_cd === '00000') return j;
                 last = 'LS ' + tr + ' ' + (j.rsp_cd || r.status);
-                if (r.status === 401) token = '';
+                // A rejected token: read the file again later (the server renews it), never issue here.
+                if (r.status === 401 || /토큰|token/i.test(String(j.rsp_msg || ''))) token = '';
             } catch (e) { last = 'LS ' + tr + ' ' + (e.name === 'TimeoutError' ? '시간 초과' : '오류'); }
         }
         throw Error(last);

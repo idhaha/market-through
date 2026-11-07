@@ -35,7 +35,7 @@ const restSources = [
 ];
 const futuresClock = t => { const clock = new Date(t + 9 * 3600000).toISOString().slice(11, 16); return clock >= '08:45' && clock < '15:45'; };
 
-function createLsMarketSupply({ directory, http, credentials, supply, now = Date.now,
+function createLsMarketSupply({ directory, http, credentials, supply, now = Date.now, tokenFile = null,
     WebSocket = require('ws'), log = console.warn, validationDefaults = {},
     // 'rest' polls the REST equivalents instead of opening a websocket session.
     mode = () => 'websocket', restIntervalMs = 30000, pause = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
@@ -66,10 +66,27 @@ function createLsMarketSupply({ directory, http, credentials, supply, now = Date
     let issuedAt = 0;
     function invalidateToken() {
         if (!token || now() - issuedAt < 60000) return false;
+        if (tokenFile) try { if (JSON.parse(fs.readFileSync(tokenFile, 'utf8')).token === token) fs.rmSync(tokenFile, { force: true }); } catch {}
         token = ''; expires = 0; return true;
+    }
+    // tokenFile: the issued token is kept on disk so a restart reuses it and local scheduled scripts can use the
+    // server's token instead of issuing their own (a second issue may replace the token the servers use).
+    function loadToken() {
+        try {
+            const saved = JSON.parse(fs.readFileSync(tokenFile, 'utf8'));
+            if (typeof saved.token === 'string' && saved.token && saved.expires > now() + 60000) { token = saved.token; expires = saved.expires; issuedAt = Number(saved.issuedAt) || 0; }
+        } catch {}
+    }
+    function saveToken() {
+        try {
+            fs.mkdirSync(path.dirname(tokenFile), { recursive: true });
+            fs.writeFileSync(tokenFile + '.tmp', JSON.stringify({ token, expires, issuedAt }), { mode: 0o600 });
+            fs.renameSync(tokenFile + '.tmp', tokenFile);
+        } catch {}
     }
     async function accessToken() {
         if (token && expires > now() + 60000) return token;
+        if (tokenFile && !tokenTask) { loadToken(); if (token && expires > now() + 60000) return token; }
         if (tokenTask) return tokenTask;
         tokenTask = (async () => {
             const { appKey, secretKey } = credentials();
@@ -81,6 +98,7 @@ function createLsMarketSupply({ directory, http, credentials, supply, now = Date
                 if (!response.data.access_token) throw new Error('token');
                 token = response.data.access_token; issuedAt = now();
                 expires = now() + Math.max(60, Number(response.data.expires_in || response.data.expire_in) || 3600) * 1000;
+                if (tokenFile) saveToken();
                 return token;
             } catch (error) {
                 throw new Error(error.response?.data?.error_code === 'IGW00105'

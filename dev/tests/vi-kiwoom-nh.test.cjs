@@ -71,16 +71,35 @@ test('an LS token rejection clears the cached token once, and market alerts can 
     off.start();assert.match(off.snapshot('u').connection,/꺼 두었습니다/);off.stop();
 });
 
-test('NH trade value is checked against the Kiwoom tables (million KRW) for stocks that have a VI',()=>{
+test('NH 삼성전자 trade value is compared with the 거래대금 상위 table value (million KRW) once per 10 minutes',async()=>{
     const directory=fs.mkdtempSync(path.join(os.tmpdir(),'vi-amount-'));
     try{
-        let t=clock;const m=createViMonitor({now:()=>t,policy:()=>null,directory,getToken:async()=>'ls',kiwoomToken:async()=>'k'});
-        m.onQuote({exchange:'KRX',key:'000660',price:1176000,amount:12100000,via:'WS',receivedAt:t});
-        // ka10032 lists SOR codes (000660_AL); a stock without an NH value is skipped.
-        assert.equal(m.compareAmounts('ka10032',[{code:'000660_AL',amount:'13585997'},{code:'005930_AL',amount:'9000000'}]),1);
-        assert.equal(m.compareAmounts('ka10032',[{code:'000660_AL',amount:'13585997'}]),0,'One line per stock per 10 minutes');
-        const line=JSON.parse(fs.readFileSync(path.join(directory,'amount-check-2026-11-09.jsonl'),'utf8').trim());
-        assert.deepEqual([line.code,line.source,line.kiwoomMillion,line.nhMillion,line.nhVia,line.ratio],['000660','ka10032',13585997,12100000,'WS',0.891]);
-        t+=600000;assert.equal(m.compareAmounts('ka00198',[{code:'000660',amount:13600000}]),0,'A stale NH value (over 2 minutes) is not compared');
+        let t=clock;const calls=[];
+        const feed={rest:async(pathname,input)=>{calls.push([pathname,input]);return {stck_prpr:'193500',acml_tr_pbmn:'9200000000000'};},watch(){},unwatch(){},start(){},stop(){},state(){return {wanted:0};}};
+        const m=createViMonitor({now:()=>t,policy:()=>null,directory,getToken:async()=>'ls',kiwoomToken:async()=>'k',quoteFeed:feed});
+        const line=await m.checkSamsungAmount('10439757');
+        assert.deepEqual(calls,[['/krstock/quote/v1/currentPrice',{market_cd:'KRX',iem_cd:'005930'}]]);
+        assert.deepEqual([line.kiwoomMillion,line.nhRestRaw,line.nhRestMillion,line.ratio],[10439757,9200000000000,9200000,0.881]);
+        assert.equal(await m.checkSamsungAmount('10439757'),null,'Once per 10 minutes');
+        assert.equal(JSON.parse(fs.readFileSync(path.join(directory,'amount-check-2026-11-09.jsonl'),'utf8').trim()).ratio,0.881);
+        const off=createViMonitor({now:()=>t,policy:()=>null,directory,enabled:()=>false,quoteFeed:feed});
+        assert.equal(await off.checkSamsungAmount('10439757'),null,'A server with the VI off does not call NH');assert.equal(calls.length,1);
     }finally{fs.rmSync(directory,{recursive:true,force:true});}
+});
+test('the LS token is kept on disk for restarts and scheduled scripts, which only read it',async()=>{
+    const {readServerLsToken,serverLsToken}=require('../server-ls-token.cjs');
+    const dir=fs.mkdtempSync(path.join(os.tmpdir(),'ls-token-file-')),tokenFile=path.join(dir,'token.json');
+    try{
+        let t=clock,issued=0;
+        const http={post:async url=>{if(url.includes('oauth2')){issued++;return {data:{access_token:'token-'+issued,expires_in:86400}};}return {data:{}};}};
+        const make=()=>createLsMarketSupply({directory:dir,now:()=>t,credentials:()=>({appKey:'a',secretKey:'b'}),supply:{},http,tokenFile});
+        assert.equal(await make().accessToken(),'token-1');
+        assert.equal(await make().accessToken(),'token-1','A restart reuses the saved token');assert.equal(issued,1);
+        assert.equal(readServerLsToken(tokenFile,t),'token-1');
+        // A rejection removes the file, so scripts wait for the renewed token instead of using the rejected one.
+        const p=make();await p.accessToken();t+=120000;assert.equal(p.invalidateToken(),true);assert.equal(readServerLsToken(tokenFile,t),'');
+        await assert.rejects(serverLsToken({file:tokenFile,waitMs:0,now:()=>t}),/직접 발급하지 않음/);
+        assert.equal(await p.accessToken(),'token-2');assert.equal(await serverLsToken({file:tokenFile,now:()=>t}),'token-2');
+        assert.equal(readServerLsToken(tokenFile,t+86400000),'','An expired token is not handed out');
+    }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });

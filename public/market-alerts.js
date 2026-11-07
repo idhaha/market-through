@@ -62,6 +62,19 @@
         dialog.addEventListener('click', event => { if (event.target === dialog) { const r = dialog.getBoundingClientRect(); if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) dialog.close(); } });
         let state, offline = false, lastSignature = '', pendingAck = false;
         const time = value => value == null ? '-' : new Date(value).toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul', hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit' });
+        // Expected release from the received activation time: sidecar 5 min, circuit breaker 1·2단계 20 min
+        // (매매 중단 후 해제·호가접수). 3단계 ends the day, so it has no countdown.
+        const holdMs = event => !event.active || event.releasedAt != null || event.occurredAt == null ? 0
+            : event.kind === 'sidecar' ? 5 * 60000 : event.kind === 'circuit' && event.stage !== 3 ? 20 * 60000 : 0;
+        const remaining = ms => String(Math.floor(ms / 60000)).padStart(2, '0') + ':' + String(Math.floor(ms / 1000) % 60).padStart(2, '0') + ':' + String(ms % 1000).padStart(3, '0');
+        const countdown = () => {
+            for (const node of banner.querySelectorAll('.market-alert-countdown[data-until]')) {
+                const ms = Math.max(0, Math.ceil(Number(node.dataset.until) - Date.now()));
+                node.textContent = ms ? '해제까지(' + remaining(ms) + ')' : '해제 수신 대기';
+            }
+            requestAnimationFrame(countdown);
+        };
+        requestAnimationFrame(countdown);
         const visible = () => (state?.events || []).filter(event => event.visible);
         async function acknowledge(ids) {
             if (independent || !ids.length || pendingAck) return;
@@ -109,12 +122,15 @@
                 if (independent) {
                     text('strong', event.kind === 'circuit' ? `${event.market === '1' ? '코스피' : '코스닥'} 서킷브레이커 ${event.stage}단계` : `사이드카 ${event.market === '1' ? '코스피' : '코스닥'}`, item);
                 } else {
-                    const timeline = `발동(${time(event.occurredAt)})${event.releasedAt != null ? ' 해제(' + time(event.releasedAt) + ')' : ''}${event.resumedAt != null ? ' 재개(' + time(event.resumedAt) + ')' : ''}`;
-                    text('strong', `${label} · ${timeline}${event.active && event.stage === 3 ? ' · 당일 시장 종료' : ''}`, item);
+                    // Until the release arrives, count down to the expected release in its place.
+                    const strong = text('strong', `${label} · 발동(${time(event.occurredAt)})`, item), hold = holdMs(event);
+                    if (event.releasedAt != null) strong.append(' 해제(' + time(event.releasedAt) + ')');
+                    else if (hold) { strong.append(' '); const countdown = text('span', '', strong); countdown.className = 'market-alert-countdown'; countdown.dataset.until = String(event.occurredAt + hold); }
+                    strong.append(`${event.resumedAt != null ? ' 재개(' + time(event.resumedAt) + ')' : ''}${event.active && event.stage === 3 ? ' · 당일 시장 종료' : ''}`);
                     text('span', '[조건] ' + description.condition, item).className = 'market-alert-detail';
                     text('span', '[조치] ' + description.action, item).className = 'market-alert-detail';
                 }
-                item.title = item.textContent;
+                item.title = item.textContent.replace(/해제까지\([^)]*\)/, '해제 예정');
                 banner.append(item);
             }
         }

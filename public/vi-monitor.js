@@ -18,12 +18,14 @@
     // Clicked rows stop blinking; the server stores it per activation and syncs every window.
     const flashKey=r=>r.code+':'+r.exchange+':'+r.startedAt;
     const dismissing=new Set();
-    const value=(r,key)=>key==='futureRate'?r.futures?.[month.value]?.rate:r[key];
+    // Sort values: 해제 시각 only for released rows, 해제까지 by the expected release (activation + 2 min) of active rows.
+    const value=(r,key)=>key==='futureRate'?r.futures?.[month.value]?.rate:key==='releasedAt'?(r.active?null:r.releasedAt):key==='remaining'?(r.active&&r.startedAt!=null?r.startedAt+120000:null):key==='name'?(r.name||r.code):r[key];
+    const compare=(x,y)=>typeof x==='string'&&typeof y==='string'?x.localeCompare(y,'ko'):x>y?1:x<y?-1:0;
     function sorted() {
         return [...data.rows].sort((a,b)=>{
             const x=value(a,sort.key),y=value(b,sort.key);
             if(x==null&&y!=null)return 1;if(y==null&&x!=null)return -1;
-            return (x===y||x==null?0:(x>y?1:-1)*sort.direction)||(b.startedAt??-Infinity)-(a.startedAt??-Infinity)||a.code.localeCompare(b.code)||a.exchange.localeCompare(b.exchange);
+            return (x===y||x==null?0:compare(x,y)*sort.direction)||(b.startedAt??-Infinity)-(a.startedAt??-Infinity)||a.code.localeCompare(b.code)||a.exchange.localeCompare(b.exchange);
         });
     }
     // 해제까지(예상): minutes:seconds:milliseconds, redrawn every frame like a stopwatch countdown.

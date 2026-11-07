@@ -94,10 +94,10 @@ const jobs = {
         const out = path.join(root, 'outputs', 'stock-futures-investor-20261112');
         fs.mkdirSync(out, { recursive: true });
         // Record today's month list (is the expiring month 202611 still listed?) before the live recorder starts.
-        const t = await (await fetch('https://openapi.ls-sec.co.kr:8080/oauth2/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, signal: AbortSignal.timeout(15000),
-            body: new URLSearchParams({ grant_type: 'client_credentials', appkey: process.env.LS_APPKEY || '', appsecretkey: process.env.LS_SECRETKEY || '', scope: 'oob' }) })).json();
+        // Use the running local server's LS token; never issue one here (2026-11-06 outage).
+        const lsToken = await require('./server-ls-token.cjs').serverLsToken();
         const r = await (await fetch('https://openapi.ls-sec.co.kr:8080/futureoption/market-data', { method: 'POST', signal: AbortSignal.timeout(30000),
-            headers: { authorization: 'Bearer ' + t.access_token, 'Content-Type': 'application/json; charset=utf-8', tr_cd: 't8401', tr_cont: 'N', tr_cont_key: '' },
+            headers: { authorization: 'Bearer ' + lsToken, 'Content-Type': 'application/json; charset=utf-8', tr_cd: 't8401', tr_cont: 'N', tr_cont_key: '' },
             body: JSON.stringify({ t8401InBlock: { dummy: '' } }) })).json();
         const codes = ['005930', '000660', '005380', '035420'];
         const months = Object.fromEntries(codes.map(c => [c, (r.t8401OutBlock || []).filter(x => String(x.basecode).trim() === 'A' + c && /^A[0-9A-Z]{7}$/.test(x.shcode))

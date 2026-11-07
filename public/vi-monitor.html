@@ -3,19 +3,19 @@
 <title>MarketThrough VI 모니터링</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css?v=20261102_table_lines"><link rel="stylesheet" href="data-collection-info.css?v=20261107_vi_guide"><link rel="stylesheet" href="vi-monitor.css?v=20261107_countdown_ms">
-<script src="vi-monitor.js?v=20261107_countdown_ms" defer></script>
+<script src="vi-monitor.js?v=20261107_sort_all" defer></script>
 <script src="data-collection-info.js?v=20261107_kiwoom_nh" defer></script><script src="vi-monitor-info.js?v=20261107_countdown_ms" defer></script></head>
 <body class="vi-monitor"><main class="panel vi-panel">
 <header class="panel-header"><h1>VI 실시간 모니터링</h1><span id="viClock" class="vi-clock"></span>
 <div class="vi-controls"><label><input id="viTopmost" type="checkbox"> 항상 위</label></div></header>
 <div class="table-wrapper"><table aria-label="당일 VI 발동·해제 종목">
 <thead><tr>
-<th rowspan="2" scope="col">순위</th><th rowspan="2" scope="col">시장</th><th rowspan="2" scope="col">종목명</th>
+<th rowspan="2" scope="col">순위</th><th rowspan="2" scope="col"><button data-sort="market">시장</button></th><th rowspan="2" scope="col"><button data-sort="name">종목명</button></th>
 <th rowspan="2" scope="col"><button data-sort="rate">등락률</button></th>
 <th rowspan="2" scope="col"><button data-sort="amount">거래대금(백만)</button></th>
-<th rowspan="2" scope="col">거래소</th><th rowspan="2" scope="col">구분</th>
+<th rowspan="2" scope="col"><button data-sort="exchange">거래소</button></th><th rowspan="2" scope="col"><button data-sort="kind">구분</button></th>
 <th rowspan="2" scope="col" aria-sort="descending"><button data-sort="startedAt">발동 시각</button></th>
-<th rowspan="2" scope="col">해제 시각</th><th rowspan="2" scope="col">해제까지(예상)</th>
+<th rowspan="2" scope="col"><button data-sort="releasedAt">해제 시각</button></th><th rowspan="2" scope="col"><button data-sort="remaining">해제까지(예상)</button></th>
 <th colspan="2" scope="colgroup" class="comparison-group">KRX대비</th>
 </tr><tr><th scope="col"><button data-sort="nxtRate">NXT 괴리율</button></th>
 <th scope="col"><button data-sort="futureRate">선물 괴리율</button>
