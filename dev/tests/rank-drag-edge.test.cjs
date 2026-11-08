@@ -7,6 +7,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=requ
  if(url.pathname==='/api/chart-reference')return route.fulfill({json:{points,cursor:null}});
  if(url.pathname==='/api/adr/today')return route.fulfill({json:{intraday:points}});
  if(url.pathname==='/api/adr/history')return route.fulfill({json:{series:[]}});
+ if(url.pathname==='/api/adr/candles')return route.fulfill({json:{points}});
  return route.fulfill({contentType:'text/html',body:fs.readFileSync('public/index.html','utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'').replace(/<link\b[^>]*>/gi,'')});});
  await page.goto('http://drag.test/');await page.addStyleTag({path:'public/style.css'});
  await page.evaluate(()=>{document.querySelector('#tabContents').style.display='block';document.querySelector('#loginOverlay').style.display='none';window.rankIndependentClient=true;

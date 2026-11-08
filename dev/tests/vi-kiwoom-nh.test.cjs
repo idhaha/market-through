@@ -48,8 +48,8 @@ test('NH ticks give the VI table its rate (signed by the sign code) and trade va
     feed.receive(JSON.stringify({header:{tr_cd:'nc',tr_key:'005930'},body:{code:'005930',time:'090501',sign:'2',price:'99500',chrate:'0.50',value:'5420'}}));
     assert.deepEqual(quotes.map(q=>[q.exchange,q.price,q.rate,q.amount]),[['KRX',99000,-1.5,20867],['NXT',99500,0.5,5420]]);
     feed.start();feed.watch('005930',{futures:['A116B000','A116C000']});
-    for(let i=0;i<100&&feed.state().wanted<4;i++)await pause(20);
-    assert.equal(feed.state().wanted,4,'KRX, NXT and two futures months');feed.stop();
+    for(let i=0;i<100&&feed.state().wanted<5;i++)await pause(20);
+    assert.equal(feed.state().wanted,5,'KRX, NXT, two futures months and the KRX order book');feed.stop();
 });
 test('an LS token rejection clears the cached token once, and market alerts can be switched off',async()=>{
     assert.equal(lsTokenRejected(401,{}),true);

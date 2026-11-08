@@ -6,12 +6,22 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const REST = 'https://api.nhplug.com:8443', SOCKET = 'wss://api.nhplug.com:7070/websocket';
-const channels = { KRX: 'oc', NXT: 'nc', FUT: 'vC' };
+// OB: KRX 10-level order book (ob), used for the VI table's average bid amount.
+const channels = { KRX: 'oc', NXT: 'nc', FUT: 'vC', OB: 'ob' };
 const num = v => v == null || String(v).trim() === '' || !Number.isFinite(Number(v)) ? null : Number(v);
 // NH stock ticks (oc/nc): chrate is unsigned in the spec sample, so the sign code decides the direction
 // (4/5/8/9 = 하한/하락). value is the accumulated trade value in million KRW, the VI table's unit.
 const falling = sign => ['4', '5', '8', '9'].includes(String(sign || '').trim());
 const signedRate = (rate, sign) => { const n = num(rate); return n == null ? null : falling(sign) && n > 0 ? -n : n; };
+// Average amount resting on the 10 KRX bid levels: mean of price × quantity over the levels that have a price.
+// Websocket ob names the levels bid, P_bid, S_bid, S4_bid … S10_bid; REST currentPrice uses bidp1~10 / bidp_rsqn1~10.
+const WS_BID_LEVELS = ['', 'P_', 'S_', 'S4_', 'S5_', 'S6_', 'S7_', 'S8_', 'S9_', 'S10_'];
+function bidAverage(levels) {
+    const amounts = levels.map(([p, q]) => [num(p), num(q)]).filter(([p, q]) => p > 0 && q != null && q >= 0).map(([p, q]) => p * q);
+    return amounts.length ? amounts.reduce((sum, v) => sum + v, 0) / amounts.length : null;
+}
+const wsBidAverage = b => bidAverage(WS_BID_LEVELS.map(prefix => [b[prefix + 'bid'], b[prefix + 'bidrem']]));
+const restBidAverage = o => bidAverage(Array.from({ length: 10 }, (_, i) => [o['bidp' + (i + 1)], o['bidp_rsqn' + (i + 1)]]));
 const redact = text => String(text || '').replace(/[A-Za-z0-9_\-+\/=.]{24,}/g, '[redacted]').slice(0, 160);
 
 function createNhQuoteFeed({ credentials, tokenFile, fetch = globalThis.fetch, WebSocket = require('ws'), now = Date.now,
@@ -87,6 +97,12 @@ function createNhQuoteFeed({ credentials, tokenFile, fetch = globalThis.fetch, W
         s.lastPrice = price;
         onQuote({ exchange, key, price, sourceTime, via, receivedAt: t, ...extra });
     }
+    function deliverBook(key, average, sourceTime, via) {
+        if (average == null) return;
+        const s = stat(id('OB', key)), t = now();
+        if (via === 'WS') { s.ticks++; s.firstTickAt ??= t; s.lastTickAt = t; } else s.rest++;
+        onQuote({ exchange: 'KRX', key, bidAverage: average, sourceTime, via, receivedAt: t });
+    }
     function receive(raw) {
         let message; try { message = JSON.parse(String(raw)); } catch { return; }
         const h = message.header || {}, b = message.body || {};
@@ -113,6 +129,7 @@ function createNhQuoteFeed({ credentials, tokenFile, fetch = globalThis.fetch, W
             pump();
             return;
         }
+        if (exchange === 'OB') { deliverBook(key, wsBidAverage(b), String(b.hotime || ''), 'WS'); return; }
         const price = num(exchange === 'FUT' ? b.fucurr : b.price);
         if (!(price > 0)) return;
         deliver(exchange, key, price, String(exchange === 'FUT' ? b.futime : b.time || ''), 'WS',
@@ -131,7 +148,14 @@ function createNhQuoteFeed({ credentials, tokenFile, fetch = globalThis.fetch, W
         // Unsubscribes first: a slot is free only after NH acknowledges the unsubscribe.
         for (const [key, entry] of subscribed) if (!wanted.has(key)) return { op: '2', key, entry };
         let wake = Infinity;
-        for (const [key, entry] of wanted) {
+        // Order books take a slot only after every price key (futures months may be added later).
+        const ordered = [...wanted].sort((a, b) => (a[1].exchange === 'OB') - (b[1].exchange === 'OB'));
+        // When the slots are full and a price key is waiting, an order book gives its slot back and moves to REST.
+        if (subscribed.size >= maxSubscriptions && ordered.some(([key, entry]) => entry.exchange !== 'OB' && !subscribed.has(key) && Math.max(backoff.get(key) || 0, holdUntil) <= now())) {
+            const book = [...subscribed].find(([, entry]) => entry.exchange === 'OB');
+            if (book) return { op: '2', key: book[0], entry: book[1] };
+        }
+        for (const [key, entry] of ordered) {
             if (subscribed.has(key)) continue;
             const until = Math.max(backoff.get(key) || 0, holdUntil);
             // Subscriptions beyond the per-connection limit, or waiting after a rejection, use REST polling.
@@ -186,7 +210,13 @@ function createNhQuoteFeed({ credentials, tokenFile, fetch = globalThis.fetch, W
     async function pollRest() {
         for (const [key, entry] of restKeys) {
             if (stopped || !wanted.has(key)) continue;
+            // The KRX current-price poll already carries the order book, so a REST order-book key needs no call of its own.
+            if (entry.exchange === 'OB' && restKeys.has(id('KRX', entry.key))) continue;
             try {
+                if (entry.exchange === 'OB') {
+                    const output = await paced(() => rest('/krstock/quote/v1/currentPrice', { market_cd: 'KRX', iem_cd: entry.key }));
+                    deliverBook(entry.key, restBidAverage(output), '', 'REST'); continue;
+                }
                 const output = await paced(() => entry.exchange === 'FUT'
                     ? rest('/krfuture/quote/v1/day', { iem_cd: 'K' + entry.key })
                     : rest('/krstock/quote/v1/currentPrice', { market_cd: entry.exchange, iem_cd: entry.key }));
@@ -195,6 +225,7 @@ function createNhQuoteFeed({ credentials, tokenFile, fetch = globalThis.fetch, W
                 const amount = num(output.acml_tr_pbmn);
                 if (price > 0) deliver(entry.exchange, entry.key, price, '', 'REST',
                     entry.exchange === 'FUT' ? {} : { rate: signedRate(output.prdy_ctrt, output.prdy_vrss_sign), amount: amount == null ? null : amount / 1e6 });
+                if (entry.exchange === 'KRX') deliverBook(entry.key, restBidAverage(output), '', 'REST');
             } catch (error) {
                 if (entry.exchange === 'NXT' && error.code === '00500') { markNxtUnavailable(entry.code); continue; }
                 stat(key).errors++; event('rest_error', { key, message: redact(error.message) });
@@ -211,7 +242,7 @@ function createNhQuoteFeed({ credentials, tokenFile, fetch = globalThis.fetch, W
         if (wanted.delete(id('NXT', code))) { event('nxt_unavailable', { key: id('NXT', code) }); sync(); }
     }
     function addKeys(code, futures) {
-        for (const [exchange, key] of [['KRX', code], ...(nxtTradable.get(code) === false ? [] : [['NXT', code]]), ...futures.map(f => ['FUT', f])])
+        for (const [exchange, key] of [['KRX', code], ...(nxtTradable.get(code) === false ? [] : [['NXT', code]]), ...futures.map(f => ['FUT', f]), ['OB', code]])
             if (!wanted.has(id(exchange, key))) wanted.set(id(exchange, key), { exchange, key, code });
         sync(); void connect();
     }
@@ -243,7 +274,7 @@ function createNhQuoteFeed({ credentials, tokenFile, fetch = globalThis.fetch, W
     }
     function start() { if (!stopped) return; stopped = false; void connect(); scheduleRest(); }
     function stop() { stopped = true; clearTimeout(retry); clearTimeout(restTimer); resetSocketState(); const old = socket; socket = null; old?.close(); }
-    return { start, stop, watch, unwatch, receive, summary, rest, accessToken,
+    return { start, stop, watch, unwatch, receive, summary, rest, accessToken, pollNow: () => pollRest(),
         state: () => ({ connected: socket?.readyState === 1, wanted: wanted.size, subscribed: subscribed.size, rest: restKeys.size }) };
 }
 module.exports = { createNhQuoteFeed, channels };

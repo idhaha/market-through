@@ -24,7 +24,9 @@
         const tip = panel.querySelector('.turnover-hover-info'), status = panel.querySelector('[role="status"]'), slider = panel.querySelector('input[type="range"]');
         const [out, into] = panel.querySelectorAll('.concentration-controls button');
         const colors = {kospi:'#339af0',kosdaq:'#e11d48'}, names = {kospi:'KOSPI',kosdaq:'KOSDAQ'};
-        let data = {kospi:[],kosdaq:[]}, previous = {kospi:null,kosdaq:null};
+        let data = {kospi:[],kosdaq:[]};
+        // Minute view compares the day's cumulative turnover with the average of the 5 trading days before that day.
+        let dailyTurnover = {kospi:[],kosdaq:[]}, dailyTurnoverDay = '', dailyTurnoverJob = null;
         let mode = 'day', dates = [], start = 0, count = null, controller, hover = null, geometry, drag = null, refreshPending = false;
         let candlePointerY = null;
         let priceController,priceKey='',pricePending='',priceBusy=false;
@@ -51,6 +53,24 @@
             finally{if(current===priceController){pricePending='';priceBusy=false;draw();}}
         }
         const dateKey = t => new Date(t + 9 * 3600000).toISOString().slice(0,10);
+        function fiveDayAverage(market, day) {
+            const days = dailyTurnover[market].filter(p => dateKey(p.t) < day && Number.isFinite(p.market_turnover) && p.market_turnover > 0).slice(-5);
+            return days.length === 5 ? days.reduce((sum, p) => sum + p.market_turnover, 0) / 5 : null;
+        }
+        function loadDailyTurnover() {
+            const day = dateKey(Date.now());
+            if (dailyTurnoverDay === day || dailyTurnoverJob) return dailyTurnoverJob;
+            dailyTurnoverJob = (async () => {
+                try {
+                    const response = await (window.RankChartCache?.fetch || fetch)(`${combined ? '/api/turnover/chart' : endpoint}?mode=day&cursor=`);
+                    const result = await response.json();
+                    if (!response.ok || !result.markets) return;
+                    dailyTurnover = {kospi:[...(result.markets.kospi || [])].sort((a,b)=>a.t-b.t),kosdaq:[...(result.markets.kosdaq || [])].sort((a,b)=>a.t-b.t)};
+                    dailyTurnoverDay = day; if (mode === 'minute') draw();
+                } catch {} finally { dailyTurnoverJob = null; }
+            })();
+            return dailyTurnoverJob;
+        }
         function surface(c, context) {
             const w = c.clientWidth, h = c.clientHeight, dpr = window.devicePixelRatio || 1;
             c.width = Math.round(w*dpr); c.height = Math.round(h*dpr); context.setTransform(dpr,0,0,dpr,0,0); context.clearRect(0,0,w,h);
@@ -64,7 +84,8 @@
         ['kospi','kosdaq'].forEach(m=>{
             const p=data[m].find(p=>p.t===hover), amount=p?.market_turnover;
             const label=document.createElement('span');label.textContent=names[m];label.style.color=colors[m];
-            const ratio=mode==='minute'&&Number.isFinite(previous[m])&&previous[m]>0 ? `(전일대비 ${(amount/previous[m]*100).toFixed(1)}%)` : '';
+            const average=mode==='minute'?fiveDayAverage(m,dateKey(hover)):null;
+            const ratio=Number.isFinite(average)&&Number.isFinite(amount) ? `(5일평균대비 ${(amount/average*100).toFixed(1)}%)` : '';
             tip.append(' · ',label,Number.isFinite(amount)?` ${(amount/1e12).toFixed(1)}조원${ratio}`:' —');
         });tip.hidden=false;}
         function draw() {
@@ -88,16 +109,19 @@
             const sessionX=window.RankChartAxis.sessionX(visible,t=>t,left,right,mode==='minute',mode==='day');
             const x = t => sessionX?sessionX(t):left + indices.get(t)/Math.max(1,n-1)*(right-left);
             const values = Object.values(rows).flat().filter(p => Number.isFinite(p.market_turnover)).map(p => p.market_turnover/1e12);
-            const benchmarks = mode === 'minute' ? Object.values(previous).filter(Number.isFinite).map(v=>v/1e12) : [];
+            // The guide line uses the latest session shown for the selected market.
+            const latestDay = mode === 'minute' && rows[selectedMarket].length ? dateKey(rows[selectedMarket].at(-1).t) : '';
+            const average = latestDay ? fiveDayAverage(selectedMarket, latestDay) : null;
+            const benchmarks = Number.isFinite(average) ? [average/1e12] : [];
             const max = Math.max(10,Math.ceil(Math.max(0,...values,...benchmarks)/10)*10), y = v => bottom-v/max*(bottom-top);
             const style = getComputedStyle(panel), muted = style.getPropertyValue('--text-muted').trim(), border = '#b8c1cc';
             ctx.textAlign = 'left'; ctx.fillStyle = muted;
             for (let v=0;v<=max;v+=10) { ctx.strokeStyle=border; ctx.setLineDash([3,5]); ctx.beginPath(); ctx.moveTo(left,y(v)); ctx.lineTo(right,y(v)); ctx.stroke(); ctx.textAlign='right'; ctx.fillText(`${v}조`,w-4,y(v)+4); }
             ctx.setLineDash([]);
-            if (mode === 'minute' && Number.isFinite(previous[selectedMarket])) {
-                const benchmark = previous[selectedMarket]/1e12;
+            if (Number.isFinite(average)) {
+                const benchmark = average/1e12;
                 ctx.save();ctx.strokeStyle='#f97316';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(left,y(benchmark));ctx.lineTo(right,y(benchmark));ctx.stroke();
-                const label=`전일 ${benchmark.toFixed(1)}조`, lineY=y(benchmark);
+                const label=`5일평균 ${benchmark.toFixed(1)}조`, lineY=y(benchmark);
                 ctx.font='bold 11px Arial';ctx.textAlign='right';
                 const labelY=lineY-top>=25 ? lineY-10 : lineY+18;
                 const labelWidth=ctx.measureText(label).width, labelRight=right-4;
@@ -217,6 +241,7 @@
             if(more){window.RankChartAxis.showHistory();todayOnly=false;}
             refreshPending = false; loading = true; moreButton.disabled = true;
             void loadPrices();
+            if (mode === 'minute') void loadDailyTurnover();
             const current = controller = new AbortController();
             const anchor = dates[start], followLatest = start + (count ?? dates.length) >= dates.length;
             status.textContent = '거래대금 조회 중';draw();

@@ -2,7 +2,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=requ
 (async()=>{const browser=await chromium.launch({headless:true,channel:'msedge'});try{
  const page=await browser.newPage({viewport:{width:2000,height:1400}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
  const html=fs.readFileSync('public/index.html','utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'').replace(/<link\b[^>]*>/gi,'');
- await page.setContent(html);await page.addStyleTag({path:'public/style.css'});
+ await page.route('http://viewport.test/**',route=>route.fulfill({contentType:'text/html',body:html}));await page.goto('http://viewport.test/');await page.addStyleTag({path:'public/style.css'});
  await page.evaluate(()=>{document.querySelector('#tabContents').style.display='block';document.querySelector('#loginOverlay').style.display='none';
  const dates=Array.from({length:60},(_,i)=>new Date(Date.UTC(2026,7,1+i)).toISOString().slice(0,10));
  window.viewportTestDates=dates;

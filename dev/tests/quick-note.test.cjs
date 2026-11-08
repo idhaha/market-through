@@ -39,8 +39,11 @@ test('native credential is scoped to note and stops working with the issuing log
     const source = fs.readFileSync('server.js', 'utf8');
     let middleware, sessionValid = true;
     const grants = new Map([['note-token', { cookie: 'session-cookie', expiresAt: Date.now() + 10000 }]]);
-    vm.runInNewContext(source.slice(source.indexOf("app.use('/api',"), source.indexOf("app.get('/api/server/storage'")), {
-        app: { use: (path, fn) => middleware = fn }, quickNoteGrants: grants,
+    // Only the first /api middleware is the auth gate; later ones (chart revisions, background cache) are separate.
+    const authStart = source.indexOf("app.use('/api',");
+    const authEnd = source.indexOf('\n});', authStart) + 4;
+    vm.runInNewContext(source.slice(authStart, authEnd), {
+        app: { use: (path, fn) => middleware = fn }, quickNoteGrants: grants, viWindowAccess: { handles: () => false },
         getSessionFromRequest: req => sessionValid && req.headers.cookie === 'session-cookie' ? { email: 'test' } : null
     });
     const invoke = path => {

@@ -32,7 +32,7 @@ const { chromium } = require('playwright');
         assert.equal(await page.locator('#serverStorage').textContent(), '서버 용량 확인 불가');
         fail = false;
         await page.evaluate(() => window.refreshServerStorage());
-        assert.equal(await page.locator('#serverStorage').textContent(), '서버 여유 35 / 45 GB');
+        assert.equal(await page.locator('#serverStorage').textContent(), '서버 여유 78% (35 / 45 GB)');
     } finally { await browser.close(); }
     console.log('Server storage API calculation and header display checks passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -100,7 +100,8 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
                     const contract=r.contracts?.[i];const quote=contract&&quotes.get('FUT:'+contract.code);
                     contracts[key]=contract?{...contract,price:quote?.price??null,receivedAt:quote?.receivedAt??null,rate:comparison(quote?.price,krx?.price)}:null;
                 }
-                return {...r,rate:krx?.rate??null,amount:krx?.amount??null,krxPrice:krx?.price??null,nxtRate:comparison(nxt?.price,krx?.price),krxReceivedAt:krx?.receivedAt??null,nxtReceivedAt:nxt?.receivedAt??null,futures:contracts};
+                const book=quotes.get('BID:'+r.code);
+                return {...r,bidAverage:book?.value??null,bidAverageAt:book?.receivedAt??null,bidAverageVia:book?.via??null,rate:krx?.rate??null,amount:krx?.amount??null,krxPrice:krx?.price??null,nxtRate:comparison(nxt?.price,krx?.price),krxReceivedAt:krx?.receivedAt??null,nxtReceivedAt:nxt?.receivedAt??null,futures:contracts};
             }).sort((a,b)=>b.startedAt-a.startedAt||a.code.localeCompare(b.code))};
     }
     function emit(){
@@ -196,6 +197,11 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
         persist();emit();
     }
     function onQuote(q) {
+        // KRX order book: average amount of the 10 bid levels (NH ob, or the REST current price).
+        if(q.exchange==='KRX'&&q.bidAverage!==undefined){
+            if(Number.isFinite(q.bidAverage)&&q.bidAverage>=0){quotes.set('BID:'+q.key,{value:q.bidAverage,receivedAt:q.receivedAt??now(),via:q.via});emit();}
+            return;
+        }
         if(!['KRX','NXT','FUT'].includes(q.exchange)||!(q.price>0))return;
         const id=q.exchange+':'+q.key,old=quotes.get(id);
         quotes.set(id,{price:q.price,rate:q.rate??old?.rate??null,amount:q.amount??old?.amount??null,amountVia:q.amount!=null?q.via:old?.amountVia,

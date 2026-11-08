@@ -15,9 +15,10 @@ const row=(code,qty=5)=>({pdno:code,trad_psbl_qty2:String(qty)});
  assert.match(readMasterZip(zip,'kospi_code.mst').toString(),/000001/);
  assert.throws(()=>readMasterZip(Buffer.alloc(0),'x'));
  const codes=await loadStockCodes({get:async url=>({data:url.includes('kospi')?zip:zipMaster('kosdaq_code.mst','000003   name Y\n000001   name N\n')})});
- assert.deepEqual(codes,['000002','000003'],'query master-flagged candidates only');
+ assert.deepEqual([...codes],['000002','000003'],'query master-flagged candidates only');
+ assert.ok(codes.names instanceof Map,'master names come with the codes');
  const fallback=await loadStockCodes({get:async url=>({data:zipMaster(url.includes('kospi')?'kospi_code.mst':'kosdaq_code.mst','000004   name N\r\n000005   name N\r\n')})});
- assert.deepEqual(fallback,['000004','000005'],'missing lendable flags fall back to all valid codes');
+ assert.deepEqual([...fallback],['000004','000005'],'missing lendable flags fall back to all valid codes');
  let clock=1000, fail=false, empty=false, count=0, bulkQty=5;
  const calls=[];
  const http={get:async(url,options)=>{
@@ -48,7 +49,10 @@ const row=(code,qty=5)=>({pdno:code,trad_psbl_qty2:String(qty)});
  clock+=60001;fail=false;
  await service.getStocks(config);await service.waitForIdle();
  assert.equal(calls.length-beforeRetry,1,'retry only failed symbols, retain successful draft');
- assert.equal((await service.getStocks(config)).length,100,'retain fresh bulk rows when remaining individual lookups are empty');
+ // Candidates the company cannot lend now (empty individual answers) are listed with quantity 0 next to the fresh bulk rows.
+ const withEmpty=await service.getStocks(config);
+ assert.equal(withEmpty.length,103,'retain fresh bulk rows and list empty candidates');
+ assert.deepEqual(withEmpty.filter(s=>s.no_quantity).map(s=>[s.pdno,s.trad_psbl_qty2]).sort(),[['000100','0'],['000101','0'],['000102','0']]);
  assert.equal((await service.getStocks(config))[0].trad_psbl_qty2,'7','each collection must use fresh bulk quantities');
  assert.equal(calls.filter(c=>c.params.PDNO==='').length,2,'refresh bulk once per collection, not on failed-symbol resume');
  let release;

@@ -20,7 +20,7 @@ test('one minute-history click shows only the previous session despite different
   const first=api.sessionRange(values,v=>v,1);assert.equal(values[first.start].slice(0,8),'20261022');
   const second=api.sessionRange(values,v=>v,2);assert.equal(values[second.start].slice(0,8),'20261021');
   const shown=values.slice(first.start,first.start+first.count),x=api.sessionX(shown,v=>v,0,600,true);
-  assert.equal(x('20261022080000'),0);assert.equal(api.sessionStartLabel(shown,v=>v),'10-22 08:00');
+  assert.equal(x('20261022080000'),0);assert.equal(api.sessionStartLabel(shown,v=>v),'10/22 08:00');
  }
 });
 
@@ -44,7 +44,8 @@ test('initial empty minute response does not pin the later populated viewport to
   shared.sharedRange(id,[],v=>v,'minute',0,empty.count,()=>{});
   const values=['20261023080000','20261023090000','20261023092200'];
   const loaded=shared.sharedRange(id,values,v=>v,'minute',empty.start,empty.count,()=>{});assert.equal(loaded.count,3);
-  const zoomed=shared.sharedRange(id,values,v=>v,'minute',1,1,()=>{});assert.equal(zoomed.count,1);
+  // Zoom goes through the shared viewport; without one the live view grows with incoming bars.
+  shared.selectViewport(id,0.9,1);const zoomed=shared.sharedRange(id,values,v=>v,'minute',loaded.start,loaded.count,()=>{});assert.equal(zoomed.count,1);
   shared.showToday();const reset=shared.sharedRange(id,values,v=>v,'minute',1,1,()=>{});assert.equal(reset.count,3);
  }
 });

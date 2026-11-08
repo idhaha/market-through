@@ -1,7 +1,7 @@
 const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=require('playwright');
 (async()=>{const browser=await chromium.launch({headless:true,executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe'});try{
 const page=await browser.newPage({viewport:{width:2100,height:1000}});
-const source=fs.readFileSync('public/index.html','utf8');const grid=source.slice(source.indexOf('<div class="grid-container">'),source.indexOf('<section',source.indexOf('<div class="grid-container">')));
+const source=fs.readFileSync('public/index.html','utf8');const grid=source.slice(source.indexOf('<div class="grid-container">'),source.indexOf('<div class="rank-chart-row">',source.indexOf('<div class="grid-container">')));
 await page.setContent('<div id="tab_rank">'+grid+'</div>');await page.addStyleTag({content:fs.readFileSync('public/style.css','utf8')});
 await page.evaluate(()=>{document.querySelectorAll('#dataContainer,#efriendDataContainer').forEach(el=>el.style.display='block');for(const id of ['transactionTable','stockTable','efriendStockTable']){document.querySelector('#'+id+' tbody').innerHTML=Array.from({length:20},(_,i)=>`<tr><td>${i+1}</td><td>K</td><td>${i===4?'Very long stock name '.repeat(8):'Stock'}</td><td>+1.00%</td><td>123,456</td><td>12%</td></tr>`).join('');}});
 const sizes=await page.evaluate(()=>['transactionTable','stockTable','efriendStockTable'].map(id=>{const table=document.getElementById(id),card=table.closest('.panel');return{height:card.getBoundingClientRect().height,top:table.getBoundingClientRect().top,row:table.querySelector('tbody tr').getBoundingClientRect().height,body:table.querySelector('tbody').clientHeight,scroll:table.querySelector('tbody').scrollHeight};}));

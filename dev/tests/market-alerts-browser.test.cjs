@@ -45,7 +45,7 @@ const { createMarketAlerts } = require('../../market-alert-service');
         const layout=page=>page.locator('#tab_rank .panel').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect();return [r.x,r.y,r.width,r.height];}));
         const decorations=page=>page.locator('#tab_rank .panel').first().evaluate(n=>{const s=getComputedStyle(n);return [s.borderTopColor,s.boxShadow,s.backgroundColor,s.animationName];});
         const background=page=>page.locator('#tab_rank').evaluate(n=>getComputedStyle(n).backgroundColor);
-        const clickBackground=async page=>{const r=await page.locator('#tab_rank .grid-container').boundingBox();await page.mouse.click(r.x+r.width/2,r.y-4);};
+        const clickBackground=async page=>{const r=await page.locator('#tab_rank .grid-container:not(.rank-watchlist-row)').boundingBox();await page.mouse.click(r.x+r.width/2,r.y-4);};
         assert.equal(await peer.locator('.market-alert-status').count(),0);
         assert.equal(await peer.locator('.market-alert-info-icon').count(),0,'Independent window has no market guide icon');
         assert.deepEqual(await peer.locator('.independent-toolbar').evaluate(n=>[n.firstElementChild.id,n.querySelector('#rankRefreshStatus').nextElementSibling.id]),['rankRefreshStatus','marketAlertArea']);

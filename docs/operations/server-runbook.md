@@ -103,7 +103,7 @@ systemctl is-enabled pm2-ubuntu   # enabled 이면 등록된 것
 
 주의:
 - `git reset --hard`는 서버에서 직접 수정한 코드를 지운다. 서버에서 코드를 고치지 않는다.
-- 런타임 데이터 파일(`user_settings_autosaved.json`, `authorized_emails.json`, `user_settings.memo-backup.json`, `data/fred-cache/`, `.env`)은 Git에서 추적되지 않는다(2026-10-04 `git ls-files`로 확인). 새 데이터 파일이 생기면 `.gitignore` 제외 여부를 먼저 확인한다.
+- 런타임 데이터 파일(`user_settings_autosaved.json`, `authorized_emails.json`, `user_settings.memo-backup.json`, `data/fred-cache/`(2026-11-08부터 `data/macro-series/`로 이관), `.env`)은 Git에서 추적되지 않는다(2026-10-04 `git ls-files`로 확인). 새 데이터 파일이 생기면 `.gitignore` 제외 여부를 먼저 확인한다.
 - `npm ci`는 `node_modules`를 지우고 다시 설치하므로 메모리·디스크 부담이 크다. 의존성(`package-lock.json`)이 바뀌지 않았다면 건너뛰는 것을 권장한다.
 - 배포 직후 `free -m`, `pm2 status`로 메모리와 상태를 확인하고, TE 차트 탭이 하나씩 차례로 로딩되는지 본다.
 
@@ -239,6 +239,20 @@ market-day.json도 data/supply 백업에 포함한다. 당일 확정 파일이 �
 
 야간에 정기 갱신을 중단하는 정책은 없다. PM2 프로세스가 online이어도 구버전 독립창 채널은 서버 재시작 시 소멸할 수 있었다. 현재는 인증된 메인창이 채널을 복구하고 최신 결과를 다시 전송하며 독립창도 재시도한다. 이번 변경 배포 후 서버를 재시작하고 메인 새로고침·기존 독립창 재실행으로 새 클라이언트를 한 번 로드한다. 이후 서버 재시작은 새 창 실행 없이 복구한다. 메인 로그인 상태를 요구하며 네이티브 재설치는 필요 없다. [상세 정책](../../desktop/README.md)을 따른다.
 
+
+## 12. 금리/환율 시계열 저장과 아침 재조회 (2026-11-08)
+
+- 대상: `/api/fred`, `/api/ecos`, `/api/trading-economics`(금리/환율 탭, 해외종목 탭의 시계열 차트). 구현은 `macro-series-cache.js`, 원천 호출은 `server.js`.
+- 이전 문제: TE는 탭을 열 때마다 강제 새로고침으로 Chrome 수집(시리즈당 약 16~20초, 한 번에 1개)을 반복했고 캐시는 메모리에만 있어 재시작 때 사라졌다. ECOS는 저장 없이 매번 10년치를 조회했다. FRED는 디스크 저장은 있었지만 요청마다 Python으로 FRED를 다시 호출했다.
+- 저장: `data/macro-series/<fred|ecos|te>/<해시>.json`(시리즈별), 새벽 실행 결과는 `data/macro-series/state.json`. 처음 시작할 때 `data/fred-cache/cache.json`의 FRED 자료를 한 번 가져온다.
+- 응답 규칙:
+  - 저장본이 없으면 전체 기간을 한 번 받아 저장하고 응답한다(첫 조회만 원천 시간이 걸림).
+  - 저장본이 1시간 이내면 그대로 응답한다. 더 오래됐으면 FRED/ECOS는 최근분(저장된 최신일 30일 전부터)만 다시 받되 최대 8초만 기다리고, TE는 기다리지 않고 저장본으로 응답한 뒤 뒤에서 다시 수집한다.
+  - 탭을 열 때는 강제 새로고침을 보내지 않는다. [조회]·[전체조회]는 강제 새로고침을 보내며, FRED/ECOS는 5분, TE는 30분 이내 저장본이면 그대로 쓴다.
+  - 받은 범위의 시작일부터는 새 값으로 바꾸고 그 이전 저장본은 유지한다. 실패하거나 빈 응답이면 저장본을 그대로 쓴다.
+- 아침 재조회: 매일 07:20 KST에 최근 30일 안에 쓴 모든 시리즈의 전체 기간을 차례로 다시 받아, 과거 값 수정(FRED 개정, ECOS 정정)과 삭제를 반영한다. 그 시각에 서버가 꺼져 있었으면 다음 시작 3분 뒤 한 번 실행한다. 1년 동안 쓰지 않은 시리즈는 이때 지운다. TE 수집도 이 시간에 Chrome으로 차례로 실행된다.
+- 브라우저 차트 캐시(`rank-chart-cache.js`)는 이 경로들을 저장하지 않으므로 `chart-revisions.js`의 `ROUTES`에 넣지 않는다. 응답은 `Cache-Control: no-store`.
+- 확인: `pm2 logs`에서 `[MacroSeries] history refresh: N refreshed, M failed`. 검증 테스트는 `dev/tests/macro-series-cache.test.cjs`, `dev/tests/macro-series-client.test.cjs`.
 
 ## LS 수급 로컬/Oracle 차이 점검 (2026-10-27)
 

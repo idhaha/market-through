@@ -9,7 +9,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=requ
  if(url.pathname==='/api/chart-reference')result={points,cursor:null};
  if(url.pathname==='/api/adr/today')result={intraday:points,marketStatus:'open'};
  if(url.pathname==='/api/supply/watchlist')result={success:true,stocks:[{code:'000660',name:'SK하이닉스'}],archive:[{code:'000660',name:'SK하이닉스'}],revision:0,statuses:{}};
- if(url.pathname==='/api/supply/chart')result={success:true,points,candles:points,warnings:[],date:'2026-10-23',cursor:null};
+ if(['/api/supply/chart','/api/kis-supply/chart'].includes(url.pathname))result={success:true,points,candles:points,warnings:[],date:'2026-10-23',cursor:null};
  if(url.pathname==='/api/supply/candles')result={success:true,points,cursor:null};
  if(url.pathname==='/api/risk/breadth')result={dates:points.map(p=>p.date),series:{highs:{points:points.map((p,i)=>({date:p.date,value:10+i}))},lows:{points:points.map((p,i)=>({date:p.date,value:-10-i}))}}};
  await route.fulfill({json:result});});
@@ -22,7 +22,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=requ
  for(const script of ['rank-chart-axis','rank-adr-chart','rank-volatility-chart','rank-supply-chart'])await page.addScriptTag({path:`public/${script}.js`});
  assert.equal(requests.length,0,'Managed initial mount must not start independent chart requests');
  await page.evaluate(()=>window.RankChartAxis.refreshCharts());
- for(const [id,selector] of [['rankSupplyChartPanel','[data-mode="minute"]'],['rankBreadthChartPanel','[data-breadth-mode="minute"]'],['rankAdrChartPanel','[data-adr-mode="minute"]']]){
+ for(const [id,selector] of [['rankCombinedSupplyChartPanel','[data-mode="minute"]'],['rankBreadthChartPanel','[data-breadth-mode="minute"]'],['rankAdrChartPanel','[data-adr-mode="minute"]']]){
  await page.locator(`#${id} ${selector}`).click();
  try { await page.waitForFunction(id=>document.querySelector(`#${id} .rank-adr-area canvas`).dataMarks>0,id,{timeout:8000}); } catch(error) { console.log(id,await page.locator('#'+id+' .rank-adr-status').textContent(),errors);throw error; }
  }

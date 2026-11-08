@@ -114,6 +114,7 @@
             candleOpen: !candleArea.hidden, mode: state.mode, interval: state.interval,
             selection:state.selection && {...state.selection},
             ...(window.getRankAdrCandleOpen ? { adrCandleOpen: window.getRankAdrCandleOpen() } : {}),
+            ...(window.getRankAdrMode ? { adrMode: window.getRankAdrMode() } : {}),
             ...(!kis && window.getRankCombinedTurnoverCandleOpen ? { combinedTurnoverCandleOpen: window.getRankCombinedTurnoverCandleOpen() } : {}),
             ...(window.getRankTurnoverCandleOpen ? { turnoverCandleOpen: window.getRankTurnoverCandleOpen() } : {}),
             ...(window.getRankVolatilityDisplaySettings ? { volatility: window.getRankVolatilityDisplaySettings() } : {}),
@@ -149,6 +150,8 @@
             candleToggle.textContent = '캔들차트';
             candleToggle.setAttribute('aria-label', candleArea.hidden ? '캔들차트 펼치기' : '캔들차트 접기');
             if (!kis) {
+                // ADR keeps its saved interval; older saves without adrMode follow the shared chart interval.
+                if (settings && ('adrMode' in settings || 'mode' in settings)) window.applyRankAdrMode?.(settings.adrMode || mode);
                 if (!window.rankIndependentClient || settings && 'adrCandleOpen' in settings) window.applyRankAdrCandleOpen?.(window.rankIndependentClient ? settings.adrCandleOpen === true : nextCandleOpen);
                 if (!window.rankIndependentClient || settings && 'turnoverCandleOpen' in settings) window.applyRankTurnoverCandleOpen?.(window.rankIndependentClient ? settings.turnoverCandleOpen === true : nextCandleOpen);
                 if (settings && 'volatility' in settings) window.applyRankVolatilityDisplaySettings?.(window.rankIndependentClient ? settings.volatility : {...settings.volatility,candleOpen:nextCandleOpen});

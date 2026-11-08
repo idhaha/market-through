@@ -3186,3 +3186,12 @@ body { height:100dvh; min-height:0; overflow:hidden; display:flex; flex-directio
 :is(#transactionTable, #stockTable, #efriendStockTable) th .sort-icon svg { width:8px; height:12px; fill:none; stroke:var(--text-muted); stroke-width:1.3; stroke-linecap:round; stroke-linejoin:round; }
 :is(#transactionTable, #stockTable, #efriendStockTable) th .sort-icon circle { fill:var(--text-muted); stroke:none; }
 :is(#transactionTable, #stockTable, #efriendStockTable) th[aria-sort="ascending"] .sort-icon .u, :is(#transactionTable, #stockTable, #efriendStockTable) th[aria-sort="descending"] .sort-icon .d { stroke:var(--text-primary); stroke-width:1.6; }
+/* i guides of the 거래대금 상위 and 대주가능 tables: same placement and look as the 실시간 조회 순위 i. */
+#tab_rank .grid-container > .panel:has(.rank-table-info-button) { position:relative; }
+#tab_rank .grid-container > .panel .panel-controls:has(.rank-table-info-button) { display:flex; align-items:center; gap:8px; }
+#tab_rank .rank-table-info-button { position:static; flex:none; cursor:help; }
+#tab_rank .grid-container > .panel > .rank-query-guide { z-index:30; text-align:left; }
+#tab_rank .lendable-zero-toggle { display:inline-flex; align-items:center; gap:4px; font-size:12px; color:var(--text-muted); white-space:nowrap; cursor:pointer; }
+#tab_rank .lendable-zero-toggle input { margin:0; width:13px; height:13px; }
+/* Table numbers: Inter draws digits with different widths (211 is narrower than 209), so right-aligned rank and amount columns look uneven. Fixed-width digits in every table cell. */
+td, th { font-variant-numeric: tabular-nums; }

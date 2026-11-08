@@ -2,9 +2,9 @@
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MarketThrough VI 모니터링</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261102_table_lines"><link rel="stylesheet" href="data-collection-info.css?v=20261107_vi_guide"><link rel="stylesheet" href="vi-monitor.css?v=20261107_countdown_ms">
-<script src="vi-monitor.js?v=20261107_sort_all" defer></script>
-<script src="data-collection-info.js?v=20261107_futures_kis_only" defer></script><script src="vi-monitor-info.js?v=20261107_countdown_ms" defer></script></head>
+<link rel="stylesheet" href="style.css?v=20261108_tabular_nums"><link rel="stylesheet" href="data-collection-info.css?v=20261107_vi_guide"><link rel="stylesheet" href="vi-monitor.css?v=20261108_fit_window">
+<script src="vi-monitor.js?v=20261108_bid_average" defer></script>
+<script src="data-collection-info.js?v=20261108_vi_bid_average" defer></script><script src="vi-monitor-info.js?v=20261108_bid_average" defer></script></head>
 <body class="vi-monitor"><main class="panel vi-panel">
 <header class="panel-header"><h1>VI 실시간 모니터링</h1><span id="viClock" class="vi-clock"></span>
 <div class="vi-controls"><label><input id="viTopmost" type="checkbox"> 항상 위</label></div></header>
@@ -17,11 +17,12 @@
 <th rowspan="2" scope="col" aria-sort="descending"><button data-sort="startedAt">발동 시각</button></th>
 <th rowspan="2" scope="col"><button data-sort="releasedAt">해제 시각</button></th><th rowspan="2" scope="col"><button data-sort="remaining">해제까지(예상)</button></th>
 <th colspan="2" scope="colgroup" class="comparison-group">KRX대비</th>
+<th rowspan="2" scope="col"><button data-sort="bidAverage" title="KRX 매수 1~10호가 각각의 가격 × 잔량을 평균한 금액"><span class="th-lines">KRX 매수10호가<br>평균</span></button></th>
 </tr><tr><th scope="col"><button data-sort="nxtRate">NXT 괴리율</button></th>
 <th scope="col"><button data-sort="futureRate">선물 괴리율</button>
 <select id="viFutureMonth" class="interval-select" aria-label="선물 월물 선택"><option value="recent">최근월</option><option value="next">차기월</option></select></th></tr></thead>
-<tbody id="viBody"><tr><td colspan="12" class="vi-empty">VI 수신 연결 중…</td></tr></tbody></table></div>
+<tbody id="viBody"><tr><td colspan="13" class="vi-empty">VI 수신 연결 중…</td></tr></tbody></table></div>
 <footer><div id="viSummary" class="vi-summary" aria-live="polite"></div>
 <p id="viStatus" class="vi-status" role="status">서버 연결 중</p>
-<p class="vi-status">KRX대비 = (NXT 또는 선물 현재가 ÷ KRX 현재가 − 1) × 100. 해제 종목은 당일 유지됩니다. 남은 시간은 예상이며 실제 해제는 수신 이벤트로 확인합니다.</p></footer>
+<p class="vi-status">KRX대비 = (NXT 또는 선물 현재가 ÷ KRX 현재가 − 1) × 100. 매수10호가 평균 = KRX 매수 1~10호가의 (가격 × 잔량) 평균. 해제 종목은 당일 유지됩니다. 남은 시간은 예상이며 실제 해제는 수신 이벤트로 확인합니다.</p></footer>
 </main></body></html>

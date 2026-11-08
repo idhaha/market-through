@@ -14,6 +14,14 @@
     const time=t=>Number.isFinite(t)?new Date(t).toLocaleTimeString('en-GB',{timeZone:'Asia/Seoul',hourCycle:'h23',hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—';
     const percent=v=>Number.isFinite(v)?(v>0?'+':'')+v.toFixed(2)+'%':'—';
     const kind={'1':'정적','2':'동적','3':'동적,정적'};
+    // Amounts in KRW shown with the unit that fits their size: 2,345,678,901 → 2.3십억.
+    const UNITS=[[1e14,'백조'],[1e13,'십조'],[1e12,'조'],[1e11,'천억'],[1e10,'백억'],[1e9,'십억'],[1e8,'억'],[1e7,'천만'],[1e6,'백만'],[1e4,'만']];
+    const money=v=>{
+        if(!Number.isFinite(v))return '—';
+        const unit=UNITS.find(([size])=>Math.abs(v)>=size);
+        if(!unit)return Math.round(v).toLocaleString('ko-KR')+'원';
+        return (v/unit[0]).toFixed(1).replace(/\.0$/,'')+unit[1];
+    };
     const cell=(tr,text,className='')=>{const td=document.createElement('td');td.textContent=text;td.className=className;tr.append(td);return td;};
     // Clicked rows stop blinking; the server stores it per activation and syncs every window.
     const flashKey=r=>r.code+':'+r.exchange+':'+r.startedAt;
@@ -59,9 +67,11 @@
             nxt.title=`KRX 수신 ${time(r.krxReceivedAt)} / NXT 수신 ${time(r.nxtReceivedAt)}`;
             const future=r.futures?.[month.value];
             cell(tr,percent(future?.rate),future?.rate>0?'up':future?.rate<0?'down':'muted').title=future?`${future.name||future.code} · 만기 ${future.expiry} · 수신 ${time(future.receivedAt)}`:r.detailError||'해당 월물 또는 가격 미수신';
+            const book=cell(tr,money(r.bidAverage),'amount');
+            book.title=Number.isFinite(r.bidAverage)?`${Math.round(r.bidAverage).toLocaleString('ko-KR')}원 · 수신 ${time(r.bidAverageAt)}${r.bidAverageVia==='REST'?' (조회 5초 주기)':''}`:'KRX 호가 미수신';
             fragment.append(tr);
         });
-        if(!data.rows.length){const tr=document.createElement('tr');const td=cell(tr,'수신한 당일 VI 종목이 없습니다.','vi-empty');td.colSpan=12;fragment.append(tr);}
+        if(!data.rows.length){const tr=document.createElement('tr');const td=cell(tr,'수신한 당일 VI 종목이 없습니다.','vi-empty');td.colSpan=13;fragment.append(tr);}
         body.replaceChildren(fragment);
         const active=data.rows.filter(r=>r.active),krx=new Set(active.filter(r=>r.exchange==='KRX').map(r=>r.code)),nxt=new Set(active.filter(r=>r.exchange==='NXT').map(r=>r.code));
         summary.textContent=`현재 발동 중 · KRX ${krx.size}종목 · NXT ${nxt.size}종목 · 양 시장 ${[...krx].filter(c=>nxt.has(c)).length}종목 · 당일 해제 ${data.rows.filter(r=>!r.active).length}건`;

@@ -30,7 +30,8 @@ function readMasterZip(input, filename) {
 }
 
 async function loadStockCodes(http) {
-    const codes = new Set();
+    const codes = new Set(), names = new Map();
+    const decoder = new TextDecoder('euc-kr');
     for (const market of ['kospi', 'kosdaq']) {
         const filename = `${market}_code.mst`;
         const response = await http.get(`https://new.real.download.dws.co.kr/common/master/${filename}.zip`, {
@@ -45,10 +46,17 @@ async function loadStockCodes(http) {
         const flagged = validLines.filter(line => line.endsWith('Y'));
         // A missing/unrecognized flag must not silently empty the universe.
         const marketCodes = (flagged.length ? flagged : validLines).map(line => line.slice(0, 9).trim());
+        // The Korean name sits between the standard code and the fixed-width tail (KIS sample: 228 bytes KOSPI, 222 KOSDAQ).
+        const tail = market === 'kospi' ? 228 : 222;
+        for (const line of flagged.length ? flagged : validLines) {
+            const name = line.length > 21 + tail ? decoder.decode(Buffer.from(line.slice(21, line.length - tail), 'latin1')).trim() : '';
+            if (name) names.set(line.slice(0, 9).trim(), name);
+        }
         if (!marketCodes.length) throw new Error(`Empty ${market} master`);
         marketCodes.forEach(code => codes.add(code));
     }
-    return [...codes];
+    // Names let a candidate with no lendable quantity still be listed (with 0).
+    return Object.assign([...codes], { names });
 }
 
 function createLendableService({ http, log = () => {}, now = Date.now,
@@ -83,7 +91,9 @@ function createLendableService({ http, log = () => {}, now = Date.now,
             // flag has not caught up with live availability yet.
             let codes = current.pending;
             if (!codes) {
-                const universe = [...new Set([...(await loadCodes()), ...current.items.keys(), ...current.batchSeed.keys()])];
+                const master = await loadCodes();
+                current.names = master.names instanceof Map ? master.names : current.names || new Map();
+                const universe = [...new Set([...master, ...current.items.keys(), ...current.batchSeed.keys()])];
                 current.total = universe.length;
                 codes = universe.filter(code => !current.batchSeed.has(code));
             }
@@ -111,6 +121,12 @@ function createLendableService({ http, log = () => {}, now = Date.now,
                     for (const row of rows) {
                         const pdno = row.pdno.trim();
                         next.set(pdno, row);
+                    }
+                    // A lendable candidate the company cannot lend right now: KIS returns no row, so list it with 0.
+                    if (!rows.some(row => row.pdno.trim() === code)) {
+                        const known = current.items.get(code);
+                        next.set(code, { pdno: code, prdt_name: current.names?.get(code) || known?.prdt_name || code,
+                            trad_psbl_qty2: '0', lmt_qty1: '0', use_qty1: '0', psbl_yn_name: '수량 없음', no_quantity: true });
                     }
                 } catch (error) {
                     current.errors++;

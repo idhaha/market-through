@@ -4,15 +4,20 @@ const assert=require('node:assert/strict');
  const browser=await chromium.launch({headless:true,channel:'msedge'});
  try {
   const page=await browser.newPage({viewport:{width:1000,height:700}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
-  await page.setContent('<div class="rank-chart-row"><section class="panel concentration-chart-panel" id="concentrationChartPanel"></section><section class="panel rank-adr-panel" id="rankAdrChartPanel"><div class="concentration-chart-header"><h2>ADR</h2><div class="rank-market-choice"><label><input type="radio" name="rank-adr-market" value="kospi" checked>KOSPI</label></div><output>—</output></div><div class="rank-adr-area"><canvas></canvas><div class="concentration-tooltip" hidden></div></div><p role="status" class="rank-adr-status"></p></section></div>');
+  // Served from an http origin so localStorage is available, as on the real page.
+  const fixture='<div class="rank-chart-row"><section class="panel concentration-chart-panel" id="concentrationChartPanel"></section><section class="panel rank-adr-panel" id="rankAdrChartPanel"><div class="concentration-chart-header"><h2>ADR</h2><div class="rank-market-choice"><label><input type="radio" name="rank-adr-market" value="kospi" checked>KOSPI</label></div><output>—</output></div><div class="rank-adr-area"><canvas></canvas><div class="concentration-tooltip" hidden></div></div><p role="status" class="rank-adr-status"></p></section></div>';
+  await page.route('http://fixture.test/**',route=>route.fulfill({contentType:'text/html',body:fixture}));await page.goto('http://fixture.test/');
   await page.addStyleTag({path:'public/style.css'});
   await page.evaluate(()=>{
    Date.now=()=>Date.parse('2026-10-23T10:00:00+09:00');window.arcs=[];window.samples=1;
    const arc=CanvasRenderingContext2D.prototype.arc;
    CanvasRenderingContext2D.prototype.arc=function(x,y,r,...args){if(this.canvas.closest('#rankAdrChartPanel'))window.arcs.push({x,y,width:this.canvas.clientWidth});return arc.call(this,x,y,r,...args);};
-   window.fetch=async()=>new Response(JSON.stringify({marketStatus:'open',intraday:Array.from({length:window.samples},(_,i)=>({t:Date.parse(`2026-10-23T09:0${i+1}:00+09:00`),adr:90+i}))}));
+   window.fetch=async url=>new Response(JSON.stringify(!String(url).startsWith('/api/adr/today')?{points:[],series:[]}:{marketStatus:'open',intraday:Array.from({length:window.samples},(_,i)=>({t:Date.parse(`2026-10-23T09:0${i+1}:00+09:00`),adr:90+i}))}));
   });
+  await page.addScriptTag({path:'public/rank-chart-axis.js'});
   await page.addScriptTag({path:'public/rank-adr-chart.js'});
+  // The card opens in day mode; this test covers the minute (today) view.
+  await page.click('#rankAdrChartPanel [data-adr-mode="minute"]');
   await page.waitForFunction(()=>document.querySelector('#rankAdrChartPanel output').textContent==='90.0%');
   assert.ok(await page.evaluate(()=>window.arcs.length && window.arcs.every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y))));
   await page.evaluate(async()=>{window.samples=2;await window.refreshRankAdrChart();});

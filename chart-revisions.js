@@ -21,6 +21,8 @@ const ROUTES = {
     '/api/market-supply/chart': ['market-supply'],
     '/api/kiwoom-market-supply/chart': ['kiwoom-market-supply'],
     '/api/ls-market-supply/chart': ['ls-market-supply'],
+    // 시장 선물 수급 cards: LS night/day lookups saved in ls-futures-test, daytime KIS values from market-supply.
+    '/api/ls-futures-test/chart': ['ls-futures-test', 'market-supply'],
     '/api/ls-turnover/chart': ['ls-turnover'],
     '/api/kis-turnover/chart': ['kis-turnover'],
     '/api/ls-concentration-chart': ['ls-turnover'],

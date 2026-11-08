@@ -1165,9 +1165,18 @@ function renderTable(data) {
 /**
  * 한국투자증권(eFriend) 테이블 렌더링
  */
+// "매매수량 없는 종목도 보기" (default on): when off, rows with no lendable quantity are hidden.
+let lastEfriendStocks = [];
+const efriendShowZero = document.getElementById('efriendShowZero');
+if (efriendShowZero) {
+    efriendShowZero.checked = localStorage.getItem('efriendShowZero') !== 'false';
+    efriendShowZero.addEventListener('change', () => { localStorage.setItem('efriendShowZero', String(efriendShowZero.checked)); renderEfriendTable(lastEfriendStocks); });
+}
 function renderEfriendTable(stocks) {
     const efriendTableBody = document.getElementById('efriendTableBody');
     if (!efriendTableBody) return;
+    lastEfriendStocks = Array.isArray(stocks) ? stocks : [];
+    if (Array.isArray(stocks) && efriendShowZero && !efriendShowZero.checked) stocks = stocks.filter(stock => (parseInt(stock.trad_psbl_qty2) || 0) > 0);
     const countLabel = document.getElementById('efriendStockCount');
     if (countLabel) countLabel.textContent = `(${Array.isArray(stocks) ? stocks.length.toLocaleString() : 0}개)`;
 
@@ -1654,10 +1663,10 @@ refreshIntervalSelect.addEventListener('change', (e) => {
     saveAppData();
 });
 
-// i guide of the ranking table: opens below the header, closes on a second click, Esc or a click outside.
-(() => {
-    const button = document.querySelector('.rank-query-info-button'), guide = document.getElementById('rankQueryGuide');
-    if (!button || !guide) return;
+// i guides of the trading tables: open below the header, close on a second click, Esc or a click outside.
+document.querySelectorAll('.rank-query-info-button, .rank-table-info-button').forEach(button => {
+    const guide = document.getElementById(button.getAttribute('aria-controls'));
+    if (!guide) return;
     const panel = button.closest('.panel');
     const hide = () => { guide.hidden = true; guide.classList.remove('is-visible'); button.setAttribute('aria-expanded', 'false'); };
     button.addEventListener('click', event => {
@@ -1668,7 +1677,7 @@ refreshIntervalSelect.addEventListener('change', (e) => {
     });
     document.addEventListener('click', event => { if (!guide.hidden && !guide.contains(event.target)) hide(); });
     document.addEventListener('keydown', event => { if (event.key === 'Escape' && !guide.hidden) { hide(); button.focus(); } });
-})();
+});
 rankQuerySelect?.addEventListener('change', () => {
     loadData({ refreshLendable: false });
     startRankingRefresh(true);
@@ -2396,7 +2405,7 @@ function initializeTab(tabId) {
             const prefix = `overseasCustom_${tabId}`;
             const refreshBtn = document.getElementById(`refreshOverlay_${tabId}`);
             if (refreshBtn && !refreshBtn.hasAttribute('data-listener-attached')) {
-                refreshBtn.addEventListener('click', () => refreshOverseasCustomCharts(tabId));
+                refreshBtn.addEventListener('click', () => refreshOverseasCustomCharts(tabId, true));
                 refreshBtn.setAttribute('data-listener-attached', 'true');
             }
             setupOverseasCursorSync();
@@ -2404,7 +2413,7 @@ function initializeTab(tabId) {
         } else if (tabData[tabId] && tabData[tabId].type === 'exchange_rate') {
             const refreshBtn = document.getElementById(`refreshExchangeRate_${tabId}`);
             if (refreshBtn && !refreshBtn.hasAttribute('data-listener-attached')) {
-                refreshBtn.addEventListener('click', () => refreshExchangeRateCharts(tabId));
+                refreshBtn.addEventListener('click', () => refreshExchangeRateCharts(tabId, true));
                 refreshBtn.setAttribute('data-listener-attached', 'true');
             }
             setupSectorGroupListeners(tabId);
@@ -3871,7 +3880,7 @@ async function loadMultiSeriesChart(canvas, urls, title, force = false) {
                                 if (fredMatch) {
                                     const sid = fredMatch[1].replace(/['"“”‘’]/g, '').trim();
                                     const per = fredMatch[2] ? fredMatch[2].replace(/['"“”‘’]/g, '').trim() : '1y';
-                                    fetchUrl = `/api/fred?series_id=${encodeURIComponent(sid)}&period=${encodeURIComponent(normalizePeriod(per))}`;
+                                    fetchUrl = `/api/fred?series_id=${encodeURIComponent(sid)}&period=${encodeURIComponent(normalizePeriod(per))}${force ? '&force_refresh=true' : ''}`;
                                 }
                             } else if (dataSource === 'ecos') {
                                 const innerResult = url.match(/ecos\s*\(([^)]+)\)/i);
@@ -3897,7 +3906,7 @@ async function loadMultiSeriesChart(canvas, urls, title, force = false) {
                                     else if (normalizedPer.includes('m')) startDateObj.setMonth(localNow.getMonth() - (parseInt(normalizedPer) || 1));
                                     else startDateObj.setFullYear(localNow.getFullYear() - 1);
                                     const startDate = formatLocalYMD(startDateObj);
-                                    fetchUrl = `/api/ecos?table=${encodeURIComponent(tbl)}&item=${encodeURIComponent(itm)}&start=${startDate}&end=${endDate}`;
+                                    fetchUrl = `/api/ecos?table=${encodeURIComponent(tbl)}&item=${encodeURIComponent(itm)}&start=${startDate}&end=${endDate}${force ? '&force_refresh=true' : ''}`;
                                 }
                             } else if (dataSource === 'te') {
                                 const period = item.duration || '';
@@ -4633,7 +4642,8 @@ function syncZoomToOtherCharts(sourceCanvas, zoomStateParams) {
 /**
  * 환율/금리 탭 차트 새로고침
  */
-async function refreshExchangeRateCharts(tabId) {
+// force: the 조회/전체조회 buttons. Opening the tab uses the server's stored series without refetching.
+async function refreshExchangeRateCharts(tabId, force = false) {
     if (isCapturing) { console.log('[Capture] refreshExchangeRateCharts() skipped (isCapturing)'); return; }
     const content = document.getElementById(tabId);
     if (!content) return;
@@ -4672,8 +4682,7 @@ async function refreshExchangeRateCharts(tabId) {
             const title = box.querySelector('.finviz-chart-title')?.textContent || '';
 
             if (url && canvas) {
-                // refresh 버튼 클릭 시 호출되므로 force=true 전달
-                await loadTradingEconomicsChart(canvas, url, title, duration, true).finally(checkComplete);
+                await loadTradingEconomicsChart(canvas, url, title, duration, force).finally(checkComplete);
             } else {
                 checkComplete();
             }
@@ -4696,9 +4705,7 @@ async function refreshExchangeRateCharts(tabId) {
 
                 if (seriesConfig.length > 0) {
                     const title = box.querySelector('.finviz-chart-title')?.textContent || '';
-                    // 새로고침 버튼으로부터 호출되었으므로 force=true 전달
-                    await loadMultiSeriesChart(canvas, seriesConfig, title, true).finally(checkComplete);
-                    await new Promise(r => setTimeout(r, 500)); // v30.9.15: Small rest between heavy charts
+                    await loadMultiSeriesChart(canvas, seriesConfig, title, force).finally(checkComplete);
                 } else {
                     checkComplete();
                 }
@@ -4777,9 +4784,9 @@ async function refreshAllTabs() {
         if (tabId === EARNINGS_TAB_ID) {
             refreshEarningsTab(tabId);
         } else if (type === 'exchange_rate') {
-            refreshExchangeRateCharts(tabId);
+            refreshExchangeRateCharts(tabId, true);
         } else if (type === 'overseas_custom') {
-            refreshOverseasCustomCharts(tabId);
+            refreshOverseasCustomCharts(tabId, true);
         } else if (!type && Array.isArray(tabData[tabId])) {
             refreshDynamicChartsTab(tabId);
         }
@@ -5214,7 +5221,7 @@ function openCustomChartModal() {
 /**
  * 해외 커스텀 차트 새로고침
  */
-function refreshOverseasCustomCharts(tabId) {
+function refreshOverseasCustomCharts(tabId, force = false) {
     if (isCapturing) { console.log('[Capture] refreshOverseasCustomCharts() skipped (isCapturing)'); return; }
     // alert(`[DEBUG] Refreshing tab: ${tabId}`);
     const content = document.getElementById(tabId);
@@ -5284,7 +5291,7 @@ function refreshOverseasCustomCharts(tabId) {
 
                     if (seriesConfig.length > 0) {
                         const title = box.querySelector('.finviz-chart-title')?.textContent || '';
-                        loadMultiSeriesChart(canvas, seriesConfig, title, true).then(checkComplete);
+                        loadMultiSeriesChart(canvas, seriesConfig, title, force).then(checkComplete);
                     } else {
                         checkComplete();
                     }

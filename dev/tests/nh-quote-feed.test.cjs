@@ -33,12 +33,17 @@ test('subscribes KRX, NXT and futures one at a time and parses pushes', async t 
     await tick(); await tick(); await tick();
     const ws = f.sockets[0];
     assert.deepEqual(ws.sent.map(m => m.body), [{tr_cd: 'oc', tr_key: '005930'}]);
-    ws.ack(); ws.ack(); ws.ack();
-    assert.deepEqual(ws.sent.map(m => m.body.tr_cd), ['oc', 'nc', 'vC']);
+    ws.ack(); ws.ack(); ws.ack(); ws.ack();
+    // The KRX order book (ob) is subscribed after every price key.
+    assert.deepEqual(ws.sent.map(m => m.body.tr_cd), ['oc', 'nc', 'vC', 'ob']);
     assert.equal(ws.sent[2].body.tr_key, 'A116B000');
     ws.emit('message', JSON.stringify({header: {tr_cd: 'oc', tr_key: '005930'}, body: {code: '005930', time: '10:00:01', price: '100500'}}));
     ws.emit('message', JSON.stringify({header: {tr_cd: 'vC', tr_key: 'A116B000'}, body: {fuitem: 'A116B000', futime: '10:00:01', fucurr: '101000'}}));
     assert.deepEqual(f.quotes.map(q => [q.exchange, q.key, q.price, q.via]), [['KRX', '005930', 100500, 'WS'], ['FUT', 'A116B000', 101000, 'WS']]);
+    // ob: average of price × quantity over the bid levels that have a price (two levels here).
+    ws.emit('message', JSON.stringify({header: {tr_cd: 'ob', tr_key: '005930'}, body: {code: '005930', hotime: '10:00:02', bid: '100000', bidrem: '10', P_bid: '99900', P_bidrem: '20', S_bid: '0', S_bidrem: '0', offer: '100100', offerrem: '999'}}));
+    assert.deepEqual(f.quotes.at(-1).bidAverage, (100000 * 10 + 99900 * 20) / 2);
+    assert.equal(f.quotes.at(-1).exchange, 'KRX');
     f.feed.unwatch('005930');
     // With nothing left to watch the connection closes, which also drops every NH registration.
     assert.equal(ws.readyState, 3);
@@ -50,7 +55,7 @@ test('keys beyond the subscription limit use REST, and the token is reused from 
     f.feed.start(); f.feed.watch('005930');
     await tick(); await tick(); await tick();
     f.sockets[0].ack();
-    assert.deepEqual(f.feed.state(), {connected: true, wanted: 2, subscribed: 1, rest: 1});
+    assert.deepEqual(f.feed.state(), {connected: true, wanted: 3, subscribed: 1, rest: 2});
     assert.equal(f.fetches.filter(u => u.includes('/oauth2/token')).length, 1);
     const saved = JSON.parse(fs.readFileSync(path.join(f.dir, 'token.json'), 'utf8'));
     assert.ok(saved.token && saved.expiresAt > Date.now());
@@ -83,7 +88,7 @@ test('a stock NXT does not list is neither subscribed nor polled on NXT (00500)'
     await new Promise(r => setTimeout(r, 300));
     const ws = f.sockets[0];
     assert.deepEqual(ws.sent.map(m => m.body), [{tr_cd: 'oc', tr_key: '239610'}]);
-    assert.equal(f.feed.state().wanted, 1);
+    assert.equal(f.feed.state().wanted, 2, 'KRX price and order book only');
     assert.ok(f.events.some(e => e.type === 'nxt_unavailable' && e.key === 'NXT:239610'));
     assert.equal(f.events.filter(e => e.type === 'rest_error').length, 0);
     // A later watch reuses the answer without asking again.
@@ -160,5 +165,42 @@ test('WSS10009 while the client still sees free slots pauses subscribes instead 
     assert.equal(ws.registered.size, 6);
     assert.equal(rejected, 1, 'one rejection, then a 30 s pause');
     assert.equal(ws.sent.filter(m => m.header.tr_type === '1').length, 7);
-    assert.deepEqual(feed.state(), {connected: true, wanted: 12, subscribed: 6, rest: 6});
+    assert.deepEqual(feed.state(), {connected: true, wanted: 18, subscribed: 6, rest: 12});
+});
+
+test('a price key waiting for a full connection takes the slot of an order book', async t => {
+    const f = fixture(t, {max: 3});
+    f.feed.start(); f.feed.watch('005930');
+    for (let i = 0; i < 6; i++) await tick();
+    const ws = f.sockets[0];
+    ws.ack(); ws.ack(); ws.ack();
+    assert.deepEqual(ws.sent.map(m => m.body.tr_cd), ['oc', 'nc', 'ob']);
+    // The futures month arrives later (after the LS lookup) while every slot is taken.
+    f.feed.watch('005930', {futures: ['A116B000']});
+    await tick();
+    assert.deepEqual([ws.sent.at(-1).header.tr_type, ws.sent.at(-1).body.tr_cd], ['2', 'ob']);
+    ws.ack();
+    assert.deepEqual([ws.sent.at(-1).header.tr_type, ws.sent.at(-1).body.tr_cd], ['1', 'vC']);
+    ws.ack();
+    assert.deepEqual(f.feed.state(), {connected: true, wanted: 4, subscribed: 3, rest: 1});
+    // No further sends: the order book stays on REST instead of fighting for the slot.
+    const sent = ws.sent.length; await tick(); await tick();
+    assert.equal(ws.sent.length, sent);
+});
+
+test('REST polling reads the bid book from the KRX current price without an extra call', async t => {
+    const calls = [];
+    const f = fixture(t, {max: 0, rest: (url, body) => {
+        calls.push(body.Input_0);
+        const levels = Object.fromEntries(Array.from({length: 10}, (_, i) => [['bidp' + (i + 1), String(1000 - i * 10)], ['bidp_rsqn' + (i + 1), String(100 + i)]]).flat());
+        return {status: 200, ok: true, json: async () => ({rsp_cd: '00000', Output_0: {stck_prpr: '1000', acml_tr_pbmn: '5000000', ...levels}})};
+    }});
+    f.feed.start(); f.feed.watch('005930');
+    for (let i = 0; i < 6; i++) await tick();
+    calls.length = 0;
+    await f.feed.pollNow();
+    const expected = Array.from({length: 10}, (_, i) => (1000 - i * 10) * (100 + i)).reduce((a, b) => a + b) / 10;
+    assert.equal(f.quotes.find(q => q.bidAverage != null)?.bidAverage, expected);
+    // KRX and NXT prices only: the order book rides on the KRX call.
+    assert.deepEqual(calls.map(c => c.market_cd).sort(), ['KRX', 'NXT']);
 });

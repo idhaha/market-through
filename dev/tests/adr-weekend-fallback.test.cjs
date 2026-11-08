@@ -45,10 +45,12 @@ const { chromium } = require('playwright');
             await page.evaluate(({ now, recovered, seedOldSession }) => {
                 Date.now = () => now;
                 if (seedOldSession) localStorage.setItem('rank-adr-session:kospi', JSON.stringify({ points: [{ t: Date.parse('2026-10-15T15:30:00+09:00'), adr: 67.42 }] }));
-                window.fetch = async () => new Response(JSON.stringify(recovered), { status: 200 });
+                window.fetch = async url => new Response(JSON.stringify(String(url).startsWith('/api/adr/today') ? recovered : { points: [] }), { status: 200 });
             }, { now, recovered, seedOldSession });
+            await page.addScriptTag({ content: fs.readFileSync('public/rank-chart-axis.js', 'utf8') });
             await page.addScriptTag({ content: fs.readFileSync('public/rank-adr-chart.js', 'utf8') });
             await page.evaluate(() => document.dispatchEvent(new Event('DOMContentLoaded')));
+            await page.click('[data-adr-mode="minute"]');
             await page.waitForFunction(() => document.querySelector('.rank-adr-status').textContent.includes('2026-10-16'));
             assert.equal(await page.locator('#rankAdrChartPanel output').textContent(), '74.8%');
             assert.match(await page.locator('.rank-adr-status').textContent(), /분봉 기록 없음/);

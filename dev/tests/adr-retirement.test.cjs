@@ -19,7 +19,8 @@ test('legacy ADR backup is retired without changing other settings or input', ()
  assert.equal(context.removeRetiredAdrState(null),null);
 });
 test('both restoration paths normalize retired settings and Rank APIs remain', () => {
- for (const name of ['applyData', 'applyFullStateBackup']) assert.ok(source.includes('function '+name+'(data) {\n    data = removeRetiredAdrState(data);'));
+ // Tab sidebar settings may be applied first; ADR state must be removed before anything else reads data.
+ for (const name of ['applyData', 'applyFullStateBackup']) assert.match(source, new RegExp('function '+name+'\\(data\\) \\{\\r?\\n(    applyTabSidebarSettings\\(data\\?\\.tabSidebar\\);\\r?\\n)?    data = removeRetiredAdrState\\(data\\);'));
  assert.ok(!source.includes('ADR_TAB_ID'));
  assert.ok(!source.includes('updateAdrFromSource'));
  const server=fs.readFileSync('server.js','utf8');

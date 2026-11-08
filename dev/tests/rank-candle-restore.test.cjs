@@ -8,7 +8,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=requ
  await page.goto('http://restore.test/');await page.addStyleTag({path:'public/style.css'});
  for(const name of ['rank-chart-axis','concentration-chart','rank-adr-chart','rank-turnover-chart','rank-volatility-chart','rank-supply-chart'])await page.addScriptTag({path:`public/${name}.js`});
  await page.evaluate(()=>document.dispatchEvent(new Event('DOMContentLoaded')));
- const selector='.rank-chart-row .concentration-candle-toggle';assert.equal(await page.locator(selector).count(),7);
+ const selector='.rank-chart-row .concentration-candle-toggle';assert.equal(await page.locator(selector).count(),8);
  for(const open of [true,false,true]){
  await page.evaluate(open=>window.applyConcentrationDisplaySettings({candleOpen:open,adrCandleOpen:!open,turnoverCandleOpen:!open,volatility:{candleOpen:!open},breadth:{candleOpen:!open},sentiment:{candleOpen:!open}}),open);
  assert.ok((await page.locator(selector).evaluateAll(nodes=>nodes.map(n=>n.getAttribute('aria-expanded')))).every(value=>value===String(open)));
@@ -23,5 +23,5 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=requ
   assert.equal(await page.locator('#rankVolatilityChartPanel [data-breadth-mode="minute"],#rankSentimentChartPanel [data-breadth-mode="minute"]').count(),0);
   assert.equal(await page.locator('#rankVolatilityChartPanel [data-rank-mode="day"].active,#rankSentimentChartPanel [data-rank-mode="day"].active').count(),2);
  }
- assert.deepEqual(errors,[]);console.log('PASS all seven main charts restore a single candle state despite conflicting old settings');
+ assert.deepEqual(errors,[]);console.log('PASS all eight main charts restore a single candle state despite conflicting old settings');
 }finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1});

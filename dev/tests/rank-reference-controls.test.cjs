@@ -17,7 +17,7 @@ const {chromium}=require('playwright');const assert=require('node:assert/strict'
  await page.goto('http://chart.test/');await page.addStyleTag({path:'public/style.css'});
  await page.evaluate(()=>{const proto=CanvasRenderingContext2D.prototype,clear=proto.clearRect,text=proto.fillText;
  proto.clearRect=function(...args){this.canvas.axisLabels=[];return clear.apply(this,args);};
- proto.fillText=function(label,...args){if(/^\d{2}-\d{2}-\d{2}$/.test(String(label)))(this.canvas.axisLabels ||= []).push(String(label));return text.call(this,label,...args);};});
+ proto.fillText=function(label,...args){if(/^\d{2}\/\d{2}$/.test(String(label)))(this.canvas.axisLabels ||= []).push(String(label));return text.call(this,label,...args);};});
 
  await page.addScriptTag({path:'public/rank-chart-axis.js'});await page.addScriptTag({path:'public/rank-adr-chart.js'});await page.addScriptTag({path:'public/rank-volatility-chart.js'});
  for(const id of ['rankAdrChartPanel','rankVolatilityChartPanel','rankSentimentChartPanel']){

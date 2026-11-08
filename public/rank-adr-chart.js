@@ -398,11 +398,15 @@
         };
         function changeView(restoreRange) { candleRangeKey='';candleRangePending='';candleRangeError=''; todayOnly=true;referencePages.clear();referencePoints=[];referenceCursor=null;referenceLoading=false;controller?.abort(); candleController?.abort(); viewStart=0; viewCount=null; drag=null; points = []; closing = null; hover = null; candles = []; tooltip.hidden = true; candleTip.hidden = true; output.textContent = '—'; panel.querySelector('.rank-selection-history-notice')?.remove();draw();const market=selectedMarket;void window.refreshRankAdrChart().then(()=>{if(market===selectedMarket && restoreRange)return window.RankChartAxis.restoreHistoryRange('adr',restoreRange);}); }
         panel.querySelector('.rank-market-choice').addEventListener('change', event => { const range=mode==='minute'?window.RankChartAxis.minuteDomain():window.RankChartAxis.dailyDomain();selectedMarket = event.target.value; chartDay = dateKey(Date.now()); changeView(range); });
-        controls.querySelectorAll('[data-adr-mode]').forEach(button => button.addEventListener('click', () => {
-            mode = button.dataset.adrMode;
-            controls.querySelectorAll('[data-adr-mode]').forEach(b => b.classList.toggle('active', b === button));
+        function setMode(next) {
+            mode = next;
+            controls.querySelectorAll('[data-adr-mode]').forEach(b => b.classList.toggle('active', b.dataset.adrMode === mode));
             changeView();
-        }));
+        }
+        controls.querySelectorAll('[data-adr-mode]').forEach(button => button.addEventListener('click', () => setMode(button.dataset.adrMode)));
+        // The saved interval is restored without a click, so other charts are not re-synchronized during startup.
+        window.getRankAdrMode = () => mode;
+        window.applyRankAdrMode = value => { const next = value === 'minute' ? 'minute' : 'day'; if (next !== mode) setMode(next); };
         window.getRankAdrCandleOpen = () => !candleArea.hidden;
         window.applyRankAdrCandleOpen = open => {
             if (candleArea.hidden === (open !== true)) return;

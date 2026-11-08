@@ -122,10 +122,10 @@ async function main(){
         assert.equal(await page.locator('thead th').first().evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(234, 240, 249)');
         // The row line is an inset shadow (style.css) so it adds no row height.
         assert.equal(await page.locator('#viBody td').first().evaluate(el=>getComputedStyle(el).boxShadow),'rgb(217, 226, 240) 0px -1px 0px 0px inset');
-        assert.deepEqual(await page.locator('thead tr').first().locator('th').allTextContents(),['순위','시장','종목명','등락률','거래대금(백만)','거래소','구분','발동 시각','해제 시각','해제까지(예상)','KRX대비']);
+        assert.deepEqual(await page.locator('thead tr').first().locator('th').allTextContents(),['순위','시장','종목명','등락률','거래대금(백만)','거래소','구분','발동 시각','해제 시각','해제까지(예상)','KRX대비','KRX 매수10호가평균']);
         // Default (발동 시각 newest first): every sortable column shows arrows, none shows a dot.
         const sortIcons=()=>page.evaluate(()=>Object.fromEntries([...document.querySelectorAll('[data-sort]')].map(b=>[b.dataset.sort,(b.querySelector('circle')?'dot':'arrows')+':'+b.closest('th').getAttribute('aria-sort')])));
-        assert.deepEqual(await sortIcons(),{market:'arrows:none',name:'arrows:none',rate:'arrows:none',amount:'arrows:none',exchange:'arrows:none',kind:'arrows:none',startedAt:'arrows:descending',releasedAt:'arrows:none',remaining:'arrows:none',nxtRate:'arrows:none',futureRate:'arrows:none'});
+        assert.deepEqual(await sortIcons(),{market:'arrows:none',name:'arrows:none',rate:'arrows:none',amount:'arrows:none',exchange:'arrows:none',kind:'arrows:none',startedAt:'arrows:descending',releasedAt:'arrows:none',remaining:'arrows:none',nxtRate:'arrows:none',futureRate:'arrows:none',bidAverage:'arrows:none'});
         // Activation time is already beyond 2 minutes: do not falsely release a VI on a timer.
         assert.equal(await page.locator('#viBody tr').first().locator('td').nth(9).textContent(),'해제 수신 대기');
         // The release repeats the activation time (1223 = 09:02:00); the shown release time must be 1224.
@@ -146,7 +146,7 @@ async function main(){
         await page.selectOption('#viFutureMonth','next');assert.equal(await page.locator('#viBody tr[data-code="005930"]').first().locator('td').nth(11).textContent(),'+4.00%');
         // Choosing a column: it shows arrows, all other sortable columns show a dot. Third click returns to default.
         await page.getByRole('button',{name:'등락률',exact:true}).click();
-        assert.deepEqual(await sortIcons(),{market:'dot:none',name:'dot:none',rate:'arrows:descending',amount:'dot:none',exchange:'dot:none',kind:'dot:none',startedAt:'dot:none',releasedAt:'dot:none',remaining:'dot:none',nxtRate:'dot:none',futureRate:'dot:none'});
+        assert.deepEqual(await sortIcons(),{market:'dot:none',name:'dot:none',rate:'arrows:descending',amount:'dot:none',exchange:'dot:none',kind:'dot:none',startedAt:'dot:none',releasedAt:'dot:none',remaining:'dot:none',nxtRate:'dot:none',futureRate:'dot:none',bidAverage:'dot:none'});
         await page.getByRole('button',{name:'등락률',exact:true}).click();assert.equal((await sortIcons()).rate,'arrows:ascending');
         await page.getByRole('button',{name:'등락률',exact:true}).click();assert.equal((await sortIcons()).amount,'arrows:none');assert.equal((await sortIcons()).startedAt,'arrows:descending');
         // New sortable columns order rows by their own values (first click descending, second ascending, third default).

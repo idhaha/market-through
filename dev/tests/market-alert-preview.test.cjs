@@ -1,7 +1,20 @@
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
+const { spawn } = require('node:child_process');
+const path = require('node:path');
+// Uses a running preview when its origin is given; otherwise starts the loopback preview server for this run.
+async function startPreview() {
+    const child = spawn(process.execPath, [path.resolve(__dirname, '../scripts/market-alert-preview.cjs')], { stdio: ['ignore', 'pipe', 'inherit'] });
+    const origin = await new Promise((resolve, reject) => {
+        let text = '';
+        child.stdout.on('data', chunk => { text += chunk; const match = text.match(/MARKET_ALERT_PREVIEW (http:\/\/127\.0\.0\.1:\d+)/); if (match) resolve(match[1]); });
+        child.once('exit', code => reject(new Error('preview server exited ' + code)));
+    });
+    return { origin, stop: () => child.kill() };
+}
 (async () => {
-    const origin = process.argv[2];
+    const preview = process.argv[2] ? null : await startPreview();
+    const origin = process.argv[2] || preview.origin;
     assert.match(origin || '', /^http:\/\/127\.0\.0\.1:\d+$/);
     const browser = await chromium.launch({ headless:true, channel:'msedge' });
     try {
@@ -13,7 +26,7 @@ const { chromium } = require('playwright');
         const geometry=()=>page.locator('#tab_rank .panel').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect();return [r.x,r.y,r.width,r.height];}));
         const before=await geometry();
         await page.screenshot({path:'dev/output/market-alert-tab-stage1-unread.png'});
-        const clickBackground=async()=>{const r=await page.locator('#tab_rank .grid-container').boundingBox();await page.mouse.click(r.x+r.width/2,r.y-4);};
+        const clickBackground=async()=>{const r=await page.locator('#tab_rank .grid-container:not(.rank-watchlist-row)').boundingBox();await page.mouse.click(r.x+r.width/2,r.y-4);};
         await page.locator('#tab_rank header h1').click();
         await page.waitForFunction(()=>!document.querySelector('#tab_rank').classList.contains('market-alert-unread'));
         assert.deepEqual(await geometry(),before);
@@ -45,5 +58,5 @@ const { chromium } = require('playwright');
         await page.waitForFunction(()=>document.querySelector('#tab_rank').classList.contains('market-alert-unread'));
         assert.deepEqual(errors,[]);
         console.log('PASS preview: title-row stage 1, main-background-only acknowledgement, unchanged card geometry/borders, shared light color, release time and session close; left unread for manual review');
-    } finally {await browser.close();}
+    } finally {await browser.close();preview?.stop();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

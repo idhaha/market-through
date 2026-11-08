@@ -80,7 +80,7 @@
         const titleSource = isTest || combined ? '' : `(${isKiwoom ? '키움' : isLs ? 'LS' : '한투'})`;
         // Futures selections are titled 시장 선물 수급.
         const paintTitle = () => { panel.querySelector('h2').textContent = (selected.startsWith('futures') ? '시장 선물 수급' : '시장 수급') + titleSource; };
-        if (!isTest) window.RankSupplyGuide?.attach(panel, 'market', combined ? 'combined' : isKiwoom ? 'kiwoom' : isLs ? 'ls' : 'kis');
+        window.RankSupplyGuide?.attach(panel, isTest ? 'marketTest' : 'market', isTest ? 'test' : combined ? 'combined' : isKiwoom ? 'kiwoom' : isLs ? 'ls' : 'kis');
         panel.querySelector('.rank-adr-controls').append(panel.querySelector('.supply-legend'));
         const latestDate = document.createElement('span'); latestDate.className = 'supply-latest-date'; latestDate.textContent = '—';
         panel.querySelector('.supply-legend').prepend(latestDate);

@@ -2260,29 +2260,8 @@ app.get('/api/finviz-image', async (req, res) => {
 let activeBrowsers = 0; // 동시에 실행 중인 브라우저 수
 const MAX_BROWSERS = 1; // 1GB Oracle Cloud에서는 Chrome 1개만 허용
 
-// v30.9.11: Memory Cache for TradingEconomics
-const teCache = {};
-// 1시간 타이머 제거: 사용자가 수동 새로고침하기 전까지 영구 캐시 유지 (서버 재시작 전까지)
-
-app.get('/api/trading-economics', async (req, res) => {
-    let originalUrl = req.query.url;
-    const duration = req.query.duration || ''; // e.g., '10년'
-    const forceRefresh = req.query.force_refresh === 'true' || req.query.force_refresh === '1'; // 강제 새로고침 플래그
-    if (!originalUrl) return res.status(400).json({ error: "URL 파라미터가 필요합니다." });
-
-    originalUrl = originalUrl.replace(/([^:]\/)\/+/g, '$1');
-    console.log(`📡 [TE Proxy] Request: ${originalUrl}, Duration: ${duration || 'default'}, Force: ${forceRefresh}`);
-
-    const cacheKey = `${originalUrl}_${duration}`;
-    const cached = teCache[cacheKey];
-
-    // 강제 새로고침이 아닐 때만 캐시를 반환 (시간 제한 없음)
-    if (!forceRefresh && cached) {
-        console.log(`   🧊 [TE] Serving from Cache: ${originalUrl}`);
-        return res.json({ success: true, data: cached.data });
-    }
-
-    try {
+// Trading Economics rows are stored on disk by macroSeries (below); this only fetches them.
+async function fetchTradingEconomics(originalUrl, duration) {
         const targetUrl = originalUrl;
         if (targetUrl.includes('tradingeconomics.com') && !targetUrl.includes('api.tradingeconomics.com')) {
             console.log(`   -> Scraping Mode (v28): ${originalUrl}`);
@@ -2539,15 +2518,7 @@ app.get('/api/trading-economics', async (req, res) => {
                     .map(([x, y]) => ({ DateTime: new Date(x).toISOString(), Value: y }));
 
                 console.log(`   ✅ Success: Merged total ${masterMap.size} points.`);
-
-                // v30.9.11: Store in cache
-                teCache[cacheKey] = {
-                    timestamp: Date.now(),
-                    data: finalData
-                };
-
-                res.set('Cache-Control', 'public, max-age=300');
-                return res.json({ success: true, data: finalData });
+                return finalData;
 
             } catch (e) {
                 console.error(`   ❌ Scraping error: ${e.message}`);
@@ -2578,19 +2549,21 @@ app.get('/api/trading-economics', async (req, res) => {
         if (typeof data === 'string') {
             try { data = JSON.parse(data.trim()); } catch (e) { }
         }
+        if (!Array.isArray(data)) throw new Error('TradingEconomics API가 배열이 아닌 응답을 돌려줬습니다');
+        return data;
+}
 
-        // v30.9.11: Save to Cache
-        if (Array.isArray(data) && data.length > 0) {
-            teCache[cacheKey] = {
-                timestamp: Date.now(),
-                data: data
-            };
-            console.log(`[TE] ✅ Cache Updated: ${originalUrl}`);
-        }
-
-        res.set('Cache-Control', 'public, max-age=300');
-        res.json({ success: true, data: data });
-
+app.get('/api/trading-economics', async (req, res) => {
+    let originalUrl = req.query.url;
+    const duration = req.query.duration || ''; // e.g., '10년'
+    const force = req.query.force_refresh === 'true' || req.query.force_refresh === '1';
+    if (!originalUrl) return res.status(400).json({ error: "URL 파라미터가 필요합니다." });
+    originalUrl = originalUrl.replace(/([^:]\/)\/+/g, '$1');
+    try {
+        const result = await macroSeries.get('te', { url: originalUrl, duration }, { force });
+        console.log(`📡 [TE] ${originalUrl} (${duration || 'default'}${force ? ', force' : ''}): ${result.status}, ${result.rows.length} points`);
+        res.set('Cache-Control', 'no-store');
+        res.json({ success: true, data: result.rows, cacheStatus: result.status, fetchedAt: result.fetchedAt, historyAt: result.historyAt });
     } catch (error) {
         console.error(`   ❌ TE Proxy Error: ${error.message}`);
         res.status(500).json({ success: false, error: "데이터 획득 실패", details: error.message });
@@ -2598,79 +2571,15 @@ app.get('/api/trading-economics', async (req, res) => {
 });
 
 /**
- * FRED disk cache: first request each month fetches the requested full period.
- * Other requests fetch from 30 days before the latest cached observation and
- * merge by date, allowing recent revisions to replace prior values.
+ * Stored macro series (FRED, ECOS, Trading Economics): see macro-series-cache.js.
+ * Requests are answered from data/macro-series; the whole history is refetched every day at 07:20 KST.
  */
-const FRED_CACHE_DIR = path.join(__dirname, 'data', 'fred-cache');
-const FRED_CACHE_FILE = path.join(FRED_CACHE_DIR, 'cache.json');
-const FRED_CACHE_UNUSED_DAYS = 365;
-const FRED_OVERLAP_DAYS = 30;
-const fredInFlight = new Map();
-let fredCache = {};
-
-function loadFredCache() {
-    try {
-        if (!fs.existsSync(FRED_CACHE_FILE)) return {};
-        const saved = JSON.parse(fs.readFileSync(FRED_CACHE_FILE, 'utf8'));
-        if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return {};
-        return saved;
-    } catch (error) {
-        console.error('[FRED] Cache file could not be loaded: ' + error.message);
-        return {};
-    }
-}
-
-function persistFredCache() {
-    fs.mkdirSync(FRED_CACHE_DIR, { recursive: true });
-    writeJsonAtomically(FRED_CACHE_FILE, fredCache);
-}
-
+const FRED_PERIODS = { '10y': 3650, '5y': 1825, '2y': 730, '1y': 365, '6m': 180 };
 function fredPeriodStartDate(period, endDate = new Date()) {
-    const daysByPeriod = { '10y': 3650, '5y': 1825, '2y': 730, '1y': 365, '6m': 180 };
     const startDate = new Date(endDate);
-    startDate.setUTCDate(startDate.getUTCDate() - (daysByPeriod[period] || 365));
+    startDate.setUTCDate(startDate.getUTCDate() - (FRED_PERIODS[period] || 365));
     return startDate.toISOString().slice(0, 10);
 }
-
-function dateDaysBefore(isoDate, days) {
-    const date = new Date(isoDate + 'T00:00:00Z');
-    date.setUTCDate(date.getUTCDate() - days);
-    return date.toISOString().slice(0, 10);
-}
-
-fredCache = loadFredCache();
-function purgeUnusedFredCacheEntries(now = new Date()) {
-    const cutoff = now.getTime() - FRED_CACHE_UNUSED_DAYS * 24 * 60 * 60 * 1000;
-    const seriesLastUsedAt = new Map();
-    const seriesForKey = key => {
-        const entry = fredCache[key];
-        return entry && entry.seriesId ? entry.seriesId : key.replace(/_(10y|5y|2y|1y|6m)$/, '');
-    };
-    for (const [key, entry] of Object.entries(fredCache)) {
-        const seriesId = seriesForKey(key);
-        const lastUsedAt = Date.parse(entry && entry.lastUsedAt);
-        const previous = seriesLastUsedAt.get(seriesId) || 0;
-        if (Number.isFinite(lastUsedAt) && lastUsedAt > previous) seriesLastUsedAt.set(seriesId, lastUsedAt);
-        else if (!seriesLastUsedAt.has(seriesId)) seriesLastUsedAt.set(seriesId, 0);
-    }
-
-    let removed = 0;
-    for (const [key, entry] of Object.entries(fredCache)) {
-        if ((seriesLastUsedAt.get(seriesForKey(key)) || 0) < cutoff) {
-            delete fredCache[key];
-            removed++;
-        }
-    }
-    if (removed) {
-        try { persistFredCache(); }
-        catch (error) { fileLog('[FRED] Could not persist inactive-cache cleanup: ' + error.message); }
-        console.log('[FRED] Removed ' + removed + ' series cache entries unused for one year');
-    }
-}
-purgeUnusedFredCacheEntries();
-const fredCacheCleanupTimer = setInterval(() => purgeUnusedFredCacheEntries(), 24 * 60 * 60 * 1000);
-if (typeof fredCacheCleanupTimer.unref === 'function') fredCacheCleanupTimer.unref();
 
 const FRED_MAX_CONCURRENT = 2;
 let fredRunning = 0;
@@ -2682,123 +2591,123 @@ async function acquireFredSlot() {
 }
 function releaseFredSlot() { fredRunning = Math.max(0, fredRunning - 1); }
 
-let fredUsageDirty = false;
-function markFredCacheUsed(cacheKey, now = new Date()) {
-    const entry = fredCache[cacheKey];
-    if (!entry) return;
-    entry.lastUsedAt = now.toISOString();
-    fredUsageDirty = true; // 디스크 저장은 아래 타이머가 5분마다 한 번만 수행
+async function fetchFredRows(seriesId, period, startDate) {
+    const runPython = command => new Promise((resolve, reject) => {
+        execFile(command, ['fred_api.py', seriesId, period, startDate], { cwd: __dirname, maxBuffer: 4 * 1024 * 1024, timeout: 120000 }, (error, stdout, stderr) => {
+            if (error) return reject(Object.assign(error, { stderr, command }));
+            if (stderr && !stderr.includes('Warning')) fileLog('[FRED] Stderr: ' + stderr);
+            try {
+                const jsonStart = stdout.indexOf('{');
+                const jsonEnd = stdout.lastIndexOf('}');
+                if (jsonStart === -1 || jsonEnd === -1) throw new Error('No JSON object found in stdout');
+                resolve(JSON.parse(stdout.substring(jsonStart, jsonEnd + 1)));
+            } catch (parseError) {
+                reject(new Error('Invalid output from FRED script: ' + parseError.message));
+            }
+        });
+    });
+    const executePython = async command => {
+        await acquireFredSlot();
+        try { return await runPython(command); }
+        finally { releaseFredSlot(); }
+    };
+    let result;
+    try { result = await executePython('python'); }
+    catch (firstError) {
+        console.warn('[FRED] python failed, retrying with python3: ' + firstError.message);
+        try { result = await executePython('python3'); }
+        catch (error) {
+            fileLog('[FRED] Fetch failed for ' + seriesId + ': ' + error.message + '; stderr: ' + (error.stderr || ''));
+            throw error;
+        }
+    }
+    if (!result.success || !Array.isArray(result.data)) throw new Error(result.error || 'FRED returned an invalid response');
+    return result.data
+        .filter(row => row && typeof row.date === 'string' && Number.isFinite(Number(row.value)))
+        .map(row => ({ date: row.date, value: Number(row.value) }));
 }
-const fredUsageFlushTimer = setInterval(() => {
-    if (!fredUsageDirty) return;
-    fredUsageDirty = false;
-    try { persistFredCache(); }
-    catch (error) { fileLog('[FRED] Could not persist cache usage time: ' + error.message); }
-}, 5 * 60 * 1000);
-if (typeof fredUsageFlushTimer.unref === 'function') fredUsageFlushTimer.unref();
+
+async function fetchEcosRows(table, item, startDay) {
+    const apiKey = process.env.ECOS_APIKEY;
+    if (!apiKey) throw new Error('ECOS_APIKEY가 설정되지 않았습니다.');
+    const compact = day => day.replaceAll('-', '');
+    const end = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+    // numOfdata 100000: all rows of the range in one call.
+    const url = `https://ecos.bok.or.kr/api/StatisticSearch/${apiKey}/json/kr/1/100000/${encodeURIComponent(table)}/D/${compact(startDay)}/${compact(end)}/${encodeURIComponent(item)}`;
+    const response = await axios.get(url, { timeout: 30000 });
+    const result = response.data;
+    if (result?.StatisticSearch?.row) {
+        return result.StatisticSearch.row
+            .filter(row => /^\d{8}$/.test(String(row.TIME)) && Number.isFinite(parseFloat(row.DATA_VALUE)))
+            .map(row => ({ date: `${row.TIME.slice(0, 4)}-${row.TIME.slice(4, 6)}-${row.TIME.slice(6, 8)}`, value: parseFloat(row.DATA_VALUE) }));
+    }
+    const status = result?.RESULT || result?.StatisticSearch?.RESULT || {};
+    if (status.CODE === 'INFO-200') return []; // 해당하는 데이터가 없습니다
+    throw new Error(`ECOS ${status.CODE || 'Unknown'}: ${status.MESSAGE || '응답 형식 오류'}`);
+}
+
+let teScrapeQueue = Promise.resolve();
+const macroSeries = require('./macro-series-cache').createMacroSeriesCache({
+    directory: path.join(__dirname, 'data', 'macro-series'),
+    log: message => { console.log(message); fileLog(message); },
+    sources: {
+        fred: {
+            keyOf: p => `${p.seriesId}_${p.period}`,
+            fullFrom: (p, time) => fredPeriodStartDate(p.period, new Date(time)),
+            fetch: (p, from) => fetchFredRows(p.seriesId, p.period, from),
+            policy: { wait: 8000, forceWait: 60000 }
+        },
+        ecos: {
+            keyOf: p => `${p.table}_${p.item}`,
+            fullFrom: p => p.start,
+            fetch: (p, from) => fetchEcosRows(p.table, p.item, from),
+            widen: (stored, requested) => requested.start < stored.start ? { ...stored, start: requested.start } : null,
+            policy: { wait: 8000, forceWait: 30000 }
+        },
+        te: {
+            keyOf: p => `${p.url}|${p.duration}`,
+            // Chrome scrape, about 20 s per series: never make the screen wait unless 조회 asks for it.
+            // One scrape at a time, so background refreshes of several stale series do not fail on the browser slot.
+            fetch: p => { const job = teScrapeQueue.then(() => fetchTradingEconomics(p.url, p.duration)); teScrapeQueue = job.catch(() => {}); return job; },
+            dayOf: row => { const v = row?.DateTime ?? row?.Date ?? row?.date; const d = v ? new Date(v) : null; return d && !isNaN(d) ? d.toISOString().slice(0, 10) : ''; },
+            idOf: row => String(row?.DateTime ?? row?.Date ?? row?.date),
+            policy: { wait: 0, forceFresh: 30 * 60000, forceWait: 110000 }
+        }
+    }
+});
+// Rows saved by the previous FRED cache (data/fred-cache/cache.json) are reused once.
+if (!macroSeries.hasSource('fred')) {
+    try {
+        const oldFile = path.join(__dirname, 'data', 'fred-cache', 'cache.json');
+        const old = fs.existsSync(oldFile) ? JSON.parse(fs.readFileSync(oldFile, 'utf8')) : {};
+        let imported = 0;
+        for (const [key, entry] of Object.entries(old || {})) {
+            const match = key.match(/^(.+)_(10y|5y|2y|1y|6m)$/);
+            if (!match || !Array.isArray(entry?.data)) continue;
+            if (macroSeries.importEntry('fred', { seriesId: match[1], period: match[2] }, entry.data,
+                { fetchedAt: Date.parse(entry.updatedAt) || 0, lastUsedAt: Date.parse(entry.lastUsedAt) || 0 })) imported++;
+        }
+        if (imported) console.log(`[MacroSeries] Imported ${imported} series from data/fred-cache`);
+    } catch (error) { fileLog('[MacroSeries] FRED cache import: ' + error.message); }
+}
+macroSeries.start();
 
 app.get('/api/fred', async (req, res) => {
     const seriesId = String(req.query.series_id || '');
     const periodAliases = { '10년': '10y', '5년': '5y', '2년': '2y', '1년': '1y', '6개월': '6m' };
     const rawPeriod = String(req.query.period || '1y').toLowerCase();
-    const period = periodAliases[rawPeriod] || (['10y', '5y', '2y', '1y', '6m'].includes(rawPeriod) ? rawPeriod : '1y');
+    const period = periodAliases[rawPeriod] || (Object.hasOwn(FRED_PERIODS, rawPeriod) ? rawPeriod : '1y');
+    const force = req.query.force_refresh === 'true' || req.query.force_refresh === '1';
     if (!/^[A-Za-z0-9_.-]+$/.test(seriesId)) {
         return res.status(400).json({ success: false, error: 'A valid series_id is required' });
     }
-
-    const cacheKey = seriesId + '_' + period;
-    if (fredInFlight.has(cacheKey)) {
-        markFredCacheUsed(cacheKey);
-        try { return res.json(await fredInFlight.get(cacheKey)); }
-        catch (error) { return res.status(500).json({ success: false, error: error.message }); }
+    try {
+        const result = await macroSeries.get('fred', { seriesId, period }, { force });
+        res.set('Cache-Control', 'no-store');
+        res.json({ success: true, data: result.rows, cacheStatus: result.status, fetchedAt: result.fetchedAt, historyAt: result.historyAt, ...(result.refreshError ? { refreshError: result.refreshError } : {}) });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
     }
-
-    markFredCacheUsed(cacheKey);
-    const refreshPromise = (async () => {
-        const now = new Date();
-        const monthKey = now.toISOString().slice(0, 7);
-        const cached = fredCache[cacheKey];
-        const fullRefresh = !cached || cached.lastFullRefreshMonth !== monthKey || !Array.isArray(cached.data);
-        const latestDate = (cached && Array.isArray(cached.data) ? cached.data : [])
-            .reduce((latest, row) => row.date > latest ? row.date : latest, '');
-        const startDate = fullRefresh || !latestDate
-            ? fredPeriodStartDate(period, now)
-            : dateDaysBefore(latestDate, FRED_OVERLAP_DAYS);
-
-        const runPython = command => new Promise((resolve, reject) => {
-            const args = ['fred_api.py', seriesId, period, startDate];
-            console.log('[FRED] ' + (fullRefresh ? 'Monthly full refresh' : 'Incremental refresh')
-                + ': ' + seriesId + ' (' + period + ') from ' + startDate + ' using ' + command);
-            execFile(command, args, { cwd: __dirname, maxBuffer: 1024 * 1024, timeout: 120000 }, (error, stdout, stderr) => {
-                if (error) return reject(Object.assign(error, { stderr, command }));
-                if (stderr && !stderr.includes('Warning')) fileLog('[FRED] Stderr: ' + stderr);
-                try {
-                    const jsonStart = stdout.indexOf('{');
-                    const jsonEnd = stdout.lastIndexOf('}');
-                    if (jsonStart === -1 || jsonEnd === -1) throw new Error('No JSON object found in stdout');
-                    resolve(JSON.parse(stdout.substring(jsonStart, jsonEnd + 1)));
-                } catch (parseError) {
-                    reject(new Error('Invalid output from FRED script: ' + parseError.message));
-                }
-            });
-        });
-        const executePython = async command => {
-            await acquireFredSlot();
-            try { return await runPython(command); }
-            finally { releaseFredSlot(); }
-        };
-
-        let result;
-        try {
-            result = await executePython('python');
-        } catch (firstError) {
-            console.warn('[FRED] python failed, retrying with python3: ' + firstError.message);
-            try { result = await executePython('python3'); }
-            catch (error) {
-                fileLog('[FRED] Fetch failed for ' + cacheKey + ': ' + error.message + '; stderr: ' + (error.stderr || ''));
-                if (cached && cached.data && cached.data.length) {
-                    return { success: true, data: cached.data, cacheStatus: 'stale', refreshError: error.message };
-                }
-                throw error;
-            }
-        }
-        if (!result.success || !Array.isArray(result.data)) {
-            const error = new Error(result.error || 'FRED returned an invalid response');
-            if (cached && cached.data && cached.data.length) {
-                return { success: true, data: cached.data, cacheStatus: 'stale', refreshError: error.message };
-            }
-            throw error;
-        }
-
-        const priorRows = !fullRefresh && cached && cached.data ? cached.data : [];
-        const mergedByDate = new Map(priorRows.map(row => [row.date, row]));
-        for (const row of result.data) {
-            if (row && typeof row.date === 'string' && Number.isFinite(Number(row.value))) {
-                mergedByDate.set(row.date, { date: row.date, value: Number(row.value) });
-            }
-        }
-        const mergedData = [...mergedByDate.values()].sort((a, b) => a.date.localeCompare(b.date));
-        fredCache = {
-            ...fredCache,
-            [cacheKey]: {
-                seriesId: seriesId,
-                data: mergedData,
-                lastFullRefreshMonth: fullRefresh ? monthKey : cached.lastFullRefreshMonth,
-                lastUsedAt: now.toISOString(),
-                updatedAt: now.toISOString()
-            }
-        };
-        try { persistFredCache(); }
-        catch (error) { fileLog('[FRED] Could not persist cache file: ' + error.message); }
-        console.log('[FRED] Updated ' + cacheKey + ': ' + result.data.length + ' fetched, '
-            + mergedData.length + ' cached observations');
-        return { success: true, data: mergedData, cacheStatus: fullRefresh ? 'monthly-full' : 'incremental' };
-    })();
-
-    fredInFlight.set(cacheKey, refreshPromise);
-    try { res.json(await refreshPromise); }
-    catch (error) { res.status(500).json({ success: false, error: error.message }); }
-    finally { fredInFlight.delete(cacheKey); }
 });
 
 /**
@@ -3044,52 +2953,25 @@ app.post('/api/settings/memo', (req, res) => {
  * ECOS (한국은행 경제통계시스템) API 프록시
  */
 app.get('/api/ecos', async (req, res) => {
-    const table = req.query.table || '817Y002'; // 기본값: 817Y002 (일일 금리)
-    const item = req.query.item;
-    const start = req.query.start;
-    const end = req.query.end;
-
-    if (!item || !start || !end) {
+    const table = String(req.query.table || '817Y002'); // 기본값: 817Y002 (일일 금리)
+    const item = String(req.query.item || '');
+    const start = String(req.query.start || ''), end = String(req.query.end || '');
+    const force = req.query.force_refresh === 'true' || req.query.force_refresh === '1';
+    if (!item || !/^\d{8}$/.test(start) || !/^\d{8}$/.test(end) ||!/^[A-Za-z0-9]+$/.test(table + item)) {
         return res.status(400).json({ success: false, error: 'item, start, end 파라미터가 필요합니다.' });
     }
-
-    const apiKey = process.env.ECOS_APIKEY;
-    if (!apiKey) {
-        return res.status(500).json({ success: false, error: 'ECOS_APIKEY가 설정되지 않았습니다.' });
-    }
-
-    // URL Construction: https://ecos.bok.or.kr/api/StatisticSearch/KEY/json/kr/1/100000/TABLE/D/START/END/ITEM
-    // numOfdata is set to 100000 to fetch all data in range as requested ("불러온 데이터를 모두 보여주도록 계산해")
-    const url = `https://ecos.bok.or.kr/api/StatisticSearch/${apiKey}/json/kr/1/100000/${table}/D/${start}/${end}/${item}`;
-
-    console.log(`[ECOS] 🔄 Requesting: ${table}/${item} (${start} ~ ${end})`);
-
+    const iso = day => day.slice(0, 4) + '-' + day.slice(4, 6) + '-' + day.slice(6, 8);
     try {
-        const response = await axios.get(url, { timeout: 30000 }); // Increased timeout to 30s
-        const result = response.data;
-
-        if (result.StatisticSearch && result.StatisticSearch.row) {
-            const rowCount = result.StatisticSearch.row.length;
-            console.log(`[ECOS] ✅ Success: ${item} (${rowCount} items)`);
-            res.json({
-                success: true,
-                data: result.StatisticSearch.row
-            });
-        } else {
-            const errorCode = result.RESULT ? result.RESULT.CODE : (result.StatisticSearch ? result.StatisticSearch.RESULT.CODE : 'Unknown');
-            const errorMsg = result.RESULT ? result.RESULT.MESSAGE : (result.StatisticSearch ? result.StatisticSearch.RESULT.MESSAGE : '해당하는 데이터가 없습니다.');
-
-            console.warn(`[ECOS] ⚠️ Response: ${errorCode} - ${errorMsg}`);
-
-            res.json({
-                success: false,
-                error: errorMsg,
-                code: errorCode,
-                raw: result
-            });
-        }
+        const result = await macroSeries.get('ecos', { table, item, start: iso(start) }, { force });
+        const from = iso(start), to = iso(end);
+        // Same row shape as the ECOS API (TIME YYYYMMDD, DATA_VALUE) so the screen code is unchanged.
+        const rows = result.rows.filter(row => row.date >= from && row.date <= to)
+            .map(row => ({ TIME: row.date.replaceAll('-', ''), DATA_VALUE: String(row.value) }));
+        if (!rows.length) return res.json({ success: false, error: '해당하는 데이터가 없습니다.', code: 'INFO-200' });
+        res.set('Cache-Control', 'no-store');
+        res.json({ success: true, data: rows, cacheStatus: result.status, fetchedAt: result.fetchedAt, historyAt: result.historyAt });
     } catch (error) {
-        console.error(`[ECOS] ❌ Fetch Error: ${error.message} (URL: ${url})`);
+        console.error('[ECOS] ❌ ' + table + '/' + item + ': ' + error.message);
         res.status(500).json({ success: false, error: error.message });
     }
 });

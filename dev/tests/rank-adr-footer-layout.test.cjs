@@ -2,7 +2,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=requ
 (async()=>{const browser=await chromium.launch({headless:true,channel:'msedge'});try{
  const page=await browser.newPage({viewport:{width:1900,height:1300}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
  const html=fs.readFileSync('public/index.html','utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'').replace(/<link\b[^>]*>/gi,'');
- await page.setContent(html);await page.addStyleTag({path:'public/style.css'});
+ await page.route('http://footer.test/**',route=>route.fulfill({contentType:'text/html',body:html}));await page.goto('http://footer.test/');await page.addStyleTag({path:'public/style.css'});
  await page.evaluate(()=>{document.querySelector('#tabContents').style.display='block';document.querySelector('#loginOverlay').style.display='none';window.fetch=async()=>new Response(JSON.stringify({points:[{date:'2026-10-22',t:Date.parse('2026-10-22T09:00:00+09:00'),open:100,high:110,low:90,close:103}],series:[{date:'2026-10-22',adr:90}]}));});
  await page.addScriptTag({path:'public/rank-chart-axis.js'});await page.addScriptTag({path:'public/rank-connection-status.js'});
  await page.waitForFunction(()=>document.querySelector('#rankAdrChartPanel .rank-card-messages .rank-adr-status'));
