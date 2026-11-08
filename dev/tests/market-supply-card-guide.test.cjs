@@ -22,5 +22,10 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=requ
   assert.match(minute,/키움 ka10051/);assert.match(minute,/LS t8463\(야간\)/);assert.match(minute,/FHPTJ04030000/);
   await page.keyboard.press('Escape');await button.click();await page.mouse.click(5,5);
  }
+ // The guide editor (double-click i) opens in the middle of the window; the global * { margin:0 } reset used to pin it top-left.
+ const editorButton=page.locator('#rankTestMarketSupplyChartPanel .supply-info-button');await editorButton.dblclick();
+ const editor=page.locator('dialog.chart-guide-editor');await editor.waitFor();
+ const box=await editor.evaluate(el=>{const r=el.getBoundingClientRect();return{center:Math.round(r.left+r.width/2-innerWidth/2),middle:Math.abs(r.top+r.height/2-innerHeight/2)<2};});
+ assert.deepEqual(box,{center:0,middle:true},JSON.stringify(box));await page.keyboard.press('Escape');
  assert.deepEqual(errors,[]);console.log('PASS market supply cards: i guide with spot and futures day/minute sources');
 }finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

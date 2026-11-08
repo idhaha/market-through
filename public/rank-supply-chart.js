@@ -77,7 +77,7 @@
         const panel = document.createElement('section');
         panel.id = panelId; panel.className = 'panel rank-adr-panel rank-supply-panel' + (futures ? ' rank-futures-supply-panel' : broker ? ' rank-broker-supply-panel' : '');
         panel.setAttribute('aria-label', futures ? '종목 선물 수급 차트' : '종목별 수급 차트');
-        panel.innerHTML = `<div class="concentration-chart-header"><h2>${futures ? '종목 선물 수급' : '종목 수급'}${combined || futures ? '' : broker === 'kis' ? '(한투)' : broker === 'ls' ? '(LS)' : window.rankIndependentClient ? '' : '(키움)'}</h2><button type="button" data-action="add-stock" aria-haspopup="dialog" aria-expanded="false">+ 종목 추가</button></div>
+        panel.innerHTML = `<div class="concentration-chart-header"><h2>${futures ? '종목 선물 수급' : '종목 수급'}${combined || futures ? '' : broker === 'kis' ? '(한투)' : broker === 'ls' ? '(LS)' : window.rankIndependentClient ? '' : '(키움)'}</h2>${futures ? '' : '<button type="button" data-action="add-stock" aria-haspopup="dialog" aria-expanded="false">+ 종목 추가</button>'}</div>
             <div class="rank-adr-controls"><select class="supply-stock-select" aria-label="수급 종목 선택"></select><button type="button" data-mode="day" class="active" aria-pressed="true">일봉</button><button type="button" data-mode="minute" aria-pressed="false">1분봉(누적)</button>
             <button type="button" class="concentration-candle-toggle" aria-expanded="false">캔들차트</button></div>
             <div class="supply-legend">${cardSeries.map(s => `<button type="button" data-series="${s}" aria-label="${names[s]} 표시" title="${names[s]} 표시 전환" aria-pressed="true" style="color:${colors[s]}"><span>${Array.from(names[s])[0]}</span><output><span class="supply-value-number">—</span><span class="supply-value-unit"></span></output></button>`).join('')}</div>
@@ -98,7 +98,8 @@
         const more = panel.querySelector('[data-action="more"]');
         const stockSelect = panel.querySelector('.supply-stock-select'), addButton = panel.querySelector('[data-action="add-stock"]');
         stockSelect.addEventListener('change', () => { if (stockSelect.value) choose(stockSelect.value); });
-        addButton.addEventListener('click', openPicker);
+        // 종목 선물 수급 follows the 종목 수급 watchlist and selection, so only the stock card has the add button.
+        addButton?.addEventListener('click', openPicker);
         let multiplier = 10, config = { stocks: [], archive: [], revision: 0 }, selected = '', mode = 'day', cursor = null, hasMore = false, loading = false, historyLoaded = false;
         let flowLoading=false, flowCoverageFirst='', candleError='';
         const minuteDays = new Set(), candleCache = new Map(), priceHistory = new Map();
@@ -384,7 +385,7 @@
                 const option = new Option(Array.from(stock.name).slice(0,6).join('') + ' (보관)', selected); option.title = stock.name; stockSelect.add(option);
             }
             stockSelect.value = selected; stockSelect.title = stockSelect.selectedOptions[0]?.title || '';
-            stockSelect.disabled = saving || !stockSelect.options.length; addButton.disabled = saving; addButton.setAttribute('aria-expanded', String(!picker.hidden));
+            stockSelect.disabled = saving || !stockSelect.options.length; if (addButton) { addButton.disabled = saving; addButton.setAttribute('aria-expanded', String(!picker.hidden)); }
             paintArchive();
         }
         document.addEventListener('rank-stock-supply-selection', event => {
@@ -465,7 +466,7 @@
             if (append && (loading || !nextCursor)) return;
             controller?.abort(); const current = controller = new AbortController(), id = ++revision;
 
-            if (!selected) { loading = false; clearView(); chartMessage = '+ 종목 추가에서 최대 5종목을 지정하세요.'; setStatus(); return; }
+            if (!selected) { loading = false; clearView(); chartMessage = futures ? '종목 수급 카드의 + 종목 추가에서 최대 5종목을 지정하세요.' : '+ 종목 추가에서 최대 5종목을 지정하세요.'; setStatus(); return; }
             if(append){window.RankChartAxis.showHistory();todayOnly=false;}
             loading = true; flowLoading=true; chartMessage = append ? '과거 수급 조회 중…' : '수급 조회 중…'; setStatus(); draw();
             try {

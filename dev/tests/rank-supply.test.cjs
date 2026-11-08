@@ -141,6 +141,9 @@ const { chromium } = require('playwright');
         await panel.getByRole('button', { name: '+ 종목 추가', exact: true }).click();
         const picker = page.locator('dialog.supply-stock-dialog[aria-labelledby="rankCombinedSupplyChartPanelPickerTitle"]');
         assert.equal(await picker.evaluate(el => el.open && el.matches(':modal')), true);
+        // The picker is a roomy dialog in the middle of the window, above every card.
+        const over = await picker.evaluate(el => { const p = el.getBoundingClientRect(); return { center: Math.round(p.left + p.width / 2 - innerWidth / 2), middle: Math.abs(p.top + p.height / 2 - innerHeight / 2) < 2, width: Math.round(p.width) }; });
+        assert.deepEqual(over, { center: 0, middle: true, width: 640 }, JSON.stringify(over));
         const add = async code => { await picker.locator('input').fill(code); await picker.locator('form').getByRole('button', { name: '추가', exact: true }).click(); };
         await add('005930'); await page.waitForFunction(() => document.querySelector('.supply-stock-dialog [role="status"]').textContent.includes('이미 지정'));
         const search = picker.getByRole('combobox'); await search.fill('검색');
@@ -203,11 +206,13 @@ const { chromium } = require('playwright');
         await panel.getByRole('button', { name: '1분봉(누적)', exact: true }).click();
         await page.waitForFunction(() => document.querySelector('#rankCombinedSupplyChartPanel .rank-adr-status').textContent.includes('수급 기록 없음'));
         assert.equal(await panel.locator('.rank-adr-candle-area').isVisible(), false);
-        assert.match(await panel.locator('.rank-adr-status').textContent(), /수급 기록 없음/);
+        // No re-read of the status here: the shared history mode starts loading the older session right after this render
+        // (catchUpVisibleHistory), so the text may already be '과거 수급 조회 중…'. The wait above saw the message.
         assert.ok((await panel.locator('[data-series="foreign"] output').textContent()).includes('미제공'));
         // Minute history was already opened earlier, so the shared history mode reads the older session (prices only) by itself.
         await page.waitForFunction(() => document.querySelector('#rankCombinedSupplyChartPanel [data-action="more"]').disabled
             && !document.querySelector('#rankCombinedSupplyChartPanel .rank-adr-status').textContent.includes('조회 중'));
+        assert.match(await panel.locator('.rank-adr-status').textContent(), /수급 기록 없음/, 'After the older session loads, the status settles on the empty-flow message again');
         assert.ok(calls.some(c => c.path === '/api/kis-supply/chart' && c.params.get('code') === '005930' && c.params.get('mode') === 'minute' && c.params.get('cursor') === '20261019'));
         assert.ok(calls.some(c => c.path === '/api/supply/candles' && c.params.get('date') === '2026-10-19'));
         assert.ok((await panel.locator('[data-series="foreign"] output').textContent()).includes('미제공'), 'Price-only history does not invent flow values');

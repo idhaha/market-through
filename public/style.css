@@ -42,7 +42,7 @@
 .rank-supply-panel .rank-adr-controls { flex-wrap:nowrap; }
 .rank-supply-panel .supply-stock-select { width:110px; min-width:70px; flex:0 1 110px; }
 .rank-supply-panel .rank-adr-controls button { flex-shrink:0; white-space:nowrap; }
-.supply-stock-dialog { width:min(540px,calc(100vw - 36px)); max-height:80vh; overflow:auto; box-sizing:border-box; padding:24px; border:1px solid var(--border-color); border-radius:10px; background:var(--bg-secondary); color:var(--text-primary); }
+.supply-stock-dialog { width:min(640px,calc(100vw - 36px)); max-height:80vh; margin:auto; overflow:auto; box-sizing:border-box; padding:24px; border:1px solid var(--border-color); border-radius:10px; background:var(--bg-secondary); color:var(--text-primary); }
 .supply-stock-dialog[hidden] { display:none; }
 .supply-stock-dialog::backdrop { background:#0005; }
 .supply-stock-dialog h2 { font-size:18px; margin:0 0 12px; }
@@ -3072,7 +3072,7 @@ body { height:100dvh; min-height:0; overflow:hidden; display:flex; flex-directio
 @media(max-width:700px) { .supply-data-guide .supply-source-list { grid-template-columns:64px minmax(0,1fr); } }
 
 .chart-guide-custom-text { white-space:pre-wrap; overflow-wrap:anywhere; }
-.chart-guide-editor { width:min(760px,calc(100vw - 32px)); max-height:90dvh; padding:22px; box-sizing:border-box; overflow:auto; border:1px solid var(--border-color,#dbe3ed); border-radius:12px; background:var(--bg-panel,#fff); color:var(--text-primary,#1f2937); }
+.chart-guide-editor { width:min(760px,calc(100vw - 32px)); max-height:90dvh; margin:auto; padding:22px; box-sizing:border-box; overflow:auto; border:1px solid var(--border-color,#dbe3ed); border-radius:12px; background:var(--bg-panel,#fff); color:var(--text-primary,#1f2937); }
 .chart-guide-editor::backdrop { background:#0006; }
 .chart-guide-editor form { display:flex; flex-direction:column; gap:10px; }
 .chart-guide-editor h2 { margin:0; font-size:18px; }

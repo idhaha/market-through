@@ -40,8 +40,10 @@ await stockCard.locator('[data-mode=minute]').click();await futCard.locator('[da
 await page.waitForFunction(()=>getRankFuturesSupplyState().points.length===40&&getRankCombinedSupplyState().points.length===40);
 assert.equal(await label(stockCard).innerText(),'종목선물수급과 y축 동기화');assert.equal(await label(futCard).innerText(),'종목수급과 y축 동기화');
 for(const card of [stockCard,futCard]){assert.equal(await box(card).isChecked(),true);
- const place=await card.evaluate(panel=>{const a=panel.querySelector('.supply-y-sync').getBoundingClientRect(),i=panel.querySelector('.chart-info-button').getBoundingClientRect(),h=panel.querySelector('[data-action="add-stock"]').getBoundingClientRect();return{left:a.right<=i.left,clear:h.right<=a.left||h.bottom<=a.top};});
+ const place=await card.evaluate(panel=>{const a=panel.querySelector('.supply-y-sync').getBoundingClientRect(),i=panel.querySelector('.chart-info-button').getBoundingClientRect(),add=panel.querySelector('[data-action="add-stock"]'),h=add?.getBoundingClientRect();return{left:a.right<=i.left,clear:!h||h.right<=a.left||h.bottom<=a.top};});
  assert.deepEqual(place,{left:true,clear:true});}
+// 종목 선물 수급 follows the 종목 수급 watchlist: only the stock card has + 종목 추가.
+assert.equal(await stockCard.locator('[data-action="add-stock"]').count(),1);assert.equal(await futCard.locator('[data-action="add-stock"]').count(),0);
 assert.equal(await futCard.locator('[data-series=foreign] output').innerText().then(s=>s.replace(/\s/g,'')),'+200천주','20,000 contracts × 10');
 const first=m0,last=m0+(N-1)*60000,both=expect([[stock,1,stockFields],[futures(),10,futFields]],first,last);
 await waitRanges([both,both],'full');assert.equal(both[1],Math.round(200000+(200000+30000)*.08));
