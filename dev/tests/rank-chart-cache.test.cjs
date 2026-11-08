@@ -12,7 +12,7 @@ test('closed-market reload preserves pagination across concentration variants an
   await page.route('https://card-history.test/**',route=>{
    const request=route.request(),url=new URL(request.url());
    if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<html></html>'});
-   if(url.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:'cards@example.test'}}});
+   if(url.pathname==='/api/chart-revisions')return route.fulfill({json:{success:true,revisions:{}}});if(url.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:'cards@example.test'}}});
    const key=url.pathname+url.search+'|'+(request.postData() || ''),n=(counts.get(key)||0)+1;counts.set(key,n);
    return route.fulfill({json:{success:true,points:[{t:1793059200000,value:10}],cursor:request.method()==='POST'?'session-'+n:'20261022',has_more:true}});
   });
@@ -35,7 +35,7 @@ test('closed-market reload obtains a fresh concentration cursor instead of disab
   await page.route('https://closed-history.test/**',route=>{
    const url=new URL(route.request().url());
    if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<html></html>'});
-   if(url.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:'closed@example.test'}}});
+   if(url.pathname==='/api/chart-revisions')return route.fulfill({json:{success:true,revisions:{}}});if(url.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:'closed@example.test'}}});
    calls++;return route.fulfill({json:{success:true,points:[{time:'20261030100000',value:10,stock_price:100}],cursor:'fresh-'+calls,has_more:true}});
   });
   const start=async()=>{await page.goto('https://closed-history.test/');await page.evaluate(()=>window.TradingRefresh={allowsUrl:()=>false});await page.addScriptTag({path:'public/rank-chart-cache.js'});};
@@ -53,7 +53,7 @@ test('duplicate market cards isolate cancellation and consume one shared respons
   await page.route('https://shared-chart.test/**',async route=>{
    const u=new URL(route.request().url());
    if(u.pathname==='/')return route.fulfill({contentType:'text/html',body:'<html></html>'});
-   if(u.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:'shared@example.test'}}});
+   if(u.pathname==='/api/chart-revisions')return route.fulfill({json:{success:true,revisions:{}}});if(u.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:'shared@example.test'}}});
    calls++;await new Promise(resolve=>releases.push(resolve));
    await route.fulfill({json:{success:true,points:[{t:1793059200000,foreign:123}],warnings:[]}}).catch(()=>{});
   });
@@ -71,12 +71,12 @@ test('duplicate market cards isolate cancellation and consume one shared respons
   assert.equal(result.first,'AbortError');assert.equal(result.second.points[0].foreign,123);assert.equal(calls,1,'Cancelling one card must not restart the other card request');
  }finally{await browser.close();}
 });
-test('browser chart cache retains history 16 hours, revalidates live data, excludes errors and isolates accounts',async()=>{
+test('browser chart cache keeps past pages 7 days, revalidates live data, excludes errors and isolates accounts',async()=>{
  const browser=await chromium.launch({headless:true,channel:'msedge'});try{
  const page=await browser.newPage();let calls=[],value=10,user='one@example.test',failure=false,missing=false,pendingOnce=false,session=0;
  await page.route('https://chart-cache.test/**',async route=>{
   const u=new URL(route.request().url());if(u.pathname==='/')return route.fulfill({contentType:'text/html',body:'<html><body></body></html>'});
-  if(u.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:user}}});
+  if(u.pathname==='/api/chart-revisions')return route.fulfill({json:{success:true,revisions:{}}});if(u.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:user}}});
   calls.push({url:u.pathname+u.search,body:route.request().postData()});
   if(failure)return route.fulfill({status:502,json:{error:'failed'}});
   const payload={success:true,points:[{t:Date.parse('2026-10-26T09:00:00+09:00'),value}],warnings:missing?['자료 미제공']:[]};
@@ -91,7 +91,8 @@ test('browser chart cache retains history 16 hours, revalidates live data, exclu
  await start();assert.equal((await read(history)).body.points[0].value,10);await read(history);assert.equal(calls.length,1);
  await start();await read(history);assert.equal(calls.length,1,'Reload reuses IndexedDB history');
  await page.evaluate(()=>window.testNow+=15*3600000);await read(history);assert.equal(calls.length,1);
- await page.evaluate(()=>window.testNow+=3600000+1);await read(history);assert.equal(calls.length,2,'16 hour expiry requires an upstream read');
+ await page.evaluate(()=>window.testNow+=3600000+1);await read(history);assert.equal(calls.length,1,'Past pages outlive the 16 hour live-response expiry');
+ await page.evaluate(()=>window.testNow+=7*24*3600000-16*3600000);await read(history);assert.equal(calls.length,2,'7 day past-page expiry requires an upstream read');
  const live='/api/ls-turnover/chart?mode=minute';await read(live);value=20;
  await page.evaluate(()=>window.testNow+=61000);const stale=await read(live);assert.equal(stale.body.points[0].value,10);
  await page.waitForFunction(()=>window.updates>0);assert.equal((await read(live)).body.points[0].value,20);
@@ -114,7 +115,7 @@ test('browser chart cache retains history 16 hours, revalidates live data, exclu
 
 test('reference cache revalidation retains minute mode and does not become an all-period refresh',async()=>{
  const browser=await chromium.launch({headless:true,channel:'msedge'});try{const page=await browser.newPage();let value=1;
- await page.route('https://cache-mode.test/**',route=>{const u=new URL(route.request().url());if(u.pathname==='/')return route.fulfill({contentType:'text/html',body:'<html><body></body></html>'});if(u.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:'mode@example.test'}}});return route.fulfill({json:{success:true,points:[{t:1793059200000,close:value}]}});});
+ await page.route('https://cache-mode.test/**',route=>{const u=new URL(route.request().url());if(u.pathname==='/')return route.fulfill({contentType:'text/html',body:'<html><body></body></html>'});if(u.pathname==='/api/chart-revisions')return route.fulfill({json:{success:true,revisions:{}}});if(u.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:'mode@example.test'}}});return route.fulfill({json:{success:true,points:[{t:1793059200000,close:value}]}});});
  await page.goto('https://cache-mode.test/');await page.evaluate(()=>{window.now=Date.parse('2026-10-27T12:00:00+09:00');Date.now=()=>window.now;window.refreshModes=[];window.RankChartAxis={refreshCharts:options=>window.refreshModes.push(options.mode)};});await page.addScriptTag({path:'public/rank-chart-cache.js'});
  const read=()=>page.evaluate(async()=>{const r=await RankChartCache.fetch('/api/chart-reference?mode=minute&market=kospi');return r.json();});await read();value=2;await page.evaluate(()=>window.now+=2000);await read();await page.waitForFunction(()=>window.refreshModes.length===1);assert.deepEqual(await page.evaluate(()=>window.refreshModes),['minute']);
  }finally{await browser.close();}
@@ -127,7 +128,7 @@ test('closed market replaces a response saved during the session once, so today 
   await page.route('https://closed-today.test/**',route=>{
    const url=new URL(route.request().url());
    if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<html></html>'});
-   if(url.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:'today@example.test'}}});
+   if(url.pathname==='/api/chart-revisions')return route.fulfill({json:{success:true,revisions:{}}});if(url.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:'today@example.test'}}});
    calls++;const dates=full?['2026-11-05 09:59','2026-11-05 19:59']:['2026-11-05 09:59'];
    return route.fulfill({json:{mode:'minute',market:'kosdaq',dates,series:{highs:{points:dates.map(date=>({date,value:3}))},lows:{points:dates.map(date=>({date,value:-9}))}},has_more:false}});
   });
@@ -151,7 +152,7 @@ test('futures response saved after the day close is refetched once after the nig
   await page.route('https://night-close.test/**',route=>{
    const url=new URL(route.request().url());
    if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<html></html>'});
-   if(url.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:'night@example.test'}}});
+   if(url.pathname==='/api/chart-revisions')return route.fulfill({json:{success:true,revisions:{}}});if(url.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:'night@example.test'}}});
    calls++;const dates=night?['2026-11-05 15:45','2026-11-06 05:59']:['2026-11-05 15:45'];
    return route.fulfill({json:{mode:'minute',market:'futures',dates,series:{foreign:{points:dates.map(date=>({date,value:1}))}},has_more:false}});
   });
@@ -173,5 +174,63 @@ test('futures response saved after the day close is refetched once after the nig
   await settle(2);assert.equal(calls,2,'refetched once after the night close');
   assert.equal(await page.evaluate(async()=>(await (await RankChartCache.fetch('/api/market-supply/chart?code=futures&mode=minute')).json()).dates.at(-1)),'2026-11-06 05:59');
   await page.waitForTimeout(300);assert.equal(calls,2,'not requested again for the same close');
+ }finally{await browser.close();}
+});
+test('responses saved before data revisions existed (v3.0.112 breadth) are dropped once after a reload with the new script',async()=>{
+ const {execFileSync}=require('node:child_process'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
+ const oldScript=path.join(fs.mkdtempSync(path.join(os.tmpdir(),'cache-old-')),'rank-chart-cache.js');
+ fs.writeFileSync(oldScript,execFileSync('git',['show','v3.0.112:public/rank-chart-cache.js']));
+ const browser=await chromium.launch({headless:true,channel:'msedge'});
+ try{
+  const page=await browser.newPage();let first='2026-10-26',calls=0;
+  await page.route('https://breadth-rewrite.test/**',route=>{
+   const url=new URL(route.request().url());
+   if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<html></html>'});
+   if(url.pathname==='/api/chart-revisions')return route.fulfill({json:{success:true,revisions:{}}});if(url.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:'breadth@example.test'}}});
+   calls++;return route.fulfill({json:{mode:'day',market:'kosdaq',dates:[first,'2026-11-06'],series:{highs:{points:[{date:first,value:3},{date:'2026-11-06',value:4}]}},cursor:null,has_more:false}});
+  });
+  const start=async script=>{await page.goto('https://breadth-rewrite.test/');await page.evaluate(()=>window.TradingRefresh={allowsUrl:()=>false});await page.addScriptTag({path:script});};
+  const read=()=>page.evaluate(async()=>(await (await RankChartCache.fetch('/api/risk/breadth?market=kosdaq&mode=day&cursor=')).json()).dates[0]);
+  await start(oldScript);assert.equal(await read(),'2026-10-26');
+  first='2024-05-21';
+  await start(oldScript);assert.equal(await read(),'2026-10-26','old script: saved response hides the rewritten history (the reported symptom)');
+  await start('public/rank-chart-cache.js');assert.equal(await read(),'2024-05-21');assert.equal(calls,2);
+  await start('public/rank-chart-cache.js');assert.equal(await read(),'2024-05-21');assert.equal(calls,2,'the new response is cached again');
+ }finally{await browser.close();}
+});
+test('a changed server revision drops every saved page of that route together; other routes and an unchanged revision keep theirs',async()=>{
+ const browser=await chromium.launch({headless:true,channel:'msedge'});
+ try{
+  const page=await browser.newPage(),calls=[];let revisions={'/api/risk/breadth':'b1','/api/kis-supply/chart':'k1'},version='old',revisionsOk=true;
+  await page.route('https://revisions.test/**',route=>{
+   const url=new URL(route.request().url());
+   if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<html></html>'});
+   if(url.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:'revisions@example.test'}}});
+   if(url.pathname==='/api/chart-revisions')return revisionsOk?route.fulfill({json:{success:true,revisions}}):route.fulfill({status:500,json:{success:false}});
+   calls.push(url.pathname+url.search);
+   const cursor=url.searchParams.get('cursor')||'';
+   return route.fulfill({headers:{'X-Chart-Revision':revisions[url.pathname]||''},json:{dates:['2026-11-06'],series:{highs:{points:[{date:cursor||'latest',value:1}]}},version,cursor:cursor?null:'20240520',has_more:!cursor}});
+  });
+  const start=async()=>{await page.goto('https://revisions.test/');await page.evaluate(()=>{window.TradingRefresh={allowsUrl:()=>false};window.updates=[];document.addEventListener('rank-chart-cache-updated',e=>window.updates.push(e.detail.path));});await page.addScriptTag({path:'public/rank-chart-cache.js'});};
+  const urls=['/api/risk/breadth?market=kospi&mode=day&cursor=','/api/risk/breadth?market=kospi&mode=day&cursor=20240520','/api/risk/breadth?market=kosdaq&mode=day&cursor=20240520','/api/kis-supply/chart?code=005930&mode=minute&cursor=20261105'];
+  const readAll=()=>page.evaluate(async urls=>Promise.all(urls.map(async u=>(await (await RankChartCache.fetch(u)).json()).version)),urls);
+  await start();assert.deepEqual(await readAll(),['old','old','old','old']);assert.equal(calls.length,4);
+  version='new';
+  await start();assert.deepEqual(await readAll(),['old','old','old','old'],'same revisions: saved pages are used');assert.equal(calls.length,4);
+  revisions={...revisions,'/api/risk/breadth':'b2'};
+  await start();assert.deepEqual(await readAll(),['new','new','new','old'],'breadth pages are all replaced, supply kept');assert.equal(calls.length,7);
+  await start();assert.deepEqual(await readAll(),['new','new','new','old']);assert.equal(calls.length,7,'the new pages are saved again');
+  // Revisions unavailable: saved pages are used as before.
+  revisionsOk=false;version='newer';
+  await start();assert.deepEqual(await readAll(),['new','new','new','old']);assert.equal(calls.length,7);
+  // During a session a response with a newer revision drops the route's saved pages and asks the chart to reload.
+  revisionsOk=true;await start();await readAll();
+  revisions={...revisions,'/api/kis-supply/chart':'k2'};
+  await page.evaluate(()=>window.TradingRefresh={allowsUrl:()=>true});
+  await page.evaluate(async()=>{await (await RankChartCache.fetch('/api/kis-supply/chart?code=005930&mode=minute')).json();});
+  await page.waitForFunction(()=>window.updates.includes('/api/kis-supply/chart'));
+  const before=calls.length;
+  assert.equal(await page.evaluate(async()=>(await (await RankChartCache.fetch('/api/kis-supply/chart?code=005930&mode=minute&cursor=20261105')).json()).version),'newer');
+  assert.equal(calls.length,before+1,'the saved past page of the revised route is fetched again');
  }finally{await browser.close();}
 });

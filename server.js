@@ -175,6 +175,19 @@ app.use('/api', (req, res, next) => {
     next();
 });
 
+// Chart data revisions: the browser cache drops a route's saved responses when its past data changed.
+const chartRevisions = require('./chart-revisions').createChartRevisions({
+    dataDirectory: path.join(__dirname, 'data'), directory: path.join(__dirname, 'data', 'chart-revisions'), log: message => fileLog(message)
+});
+app.get('/api/chart-revisions', (req, res) => {
+    try { res.set('Cache-Control', 'no-store').json({ success: true, revisions: chartRevisions.check() }); }
+    catch (error) { res.status(500).json({ success: false, error: error.message }); }
+});
+app.use('/api', (req, res, next) => {
+    try { const revision = chartRevisions.revisionOf(req.baseUrl + req.path); if (revision) res.set('X-Chart-Revision', revision); } catch {}
+    next();
+});
+
 app.use('/api',(req,res,next)=>{
     const value=backgroundRefreshService.cached(req.method,req.baseUrl+req.path,req.query);
     if(value)return res.set('Cache-Control','no-store').json(value);
@@ -233,6 +246,7 @@ createRankIndependentRelay({
             ? supplyService.configure(command.body?.codes, command.body?.revision) : supplyService.summary();
         if (url.pathname === '/api/supply/chart') return supplyService.query(Object.fromEntries(url.searchParams));
         if (url.pathname === '/api/supply/candles') return supplyService.candles(Object.fromEntries(url.searchParams));
+        if (url.pathname === '/api/chart-revisions') return { success: true, revisions: chartRevisions.check() };
         throw new Error('지원하지 않는 요청입니다.');
     }
 }).mount(app);

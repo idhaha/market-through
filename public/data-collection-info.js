@@ -85,6 +85,25 @@
         ]]]
     };
 
+    // Browser chart cache (rank-chart-cache.js) and server data revisions (chart-revisions.js), 2026-11-08.
+    const cache = {
+        title: '화면 차트 캐시',
+        note: [
+            '브라우저는 차트 응답을 이 PC의 브라우저 저장소(IndexedDB)에 보관해, 다시 열 때 증권사 조회 없이 바로 그립니다. Ctrl+F5로는 지워지지 않습니다. 계정마다 따로 보관하고, 오류·미제공·미완료 응답은 보관하지 않습니다.',
+            '서버가 저장한 과거 자료를 고치면(빠진 날 채우기, 지난 자료 가져오기, 기준 변경) 서버의 그 차트 버전이 바뀝니다. 브라우저는 화면을 열 때와 응답을 받을 때 버전을 비교해, 바뀐 차트의 보관 응답을 시장·종목·과거 쪽 구분 없이 한꺼번에 버리고 다시 받습니다. 그래서 한 차트에 고치기 전과 후의 값이 섞이지 않습니다.',
+            '버전은 지난 날의 파일이나 값이 바뀔 때만 올라갑니다. 오늘 수집과 새 날짜가 늘어나는 것은 버전을 바꾸지 않습니다. 전날은 야간 선물 때문에 다음 날 06:00까지 오늘로 봅니다.',
+            '증권사에서 바로 받는 차트(쏠림율, 시장 거래대금 일봉, 종목 수급 일봉, 지수 캔들 등)는 과거가 바뀌지 않아 버전이 없습니다.'
+        ],
+        head: ['응답', '보관 기간', '다시 받는 때'],
+        sections: [[null, [
+            ['오늘이 들어 있는 첫 쪽', '16시간', '장중: 보관값을 먼저 그리고 곧바로 다시 받아 바꿈\n장 마감 뒤: 장중에 받은 응답이면 마감 2분 뒤 한 번 다시 받음\n버전이 바뀌면 바로'],
+            ['더 불러오기로 받은 과거 쪽 (날짜 커서가 오늘 이전)', '7일', '보관 기간이 지나거나 버전이 바뀔 때만'],
+            ['쏠림율 분봉의 과거 쪽 (서버 세션 커서)', '보관 안 함', '매번'],
+            ['버전이 있는 차트', '-', '52주 신고/신저(breadth) · 종목 수급 분봉(kis-supply, ls-supply, supply) · 종목 선물 수급(ls-stock-futures) · 시장 수급(market-supply, kiwoom-market-supply, ls-market-supply) · 시장 거래대금 분봉과 쏠림율 LS(ls-turnover) · 한투 쏠림율(kis-concentration) · 변동성과 F&G·하이일드(volatility)'],
+            ['한도', '전체 180개 · 24MB', '넘치면 오래된 응답부터 지움 (응답 하나가 5MB를 넘으면 보관 안 함)']
+        ]]]
+    };
+
     function build(dialog, spec) {
         const block = document.createElement('section'); block.className = 'data-collection-category';
         const title = document.createElement('h3'); title.textContent = spec.title; block.append(title);
@@ -128,7 +147,7 @@
         const close = document.createElement('button'); close.type = 'button'; close.className = 'market-alert-dialog-close'; close.textContent = '닫기';
         close.addEventListener('click', () => dialog.close()); dialog.append(close);
         const heading = document.createElement('h2'); heading.id = 'dataCollectionGuideTitle'; heading.textContent = '데이터 수집 안내'; dialog.append(heading);
-        for (const spec of [groups, tables, charts, tokens]) build(dialog, spec);
+        for (const spec of [groups, tables, charts, tokens, cache]) build(dialog, spec);
         document.body.append(dialog);
         icon.addEventListener('click', () => dialog.showModal());
         dialog.addEventListener('click', event => {
