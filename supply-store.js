@@ -5,9 +5,14 @@ const dayKey = t => new Date(t + 9 * 3600000).toISOString().slice(0, 10);
 const validCode = code => /^[0-9A-Za-z]{6}$/.test(code);
 const fields = ['individual', 'foreign', 'institution', 'program'];
 const failure = (message, status = 400) => Object.assign(new Error(message), { status });
+// Where a broken day file found while compressing is reported. server.js points this at fileLog
+// (terminal + logs/server_debug.<date>.log); default is the terminal only.
+let report = message => console.error(message);
+const setReport = fn => { report = typeof fn === 'function' ? fn : (message => console.error(message)); };
 
 function createSupplyStore({ directory, now = Date.now, fields: valueFields = fields }) {
     const configFile = path.join(directory, 'watchlist.json');
+    const reported = new Set();
     function atomicBytes(filename, bytes) {
         fs.mkdirSync(path.dirname(filename), { recursive: true });
         const temporary = `${filename}.${process.pid}.tmp`;
@@ -112,7 +117,16 @@ function createSupplyStore({ directory, now = Date.now, fields: valueFields = fi
                 const day = name.slice(0, 10);
                 if (day > today || day === today && !closed) continue;
                 const filename = path.join(target, name), bytes = fs.readFileSync(filename);
-                if (!Array.isArray(JSON.parse(bytes.toString('utf8')))) throw failure('수급 분봉 파일 형식 오류', 500);
+                // A broken file (e.g. all NUL bytes after a power loss) is left as it is and skipped, so it does not
+                // stop the other days from being compressed. Reported once per file state, not every minute.
+                let problem = null;
+                try { if (!Array.isArray(JSON.parse(bytes.toString('utf8')))) problem = '목록 형식이 아님'; }
+                catch (error) { problem = bytes.length && bytes.every(byte => byte === 0) ? '내용이 모두 빈 문자(NUL)' : 'JSON 아님: ' + error.message.slice(0, 80); }
+                if (problem) {
+                    const key = `${filename}:${bytes.length}:${fs.statSync(filename).mtimeMs}`;
+                    if (!reported.has(key)) { reported.add(key); report(`⚠️ [수급 압축] 깨진 파일을 건너뜁니다: ${path.relative(process.cwd(), filename)} (${bytes.length}바이트, ${problem})`); }
+                    continue;
+                }
                 atomicBytes(`${filename}.gz`, zlib.gzipSync(bytes, { level: 9 }));
                 // Read back and verify before removing the uncompressed source.
                 if (!zlib.gunzipSync(fs.readFileSync(`${filename}.gz`)).equals(bytes)) throw failure('수급 압축 검증 실패', 500);
@@ -125,4 +139,4 @@ function createSupplyStore({ directory, now = Date.now, fields: valueFields = fi
     function confirmMarketDay(day, confirmedAt) { atomic(path.join(directory, 'market-day.json'), { day, confirmed_at: confirmedAt }); }
     return { config, configure, dates, points, merge, mergeMany, archiveCompleted, marketDay, confirmMarketDay };
 }
-module.exports = { createSupplyStore, dayKey, validCode, fields, failure };
+module.exports = { createSupplyStore, dayKey, validCode, fields, failure, setReport };

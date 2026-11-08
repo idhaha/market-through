@@ -98,6 +98,7 @@ function fileLog(message) {
     console.log(message);
     retainedLogs.append('server_debug.log', message);
 }
+require('./supply-store').setReport(fileLog);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
