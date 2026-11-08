@@ -2262,6 +2262,28 @@ let activeBrowsers = 0; // 동시에 실행 중인 브라우저 수
 const MAX_BROWSERS = 1; // 1GB Oracle Cloud에서는 Chrome 1개만 허용
 
 // Trading Economics rows are stored on disk by macroSeries (below); this only fetches them.
+// Trading Economics scrape timing. The chart can take well over 30 s to appear on the Oracle server's small CPU
+// (2026-11-08: every scrape there failed at the old 30 s limit), so allow 120 s; the request itself is answered
+// within 45 s by macro-series-cache and the scrape keeps going in the background.
+const TE_CHART_WAIT_MS = 120000;
+const TE_SKIP_TYPES = new Set(['image', 'media', 'font']);
+const TE_SKIP_URL = /prebid|\/chat\.js|gpt\.js|adsbygoogle|quantserve|facebook|twitter|onetrust|cookielaw/i;
+// After a period button click, wait until the chart's point count has changed from `before` and stayed the
+// same for two more checks (data loaded and drawn), at most maxMs. Returns the last extracted points.
+async function waitForSettledPoints(page, extractPoints, before, maxMs = 45000) {
+    const started = Date.now();
+    let last = null, lastCount = -1, stable = 0;
+    while (Date.now() - started < maxMs) {
+        await new Promise(r => setTimeout(r, 1000));
+        last = await page.evaluate(extractPoints).catch(() => null);
+        const count = last?.length || 0;
+        // Unchanged from before for 8 s: the click did not change the range (already shown), stop waiting.
+        if (count > 0 && (count !== before || Date.now() - started > 8000) && count === lastCount) { if (++stable >= 2) break; } else stable = 0;
+        lastCount = count;
+    }
+    return last;
+}
+
 async function fetchTradingEconomics(originalUrl, duration) {
         const targetUrl = originalUrl;
         if (targetUrl.includes('tradingeconomics.com') && !targetUrl.includes('api.tradingeconomics.com')) {
@@ -2309,9 +2331,12 @@ async function fetchTradingEconomics(originalUrl, duration) {
 
                 // 0. Block Ads and Analytics for stability
                 await page.setRequestInterception(true);
+                // Oracle's E2.1.Micro has about 1/8 of a CPU: ad bidding, chat, images and fonts cost seconds of
+                // script time there and nothing for the chart (data comes from mk.min.js + highstock + /token).
                 page.on('request', (request) => {
                     const url = request.url();
-                    if (url.includes('google-analytics') || url.includes('googletagmanager') || url.includes('doubleclick') || url.includes('ads') || url.includes('tracker')) {
+                    if (TE_SKIP_TYPES.has(request.resourceType()) || TE_SKIP_URL.test(url) ||
+                        url.includes('google-analytics') || url.includes('googletagmanager') || url.includes('doubleclick') || url.includes('ads') || url.includes('tracker')) {
                         request.abort();
                     } else {
                         request.continue();
@@ -2333,7 +2358,7 @@ async function fetchTradingEconomics(originalUrl, duration) {
                 }
 
                 // 2. Wait for chart container
-                await page.waitForSelector('.highcharts-container', { timeout: 30000 });
+                await page.waitForSelector('.highcharts-container', { timeout: TE_CHART_WAIT_MS });
                 await new Promise(r => setTimeout(r, 1000)); // v30.9.15: Reduced from 2s
 
                 const extractPoints = () => {
@@ -2475,10 +2500,10 @@ async function fetchTradingEconomics(originalUrl, duration) {
                     }
 
                     console.log(`   🎯 Stage 1: History (${targetBtn})...`);
+                    const before = (await page.evaluate(extractPoints))?.length || 0;
                     const clicked = await robustClick(targetBtn);
                     if (clicked) {
-                        await new Promise(r => setTimeout(r, 7000)); // v30.9.15: Reduced from 8s
-                        const history = await page.evaluate(extractPoints);
+                        const history = await waitForSettledPoints(page, extractPoints, before);
                         if (history && history.length > 0) {
                             console.log(`   📊 Captured ${history.length} points (History Stage)`);
                             history.forEach(p => masterMap.set(p.x, p.y));
@@ -2488,6 +2513,7 @@ async function fetchTradingEconomics(originalUrl, duration) {
 
                 // 4. Stage 2: Daily (1Y) Resolution
                 console.log('   📡 Stage 2: Daily (1Y) Resolution...');
+                const before1Y = (await page.evaluate(extractPoints))?.length || 0;
                 const clicked1Y = await robustClick('1Y');
                 if (clicked1Y) {
                     await page.evaluate(() => {
@@ -2498,8 +2524,7 @@ async function fetchTradingEconomics(originalUrl, duration) {
                             });
                         }
                     });
-                    await new Promise(r => setTimeout(r, 4000)); // v30.9.15: Reduced from 6s
-                    const daily = await page.evaluate(extractPoints);
+                    const daily = await waitForSettledPoints(page, extractPoints, before1Y);
                     if (daily && daily.length > 0) {
                         console.log(`   📊 Captured ${daily.length} points (Daily Stage)`);
                         daily.forEach(p => masterMap.set(p.x, p.y));
@@ -2566,6 +2591,7 @@ app.get('/api/trading-economics', async (req, res) => {
         res.set('Cache-Control', 'no-store');
         res.json({ success: true, data: result.rows, cacheStatus: result.status, fetchedAt: result.fetchedAt, historyAt: result.historyAt });
     } catch (error) {
+        if (error.pending) return res.status(202).json({ success: false, pending: true, error: error.message });
         console.error(`   ❌ TE Proxy Error: ${error.message}`);
         res.status(500).json({ success: false, error: "데이터 획득 실패", details: error.message });
     }
@@ -2656,7 +2682,7 @@ const macroSeries = require('./macro-series-cache').createMacroSeriesCache({
             keyOf: p => `${p.seriesId}_${p.period}`,
             fullFrom: (p, time) => fredPeriodStartDate(p.period, new Date(time)),
             fetch: (p, from) => fetchFredRows(p.seriesId, p.period, from),
-            policy: { wait: 8000, forceWait: 60000 }
+            policy: { wait: 8000, forceWait: 45000 }
         },
         ecos: {
             keyOf: p => `${p.table}_${p.item}`,
@@ -2672,7 +2698,7 @@ const macroSeries = require('./macro-series-cache').createMacroSeriesCache({
             fetch: p => { const job = teScrapeQueue.then(() => fetchTradingEconomics(p.url, p.duration)); teScrapeQueue = job.catch(() => {}); return job; },
             dayOf: row => { const v = row?.DateTime ?? row?.Date ?? row?.date; const d = v ? new Date(v) : null; return d && !isNaN(d) ? d.toISOString().slice(0, 10) : ''; },
             idOf: row => String(row?.DateTime ?? row?.Date ?? row?.date),
-            policy: { wait: 0, forceFresh: 30 * 60000, forceWait: 110000 }
+            policy: { wait: 0, forceFresh: 30 * 60000, forceWait: 45000 }
         }
     }
 });
@@ -2707,6 +2733,7 @@ app.get('/api/fred', async (req, res) => {
         res.set('Cache-Control', 'no-store');
         res.json({ success: true, data: result.rows, cacheStatus: result.status, fetchedAt: result.fetchedAt, historyAt: result.historyAt, ...(result.refreshError ? { refreshError: result.refreshError } : {}) });
     } catch (error) {
+        if (error.pending) return res.status(202).json({ success: false, pending: true, error: error.message });
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -2972,6 +2999,7 @@ app.get('/api/ecos', async (req, res) => {
         res.set('Cache-Control', 'no-store');
         res.json({ success: true, data: rows, cacheStatus: result.status, fetchedAt: result.fetchedAt, historyAt: result.historyAt });
     } catch (error) {
+        if (error.pending) return res.status(202).json({ success: false, pending: true, error: error.message });
         console.error('[ECOS] ❌ ' + table + '/' + item + ': ' + error.message);
         res.status(500).json({ success: false, error: error.message });
     }

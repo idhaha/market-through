@@ -2,11 +2,24 @@
 1. 코드 수정
 
 2. 로컬로 테스트
-http://localhost:3001/에서 테스트ㅜ
+http://localhost:3001/에서 테스트
 
+확인 및 끄는법1)
 만일 포트가 사용중이라고 나오면, 해당 포트가 사용중인 PID를 찾아서 Kill해줌
-netstat -ano | findstr :3001
+netstat -ano | findstr :3000
 taskkill /f /pid PID번호
+
+확인법2)
+3000번을 쓰는 프로세스 번호(PID) 보기: Get-NetTCPConnection -LocalPort 3000 -State Listen | Select-Object OwningProcess
+그 PID가 무슨 프로그램인지 보기(숫자 자리에 위 PID): Get-CimInstance Win32_Process -Filter "ProcessId=숫자" | Select-Object ProcessId, CreationDate, CommandLine
+명령줄이 node.exe server.js이면 예전 로컬 서버입니다. 시작 시각(CreationDate)으로 언제 켠 서버인지 알 수 있습니다.
+
+끄는법2)
+Stop-Process -Id PID숫자
+
+재확인2)
+3000번이 비었는지 다시 보기. 아무것도 안 나오면 비어 있는 것입니다: Get-NetTCPConnection -LocalPort 3000 -State Listen
+단, Stop-Process -Name node처럼 이름으로 끄면 안 됩니다. 이 PC에서 도는 다른 node 프로그램까지 모두 꺼집니다.
 
 3. git 반영
 git checkout -b "br_oracle"

@@ -1895,9 +1895,19 @@ iframe {
 .te-chart-wrapper {
     position: relative;
     flex: 1;
+    min-height: 0;
+    overflow: hidden;
     width: 100%;
     background: rgba(255, 255, 255, 0.03);
     margin-top: 5px;
+}
+
+/* The canvas fills its box without taking part in layout: its pixel size (CSS size × devicePixelRatio)
+   can never push the box taller and leave the next draw cut off at the bottom. */
+.te-chart-wrapper > .te-chart-canvas,
+.te-chart-wrapper > .multi-chart-canvas {
+    position: absolute;
+    inset: 0;
 }
 
 .te-chart-canvas,

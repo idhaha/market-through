@@ -30,7 +30,7 @@ function fixture(t, { teScrape } = {}) {
             policy: { wait: 0, forceFresh: 30 * 60000 }
         }
     };
-    const make = () => createMacroSeriesCache({ directory: path.join(root, 'macro'), sources, now: () => time, schedule: (fn, delay) => { timers.push({ fn, delay }); return { unref() {} }; } });
+    const make = (extra = {}) => createMacroSeriesCache({ directory: path.join(root, 'macro'), sources, now: () => time, schedule: (fn, delay) => { timers.push({ fn, delay }); return { unref() {} }; }, ...extra });
     return { make, source, calls, timers, root, advance: ms => { time += ms; }, at: iso => { time = Date.parse(iso); } };
 }
 
@@ -147,4 +147,34 @@ test('series not used for 30 days are not refetched at dawn; a year unused remov
     summary = await cache.refreshHistory();
     assert.deepEqual(summary.removed, ['fred:DGS10_10y']);
     assert.equal(fs.readdirSync(path.join(f.root, 'macro', 'fred')).filter(n => n.endsWith('.json')).length, 0);
+});
+
+// Oracle sits behind nginx with a 60 s read timeout: a request waiting longer gets "Proxy 504" on the screen.
+test('no request waits past maxWait: a slow first scrape answers pending, keeps going and is saved', async t => {
+    let release;
+    const f = fixture(t, { teScrape: () => new Promise(resolve => { release = () => resolve([{ DateTime: '2026-11-08T00:00:00.000Z', Value: 1400 }]); }) });
+    const cache = f.make({ maxWait: 50 });
+    const started = Date.now();
+    await assert.rejects(cache.get('te', { url: 'https://tradingeconomics.com/south-korea/currency' }), error => error.pending === true);
+    assert.ok(Date.now() - started < 1000, 'answered at maxWait, not when the scrape ends');
+    release();
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const next = await cache.get('te', { url: 'https://tradingeconomics.com/south-korea/currency' });
+    assert.equal(next.status, 'cache');
+    assert.equal(next.rows[0].Value, 1400);
+    assert.equal(f.calls.length, 1, 'the second request reused the background scrape');
+});
+
+test('a forced refetch also stops waiting at maxWait and answers with the stored copy', async t => {
+    let slow = false, release;
+    const f = fixture(t, { teScrape: () => slow ? new Promise(resolve => { release = () => resolve([{ DateTime: '2026-11-09T00:00:00.000Z', Value: 1410 }]); }) : [{ DateTime: '2026-11-08T00:00:00.000Z', Value: 1400 }] });
+    const cache = f.make({ maxWait: 50 });
+    await cache.get('te', { url: 'u' });
+    f.advance(31 * 60000); slow = true;
+    const started = Date.now();
+    const forced = await cache.get('te', { url: 'u' }, { force: true });
+    assert.ok(Date.now() - started < 1000);
+    assert.equal(forced.status, 'refreshing');
+    assert.equal(forced.rows.length, 1);
+    release();
 });

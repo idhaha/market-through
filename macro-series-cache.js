@@ -1,11 +1,14 @@
 // Stored macro series for the 금리/환율 and custom chart tabs (FRED, ECOS, Trading Economics), 2026-11-08.
 // Each series is kept in data/macro-series/<source>/<hash>.json and answered from disk:
-//  - the first request of a series fetches its whole history once and waits for it;
+//  - the first request of a series fetches its whole history once and waits for it, at most `maxWait`;
 //  - later requests return the stored copy. When it is older than `fresh`, only the recent part is fetched
 //    again (FRED/ECOS from `overlapDays` before the newest stored day; TE has no partial fetch, so a full
 //    scrape). The request waits at most `wait` for that, otherwise it gets the stored copy and the refresh
 //    finishes in the background;
 //  - force (the 조회 button) refetches when the copy is older than `forceFresh` and waits up to `forceWait`;
+//  - no request waits longer than `maxWait` (45 s, under the Oracle nginx proxy's 60 s read timeout, which
+//    otherwise answers 504). A first fetch still running then rejects with error.pending = true (the route
+//    answers 202 and the screen asks again shortly); the fetch keeps going in the background and is saved.
 //  - every day in the morning (default 07:20 KST) the whole history of every series used in the last 30 days is
 //    fetched again, because sources revise past values (FRED revisions, ECOS corrections). A missed run
 //    (server down at dawn) runs a few minutes after the next start.
@@ -23,7 +26,7 @@ const DEFAULT_POLICY = { fresh: HOUR, wait: 8000, forceFresh: 5 * 60000, forceWa
 //   dayOf?(row), idOf?(row), overlapDays?, widen?(stored, requested) -> params|null, policy? } }
 // fetch gets from = null for a source without fullFrom (fetch everything it can).
 function createMacroSeriesCache({ directory, sources, now = Date.now, log = () => {}, schedule = setTimeout,
-    historyAt = { hour: 7, minute: 20 }, usedWithinDays = 30, unusedDays = 365, catchUpDelay = 3 * 60000 }) {
+    historyAt = { hour: 7, minute: 20 }, usedWithinDays = 30, unusedDays = 365, catchUpDelay = 3 * 60000, maxWait = 45000 }) {
     const entries = new Map(), inFlight = new Map(), stateFile = path.join(directory, 'state.json');
     let state = {}, timer = null, historyRun = null;
     const dayOf = (source, row) => (sources[source].dayOf || (r => String(r?.date ?? '').slice(0, 10)))(row);
@@ -104,14 +107,24 @@ function createMacroSeriesCache({ directory, sources, now = Date.now, log = () =
         const widened = entry.rows.length && spec.widen ? spec.widen(entry.params, params) : null;
         if (widened) entry.params = widened;
         if (!entry.rows.length || widened) {
-            try { await refresh(entry, 'history'); return answer(entry, 'fetched'); }
-            catch (error) { if (entry.rows.length) return answer(entry, 'stale'); throw error; }
+            const job = refresh(entry, 'history');
+            job.catch(() => {});
+            let timeoutId;
+            const outcome = await Promise.race([
+                job.then(() => 'fetched', error => ({ error })),
+                new Promise(resolve => { timeoutId = setTimeout(() => resolve('pending'), maxWait); })
+            ]);
+            clearTimeout(timeoutId);
+            if (outcome === 'fetched') return answer(entry, 'fetched');
+            if (entry.rows.length) return answer(entry, outcome === 'pending' ? 'refreshing' : 'stale');
+            if (outcome === 'pending') throw Object.assign(new Error('원천에서 자료를 받는 중입니다. 잠시 후 다시 불러옵니다.'), { pending: true });
+            throw outcome.error;
         }
         const policy = policyOf(source), age = time - (entry.fetchedAt || 0);
         if (age < (force ? policy.forceFresh : policy.fresh)) return answer(entry, 'cache');
         const job = refresh(entry, 'recent');
         job.catch(() => {});
-        const wait = force ? policy.forceWait : policy.wait;
+        const wait = Math.min(force ? policy.forceWait : policy.wait, maxWait);
         if (wait <= 0) return answer(entry, 'refreshing');
         let timeoutId;
         const outcome = await Promise.race([

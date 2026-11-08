@@ -25,14 +25,14 @@ const { chromium } = require('playwright');
         });
         await page.goto('http://storage.test/');
         await page.addScriptTag({ content: fs.readFileSync('public/server-storage.js', 'utf8') });
-        await page.waitForFunction(() => document.querySelector('#serverStorage').textContent.includes('35 / 45 GB'));
-        assert.match(await page.locator('#serverStorage').getAttribute('title'), /사용률 22%/);
+        await page.waitForFunction(() => document.querySelector('#serverStorage').textContent.includes('10 / 45 GB'));
+        assert.match(await page.locator('#serverStorage').getAttribute('title'), /여유 35 GB/);
         fail = true;
         await page.evaluate(() => window.refreshServerStorage());
         assert.equal(await page.locator('#serverStorage').textContent(), '서버 용량 확인 불가');
         fail = false;
         await page.evaluate(() => window.refreshServerStorage());
-        assert.equal(await page.locator('#serverStorage').textContent(), '서버 여유 78% (35 / 45 GB)');
+        assert.equal(await page.locator('#serverStorage').textContent(), '서버 사용 22% (10 / 45 GB)');
     } finally { await browser.close(); }
     console.log('Server storage API calculation and header display checks passed.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

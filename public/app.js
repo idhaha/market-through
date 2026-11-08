@@ -3200,9 +3200,11 @@ function renderTradingEconomicsChartItem(chart, color = '', tabId, idx) {
 /**
  * TradingEconomics 차트 데이터 로드 및 렌더링
  */
-async function loadTradingEconomicsChart(canvas, url, title, duration = '', force = false) {
+// quiet: background check for the latest value over a chart already drawn from the server's stored copy.
+// It shows no loading text and keeps the drawn chart on failure. Returns true when the chart was drawn.
+async function loadTradingEconomicsChart(canvas, url, title, duration = '', force = false, { quiet = false } = {}) {
     const wrapper = canvas.closest('.te-chart-wrapper');
-    const loadingEl = wrapper?.querySelector('.te-chart-loading');
+    const loadingEl = quiet ? null : wrapper?.querySelector('.te-chart-loading');
 
     if (loadingEl) loadingEl.style.display = 'block';
 
@@ -3214,29 +3216,40 @@ async function loadTradingEconomicsChart(canvas, url, title, duration = '', forc
 
         if (loadingEl) {
             loadingEl.style.display = 'block';
-            loadingEl.textContent = '브라우저 시동 중...';
+            loadingEl.style.color = '';
+            loadingEl.textContent = '불러오는 중...';
         }
 
-        const response = await queueTeRequest(async () => {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => {
-                controller.abort();
-                console.warn(`[TradingEconomics] Timeout (120s) for ${url}`);
-            }, 120000);
-            try { return await fetch(proxyUrl, { signal: controller.signal }); }
-            finally { clearTimeout(timeoutId); }
-        });
+        // The server answers within 45 s; a first scrape still running answers 202 { pending } and keeps going,
+        // so the chart asks again every 15 s (outside the request queue) instead of failing.
+        let result, pendingSince = 0;
+        for (let pendingTries = 0; ; pendingTries++) {
+            const response = await queueTeRequest(async () => {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => {
+                    controller.abort();
+                    console.warn(`[TradingEconomics] Timeout (120s) for ${url}`);
+                }, 120000);
+                try { return await fetch(proxyUrl, { signal: controller.signal }); }
+                finally { clearTimeout(timeoutId); }
+            });
 
-        // v30.9.10: Handle non-JSON (HTML) responses from Gateway/Proxy
-        const contentType = response.headers.get('content-type');
-        if (contentType && contentType.includes('text/html')) {
-            const htmlText = await response.text();
-            if (htmlText.includes('504') || htmlText.includes('Time-out')) throw new Error('서버 타임아웃 (Proxy 504). 데이터가 많거나 서버가 느립니다.');
-            if (htmlText.includes('502')) throw new Error('서버 연결 오류 (Proxy 502).');
-            throw new Error('서버가 JSON 대신 HTML을 반환했습니다. (Proxy Error)');
+            // v30.9.10: Handle non-JSON (HTML) responses from Gateway/Proxy
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('text/html')) {
+                const htmlText = await response.text();
+                if (htmlText.includes('504') || htmlText.includes('Time-out')) throw new Error('서버 타임아웃 (Proxy 504). 데이터가 많거나 서버가 느립니다.');
+                if (htmlText.includes('502')) throw new Error('서버 연결 오류 (Proxy 502).');
+                throw new Error('서버가 JSON 대신 HTML을 반환했습니다. (Proxy Error)');
+            }
+
+            result = await response.json();
+            // First scrapes run one at a time on the server (over a minute each on Oracle): keep asking up to 20 min.
+            if (result.pending && !pendingSince) pendingSince = Date.now();
+            if (!result.pending || quiet || Date.now() - pendingSince > 1200000) break;
+            if (loadingEl) loadingEl.textContent = `원천에서 받는 중... 잠시 후 다시 불러옵니다 (${pendingTries + 1})`;
+            await new Promise(resolve => setTimeout(resolve, 15000));
         }
-
-        const result = await response.json();
 
         if (!result.success) {
             throw new Error(result.details || result.error || '서버에서 데이터를 가져오는데 실패했습니다.');
@@ -3285,21 +3298,53 @@ async function loadTradingEconomicsChart(canvas, url, title, duration = '', forc
 
         if (loadingEl) loadingEl.style.display = 'none';
 
-        // Draw the chart
+        // Draw the chart (a quiet success also clears an error left by the first pass)
+        const overlay = wrapper?.querySelector('.te-chart-loading');
+        if (overlay) overlay.style.display = 'none';
+        // New data: drop the cached full data and date bounds of the previous load (later redraws on hover,
+        // zoom or resize use that cache, so the latest values would otherwise disappear). The zoom is kept.
+        canvas.chartData = null;
         drawTradingEconomicsLineChart(canvas, chartData, title);
+        return true;
 
     } catch (error) {
+        if (quiet) { console.warn('[TradingEconomics] Latest check failed, keeping the stored chart:', url, error.message); return false; }
         console.error('[TradingEconomics] Chart load error:', error);
         if (loadingEl) {
             loadingEl.textContent = '로드 실패: ' + error.message;
             loadingEl.style.color = '#e74c3c';
         }
+        return false;
     }
 }
 
 /**
  * TradingEconomics 라인 차트 그리기
  */
+const economicChartResized = canvas => !!canvas.clientWidth && !!canvas.clientHeight && !!canvas.chartData &&
+    (canvas.chartData.w !== canvas.clientWidth || canvas.chartData.h !== canvas.clientHeight);
+
+// Redraws a rates/FX chart when its box changes size after it was drawn (tab shown, window or zoom change),
+// so a chart drawn mid-layout does not stay stretched or cut off.
+function watchEconomicChartSize(canvas) {
+    if (canvas.sizeWatcher || typeof ResizeObserver === 'undefined' || !canvas.parentElement) return;
+    let frame = 0;
+    canvas.sizeWatcher = new ResizeObserver(() => {
+        cancelAnimationFrame(frame);
+        frame = requestAnimationFrame(() => {
+            const graph = canvas.chartData;
+            if (!graph || !canvas.clientWidth || !canvas.clientHeight) return;
+            if (canvas.drawnSize === `${canvas.clientWidth}x${canvas.clientHeight}`) return;
+            if (canvas.getAttribute('data-chart-type') === 'multi-series') {
+                if (graph.allSeries) drawMultiSeriesLineChart(canvas, graph.allSeries, graph.title);
+            } else if (graph.data) {
+                drawTradingEconomicsLineChart(canvas, graph.originalData || graph.data, graph.title);
+            }
+        });
+    });
+    canvas.sizeWatcher.observe(canvas.parentElement);
+}
+
 function installEconomicChartWheelZoom(canvas) {
     if (canvas.hasWheelZoom) return;
     canvas.hasWheelZoom = true;
@@ -3325,6 +3370,9 @@ function installEconomicChartWheelZoom(canvas) {
             drawTradingEconomicsLineChart(canvas, graph.originalData || graph.data, graph.title);
         }
         syncZoomToOtherCharts(canvas, canvas.zoomState);
+        // The redraws above have no crosshair: draw it again at the pointer (and on the other charts) right away,
+        // through the same pointermove handler, instead of waiting for the next mouse move.
+        canvas.dispatchEvent(new PointerEvent('pointermove', { clientX: event.clientX, clientY: event.clientY, bubbles: true }));
     }, { passive: false });
 }
 
@@ -3333,6 +3381,8 @@ function drawTradingEconomicsLineChart(canvas, data, title) {
     const dpr = window.devicePixelRatio || 1;
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
+    canvas.drawnSize = `${w}x${h}`;
+    watchEconomicChartSize(canvas);
 
     const targetW = Math.floor(w * dpr);
     const targetH = Math.floor(h * dpr);
@@ -3682,6 +3732,8 @@ function drawEconomicHoverValue(ctx, canvas, padding, chartW, chartH, x, y, valu
 
 function drawTradingEconomicsWithCursor(canvas, mouseX, hoveredValues, isDraggingOverlay = false) {
     if (!canvas.chartData) return;
+    // Box resized since the last full draw (stale w/h would draw past the box): redraw at the current size first.
+    if (economicChartResized(canvas)) drawTradingEconomicsLineChart(canvas, canvas.chartData.originalData || canvas.chartData.data, canvas.chartData.title);
 
     const { data, title, minDate, maxDate, yMin, yMax, padding, chartW, chartH, w, h } = canvas.chartData;
     const ctx = canvas.getContext('2d');
@@ -3729,7 +3781,11 @@ function drawTradingEconomicsWithCursor(canvas, mouseX, hoveredValues, isDraggin
         ctx.fillText(val.toFixed(2), w - padding.right + 5, y + 3);
     }
 
-    // 데이터 라인
+    // 데이터 라인 (zoomed data reaches past the axes: keep it inside the chart area)
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(padding.left, padding.top, chartW, chartH);
+    ctx.clip();
     ctx.strokeStyle = '#3498db';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
@@ -3739,6 +3795,7 @@ function drawTradingEconomicsWithCursor(canvas, mouseX, hoveredValues, isDraggin
         if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     });
     ctx.stroke();
+    ctx.restore();
 
     // X축 라벨 (Standardized)
     ctx.fillStyle = '#999';
@@ -3812,8 +3869,10 @@ function drawTradingEconomicsWithCursor(canvas, mouseX, hoveredValues, isDraggin
 /**
  * 다중 시리즈 차트 데이터 로드 및 렌더링
  */
-async function loadMultiSeriesChart(canvas, urls, title, force = false) {
-    const loadingEl = canvas.nextElementSibling;
+// quiet: see loadTradingEconomicsChart. A quiet run redraws only when every series loaded, so a failed
+// latest check never drops a line from the stored chart. Returns true when the chart was drawn.
+async function loadMultiSeriesChart(canvas, urls, title, force = false, { quiet = false } = {}) {
+    const loadingEl = quiet ? null : canvas.nextElementSibling;
     if (loadingEl) {
         loadingEl.style.display = 'flex';
         loadingEl.style.color = 'var(--text-muted)';
@@ -3866,7 +3925,7 @@ async function loadMultiSeriesChart(canvas, urls, title, force = false) {
                     else if (lowerUrl.startsWith('ecos(') || lowerUrl.indexOf('ecos.bok') !== -1) dataSource = 'ecos';
                     else if (lowerUrl.indexOf('tradingeconomics.com') !== -1 || lowerUrl.indexOf('tradingeconomics') !== -1) dataSource = 'te';
 
-                    let retryCount = 0;
+                    let retryCount = 0, pendingTries = 0, pendingSince = 0;
                     const MAX_RETRIES = 1;
 
                     while (retryCount <= MAX_RETRIES) {
@@ -3946,6 +4005,14 @@ async function loadMultiSeriesChart(canvas, urls, title, force = false) {
                             if (ct && ct.includes('text/html')) throw new Error('서버가 HTML을 반환했습니다. (Timeout 가능성)');
 
                             const resJson = await resp.json();
+                            // 202 { pending }: first fetch still running on the server (see loadTradingEconomicsChart).
+                            if (resJson.pending && !pendingSince) pendingSince = Date.now();
+                            if (resJson.pending && !quiet && Date.now() - pendingSince < 1200000) {
+                                pendingTries++;
+                                if (loadingEl) loadingEl.textContent = `원천에서 받는 중... 잠시 후 다시 불러옵니다 (${pendingTries})`;
+                                await new Promise(resolve => setTimeout(resolve, 15000));
+                                continue;
+                            }
                             if (resJson.success) {
                                 if (dataSource === 'fred') {
                                     data = resJson.data.map(d => {
@@ -4008,16 +4075,22 @@ async function loadMultiSeriesChart(canvas, urls, title, force = false) {
         }
         const validResults = results.filter(r => r && r.data.length > 0);
         if (validResults.length === 0) throw new Error("유효한 데이터가 없습니다.");
+        if (quiet && validResults.length < results.length) throw new Error('일부 계열의 최신 확인 실패');
 
+        canvas.chartData = null; // new data: forget the previous load's date bounds (see loadTradingEconomicsChart)
         drawMultiSeriesLineChart(canvas, validResults, title);
-        if (loadingEl) loadingEl.style.display = 'none';
+        const overlay = canvas.nextElementSibling;
+        if (overlay) overlay.style.display = 'none';
+        return true;
 
     } catch (e) {
+        if (quiet) { console.warn('[MultiSeries] Latest check failed, keeping the stored chart:', title, e.message); return false; }
         console.error("[MultiSeries] Error loading chart:", e);
         if (loadingEl) {
             loadingEl.textContent = `오류: ${e.message}`;
             loadingEl.style.color = '#e74c3c';
         }
+        return false;
     }
 }
 
@@ -4050,6 +4123,8 @@ function drawMultiSeriesLineChart(canvas, allSeries, title) {
     const dpr = window.devicePixelRatio || 1;
     const w = canvas.clientWidth;
     const h = canvas.clientHeight;
+    canvas.drawnSize = `${w}x${h}`;
+    watchEconomicChartSize(canvas);
 
     // Font settings - consistent across all redraws
     const axisFont = '11px sans-serif'; // for X/Y axis
@@ -4402,6 +4477,7 @@ function drawMultiSeriesLineChart(canvas, allSeries, title) {
  */
 function drawMultiSeriesWithCursor(canvas, mouseX, hoveredValues, isDraggingOverlay = false) {
     if (!canvas.chartData) return;
+    if (economicChartResized(canvas)) drawMultiSeriesLineChart(canvas, canvas.chartData.allSeries, canvas.chartData.title);
 
     const { allSeries, minDate, maxDate, yMin, yMax, padding, chartW, chartH, w, h, title } = canvas.chartData;
     const ctx = canvas.getContext('2d');
@@ -4448,6 +4524,11 @@ function drawMultiSeriesWithCursor(canvas, mouseX, hoveredValues, isDraggingOver
 
     allSeries.forEach((s, sIdx) => {
         const color = colors[sIdx % colors.length];
+        // Zoomed series reach past the axes: keep the line inside the chart area (as the full draw does).
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(padding.left, padding.top, chartW, chartH);
+        ctx.clip();
         ctx.strokeStyle = color;
         ctx.lineWidth = 2;
         ctx.beginPath();
@@ -4458,6 +4539,7 @@ function drawMultiSeriesWithCursor(canvas, mouseX, hoveredValues, isDraggingOver
             if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
         });
         ctx.stroke();
+        ctx.restore();
 
         // v16: Standardized Legend (Single Line top-right)
         ctx.fillStyle = color;
@@ -4643,8 +4725,26 @@ function syncZoomToOtherCharts(sourceCanvas, zoomStateParams) {
  * 환율/금리 탭 차트 새로고침
  */
 // force: the 조회/전체조회 buttons. Opening the tab uses the server's stored series without refetching.
-async function refreshExchangeRateCharts(tabId, force = false) {
-    if (isCapturing) { console.log('[Capture] refreshExchangeRateCharts() skipped (isCapturing)'); return; }
+// One run per tab at a time: a second call while a run is going (tab button + 전체조회, double click) joins it,
+// and a force call that arrives during a plain run starts one force run right after it.
+const exchangeRateRuns = new Map();
+function refreshExchangeRateCharts(tabId, force = false) {
+    if (isCapturing) { console.log('[Capture] refreshExchangeRateCharts() skipped (isCapturing)'); return Promise.resolve(); }
+    const running = exchangeRateRuns.get(tabId);
+    if (running) {
+        if (force && !running.force && !running.followUp) running.followUp = running.promise.then(() => refreshExchangeRateCharts(tabId, true));
+        return running.followUp || running.promise;
+    }
+    const run = { force, followUp: null };
+    run.promise = runExchangeRateRefresh(tabId, force).finally(() => { if (exchangeRateRuns.get(tabId) === run) exchangeRateRuns.delete(tabId); });
+    exchangeRateRuns.set(tabId, run);
+    return run.promise;
+}
+
+// Pass 1 draws every chart from the server's stored copy (milliseconds; all at once). With force (조회 button,
+// 전체조회) pass 2 then asks for the latest values one chart at a time and redraws only on success, so a slow
+// or failing Trading Economics scrape never blanks a chart that is already drawn.
+async function runExchangeRateRefresh(tabId, force) {
     const content = document.getElementById(tabId);
     if (!content) return;
 
@@ -4657,65 +4757,53 @@ async function refreshExchangeRateCharts(tabId, force = false) {
     const chartBoxes = content.querySelectorAll('.te-chart-box');
     const multiCanvases = content.querySelectorAll('.multi-chart-canvas');
 
-    let loadedCount = 0;
-    const totalCount = chartBoxes.length + multiCanvases.length;
+    // Each chart as a loader: (force, options) => Promise<boolean>.
+    const loaders = [];
+    for (const box of chartBoxes) {
+        const url = box.dataset.teUrl;
+        const duration = box.dataset.teDuration || '';
+        const canvas = box.querySelector('.te-chart-canvas');
+        const title = box.querySelector('.finviz-chart-title')?.textContent || '';
+        if (url && canvas) loaders.push((f, o) => loadTradingEconomicsChart(canvas, url, title, duration, f, o));
+    }
+    for (const canvas of multiCanvases) {
+        const box = canvas.closest('.multi-chart-box');
+        if (!box) continue;
+        let seriesConfig = [];
+        if (box.dataset.series) {
+            try { seriesConfig = JSON.parse(decodeURIComponent(box.dataset.series)); } catch (e) { }
+        }
+        if (seriesConfig.length === 0 && box.dataset.urls) {
+            try {
+                const urls = JSON.parse(decodeURIComponent(box.dataset.urls));
+                seriesConfig = urls.map(u => ({ url: u, label: '' }));
+            } catch (e) { }
+        }
+        const title = box.querySelector('.finviz-chart-title')?.textContent || '';
+        if (seriesConfig.length > 0) loaders.push((f, o) => loadMultiSeriesChart(canvas, seriesConfig, title, f, o));
+    }
 
-    if (totalCount === 0) {
+    if (loaders.length === 0) {
         if (statusText) statusText.textContent = '차트 없음';
         return;
     }
 
-    const checkComplete = () => {
-        if (++loadedCount >= totalCount) {
-            if (statusText) statusText.textContent = '완료';
-            if (lastUpdate) lastUpdate.textContent = formatTime(new Date());
-        }
-    };
+    // Pass 1: stored copies, all charts at once (Trading Economics requests still go one by one via queueTeRequest).
+    await Promise.all(loaders.map(load => load(false).catch(() => false)));
+    if (!force) {
+        if (statusText) statusText.textContent = '완료';
+        if (lastUpdate) lastUpdate.textContent = formatTime(new Date());
+        return;
+    }
 
-    // 1. Prepare and Run Sequential Loading (v30.9.13: To avoid 504 Gateway Timeout)
-    const runSequential = async () => {
-        // TradingEconomics Charts
-        for (const box of chartBoxes) {
-            const url = box.dataset.teUrl;
-            const duration = box.dataset.teDuration || '';
-            const canvas = box.querySelector('.te-chart-canvas');
-            const title = box.querySelector('.finviz-chart-title')?.textContent || '';
-
-            if (url && canvas) {
-                await loadTradingEconomicsChart(canvas, url, title, duration, force).finally(checkComplete);
-            } else {
-                checkComplete();
-            }
-        }
-
-        // Multi-Series / FRED Charts
-        for (const canvas of multiCanvases) {
-            const box = canvas.closest('.multi-chart-box');
-            if (box) {
-                let seriesConfig = [];
-                if (box.dataset.series) {
-                    try { seriesConfig = JSON.parse(decodeURIComponent(box.dataset.series)); } catch (e) { }
-                }
-                if (seriesConfig.length === 0 && box.dataset.urls) {
-                    try {
-                        const urls = JSON.parse(decodeURIComponent(box.dataset.urls));
-                        seriesConfig = urls.map(u => ({ url: u, label: '' }));
-                    } catch (e) { }
-                }
-
-                if (seriesConfig.length > 0) {
-                    const title = box.querySelector('.finviz-chart-title')?.textContent || '';
-                    await loadMultiSeriesChart(canvas, seriesConfig, title, force).finally(checkComplete);
-                } else {
-                    checkComplete();
-                }
-            } else {
-                checkComplete();
-            }
-        }
-    };
-
-    await runSequential();
+    // Pass 2: latest values, one chart at a time (keeps the server's Chrome and the proxy's 60s limit safe).
+    let failed = 0;
+    for (let i = 0; i < loaders.length; i++) {
+        if (statusText) statusText.textContent = `최신 확인 ${i + 1}/${loaders.length}`;
+        if (!await loaders[i](true, { quiet: true }).catch(() => false)) failed++;
+    }
+    if (statusText) statusText.textContent = failed ? `완료 (최신 확인 실패 ${failed}개는 저장값 표시)` : '완료';
+    if (lastUpdate) lastUpdate.textContent = formatTime(new Date());
 }
 
 /**
@@ -5291,7 +5379,10 @@ function refreshOverseasCustomCharts(tabId, force = false) {
 
                     if (seriesConfig.length > 0) {
                         const title = box.querySelector('.finviz-chart-title')?.textContent || '';
-                        loadMultiSeriesChart(canvas, seriesConfig, title, force).then(checkComplete);
+                        // Stored copy first; with force the latest check redraws only on success.
+                        loadMultiSeriesChart(canvas, seriesConfig, title, false)
+                            .then(() => force && loadMultiSeriesChart(canvas, seriesConfig, title, true, { quiet: true }))
+                            .catch(() => false).then(checkComplete);
                     } else {
                         checkComplete();
                     }
