@@ -20,10 +20,11 @@ await page.evaluate(()=>document.dispatchEvent(new Event('DOMContentLoaded')));a
 
 
 
-// Trading tab column 3: two test market supply cards (titled 시장 수급) replace the combined 시장 수급 cards (rows 1-2; row 3 empty).
+// Trading tab column 3: two test market supply cards (titled 시장 선물 수급 for futures, 시장 수급 for spot) replace the combined 시장 수급 cards (rows 1-2; row 3 empty).
 const card=page.locator('#rankTestMarketSupplyChartPanel'),secondary=page.locator('#rankTestMarketSupplySecondaryChartPanel');
 assert.equal(await page.locator('#rankCombinedMarketSupplyChartPanel,#rankCombinedMarketSupplySecondaryChartPanel').count(),0,'combined cards are gone');
-assert.deepEqual([await card.locator('h2').innerText(),await secondary.locator('h2').innerText()],['시장 수급','시장 수급']);
+const title=c=>c.locator('h2').innerText();
+assert.deepEqual([await title(card),await title(secondary)],['시장 선물 수급','시장 선물 수급'],'futures defaults');
 const positions=await page.evaluate(()=>['rankTestMarketSupplyChartPanel','rankTestMarketSupplySecondaryChartPanel'].map(id=>{const s=getComputedStyle(document.getElementById(id));return [s.gridColumnStart,s.gridRowStart]}));
 assert.deepEqual(positions,[['3','1'],['3','2']]);
 assert.equal(await page.evaluate(()=>[...document.querySelectorAll('.rank-chart-row>.panel')].filter(p=>getComputedStyle(p).gridColumnStart==='3'&&getComputedStyle(p).gridRowStart==='3').length),0,'column 3 row 3 stays empty');
@@ -34,14 +35,17 @@ let saved=await page.evaluate(()=>getConcentrationDisplaySettings());
 assert.equal(saved.testMarketSupply.selected,'futures');assert.equal(saved.testMarketSupplySecondary.selected,'futuresKosdaq');
 // Unpinned cards follow the shared market sync; a pinned card keeps its market.
 await card.locator('input[value=kospi]').check();assert.equal(await secondary.locator('input[value=kospi]').isChecked(),true);
+assert.deepEqual([await title(card),await title(secondary)],['시장 수급','시장 수급'],'spot → 시장 수급');
 const pin=secondary.locator('.rank-market-pin');assert.equal(await pin.count(),1);await pin.click();assert.equal(await pin.getAttribute('aria-pressed'),'true');
 await card.locator('input[value=kosdaq]').check();assert.equal(await secondary.locator('input[value=kospi]').isChecked(),true);
+await card.locator('input[value=futuresKosdaq]').check();assert.equal(await title(card),'시장 선물 수급','KOSDAQ선물 → 시장 선물 수급');await card.locator('input[value=kosdaq]').check();assert.equal(await title(card),'시장 수급');
 await page.waitForFunction(()=>getRankTestMarketSupplyDisplaySettings().selected==='kosdaq'&&getRankTestMarketSupplySecondaryDisplaySettings().selected==='kospi');
 // Restoring saved settings applies each card's own value.
 await page.evaluate(()=>applyConcentrationDisplaySettings({...getConcentrationDisplaySettings(),testMarketSupply:{selected:'futuresKosdaq',mode:'day'},testMarketSupplySecondary:{selected:'futures',mode:'day'}}));
 await page.waitForFunction(()=>getRankTestMarketSupplyDisplaySettings().selected==='futuresKosdaq'&&getRankTestMarketSupplySecondaryDisplaySettings().selected==='futures');
 saved=await page.evaluate(()=>getConcentrationDisplaySettings());
 assert.equal(saved.testMarketSupply.selected,'futuresKosdaq');assert.equal(saved.testMarketSupplySecondary.selected,'futures');
+assert.deepEqual([await title(card),await title(secondary)],['시장 선물 수급','시장 선물 수급'],'restored futures');
 assert.ok(!('combinedMarketSupply' in saved)&&!('combinedMarketSupplySecondary' in saved));
-assert.deepEqual(errors,[]);console.log('PASS two test market supply cards titled 시장 수급: column 3 rows 1-2, separate markets and settings, pin blocks sync');
+assert.deepEqual(errors,[]);console.log('PASS two test market supply cards titled 시장 (선물) 수급 by selection: column 3 rows 1-2, separate markets and settings, pin blocks sync');
 }finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

@@ -3,6 +3,7 @@ const path = require('node:path');
 const zlib = require('node:zlib');
 const { dayKey, failure } = require('./supply-store');
 const { collectingAt, timestamp, quantity } = require('./supply-service');
+const { isCommonStock } = require('./breadth-universe');
 
 function createBreadthService({ directory, legacyFile, legacyKospiDirectory, legacyCombinedDirectory, http, getToken, supply, now = Date.now,
     pause = ms => new Promise(resolve => setTimeout(resolve, ms)), log = console.warn }) {
@@ -33,7 +34,7 @@ function createBreadthService({ directory, legacyFile, legacyKospiDirectory, leg
     function post(api, body, next = '') {
         const task = queue.then(async () => {
             try {
-                const response = await http.post(`https://api.kiwoom.com/api/dostk/${api === 'ka10016' ? 'stkinfo' : 'chart'}`, body, {
+                const response = await http.post(`https://api.kiwoom.com/api/dostk/${['ka10016', 'ka10099'].includes(api) ? 'stkinfo' : 'chart'}`, body, {
                     headers: { Authorization: `Bearer ${await getToken()}`, 'Content-Type': 'application/json;charset=UTF-8',
                         'api-id': api, 'cont-yn': next ? 'Y' : 'N', 'next-key': next }, timeout: 10000
                 });
@@ -43,8 +44,46 @@ function createBreadthService({ directory, legacyFile, legacyKospiDirectory, leg
         });
         queue = task.catch(() => {}); return task;
     }
+    // Common stock codes per market from ka10099, refreshed once a day and kept in universe.json.
+    // When the refresh fails the last saved list is used; with no list at all the snapshot fails (nothing saved).
+    let universeMemo;
+    async function universe() {
+        const today = dayKey(now());
+        if (universeMemo?.date === today) return universeMemo.sets;
+        const saved = read('universe.json', null);
+        let value = saved?.date === today ? saved : null;
+        if (!value) {
+            try {
+                const lists = {};
+                for (const [market, type] of [['kospi', '0'], ['kosdaq', '10']]) {
+                    const items = []; let next = ''; const seen = new Set();
+                    for (let page = 0; ; page++) {
+                        if (page >= 50) throw new Error('종목 목록 연속조회 한도 초과');
+                        const response = await post('ka10099', { mrkt_tp: type }, next);
+                        if (!Array.isArray(response.data?.list)) throw new Error('종목 목록 응답 형식 오류');
+                        items.push(...response.data.list);
+                        if (response.headers?.['cont-yn'] !== 'Y') break;
+                        next = String(response.headers?.['next-key'] || '');
+                        if (!next || seen.has(next)) throw new Error('종목 목록 연속조회 키 오류');
+                        seen.add(next);
+                    }
+                    lists[market] = items.filter(item => isCommonStock(item, market)).map(item => String(item.code).trim()).sort();
+                    if (!lists[market].length) throw new Error('보통주 목록이 비어 있음');
+                }
+                value = { date: today, ...lists };
+                write('universe.json', value);
+            } catch (cause) {
+                if (!saved?.kospi?.length || !saved?.kosdaq?.length) throw cause;
+                log('[Breadth] 보통주 목록 갱신 실패, 저장된 목록 사용: ' + cause.message);
+                value = saved;
+            }
+        }
+        const sets = { kospi: new Set(value.kospi), kosdaq: new Set(value.kosdaq) };
+        if (value.date === today) universeMemo = { date: today, sets };
+        return sets;
+    }
     async function snapshot() {
-        const counts = { kospi: {}, kosdaq: {} };
+        const counts = { kospi: {}, kosdaq: {} }, common = await universe();
         for (const [name, type] of [['highs', '1'], ['lows', '2']]) {
             for (const [market, marketName] of [['001', 'kospi'], ['101', 'kosdaq']]) {
                 const codes = new Set();
@@ -58,7 +97,7 @@ function createBreadthService({ directory, legacyFile, legacyKospiDirectory, leg
                     for (const row of rows) {
                         const code = String(row.stk_cd || '').replace(/_(AL|NX)$/, '');
                         if (!/^[\dA-Za-z]{6}$/.test(code)) throw new Error('신고저가 종목코드 오류');
-                        codes.add(code);
+                        if (common[marketName].has(code)) codes.add(code);
                     }
                     if (response.headers?.['cont-yn'] !== 'Y') break;
                     next = String(response.headers?.['next-key'] || '');
@@ -80,6 +119,9 @@ function createBreadthService({ directory, legacyFile, legacyKospiDirectory, leg
             try{return JSON.parse(zlib.gunzipSync(fs.readFileSync(filename+'.gz')));}
             catch(error){if(error.code==='ENOENT')return [];throw error;}
         }
+        // Minutes saved before the common-stock basis (minuteFrom) counted ETF·ETN too: kept on disk, not shown.
+        const minuteFrom=read('daily.json',{}).minuteFrom;
+        if(minuteFrom&&date<minuteFrom)return [];
         // Read older archives without moving or rewriting them. Never split a total.
         const rows=new Map();
         for(const p of loadFrom(legacyCombinedDirectory))rows.set(p.t,{t:p.t,all:{highs:p.highs,lows:p.lows}});
@@ -170,7 +212,7 @@ function createBreadthService({ directory, legacyFile, legacyKospiDirectory, leg
             return { mode, market, dates: sorted.map(p => p.date), candles: candles.sort((a, b) => a.t - b.t),
                 series: Object.fromEntries(['highs', 'lows'].map(id => [id, { points: sorted.map(p => ({ date: p.date, value: p[id] == null ? null : id === 'lows' && p[id] !== 0 ? -p[id] : p[id] })) }])),
                 cursor: hasMore ? next : null, has_more: Boolean(hasMore && next), warning: error,
-                notice: `${{kospi:'KOSPI',kosdaq:'KOSDAQ',all:'KOSPI+KOSDAQ'}[market]} · KRX+NXT 통합 · ${daily.integratedFrom || '수집 시작일'}부터 키움 집계` };
+                notice: `${{kospi:'KOSPI',kosdaq:'KOSDAQ',all:'KOSPI+KOSDAQ'}[market]} · 보통주 · KRX+NXT 통합 · ${daily.computedThrough ? `${daily.computedThrough}까지 일봉 계산, 이후 키움 집계` : `${daily.integratedFrom || '수집 시작일'}부터 키움 집계`}` };
         })();
         cache.set(key, { until: now() + 60000, promise });
         promise.catch(() => cache.delete(key));

@@ -77,7 +77,9 @@
             <button type="button" data-action="more" class="concentration-icon-button" title="과거 데이터 더 불러오기" aria-label="과거 데이터 더 불러오기"><svg width="28" height="28" viewBox="0 0 34 34" shape-rendering="crispEdges" aria-hidden="true"><rect x="1" y="1" width="32" height="32" fill="#ededed"/><path d="M10 5v20" stroke="#737373" stroke-width="2"/><rect x="6" y="9" width="9" height="12" fill="#505050"/><path d="M22 5v20" stroke="#c0c0c0" stroke-width="2"/><rect x="18" y="9" width="9" height="12" fill="#969696"/><path d="M25 21v10M21 26h10" stroke="#444444" stroke-width="4"/></svg></button><p class="rank-adr-status" role="status"></p>`;
         row.append(panel);
         if (isLs) panel.classList.add('rank-ls-market-supply-panel');
-        panel.querySelector('h2').textContent = isTest ? '시장 수급' : combined ? '시장 수급' : `시장 수급(${isKiwoom ? '키움' : isLs ? 'LS' : '한투'})`;
+        const titleSource = isTest || combined ? '' : `(${isKiwoom ? '키움' : isLs ? 'LS' : '한투'})`;
+        // Futures selections are titled 시장 선물 수급.
+        const paintTitle = () => { panel.querySelector('h2').textContent = (selected.startsWith('futures') ? '시장 선물 수급' : '시장 수급') + titleSource; };
         if (!isTest) window.RankSupplyGuide?.attach(panel, 'market', combined ? 'combined' : isKiwoom ? 'kiwoom' : isLs ? 'ls' : 'kis');
         panel.querySelector('.rank-adr-controls').append(panel.querySelector('.supply-legend'));
         const latestDate = document.createElement('span'); latestDate.className = 'supply-latest-date'; latestDate.textContent = '—';
@@ -365,6 +367,7 @@
             stockSelect.value=selected;
             stockSelect.title=stockSelect.selectedOptions[0]?.textContent || '시장 선택';
             const future=selected.startsWith('futures');
+            paintTitle();
             window.RankChartAxis.candleLabel(candleArea, isTest && future ? (selected === 'futuresKosdaq' ? 'KOSDAQ150' : 'KOSPI200') + (mode==='day'?' 연결선물 (주야간)':' 선물 (주야간)') : (selected==='kosdaq'||selected==='futuresKosdaq'?'KOSDAQ':'KOSPI')+(future?' (현물)':''));
             candle.setAttribute('aria-label', isTest && future ? 'LS 지수선물 가격 캔들차트' : `${selected==='kosdaq'||selected==='futuresKosdaq'?'코스닥':'코스피'} 현물지수 캔들차트`);
             const program=panel.querySelector('[data-series="program"]');

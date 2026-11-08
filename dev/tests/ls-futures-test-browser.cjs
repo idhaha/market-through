@@ -18,7 +18,7 @@ const fs = require('node:fs'), assert = require('node:assert/strict'), { chromiu
         for(const f of ['rank-chart-axis.js','rank-market-supply-chart.js','rank-connection-status.js'])await page.addScriptTag({path:'public/'+f});
         const card=page.locator('#rankTestMarketSupplyChartPanel');
         await page.waitForFunction(()=>window.getTestMarketSupplyCandleDiagnostics?.().flowPoints===4);
-        assert.equal(await card.locator('h2').textContent(),'시장 수급');
+        assert.equal(await card.locator('h2').textContent(),'시장 선물 수급');
         // Column 3, row 1 (above the second test card in row 2).
         assert.equal(await card.evaluate(el=>getComputedStyle(el).gridRowStart),'1');
         assert.equal(await card.evaluate(el=>getComputedStyle(el).gridColumnStart),'3');

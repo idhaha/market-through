@@ -22,6 +22,9 @@ function fixture(t) {
                 if (fail && body.ntl_tp === '2') throw new Error('offline');
                 return { data: { ntl_pric: body.ntl_tp === '2' ? [] : [{ stk_cd: '005930' }, { stk_cd: '005930_AL' }] }, headers: {} };
             }
+            if (api === 'ka10099') return { data: { list: body.mrkt_tp === '0'
+                ? [{ code: '005930', name: '삼성전자', marketCode: '0' }, { code: '000660', name: 'SK하이닉스', marketCode: '0' },{ code: '005935', name: '삼성전자우', marketCode: '0' }, { code: '069500', name: 'KODEX 200', marketCode: '8' }]
+                : [{ code: '005930', name: '시험보통주', marketCode: '10' }, { code: '000660', name: '시험보통주2', marketCode: '10' }, { code: '123450', name: '시험스팩1호', marketCode: '10' }] }, headers: {} };
             if (api === 'ka10080') return { data: { stk_min_pole_chart_qry: [{ cntr_tm: `${latest}080100`, trde_qty: '1', open_pric: '100', high_pric: '110', low_pric: '90', cur_prc: '105' }] }, headers: {} };
             if (api === 'ka10081') return { data: { stk_dt_pole_chart_qry: ['20261021', '20261020', '20261019'].map(dt => ({ dt, open_pric: '100', high_pric: '110', low_pric: '90', cur_prc: '105' })) }, headers: { 'cont-yn': 'Y' } };
             throw new Error(api);
@@ -72,9 +75,9 @@ test('restart before 08:00 recovers prior day; 08:00 cutoff and changed session 
     assert.equal(JSON.parse(fs.readFileSync(path.join(third.options.directory, 'daily.json'))).points.length, 1);
 });
 test('continuation counts all pages and repeated keys fail without partial commit', async t => {
-    const f = fixture(t); let repeated = false;
-    f.options.http.post = async (url, body, { headers }) => ({ data: { ntl_pric: [{ stk_cd: headers['next-key'] ? '000660' : '005930' }] },
-        headers: !headers['next-key'] || repeated ? { 'cont-yn': 'Y', 'next-key': 'opaque-key' } : {} });
+    const f = fixture(t); let repeated = false; const original = f.options.http.post;
+    f.options.http.post = async (url, body, options) => options.headers['api-id'] === 'ka10099' ? original(url, body, options) : ({ data: { ntl_pric: [{ stk_cd: options.headers['next-key'] ? '000660' : '005930' }] },
+        headers: !options.headers['next-key'] || repeated ? { 'cont-yn': 'Y', 'next-key': 'opaque-key' } : {} });
     assert.deepEqual(await f.service.snapshot(), { kospi: { highs: 2, lows: 2 }, kosdaq: { highs: 2, lows: 2 } });
     repeated = true; await assert.rejects(f.service.snapshot(), /연속조회 키/);
 });
@@ -150,4 +153,41 @@ test('old combined minute JSON and gzip remain queryable only as all; new data w
  assert.deepEqual((await service.query({mode:'minute',market:'kospi'})).series.highs.points.map(p=>p.value),[10,1]);
  assert.equal(fs.readFileSync(path.join(legacyCombinedDirectory,'2026-10-21.json'),'utf8'),old21);
  assert.ok(fs.readFileSync(path.join(legacyCombinedDirectory,'2026-10-22.json.gz')).equals(compressed));
+});
+
+test('counts common stocks only: ETF, preferred and SPAC codes from ka10016 are dropped; list fetched once a day, saved list used on failure', async t => {
+ const f=fixture(t),original=f.options.http.post;let listFails=false;
+ f.options.http.post=async(url,body,options)=>{
+  const api=options.headers['api-id'];
+  if(api==='ka10099'&&listFails)throw new Error('list offline');
+  const response=await original(url,body,options);
+  if(api==='ka10016'&&body.ntl_tp==='1')response.data.ntl_pric.push({stk_cd:'005935'},{stk_cd:'069500_AL'},{stk_cd:'123450'},{stk_cd:'000660'});
+  return response;
+ };
+ assert.deepEqual(await f.service.snapshot(),{kospi:{highs:2,lows:0},kosdaq:{highs:2,lows:0}});
+ assert.equal(f.calls.filter(c=>c.api==='ka10099').length,2);
+ assert.ok(f.calls.filter(c=>c.api==='ka10099').every(c=>c.headers['api-id']==='ka10099'));
+ await f.service.snapshot();assert.equal(f.calls.filter(c=>c.api==='ka10099').length,2);
+ const saved=JSON.parse(fs.readFileSync(path.join(f.options.directory,'universe.json'),'utf8'));
+ assert.deepEqual([saved.kospi,saved.kosdaq],[['000660','005930'],['000660','005930']]);
+ listFails=true;f.at('20261022','080100');
+ const next=createBreadthService(f.options);
+ assert.deepEqual(await next.snapshot(),{kospi:{highs:2,lows:0},kosdaq:{highs:2,lows:0}});
+ fs.rmSync(path.join(f.options.directory,'universe.json'));
+ await assert.rejects(createBreadthService(f.options).snapshot(),/list offline/);
+});
+
+test('minuteFrom hides minutes saved on the old ETF-including basis without touching the files', async t => {
+ const f=fixture(t);fs.mkdirSync(f.options.directory,{recursive:true});
+ const old=JSON.stringify([{t:timestamp('20261106','090000'),kospi:{highs:45,lows:355},kosdaq:{highs:7,lows:370}}]);
+ fs.writeFileSync(path.join(f.options.directory,'2026-11-06.json'),old);
+ fs.writeFileSync(path.join(f.options.directory,'daily.json'),JSON.stringify({points:[],basis:'common',computedThrough:'2026-11-06',minuteFrom:'2026-11-09'}));
+ assert.deepEqual(f.service.minuteRows('2026-11-06'),[]);
+ assert.equal(fs.readFileSync(path.join(f.options.directory,'2026-11-06.json'),'utf8'),old);
+ fs.writeFileSync(path.join(f.options.directory,'2026-11-09.json'),old);
+ assert.equal(f.service.minuteRows('2026-11-09').length,1);
+ f.options.http.post=async()=>({data:{stk_dt_pole_chart_qry:[{dt:'20261106',open_pric:'1',high_pric:'1',low_pric:'1',cur_prc:'1'}]},headers:{}});
+ f.at('20261108','120000');
+ const day=await createBreadthService(f.options).query({market:'kospi'});
+ assert.match(day.notice,/보통주 · KRX\+NXT 통합 · 2026-11-06까지 일봉 계산, 이후 키움 집계/);
 });

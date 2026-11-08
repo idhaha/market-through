@@ -23,9 +23,9 @@ let bottom=0;
 for(const ids of rows){const rects=await page.evaluate(ids=>ids.map(id=>{const r=document.getElementById(id).getBoundingClientRect();return{top:r.top,left:r.left,bottom:r.bottom};}),ids);assert.ok(rects[0].top>=bottom);for(let i=1;i<rects.length;i++){assert.equal(rects[i].top,rects[0].top);assert.ok(rects[i].left>rects[i-1].left);}bottom=Math.max(...rects.map(r=>r.bottom));}
 assert.equal(await page.locator('.rank-chart-row>.panel').count(),10);
 assert.equal(await page.locator('#rankCombinedMarketSupplyChartPanel,#rankCombinedMarketSupplySecondaryChartPanel').count(),0);
-assert.deepEqual(await page.locator('.rank-chart-row>.panel h2').evaluateAll(h=>h.map(x=>x.textContent).filter(t=>t==='시장 수급')),['시장 수급','시장 수급']);
+assert.deepEqual(await page.locator('.rank-chart-row>.panel h2').evaluateAll(h=>h.map(x=>x.textContent).filter(t=>/^시장( 선물)? 수급$/.test(t))),['시장 선물 수급','시장 선물 수급']);
 await page.setViewportSize({width:600,height:1000});
 const mobile=await page.evaluate(ids=>ids.flat().map(id=>{const r=document.getElementById(id).getBoundingClientRect();return{top:r.top,left:r.left,bottom:r.bottom};}),rows);
 for(let i=1;i<mobile.length;i++){assert.equal(mobile[i].left,mobile[0].left);assert.ok(mobile[i].top>=mobile[i-1].bottom);}
-assert.deepEqual(errors,[]);console.log('PASS trading chart desktop rows and mobile order; two 시장 수급 test cards in column 3');
+assert.deepEqual(errors,[]);console.log('PASS trading chart desktop rows and mobile order; two 시장 선물 수급 test cards in column 3');
 }finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});
