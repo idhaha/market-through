@@ -209,7 +209,7 @@
         if (kind === 'marketTest') return mode === 'minute' ? '현물: 키움 KRX+NXT 통합(stex_tp=3) / 선물: KRX 파생시장 주간 + 야간 · 프로그램 미제공' : '현물: LS KRX+NXT 통합(exchgubun=U) / 선물: KRX 주간(D), 야간 제외 · 프로그램 미제공';
         if (kind === 'concentration') return '종목: KRX+NXT 통합 / 시장 분모: 업종지수 기준, KRX+NXT 통합 집계 여부 미확인';
         if (kind === 'turnover') return 'KOSPI·KOSDAQ 업종지수 기준 / KRX+NXT 통합 집계 여부 미확인';
-        if (kind === 'breadth') return '현재 목록 조회: KRX+NXT 통합(stex_tp=3) / 과거 저장 자료는 해당 구간의 출처·시장 범위 안내 확인';
+        if (kind === 'breadth') return mode === 'minute' ? '보통주 · KRX+NXT 통합(stex_tp=3)' : '보통주 · KRX+NXT 통합 (과거 일봉 계산과 키움 마감 목록 모두)';
         if (kind === 'futures') return '주식선물(KRX 파생시장) · 기초 종목 단위, 월물 합산 · 야간 거래 없음';
         if (kind === 'stock') {
             if (broker === 'kis') return mode === 'minute'

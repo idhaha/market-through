@@ -2888,7 +2888,6 @@ body.modal-open {
 .rank-market-supply-panel { grid-column:3; grid-row:1; }
 .rank-breadth-panel { grid-column:1; grid-row:2; }
 .rank-turnover-panel { grid-column:3; grid-row:2; }
-.rank-breadth-panel .breadth-notice { position:relative; top:-6px; margin-left:auto; flex-shrink:0; white-space:pre; text-align:left; font-size:11px; line-height:15px; font-weight:400; color:var(--text-muted); }
 .rank-breadth-panel .concentration-chart-header h2 { flex-shrink:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .rank-supply-panel { grid-column:2; grid-row:1; }
 #rankAdrChartPanel { grid-column:2; grid-row:2; }

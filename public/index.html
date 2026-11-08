@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=20261108_tabular_nums">
+    <link rel="stylesheet" href="style.css?v=20261108_breadth_note">
     <script src="background-presence.js?v=20261101_1" defer></script>
     <script src="browser-live-check.js?v=20261106_test_title" defer></script>
     <script src="background-settings.js?v=20261101_presence" defer></script>
@@ -20,12 +20,12 @@
     <script>window.rankManagedChartRefresh = true;</script>
     <script src="trading-refresh.js?v=20261106_close_times" defer></script>
     <script src="rank-chart-cache.js?v=20261108_data_revisions" defer></script>
-<script src="rank-chart-axis.js?v=20261107_today_session" defer></script>
-    <script src="rank-supply-guide.js?v=20261108_market_guide" defer></script>
+<script src="rank-chart-axis.js?v=20261108_short_market" defer></script>
+    <script src="rank-supply-guide.js?v=20261108_breadth_note" defer></script>
     <script src="concentration-chart.js?v=20261108_adr_mode" defer></script>
-    <script src="rank-adr-chart.js?v=20261108_adr_mode" defer></script>
-    <script src="rank-turnover-chart.js?v=20261108_turnover_5day" defer></script>
-    <script src="rank-volatility-chart.js?v=20261031_independent_prices" defer></script>
+    <script src="rank-adr-chart.js?v=20261108_short_market" defer></script>
+    <script src="rank-turnover-chart.js?v=20261108_short_market" defer></script>
+    <script src="rank-volatility-chart.js?v=20261108_breadth_note" defer></script>
     <script src="rank-table-fold.js?v=20261102_mid_arrow" defer></script>
     <script src="rank-table-sort.js?v=20261107_table_sort" defer></script>
     <script src="auth-session-status.js?v=20261024_v1" defer></script>
@@ -398,7 +398,7 @@
                 <section class="panel rank-adr-panel" id="rankAdrChartPanel" aria-label="당일 ADR 차트">
                     <div class="concentration-chart-header">
                         <h2>ADR</h2>
-                        <div class="rank-market-choice" role="radiogroup" aria-label="ADR 시장 선택"><label><input type="radio" name="rank-adr-market" value="kospi" checked>KOSPI</label><label><input type="radio" name="rank-adr-market" value="kosdaq">KOSDAQ</label></div><output>—</output>
+                        <div class="rank-market-choice" role="radiogroup" aria-label="ADR 시장 선택"><label title="KOSPI"><input type="radio" name="rank-adr-market" value="kospi" checked aria-label="KOSPI">KSP</label><label title="KOSDAQ"><input type="radio" name="rank-adr-market" value="kosdaq" aria-label="KOSDAQ">KDQ</label></div><output>—</output>
                     </div>
                     <div class="rank-adr-area"><canvas role="img" aria-label="당일 ADR 분봉 차트"></canvas><div class="concentration-tooltip" hidden></div></div>
                     <p role="status" class="rank-adr-status">당일 데이터 대기 중</p>

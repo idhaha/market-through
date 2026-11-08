@@ -634,17 +634,20 @@
         for(const {x} of dayBoundaryPositions(left,right)){context.beginPath();context.moveTo(x,top);context.lineTo(x,bottom);context.stroke();}
         context.restore();
     }
+    const shortMarketName=text=>String(text).replace(/KOSPI/g,'KSP').replace(/KOSDAQ/g,'KDQ');
     function marketChoice(name, choices, value, label) {
         const group=document.createElement('div');group.className='rank-market-choice';group.setAttribute('role','radiogroup');group.setAttribute('aria-label',label);
         let selected=value;
         Object.defineProperty(group,'value',{get:()=>group.querySelector('input:checked')?.value || selected,set:value=>{selected=value;group.querySelectorAll('input').forEach(input=>input.checked=input.value===value);}});
-        Object.defineProperty(group,'selectedOptions',{get:()=>[...group.querySelectorAll('input:checked')].map(input=>({textContent:input.parentElement.textContent}))});
+        Object.defineProperty(group,'selectedOptions',{get:()=>[...group.querySelectorAll('input:checked')].map(input=>({textContent:input.dataset.label || input.parentElement.textContent}))});
         group.setChoices=choices=>{
             const signature=JSON.stringify(choices);if(group.dataset.choices===signature)return;
             group.dataset.choices=signature;
             group.replaceChildren(...choices.map(([value,text])=>{
                 const item=document.createElement('label'),input=document.createElement('input');input.type='radio';input.name='rank-market-'+name;input.value=value;input.checked=value===selected;
-                item.append(input,document.createTextNode(text));return item;
+                // Card headers are narrow: show KSP/KDQ, keep the full market name for the tooltip, screen readers and callers.
+                const short=shortMarketName(text);input.dataset.label=text;if(short!==text){item.title=text;input.setAttribute('aria-label',text);}
+                item.append(input,document.createTextNode(short));return item;
             }));
         };
         group.addEventListener('change',event=>{selected=event.target.value;});group.setChoices(choices);return group;

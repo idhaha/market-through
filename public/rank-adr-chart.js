@@ -10,7 +10,7 @@
         if (!panel) {
         panel = document.createElement('section');
         panel.className = 'panel rank-adr-panel';
-        panel.innerHTML = `<div class="concentration-chart-header"><h2>ADR</h2><div class="rank-market-choice" role="radiogroup" aria-label="ADR 시장 선택"><label><input type="radio" name="rank-adr-market" value="kospi" checked>KOSPI</label><label><input type="radio" name="rank-adr-market" value="kosdaq">KOSDAQ</label></div><output></output></div><div class="rank-adr-area"><canvas role="img" aria-label="당일 ADR 분봉 차트"></canvas><div class="concentration-tooltip" hidden></div></div><p role="status" class="rank-adr-status"></p>`;
+        panel.innerHTML = `<div class="concentration-chart-header"><h2>ADR</h2><div class="rank-market-choice" role="radiogroup" aria-label="ADR 시장 선택"><label title="KOSPI"><input type="radio" name="rank-adr-market" value="kospi" checked aria-label="KOSPI">KSP</label><label title="KOSDAQ"><input type="radio" name="rank-adr-market" value="kosdaq" aria-label="KOSDAQ">KDQ</label></div><output></output></div><div class="rank-adr-area"><canvas role="img" aria-label="당일 ADR 분봉 차트"></canvas><div class="concentration-tooltip" hidden></div></div><p role="status" class="rank-adr-status"></p>`;
         row.append(panel);
         }
         panel.querySelector('.concentration-chart-header').insertAdjacentHTML('beforeend', `<button type="button" class="chart-info-button volatility-help-trigger" aria-label="ADR 설명" aria-describedby="adrGuide">i</button>

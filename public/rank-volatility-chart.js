@@ -85,8 +85,7 @@
             more.classList.add('concentration-icon-button');
             const icon = document.querySelector('#concentrationMore svg');
             if (icon) more.replaceChildren(icon.cloneNode(true));
-            panel.querySelector('h2').title = '코스피 신고가·신저가 (KRX+NXT 통합)';
-            panel.querySelector('.concentration-chart-header').insertAdjacentHTML('beforeend', '<span class="breadth-notice"></span>');
+            panel.querySelector('h2').title = '52주(250거래일) 신고가·신저가 · 보통주 · KRX+NXT 통합';
             panel.querySelector('.volatility-candle-label').textContent = 'KOSPI';
             panel.querySelector('.rank-adr-candle-area canvas').setAttribute('aria-label', 'KOSPI 캔들차트');
         } else panel.querySelector('h2').textContent = '변동성';
@@ -410,8 +409,10 @@ tip.hidden=false;}
                 const last = pages.at(-1); breadthCursor = last?.has_more ? last.cursor : null;
                 ids.forEach(id => { const latest = data[id].find(p => p.date === dates.at(-1)); panel.querySelector(`[data-volatility="${id}"] output`).textContent = latest?.value == null ? '—' : formatValue(latest.value,id); });
                 updateLatestDate();
-                panel.querySelector('.breadth-notice').textContent = (pages[0]?.notice || '').replace(' · ', '\n');
-                panel.querySelector('.breadth-notice').title = pages[0]?.notice || '';
+                // The server's basis note (market · common stock · KRX+NXT · how the past was made) goes into the i guide,
+                // not the header, so a long note never pushes the market radio buttons.
+                const basis = document.getElementById(panel.id + 'Guide')?.querySelector(`[data-loading-notes="${breadthMode}"]`);
+                if (basis) { basis.textContent = pages[0]?.notice ? '현재 조회 기준: ' + pages[0].notice : ''; basis.parentElement.hidden = !pages[0]?.notice; }
                 if(more){start=0;count=null;}
 
                 const shownDates=dates.slice(start,start+(count ?? dates.length));
