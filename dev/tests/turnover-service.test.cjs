@@ -16,12 +16,15 @@ function fixture() {
  const service=createTurnoverService({now,getToken:async()=>'token',pause:async()=>{},http,indexCandles:createIndexCandleStore({http,getToken:async()=>'token',now,pause:async()=>{},log:()=>{}})});
  return {service,calls};
 }
-test('daily uses the reference first page without a fixed count or range and caches it',async()=>{
+// 2026-11-11: trading days come from the shared KOSPI index daily page, not a Samsung (ka10081) call.
+test('daily takes its trading days from the shared index daily page: no Samsung call, one call per market, cached',async()=>{
  const {service,calls}=fixture();const result=await service.query();
- assert.equal(result.markets.kospi.length,2);assert.equal(result.markets.kosdaq.length,2);
- assert.equal(result.cursor,'20261021');assert.equal(calls.length,3);
- await service.query();assert.equal(calls.length,3);
- await service.query({cursor:'20261021'});assert.equal(calls[3].body.base_dt,'20261021');
+ assert.deepEqual(result.markets.kospi.map(p=>new Date(p.t+9*3600000).toISOString().slice(0,10)),['2026-10-21','2026-10-22','2026-10-23']);
+ assert.equal(result.markets.kosdaq.length,3);
+ assert.equal(result.cursor,null,'the index page has no older page here');
+ assert.ok(!calls.some(c=>c.api==='ka10081'),'no Samsung daily call');
+ assert.deepEqual(calls.map(c=>c.api+':'+c.body.inds_cd),['ka20006:001','ka20006:101']);
+ await service.query();assert.equal(calls.length,2,'second load reuses the cache');
 });
 test('minute returns a full latest trading day in chronological order with previous-day cursor',async()=>{
  const {service}=fixture();const result=await service.query({mode:'minute'});

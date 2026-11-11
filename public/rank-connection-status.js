@@ -10,7 +10,7 @@
         ['#efriendStockTable', '한투'], ['#watchlistTable', '키움'],
         ['#concentrationChartPanel', '키움'], ['#kisConcentrationChartPanel', '한투'], ['#rankAdrChartPanel', 'jusikbot'],
         ['#rankTurnoverChartPanel', '키움'], ['#rankSupplyChartPanel', '키움'], ['#rankMarketSupplyChartPanel', '한투'], ['#rankLsMarketSupplyChartPanel', 'LS(수급)·키움(가격)'],
-        ['#rankVolatilityChartPanel', 'jusikbot'], ['#rankBreadthChartPanel', '키움'],
+        ['#rankVolatilityChartPanel', 'jusikbot'], ['#rankBreadthChartPanel', '키움 · LS'],
         ['#rankSentimentChartPanel', 'jusikbot']
     ];
     const getPanel = target => typeof target === 'string' ? document.querySelector(target)?.closest('.panel') : target?.closest('.panel');

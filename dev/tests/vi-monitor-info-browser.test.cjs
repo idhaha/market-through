@@ -20,7 +20,7 @@ test('VI window i sits at the top right and opens the VI source, plan, caveat an
   const view=await page.evaluate(()=>{const d=document.getElementById('viMonitorGuide'),r=d.getBoundingClientRect(),text=d.textContent;
    return {open:d.open,width:r.width,titles:[...d.querySelectorAll('.data-collection-category > h3')].map(h=>h.textContent),
     tables:[...d.querySelectorAll('table')].map(t=>t.parentElement.scrollWidth-t.parentElement.clientWidth),
-    has:['releaseTime','SOR(_AL)','연결당 30건','보안 알림','KA116B000','masters.json','VI_MONITOR_REALTIME=false','3,110건','73/73','JIF','[실시간-키움VI]'].filter(s=>!text.includes(s)),plan:text.includes('변경 예정')||text.includes('적용 전')};});
+    has:['releaseTime','SOR(_AL)','연결당 30건','보안 알림','KA116B000','masters.json','VI_REALTIME','3,110건','73/73','JIF','[실시간-키움VI]'].filter(s=>!text.includes(s)),plan:text.includes('변경 예정')||text.includes('적용 전')};});
   assert.equal(view.open,true);
   assert.ok(view.width>=1200,String(view.width));
   assert.deepEqual(view.titles,['받는 데이터','이렇게 받는 이유','주의할 점','시험 결과']);

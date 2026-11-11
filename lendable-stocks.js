@@ -183,7 +183,13 @@ function createLendableService({ http, log = () => {}, now = Date.now,
         count: state.items.size, running: !!state.task, completedAt: state.completedAt }), waitForIdle: () => state.task };
 }
 
-function createLendableViewCache({ now = Date.now, ttl = 30000 } = {}) {
+// Current price / change rate for the 대주 table (one KIS quote per stock). All KIS REST calls share one queue at
+// 0.55 s each, so ~270 stocks take 2.5 min or more. The request used to wait for that and nginx (60 s) answered 504
+// (2026-11-08 Oracle: 9 of 13 auto refreshes). Now the request never waits for a refresh: it gets the last enriched
+// prices (stale-while-revalidate) and the refresh runs in the background. With no enriched copy yet it waits at most
+// `wait`, then answers without prices.
+const PRICE_FIELDS = ['prdy_ctrt', 'stck_prpr', 'rprs_mrkt_kor_name'];
+function createLendableViewCache({ now = Date.now, ttl = 30000, wait = 8000, log = () => {} } = {}) {
     const states = new Map();
     return async function getView({ key, stocks, scan, enrich }) {
         let cached = states.get(key);
@@ -192,19 +198,34 @@ function createLendableViewCache({ now = Date.now, ttl = 30000 } = {}) {
             states.set(key, cached);
         }
         const copy = items => items.map(item => ({ ...item }));
+        // Keep the latest list (a new scan may add or drop stocks) with the last known prices.
+        const withPrices = () => {
+            const known = new Map(cached.items.map(item => [item.pdno, item]));
+            return stocks.map(item => {
+                const old = known.get(item.pdno);
+                return old ? { ...item, ...Object.fromEntries(PRICE_FIELDS.filter(field => old[field] !== undefined).map(field => [field, old[field]])) } : { ...item };
+            });
+        };
         // Never issue quote/market requests alongside the full symbol scan.
         if (scan?.running || scan?.errors || !scan?.completedAt) return copy(cached.items || stocks);
-        if (cached.task) return copy(await cached.task);
         if (cached.items && cached.completedAt === scan.completedAt && now() - cached.updatedAt < ttl) return copy(cached.items);
-        cached.task = (async () => {
-            const items = copy(stocks);
-            await enrich(items);
-            cached.items = copy(items);
-            cached.completedAt = scan.completedAt;
-            cached.updatedAt = now();
-            return cached.items;
-        })().finally(() => { cached.task = null; });
-        return copy(await cached.task);
+        if (!cached.task) {
+            const completedAt = scan.completedAt;
+            cached.task = (async () => {
+                const items = copy(stocks);
+                await enrich(items);
+                cached.items = copy(items);
+                cached.completedAt = completedAt;
+                cached.updatedAt = now();
+                return cached.items;
+            })().catch(error => { log('[Lendable] 현재가 보강 실패: ' + error.message); return null; })
+                .finally(() => { cached.task = null; });
+        }
+        if (cached.items) return withPrices();
+        let timer;
+        const result = await Promise.race([cached.task, new Promise(resolve => { timer = setTimeout(() => resolve(null), wait); timer.unref?.(); })]);
+        clearTimeout(timer);
+        return result ? copy(result) : copy(stocks);
     };
 }
 

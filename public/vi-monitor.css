@@ -3,7 +3,9 @@
 .vi-panel { width:100%; padding:12px 14px; }
 .vi-panel .panel-header { margin-bottom:8px; }
 .vi-panel .panel-header h1 { margin:0; font-size:1.1rem; font-weight:700; }
-.vi-panel .vi-clock { color:var(--text-muted); font-size:12px; margin-left:auto; }
+/* Clock right after the title; the check boxes go to the right end (2026-11-09). */
+.vi-panel .vi-clock { color:var(--text-muted); font-size:12px; margin-left:12px; }
+.vi-panel .panel-header .vi-controls { margin-left:auto; }
 .vi-panel .table-wrapper { overflow:auto; max-height:calc(100vh - 200px); }
 /* Like the trading independent window: the table fills the window and its columns shrink with it down to their content (no fixed 1050px minimum). */
 .vi-panel table { width:100%; min-width:0; border-collapse:collapse; }
@@ -32,15 +34,23 @@
 .vi-panel .table-wrapper thead tr:first-child th.comparison-group, .vi-panel .table-wrapper thead tr:nth-child(2) th { padding-block:.3rem; }
 .vi-panel .vi-controls { display:flex; align-items:center; gap:10px; font-size:12px; }
 .vi-panel .vi-empty { padding:36px; color:var(--text-muted); }
+/* 거래대금(전일기준) · 시가총액 filters in the header, left of 괴리율 1% 이상 보기: same 12px font and vertical center (2026-11-11). */
+.vi-panel .vi-controls .vi-filter-select { height:20px; padding:0 4px; font-size:12px; line-height:18px; border:1px solid var(--border-color,#cbd5e1); border-radius:4px; background:#fff; color:var(--text-primary); box-shadow:none; vertical-align:middle; }
+.vi-panel .vi-filter-note { color:var(--text-muted); }
+/* The triggering exchange's 괴리율 column. */
+.vi-panel td.base { color:var(--text-muted); font-weight:600; }
 .vi-panel th .interval-select { margin-left:4px; padding:1px 4px; font-size:.75rem; box-shadow:none; }
 .vi-panel footer { margin-top:8px; padding-top:0; }
-/* New VI rows blink with the side car alert colors until clicked. */
-.vi-panel tbody tr.vi-flash-up { --vi-dark:#c90000; --vi-bright:#ff9999; }
-.vi-panel tbody tr.vi-flash-down { --vi-dark:#2563eb; --vi-bright:#dbeafe; }
+/* Active VI rows keep the side car alert color (steady) until clicked; they blink only in the last 30 seconds before
+   the expected release and while waiting for it (vi-blink, set by the countdown). */
+/* 2026-11-09: a little lighter than the side car colors (was #c90000/#ff9999 and #2563eb/#dbeafe). */
+.vi-panel tbody tr.vi-flash-up { --vi-dark:#e05a5a; --vi-bright:#ffc9c9; }
+.vi-panel tbody tr.vi-flash-down { --vi-dark:#5b8def; --vi-bright:#e5eeff; }
 .vi-panel tbody tr.vi-flash-up, .vi-panel tbody tr.vi-flash-down { cursor:pointer; }
-.vi-panel tbody tr.vi-flash-up td, .vi-panel tbody tr.vi-flash-down td { animation:vi-row-background 1.5s ease-in-out infinite; animation-delay:var(--vi-flash-delay,0s); }
+.vi-panel tbody tr.vi-flash-up td, .vi-panel tbody tr.vi-flash-down td { background-color:var(--vi-bright); color:#172033; }
+.vi-panel tbody tr.vi-flash-up.vi-blink td, .vi-panel tbody tr.vi-flash-down.vi-blink td { animation:vi-row-background 1.5s ease-in-out infinite; animation-delay:var(--vi-flash-delay,0s); }
 @keyframes vi-row-background { 0%,100% { background-color:var(--vi-dark); color:#fff; } 50% { background-color:var(--vi-bright); color:#172033; } }
-@media (prefers-reduced-motion:reduce) { .vi-panel tbody tr.vi-flash-up td, .vi-panel tbody tr.vi-flash-down td { animation:none; background-color:var(--vi-bright); color:#172033; } }
+@media (prefers-reduced-motion:reduce) { .vi-panel tbody tr.vi-blink td { animation:none; background-color:var(--vi-dark); color:#fff; } }
 /* Clock and "항상 위" share one vertical center and line height. */
 .vi-panel .vi-clock, .vi-panel .vi-controls { line-height:16px; }
 .vi-panel .vi-controls label { display:inline-flex; align-items:center; gap:4px; color:var(--text-muted); cursor:pointer; }

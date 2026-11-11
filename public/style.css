@@ -100,7 +100,9 @@
 .rank-adr-ranges[hidden], .rank-adr-candle-area[hidden] { display:none; }
 .rank-adr-candle-area { height:280px; flex:0 0 280px; position:relative; }
 .rank-adr-candle-area canvas { display:block; width:100%; height:100%; cursor:crosshair; }
-.rank-adr-candle-status { position:absolute; bottom:0; left:42px; font-size:12px; color:var(--text-muted); }
+/* Centered over the candle plot (2026-11-10): at the bottom it covered the date labels. */
+.rank-adr-candle-status { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); margin:0; padding:2px 8px; border-radius:4px; background:var(--bg-card, #fff); font-size:12px; color:var(--text-muted); pointer-events:none; white-space:nowrap; }
+.rank-adr-candle-status:empty { display:none; }
 .rank-adr-area canvas { width: 100%; height: 100%; position: absolute; cursor: crosshair; }
 .rank-adr-panel output { margin-left: auto; min-width: 64px; text-align: right; white-space: nowrap; font-weight: bold; color: #339af0; }
 .rank-adr-status { font-size: 12px; color: var(--text-muted); margin: 8px 0 0; }
@@ -2897,6 +2899,13 @@ body.modal-open {
 .rank-volatility-panel { position:relative; }
 .rank-market-supply-panel { grid-column:3; grid-row:1; }
 .rank-breadth-panel { grid-column:1; grid-row:2; }
+/* ADR beside the highs/lows legend (2026-11-09): two columns keep the controls row as tall as the other cards. */
+.rank-breadth-panel .volatility-legend { display:grid; grid-template-columns:auto auto; column-gap:14px; row-gap:2px; align-items:center; }
+.rank-breadth-panel .volatility-legend .risk-latest-date { grid-column:1 / -1; grid-row:1; text-align:right; }
+.rank-breadth-panel .volatility-legend [data-volatility="highs"] { grid-column:1; grid-row:2; }
+.rank-breadth-panel .volatility-legend [data-volatility="lows"] { grid-column:1; grid-row:3; }
+.rank-breadth-panel .volatility-legend [data-volatility="adr"] { grid-column:2; grid-row:2; font-weight:400; }
+.rank-breadth-panel .volatility-legend [data-volatility="adr"] output { font-weight:400; }
 .rank-turnover-panel { grid-column:3; grid-row:2; }
 .rank-breadth-panel .concentration-chart-header h2 { flex-shrink:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .rank-supply-panel { grid-column:2; grid-row:1; }

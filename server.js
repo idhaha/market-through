@@ -18,7 +18,8 @@ const { migrateSettingsNames } = require('./settings-filenames');
 const { createAdrMinuteStore } = require('./adr-minute-store');
 const { createVolatilityService } = require('./risk-volatility');
 const { createLendableService, createLendableViewCache } = require('./lendable-stocks');
-const getLendableView = createLendableViewCache();
+const { fillLendablePrices } = require('./lendable-prices');
+const getLendableView = createLendableViewCache({ log: message => fileLog(message) });
 const lendableService = createLendableService({ http: kisHttp, log: message => fileLog(message) });
 const adrMinuteStore = createAdrMinuteStore({ directory: path.join(__dirname, 'data', 'adr-minutes') });
 const volatilityService = createVolatilityService();
@@ -270,7 +271,11 @@ const breadthService = createBreadthService({
     legacyFile: fs.existsSync(path.join(__dirname, 'data', 'breadth', 'kospi', 'daily.json'))
         ? path.join(__dirname, 'data', 'breadth', 'kospi', 'daily.json')
         : path.join(__dirname, 'data', 'volatility', 'new-highs-lows.json'),
-    http: axios, getToken: () => getAccessToken(process.env.KIWOOM_APPKEY, process.env.KIWOOM_SECRETKEY), supply: supplyService
+    http: axios, getToken: () => getAccessToken(process.env.KIWOOM_APPKEY, process.env.KIWOOM_SECRETKEY), supply: supplyService,
+    // ADR official advancing/declining counts (LS t1514) share the server's LS token.
+    getLsToken: () => lsMarketSupplyProvider.accessToken(),
+    // Day axis from the shared index candles (indexCandleStore is defined below; used only at query time).
+    indexCandles: { referencePage: options => indexCandleStore.referencePage(options) }
 });
 // One shared Kiwoom index series per market/mode: candle API, chart reference pages and
 // turnover all read it, so every card shows the same index candles.
@@ -320,13 +325,15 @@ const lsMarketSupplyProvider = require('./ls-market-supply').createLsMarketSuppl
     };
     axios.interceptors.response.use(response => { check(response); return response; }, error => { check(error.response); throw error; });
 }
+// 장운영 알림은 오라클에서만, VI 모니터는 2026-11-10부터 로컬 PC에서만 받는다(vi-alerts-host.js).
+const { viRealtime, alertsRealtime, viAlertsStartupLines } = require('./vi-alerts-host');
 const marketAlertService = require('./market-alert-service').createMarketAlerts({
     directory: path.join(__dirname, 'data', 'market-alerts'), getToken: () => lsMarketSupplyProvider.accessToken(),
     rejectToken: () => lsMarketSupplyProvider.invalidateToken(),
-    enabled: () => (process.env.MARKET_ALERT_REALTIME || '').trim() !== 'false'
+    enabled: alertsRealtime
 });
-// VI: Kiwoom realtime 1h events, NH current prices, LS daily masters. Run it on one server only:
-// VI_MONITOR_REALTIME=false (Oracle since 2026-11-07) keeps it off even when a VI window opens.
+// VI: Kiwoom realtime 1h events, NH current prices, LS daily masters. Run it on one server only (viRealtime above):
+// the server with it off does not connect even when a VI window opens.
 let viQuoteHandler = () => {};
 const viQuoteFeed = require('./nh-quote-feed').createNhQuoteFeed({
     credentials: () => ({ appKey: (process.env.NAMU_APPKEY || '').trim(), secretKey: (process.env.NAMU_SECRETKEY || '').trim() }),
@@ -334,12 +341,19 @@ const viQuoteFeed = require('./nh-quote-feed').createNhQuoteFeed({
 });
 const viMonitorService = require('./vi-monitor-service').createViMonitor({
     directory: path.join(__dirname, 'data', 'vi-monitor'), getToken: () => lsMarketSupplyProvider.accessToken(), http: axios,
-    enabled: () => (process.env.VI_MONITOR_REALTIME || '').trim() !== 'false',
+    enabled: viRealtime,
     kiwoomToken: () => getAccessToken((process.env.KIWOOM_APPKEY || '').trim(), (process.env.KIWOOM_SECRETKEY || '').trim()),
     rejectKiwoomToken: () => { cachedToken = null; },
-    quoteFeed: viQuoteFeed
+    quoteFeed: viQuoteFeed,
+    futuresEventsState: () => lsFuturesEvents?.state().state || ''
 });
 viQuoteHandler = viMonitorService.onQuote;
+// 주식선물 가격제한 이벤트(LS JD0 · JX0): VI를 받는 서버에서 VI_FUTURES_EVENTS=on일 때만(ls-futures-events.js).
+const lsFuturesEvents = require('./ls-futures-events').createLsFuturesEvents({
+    getToken: () => lsMarketSupplyProvider.accessToken(), directory: path.join(__dirname, 'data', 'vi-monitor'),
+    contracts: () => viMonitorService.futuresContracts(), onEvent: event => viMonitorService.onFuturesEvent(event), log: message => fileLog(message),
+    enabled: () => viRealtime() && (process.env.VI_FUTURES_EVENTS || '').trim() === 'on'
+});
 viWindowAccess.mount(app, viMonitorService);
 app.get('/api/market-alerts', (req, res) => res.set('Cache-Control', 'no-store').json(marketAlertService.snapshot(req.authUser.email)));
 app.post('/api/market-alerts/acknowledge', (req, res) => {
@@ -382,12 +396,12 @@ app.get('/api/kiwoom-market-supply/chart', async (req, res) => {
 });
 const { createBrokerStockSupply } = require('./broker-stock-supply');
 const kisStockSupplyService = createBrokerStockSupply({
-    broker: 'kis', directory: path.join(__dirname, 'data', 'kis-supply'), http: kisHttp, supply: supplyService,
+    broker: 'kis', directory: path.join(__dirname, 'data', 'kis-supply'), http: kisHttp, supply: supplyService, log: message => fileLog(message),
     credentials: () => ({ domain: (process.env.EFRIEND_DOMAIN || '').trim(), appKey: (process.env.EFRIEND_APPKEY || '').trim(), secretKey: (process.env.EFRIEND_SECRETKEY || '').trim() }),
     getToken: () => getEfriendAccessToken((process.env.EFRIEND_DOMAIN || '').trim(), (process.env.EFRIEND_APPKEY || '').trim(), (process.env.EFRIEND_SECRETKEY || '').trim())
 });
 const lsStockSupplyService = createBrokerStockSupply({
-    broker: 'ls', directory: path.join(__dirname, 'data', 'ls-supply'), http: axios, supply: supplyService,
+    broker: 'ls', directory: path.join(__dirname, 'data', 'ls-supply'), http: axios, supply: supplyService, log: message => fileLog(message),
     credentials: () => ({}), getToken: () => lsMarketSupplyProvider.accessToken(),
     // t1637 polling by default, which frees an LS websocket session (LS turnover IJ_/US3 then comes from REST only).
     // LS_STOCK_PROGRAM_MODE=websocket restores the UPH socket.
@@ -661,64 +675,10 @@ app.get('/api/stock', async (req, res) => {
                     // --- 2.5 eFriend 현재가(등락률) 일괄 조회 ---
                     if (efriendToken && efriendStocks.length > 0) {
                         console.log(`Step 2.5: eFriend ${efriendStocks.length}개 종목 현재가(등락률) 조회 시작...`);
-                        const efriendChunkSize = 10; // 10개씩 병렬 처리하여 429 에러 방지
-
-                        for (let i = 0; i < efriendStocks.length; i += efriendChunkSize) {
-                            const chunk = efriendStocks.slice(i, i + efriendChunkSize);
-                            const pricePromises = chunk.map(async (stock) => {
-                                if (!stock.pdno) return;
-
-                                // 시장구분: UN(KRX+NXT 통합). ETN만 J(KRX).
-                                let iscd = stock.pdno.trim();
-                                if (iscd.length === 6 && (iscd.startsWith('5') || iscd.startsWith('7'))) {
-                                    iscd = "Q" + iscd; // ETN 예외처리 (CSV 명세서 권장사항)
-                                }
-
-                                try {
-                                    const priceRes = await kisHttp.get(
-                                        `${efriendDomain}/uapi/domestic-stock/v1/quotations/inquire-price`,
-                                        {
-                                            headers: {
-                                                "content-type": "application/json; charset=utf-8",
-                                                "authorization": `Bearer ${efriendToken}`,
-                                                "appkey": efriendAppKey,
-                                                "appsecret": efriendSecretKey,
-                                                "tr_id": "FHKST01010100", // 현재가 시세 TR ID
-                                                "custtype": "P"
-                                            },
-                                            params: {
-                                                // UN (KRX+NXT 통합): before the KRX open (NXT 08:00~08:50) J has no trade yet and
-                                                // returns no change rate. The Kiwoom tables also use integrated (_AL) prices.
-                                                // ETNs (Q prefix) stay on J, as UN support for them is not confirmed.
-                                                "FID_COND_MRKT_DIV_CODE": iscd.startsWith('Q') ? "J" : "UN",
-                                                "FID_INPUT_ISCD": iscd
-                                            },
-                                            timeout: 3000
-                                        }
-                                    );
-
-                                    if (priceRes.data && priceRes.data.output) {
-                                        stock.prdy_ctrt = priceRes.data.output.prdy_ctrt; // 전일 대비율 (등락률)
-                                        stock.stck_prpr = priceRes.data.output.stck_prpr; // 현재가
-                                        stock.rprs_mrkt_kor_name = priceRes.data.output.rprs_mrkt_kor_name; // 시장 정보 (KOSPI/KOSDAQ)
-                                        // log original response field to understand what is coming from API
-                                        console.log(`[Server] INQ PRICE for ${stock.pdno}: rprs_mrkt_kor_name = "${priceRes.data.output.rprs_mrkt_kor_name}", tr_mkt_name = "${priceRes.data.output.tr_mkt_name}", mrkt_div_code = "${priceRes.data.output.mrkt_div_code}", mkt_nm = "${priceRes.data.output.mkt_nm}"`);
-                                    } else {
-                                        stock.prdy_ctrt = "0.00";
-                                        stock.stck_prpr = stock.bfdy_clpr;
-                                        stock.rprs_mrkt_kor_name = "";
-                                    }
-                                } catch (err) {
-                                    // 에러 로그는 생략 (과부하 방지)
-                                    stock.prdy_ctrt = "0.00";
-                                    stock.stck_prpr = stock.bfdy_clpr;
-                                }
-                            });
-
-                            await Promise.all(pricePromises);
-                            // API 부하 조절을 위한 대기 시간 (50ms)
-                            await new Promise(resolve => setTimeout(resolve, 50));
-                        }
+                        // 30종목씩 한투 멀티 시세(FHKST11300006)로 받고 ETN · 빠진 종목만 단건 조회(lendable-prices.js).
+                        const priceRun = await fillLendablePrices({ stocks: efriendStocks, get: (url, options) => kisHttp.get(url, options), domain: efriendDomain, log: message => fileLog(message),
+                            headers: tr => ({ "content-type": "application/json; charset=utf-8", "authorization": `Bearer ${efriendToken}`, "appkey": efriendAppKey, "appsecret": efriendSecretKey, "tr_id": tr, "custtype": "P" }) });
+                        console.log(`Step 2.5: 멀티 시세 ${priceRun.multiCalls}회(실패 ${priceRun.multiFailures}) · 단건 ${priceRun.singleCalls}회`);
                         console.log("Step 2.5: eFriend 현재가 조회 완료. 등락률, 현재가 병합됨.");
                         // Check record for the NXT pre-market change rate (UN since 2026-11-07): how many rows got a
                         // non-zero rate. At most one line per 5 minutes, data/lendable-rates/YYYY-MM-DD.jsonl.
@@ -3170,10 +3130,10 @@ async function requestEfriendAccessToken(domain, appKey, secretKey) {
 
 app.listen(PORT, async () => {
     tradingSession.start();await tradingSession.refresh();
-    // MARKET_ALERT_REALTIME=false keeps the market alert (JIF) LS websocket closed, freeing an LS session for tests.
-    if ((process.env.MARKET_ALERT_REALTIME || '').trim() !== 'false') marketAlertService.start();
-    // VI_MONITOR_REALTIME=false keeps the VI window's LS websocket closed (local comparison tests).
-    if ((process.env.VI_MONITOR_REALTIME || '').trim() !== 'false') viMonitorService.start();
+    // VI 모니터 · 장운영 알림: 켜진 서버(기본 오라클)만 연결한다. 시작할 때 어느 쪽인지 server_debug에 남긴다.
+    for (const line of viAlertsStartupLines()) fileLog(line);
+    if (alertsRealtime()) marketAlertService.start();
+    if (viRealtime()) { viMonitorService.start(); lsFuturesEvents.start(); }
     // Alternative sources that no card shows are not collected since 2026-11-07: Kiwoom stock minute (ka10060·ka90008),
     // LS stock (t1717·t1637), LS market minute (t1602·t1662) and KIS index minute (FHKUP03500200). Their chart
     // queries still answer (day charts query on demand). ALT_SUPPLY_COLLECTION=on collects them again.

@@ -9,12 +9,14 @@ const assert=require('node:assert/strict'),express=require('express'),{chromium}
  const browser=await chromium.launch({headless:true,channel:'msedge'});
  try{
   const page=await browser.newPage({viewport:{width:1600,height:600}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.addInitScript(()=>localStorage.setItem('viGapOnly','false'));
   await page.goto('http://127.0.0.1:'+server.address().port+'/vi-monitor.html');await page.waitForSelector('#viBody td.name');
   const header=page.locator('thead th').filter({has:page.locator('[data-sort="bidAverage"]')});
-  assert.equal(await header.locator('.th-lines').innerText(),'KRX 매수10호가\n평균','The title breaks after 매수10호가');
-  assert.equal(await page.locator('#viBody tr:first-child td').count(),13);
+  assert.equal(await header.locator('.th-lines').innerText(),'KRX 매수\n10호가평균','The title breaks after KRX 매수 (2026-11-09)');
+  assert.equal(await page.locator('#viBody tr:first-child td').count(),15);
   const shown=async()=>page.evaluate(()=>Object.fromEntries([...document.querySelectorAll('#viBody tr')].map(tr=>[tr.dataset.code,tr.lastElementChild.textContent])));
-  assert.deepEqual(await shown(),{'000001':'2.3십억','000002':'4.6천만','000003':'81.2만','000004':'—','000005':'3.2십조','000006':'5,000원'});
+  // Whole numbers with 만 · 억 · 조 (2026-11-09: no decimals).
+  assert.deepEqual(await shown(),{'000001':'23억','000002':'4,568만','000003':'81만','000004':'—','000005':'32조','000006':'5,000원'});
   assert.match(await page.locator('#viBody tr[data-code="000001"] td:last-child').getAttribute('title'),/2,345,678,901원/);
   await page.locator('[data-sort="bidAverage"]').click();
   assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll('#viBody tr')].map(tr=>tr.dataset.code)),['000005','000001','000002','000003','000006','000004'],'Descending by amount, missing last');
@@ -24,7 +26,7 @@ const assert=require('node:assert/strict'),express=require('express'),{chromium}
   let size=await fit();assert.ok(Math.abs(size.table-size.panel)<=1,JSON.stringify(size));
   await page.setViewportSize({width:1250,height:600});await page.waitForTimeout(100);
   size=await fit();assert.ok(Math.abs(size.table-size.panel)<=1&&size.scroll<=size.panel,JSON.stringify(size));
-  assert.equal(await header.locator('.th-lines').innerText(),'KRX 매수10호가\n평균','The two-line title keeps its own break');
+  assert.equal(await header.locator('.th-lines').innerText(),'KRX 매수\n10호가평균','The two-line title keeps its own break');
   assert.deepEqual(errors,[]);
   console.log('PASS VI bid average column: two-line title, unit formatting, exact title, sorting and window-following width');
  }finally{await browser.close();server.close();}

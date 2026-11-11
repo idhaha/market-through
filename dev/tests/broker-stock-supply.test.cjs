@@ -14,12 +14,12 @@ test('websocket parsing selects net shares, rejects amounts, unknown markets and
 });
 function fixture(t,broker='kis'){
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'broker-stock-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
- let at=instant,watch=[{code:'005930'}];const sockets=[],calls=[];
+ let at=instant,watch=[{code:'005930'}];const sockets=[],calls=[],logs=[];
  class Socket extends EventEmitter{constructor(){super();this.readyState=0;this.sent=[];sockets.push(this);}send(raw){this.sent.push(JSON.parse(raw));}terminate(){this.readyState=3;}ping(){}open(){this.readyState=1;this.emit('open');}ack(ok=true){const m=broker==='kis'?{header:{tr_id:'H0UNPGM0'},body:{rt_cd:ok?'0':'1'}}:{header:{tr_cd:'UPH',rsp_cd:ok?'00000':'99999'},body:{}};this.emit('message',JSON.stringify(m));}}
  const http={post:async(url,body)=>{calls.push({url,body});if(url.endsWith('/Approval'))return{data:{approval_key:'private'}};if(body.t1717InBlock)return{data:{rsp_cd:'00000',t1717OutBlock:[{date:'20261026',tjj0008_vol:0,tjj0016_vol:-2,tjj0018_vol:3}]}};return {data:{rsp_cd:'00000',t1637OutBlock1:[]}};},get:async(url)=>{calls.push({url});if(url.endsWith('investor-trend-estimate'))return{data:{rt_cd:'0',output2:[{bsop_hour_gb:'2',frgn_fake_ntby_qty:'12',orgn_fake_ntby_qty:'0'},{bsop_hour_gb:'1',frgn_fake_ntby_qty:'8',orgn_fake_ntby_qty:'5'}]}};if(url.endsWith('investor-trade-by-stock-daily'))return{data:{rt_cd:'0',output2:[{stck_bsop_date:'20261023',prsn_ntby_qty:1,frgn_ntby_qty:2,orgn_ntby_qty:3}]}};return{data:{rt_cd:'0',output:[{stck_bsop_date:'20261023',whol_smtn_ntby_qty:'-40'}]}};}};
  const supply={summary:()=>({stocks:watch,archive:[{code:'005930'},{code:'000660'}]}),confirmMarket:async()=>true,candles:async()=>({points:[{t:Date.parse('2026-10-23T00:00:00+09:00'),close:100}],has_more:false})};
- const service=createBrokerStockSupply({broker,directory:dir,http,credentials:()=>({domain:'https://broker.test',appKey:'private',secretKey:'private'}),getToken:async()=>'private',supply,now:()=>at,Socket,pause:async()=>{}});
- t.after(()=>service.stop());return{service,sockets,calls,http,setTime:x=>at=x,setWatch:x=>watch=x};
+ const service=createBrokerStockSupply({broker,directory:dir,http,credentials:()=>({domain:'https://broker.test',appKey:'private',secretKey:'private'}),getToken:async()=>'private',supply,now:()=>at,Socket,pause:async()=>{},log:m=>logs.push(m)});
+ t.after(()=>service.stop());return{service,sockets,calls,http,logs,setTime:x=>at=x,setWatch:x=>watch=x};
 }
 test('completed minute, actual zero, out of order/future/stale data and unregistered code stay distinct',async t=>{
  const f=fixture(t);f.service.start();await f.service.collect();const s=f.sockets[0];s.open();s.ack();
@@ -77,10 +77,15 @@ test('KIS appkey duplicate rejection without subscription TR is surfaced and ret
  assert.match(f.service.status.error,/앱키.*중복/);assert.equal(socket.readyState,3);
  f.setTime(instant+5000);await f.service.collect();assert.equal(f.sockets.length,1);
  f.setTime(instant+61000);await f.service.collect();assert.equal(f.sockets.length,2);
+ // 2026-11-09: the rejection also goes to logs/server_debug, the same reason at most once per 10 minutes.
+ assert.equal(f.logs.filter(m=>/한투 실시간 연결 끊김: 한투 앱키 실시간 연결 중복/.test(m)).length,1);
+ f.sockets[1].open();f.sockets[1].emit('message',JSON.stringify({header:{tr_id:'(null)'},body:{rt_cd:'9',msg1:'ALREADY IN USE appkey'}}));
+ assert.equal(f.logs.filter(m=>/앱키 실시간 연결 중복/.test(m)).length,1,'repeat within 10 minutes is not logged again');
 });
 
 test('Oracle-priority setting disables local KIS socket while REST collection remains enabled',async t=>{
  const previous=process.env.KIS_STOCK_REALTIME_ENABLED;process.env.KIS_STOCK_REALTIME_ENABLED='false';
- try{const f=fixture(t);f.service.start();await f.service.collect();assert.equal(f.sockets.length,0);assert.ok(f.calls.some(c=>c.url.endsWith('investor-trend-estimate')));assert.match(f.service.status.websocket,/중지/);}
+ try{const f=fixture(t);f.service.start();await f.service.collect();assert.equal(f.sockets.length,0);assert.ok(f.calls.some(c=>c.url.endsWith('investor-trend-estimate')));assert.match(f.service.status.websocket,/중지/);
+  await f.service.collect();assert.deepEqual(f.logs.filter(m=>/H0UNPGM0. 꺼짐/.test(m)).length,1,'the off state is logged once');}
  finally{if(previous===undefined)delete process.env.KIS_STOCK_REALTIME_ENABLED;else process.env.KIS_STOCK_REALTIME_ENABLED=previous;}
 });

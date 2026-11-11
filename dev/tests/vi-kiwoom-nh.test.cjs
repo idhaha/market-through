@@ -11,6 +11,8 @@ const clock=Date.parse('2026-11-09T09:05:00+09:00');
 const real=(item,time)=>JSON.stringify({trnm:'REAL',data:[{type:'1h',item,values:{'1223':time,'1224':'000000','9068':'1','9069':'1','9008':'001'}}]});
 function lsHttp(calls){
     return {post:async(url,body,{headers})=>{
+        // Kiwoom calls (ka10099 · ka10081 for the 2026-11-10 filters) have no tr_cd and are not LS master calls.
+        if(!headers.tr_cd)return {data:{return_code:1}};
         calls.push(headers.tr_cd);const data={rsp_cd:'00000'};
         if(headers.tr_cd==='t8436')data.t8436OutBlock=[{shcode:'005930',hname:'삼성전자',gubun:'1'}];
         if(headers.tr_cd==='t8401')data.t8401OutBlock=[{basecode:'A005930',shcode:'A116B000',hname:'삼성전자 F 202611'},{basecode:'A005930',shcode:'A116C000',hname:'삼성전자 F 202612'}];
@@ -75,11 +77,12 @@ test('NH 삼성전자 trade value is compared with the 거래대금 상위 table
     const directory=fs.mkdtempSync(path.join(os.tmpdir(),'vi-amount-'));
     try{
         let t=clock;const calls=[];
-        const feed={rest:async(pathname,input)=>{calls.push([pathname,input]);return {stck_prpr:'193500',acml_tr_pbmn:'9200000000000'};},watch(){},unwatch(){},start(){},stop(){},state(){return {wanted:0};}};
+        const feed={rest:async(pathname,input)=>{calls.push([pathname,input]);return {stck_prpr:'193500',acml_tr_pbmn:'9200000'};},watch(){},unwatch(){},start(){},stop(){},state(){return {wanted:0};}};
         const m=createViMonitor({now:()=>t,policy:()=>null,directory,getToken:async()=>'ls',kiwoomToken:async()=>'k',quoteFeed:feed});
         const line=await m.checkSamsungAmount('10439757');
         assert.deepEqual(calls,[['/krstock/quote/v1/currentPrice',{market_cd:'KRX',iem_cd:'005930'}]]);
-        assert.deepEqual([line.kiwoomMillion,line.nhRestRaw,line.nhRestMillion,line.ratio],[10439757,9200000000000,9200000,0.881]);
+        // NH acml_tr_pbmn is already million KRW (2026-11-09 log: NH 3,772,299 vs Kiwoom 5,698,229 for 005930).
+        assert.deepEqual([line.kiwoomMillion,line.nhRestRaw,line.nhRestMillion,line.ratio],[10439757,9200000,9200000,0.881]);
         assert.equal(await m.checkSamsungAmount('10439757'),null,'Once per 10 minutes');
         assert.equal(JSON.parse(fs.readFileSync(path.join(directory,'amount-check-2026-11-09.jsonl'),'utf8').trim()).ratio,0.881);
         const off=createViMonitor({now:()=>t,policy:()=>null,directory,enabled:()=>false,quoteFeed:feed});

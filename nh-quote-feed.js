@@ -221,10 +221,11 @@ function createNhQuoteFeed({ credentials, tokenFile, fetch = globalThis.fetch, W
                     ? rest('/krfuture/quote/v1/day', { iem_cd: 'K' + entry.key })
                     : rest('/krstock/quote/v1/currentPrice', { market_cd: entry.exchange, iem_cd: entry.key }));
                 const price = num(entry.exchange === 'FUT' ? output.prpr : output.stck_prpr);
-                // REST acml_tr_pbmn is in KRW (the websocket value is in million KRW).
+                // REST acml_tr_pbmn is already in million KRW, like the websocket value (2026-11-09: NH 3,772,299 against
+                // Kiwoom ka10032 5,698,229 million for 005930; NH is KRX only, Kiwoom KRX+NXT). It used to be divided by 1e6.
                 const amount = num(output.acml_tr_pbmn);
                 if (price > 0) deliver(entry.exchange, entry.key, price, '', 'REST',
-                    entry.exchange === 'FUT' ? {} : { rate: signedRate(output.prdy_ctrt, output.prdy_vrss_sign), amount: amount == null ? null : amount / 1e6 });
+                    entry.exchange === 'FUT' ? {} : { rate: signedRate(output.prdy_ctrt, output.prdy_vrss_sign), amount });
                 if (entry.exchange === 'KRX') deliverBook(entry.key, restBidAverage(output), '', 'REST');
             } catch (error) {
                 if (entry.exchange === 'NXT' && error.code === '00500') { markNxtUnavailable(entry.code); continue; }
@@ -246,6 +247,23 @@ function createNhQuoteFeed({ credentials, tokenFile, fetch = globalThis.fetch, W
             if (!wanted.has(id(exchange, key))) wanted.set(id(exchange, key), { exchange, key, code });
         sync(); void connect();
     }
+    // One KRX current-price call when a stock is first watched (2026-11-09): during a VI the KRX book is a single-price
+    // auction with no trades, so the realtime oc message (sent on trades) does not come until the VI ends. This gives the
+    // price and change rate at the moment of the VI.
+    // 2026-11-11: the same for an NXT VI (NXT has no trades during its own VI either). The book is KRX only.
+    function snapshot(exchange, code) {
+        if (!['KRX', 'NXT'].includes(exchange)) return;
+        void paced(() => rest('/krstock/quote/v1/currentPrice', { market_cd: exchange, iem_cd: code })).then(output => {
+            if (stopped) return;
+            const price = num(output.stck_prpr);
+            if (price > 0) deliver(exchange, code, price, '', 'REST', { rate: signedRate(output.prdy_ctrt, output.prdy_vrss_sign), amount: num(output.acml_tr_pbmn) });
+            if (exchange === 'KRX') deliverBook(code, restBidAverage(output), '', 'REST');
+        }, error => {
+            if (exchange === 'NXT' && error.code === '00500') { markNxtUnavailable(code); return; }
+            stat(id(exchange, code)).errors++; event('rest_error', { key: id(exchange, code), message: redact(error.message) });
+        });
+    }
+    const snapshotKrx = code => snapshot('KRX', code);
     function watch(code, { future, futures = future ? [future] : [] } = {}) {
         futures = futures.filter(Boolean);
         // A later call (e.g. once the futures months are known) adds keys; keys already wanted stay.
@@ -274,7 +292,9 @@ function createNhQuoteFeed({ credentials, tokenFile, fetch = globalThis.fetch, W
     }
     function start() { if (!stopped) return; stopped = false; void connect(); scheduleRest(); }
     function stop() { stopped = true; clearTimeout(retry); clearTimeout(restTimer); resetSocketState(); const old = socket; socket = null; old?.close(); }
-    return { start, stop, watch, unwatch, receive, summary, rest, accessToken, pollNow: () => pollRest(),
+    // true / false (NH answered 거래불가 for NXT) / undefined (not asked yet)
+    const nxtSupported = code => nxtTradable.get(code);
+    return { start, stop, watch, unwatch, receive, summary, rest, accessToken, nxtSupported, snapshot, snapshotKrx, pollNow: () => pollRest(),
         state: () => ({ connected: socket?.readyState === 1, wanted: wanted.size, subscribed: subscribed.size, rest: restKeys.size }) };
 }
 module.exports = { createNhQuoteFeed, channels };

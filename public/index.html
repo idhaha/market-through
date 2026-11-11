@@ -9,23 +9,23 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=20261108_macro_chart_size">
+    <link rel="stylesheet" href="style.css?v=20261111_adr_gray">
     <script src="background-presence.js?v=20261101_1" defer></script>
     <script src="browser-live-check.js?v=20261106_test_title" defer></script>
     <script src="background-settings.js?v=20261101_presence" defer></script>
     <link rel="stylesheet" href="quick-note.css?v=20261103_note_capture">
     <link rel="stylesheet" href="market-alerts.css?v=20261101_sidecar_direction">
     <link rel="stylesheet" href="data-collection-info.css?v=20261107_data_sources">
-    <script src="rank-connection-status.js?v=20261108_rank_query" defer></script>
+    <script src="rank-connection-status.js?v=20261109_breadth_adr" defer></script>
     <script>window.rankManagedChartRefresh = true;</script>
     <script src="trading-refresh.js?v=20261106_close_times" defer></script>
     <script src="rank-chart-cache.js?v=20261108_data_revisions" defer></script>
 <script src="rank-chart-axis.js?v=20261108_short_market" defer></script>
-    <script src="rank-supply-guide.js?v=20261108_breadth_note" defer></script>
+    <script src="rank-supply-guide.js?v=20261111_adr_black_mid" defer></script>
     <script src="concentration-chart.js?v=20261108_adr_mode" defer></script>
     <script src="rank-adr-chart.js?v=20261108_short_market" defer></script>
     <script src="rank-turnover-chart.js?v=20261108_short_market" defer></script>
-    <script src="rank-volatility-chart.js?v=20261108_breadth_note" defer></script>
+    <script src="rank-volatility-chart.js?v=20261112_bar_alpha80" defer></script>
     <script src="rank-table-fold.js?v=20261102_mid_arrow" defer></script>
     <script src="rank-table-sort.js?v=20261107_table_sort" defer></script>
     <script src="auth-session-status.js?v=20261024_v1" defer></script>
@@ -36,7 +36,7 @@
     <script src="market-alert-data.js?v=20261031_1" defer></script>
     <script src="market-alerts.js?v=20261107_release_countdown" defer></script>
     <script src="quick-note.js?v=20261103_note_capture" defer></script>
-    <script src="data-collection-info.js?v=20261108_vi_bid_average" defer></script>
+    <script src="data-collection-info.js?v=20261110_filters" defer></script>
     <script src="vi-monitor-launch.js?v=20261102_live_zoom" defer></script>
     <script src="us-links.js?v=20261018_v13" defer></script>
     <script src="app.js?v=20261108_macro_wheel_cursor" defer></script>
@@ -313,7 +313,7 @@
                             <h4>칸</h4>
                             <dl class="supply-source-list">
                                 <dt>시장</dt><dd>키움 ka10100의 시장 코드 (K 코스피 · Q 코스닥)</dd>
-                                <dt>등락률</dt><dd>한투 주식현재가(inquire-price)의 전일 대비율. 종목별 확인이 끝난 뒤, 갱신 때 30초가 지났으면 다시 조회합니다</dd>
+                                <dt>등락률</dt><dd>한투 관심종목 멀티 시세(FHKST11300006, 30종목씩 · KRX+NXT 통합)의 전일 대비율. ETN만 종목마다 주식현재가(inquire-price)로 받습니다. 종목별 확인이 끝난 뒤, 갱신 때 30초가 지났으면 뒤에서 다시 조회하고 그동안은 직전 값을 보여 줍니다</dd>
                                 <dt>매매가능수량</dt><dd>CTSC2702R의 매매가능수량(trad_psbl_qty2, 주)</dd>
                                 <dt>매매가능금액(원)</dt><dd>현재가 × 매매가능수량. 현재가가 없으면 전일 종가를 씁니다</dd>
                             </dl>

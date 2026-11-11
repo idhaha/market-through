@@ -105,7 +105,7 @@ const { chromium } = require('playwright');
                 const slider = target.locator('input[type="range"]');
                 // The shared slider is 0~10000 = start / (hidden days); it is disabled while the whole range is shown.
                 const before = await slider.evaluate(el => ({ start: +el.value, disabled: el.disabled }));
-                const left = id === 'rankSentimentChartPanel' ? 54 : 16;
+                const left = id === 'rankSentimentChartPanel' || id === 'rankBreadthChartPanel' ? 54 : 16; // breadth: ADR axis on the left
                 const right = chartBox.width - (id === 'rankSentimentChartPanel' ? 64 : 58);
                 await page.mouse.move(chartBox.x + left + (right - left) * .25, chartBox.y + 60);
                 await page.mouse.wheel(0, -100);

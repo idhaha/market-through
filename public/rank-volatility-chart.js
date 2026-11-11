@@ -64,7 +64,7 @@
         if (!concentration || document.getElementById(panelId)) return;
         const panel = document.createElement('section');
         panel.id = panelId; panel.className = 'panel rank-adr-panel rank-volatility-panel';
-        panel.setAttribute('aria-label', sentiment ? 'CNN Fear & Greed 및 하이일드 스프레드 차트' : breadth ? '신고가-신저가 (KOSPI+KOSDAQ 통합시장) 차트' : 'VKOSPI 및 VIX 일봉 차트');
+        panel.setAttribute('aria-label', sentiment ? 'CNN Fear & Greed 및 하이일드 스프레드 차트' : breadth ? 'ADR 및 52주 신고가·신저가 차트' : 'VKOSPI 및 VIX 일봉 차트');
         if (breadth) panel.classList.add('rank-breadth-panel');
         if (sentiment) panel.classList.add('rank-sentiment-panel');
         panel.innerHTML = `<div class="concentration-chart-header"><h2 tabindex="0" class="volatility-help-trigger" aria-describedby="volatilityGuide">VKOSPI · VIX</h2><div id="volatilityGuide" class="volatility-guide" role="tooltip"><p class="volatility-guide-definition">옵션 가격에 반영된 향후 기대 변동성</p><p class="volatility-guide-level"><strong>30+</strong> 높은 변동성 · 시장 스트레스 가능성</p><h3>분석 지침</h3><ol><li><strong>수치보다 변화 속도를 관찰하세요.</strong> VIX가 15에서 22로 빠르게 상승하면, 25에서 26으로 완만하게 상승할 때보다 위험 회피 심리가 급격히 확대되는 신호일 수 있습니다.</li><li><strong>높은 변동성을 곧바로 반등 신호로 보지 마세요.</strong> 지수 급락 시 변동성 지수가 급등하는 경향이 있지만, 높은 수준은 며칠 또는 몇 주간 지속될 수 있습니다.</li><li><strong>지수와 변동성이 함께 오르면 상승장 내부를 살펴보세요.</strong> 지수 급락 가능성을 염두에 두고 불안이나 헤지 수요가 커지는지 확인하세요. 다만 변동성 지수의 고점이 높다는 이유만으로 주가 바닥이라고 판단해서는 안 됩니다.</li></ol></div></div>
@@ -74,18 +74,20 @@
             <div class="concentration-chart-footer rank-adr-zoom"><input type="range" min="0" max="0" value="0" aria-label="변동성 차트 과거 구간 이동" disabled><div class="concentration-controls"><button type="button" aria-label="변동성 차트 축소">−</button><button type="button" aria-label="변동성 차트 확대">+</button></div></div>
             <p class="rank-adr-status" role="status"></p>`;
         if (breadth) {
-            panel.querySelector('h2').textContent = '52주 신고/신저';
+            panel.querySelector('h2').textContent = 'ADR 및 52주 신고/신저';
             panel.querySelector('h2').removeAttribute('aria-describedby');
             panel.querySelector('h2').removeAttribute('tabindex');
             panel.querySelector('h2').classList.remove('volatility-help-trigger');
             panel.querySelector('.volatility-guide').remove();
-            panel.innerHTML = panel.innerHTML.replaceAll('volatilityCandleArea', 'breadthCandleArea').replaceAll('data-volatility="vkospi"', 'data-volatility="highs"').replaceAll('data-volatility="vix"', 'data-volatility="lows"').replaceAll('● VKOSPI', '● 신고가').replaceAll('● VIX', '● 신저가').replaceAll('변동성 차트', '신고가·신저가 차트').replaceAll('VKOSPI 및 VIX 일별 변동성 지수', '선택 시장 신고가 및 신저가 종목 수 (KRX+NXT 통합)');
+            panel.innerHTML = panel.innerHTML.replaceAll('volatilityCandleArea', 'breadthCandleArea').replaceAll('data-volatility="vkospi"', 'data-volatility="highs"').replaceAll('data-volatility="vix"', 'data-volatility="lows"').replaceAll('● VKOSPI', '● 신고가').replaceAll('● VIX', '● 신저가').replaceAll('변동성 차트', '신고가·신저가 차트').replaceAll('VKOSPI 및 VIX 일별 변동성 지수', '선택 시장 신고가·신저가 종목 수와 ADR');
+            // ADR line (left axis, %) beside the highs/lows bars (right axis, count).
+            panel.querySelector('.volatility-legend').insertAdjacentHTML('beforeend', '<span data-volatility="adr">● ADR <output>—</output></span>');
             panel.querySelector('.rank-adr-ranges').innerHTML = '<button type="button" data-breadth-mode="day" class="active" aria-pressed="true">일</button><button type="button" data-breadth-mode="minute" aria-pressed="false">1분봉</button><button type="button" data-breadth-more aria-label="신고가·신저가 과거 추가조회" disabled>▥+</button>';
             const more = panel.querySelector('[data-breadth-more]');
             more.classList.add('concentration-icon-button');
             const icon = document.querySelector('#concentrationMore svg');
             if (icon) more.replaceChildren(icon.cloneNode(true));
-            panel.querySelector('h2').title = '52주(250거래일) 신고가·신저가 · 보통주 · KRX+NXT 통합';
+            panel.querySelector('h2').title = 'ADR(20거래일 상승÷하락 종목 수, 거래소 공식) · 52주(250거래일) 신고가·신저가(보통주, KRX+NXT 통합)';
             panel.querySelector('.volatility-candle-label').textContent = 'KOSPI';
             panel.querySelector('.rank-adr-candle-area canvas').setAttribute('aria-label', 'KOSPI 캔들차트');
         } else panel.querySelector('h2').textContent = '변동성';
@@ -179,8 +181,8 @@
         const toggle = panel.querySelector('.concentration-candle-toggle'), tip = panel.querySelector('.chart-hover-info');
         const status = panel.querySelector('.rank-adr-status'), candleStatus = panel.querySelector('.rank-adr-candle-status');
         const slider = panel.querySelector('input[type="range"]'), [out, into] = panel.querySelectorAll('.concentration-controls button');
-        const ids = sentiment ? ['fear-greed', 'high-yield-spread'] : breadth ? ['highs', 'lows'] : ['vkospi', 'vix'], colors = sentiment ? { 'fear-greed': '#d97706', 'high-yield-spread': '#8b5cf6' } : breadth ? { highs: '#e11d48', lows: '#2563eb' } : { vkospi: '#339af0', vix: '#e11d48' };
-        const names = sentiment ? { 'fear-greed': 'CNN F&G', 'high-yield-spread': 'HY OAS' } : breadth ? { highs: '신고가', lows: '신저가' } : { vkospi: 'VKOSPI', vix: 'VIX' };
+        const ids = sentiment ? ['fear-greed', 'high-yield-spread'] : breadth ? ['highs', 'lows', 'adr'] : ['vkospi', 'vix'], colors = sentiment ? { 'fear-greed': '#d97706', 'high-yield-spread': '#8b5cf6' } : breadth ? { highs: '#e11d48', lows: '#2563eb', adr: '#404040' } : { vkospi: '#339af0', vix: '#e11d48' };
+        const names = sentiment ? { 'fear-greed': 'CNN F&G', 'high-yield-spread': 'HY OAS' } : breadth ? { highs: '신고가', lows: '신저가', adr: 'ADR' } : { vkospi: 'VKOSPI', vix: 'VIX' };
         const latestDate = document.createElement('span');
         latestDate.className = 'risk-latest-date'; latestDate.textContent = '—';
         if (!sentiment) panel.querySelector('.volatility-legend').prepend(latestDate);
@@ -206,7 +208,7 @@
             latestDate.textContent = unique.length <= 1 ? unique[0] || '—'
                 : labels.map((date, i) => `${names[ids[i]]} ${date || '—'}`).join(' · ');
         }
-        const formatValue = (value, id) => breadth ? `${Math.abs(value).toLocaleString('ko-KR')}개` : `${value.toFixed(1)}${sentiment && id === 'high-yield-spread' ? '%p' : ''}`;
+        const formatValue = (value, id) => breadth ? id === 'adr' ? `${value.toFixed(1)}%` : `${Math.abs(value).toLocaleString('ko-KR')}개` : `${value.toFixed(1)}${sentiment && id === 'high-yield-spread' ? '%p' : ''}`;
         let range = 'all', data = Object.fromEntries(ids.map(id => [id, []])), dates = [], candles = [], candleKey = '', candleRequest = 0;
         let start = 0, count = null, hover = null, geometry = null, candleGeometry = null, drag = null, controller, candleController;
         let pendingRefresh = false, resizeFrame;
@@ -228,7 +230,7 @@
             candleController?.abort();++candleRequest;candleKey='';breadthPricePending='';breadthPriceError='';candles=[];candleGeometry=null;candleStatus.textContent='';tip.hidden=true;
             breadthMarket=market;breadthPages.clear();breadthCursor=null;dates=[];ids.forEach(id=>data[id]=[]);start=0;count=null;hover=null;
             try{localStorage.setItem('rankBreadthMarketV1',market);}catch{}
-            panel.querySelector('h2').title=({kospi:'KOSPI',kosdaq:'KOSDAQ',all:'KOSPI+KOSDAQ'})[market]+' 신고가·신저가 (KRX+NXT 통합)';
+            panel.querySelector('h2').title=({kospi:'KOSPI',kosdaq:'KOSDAQ',all:'KOSPI+KOSDAQ'})[market]+' ADR(거래소 공식) · 신고가·신저가(보통주, KRX+NXT 통합)';
             panel.querySelector('.rank-selection-history-notice')?.remove();
             draw();void refreshBreadth().then(()=>{if(breadthMarket===market)return window.RankChartAxis.restoreHistoryRange('breadth',restoreRange);});
         }
@@ -264,12 +266,22 @@ tip.hidden=false;}
             slider.max = String(dates.length - n); slider.value = String(start); slider.disabled = n >= dates.length;
             window.RankChartAxis.updateSlider(sentiment?'sentiment':breadth?'breadth':'volatility',slider);
             into.disabled = n <= Math.min(10, dates.length); out.disabled = n >= dates.length;
-            const { w, h } = surface(canvas, ctx), left = sentiment ? 54 : 16, right = w - (sentiment ? 64 : 58), top = 10, bottom = h - 34;
+            const { w, h } = surface(canvas, ctx), left = sentiment || breadth ? 54 : 16, right = w - (sentiment ? 64 : 58), top = 10, bottom = h - 34;
             if (right <= left || bottom <= top) return;
             const sessionX=window.RankChartAxis.sessionX(visible,d=>d,left,right,breadth && breadthMode==='minute',!breadth || breadthMode==='day');
             const x = date => sessionX?sessionX(date):n === 1 ? (left + right) / 2 : left + indices.get(date) / Math.max(1, n - 1) * (right - left);
             const rows = Object.fromEntries(ids.map(id => [id, data[id].filter(point => indices.has(point.date) && point.value != null)]));
-            const max = sentiment ? 100 : Math.max(10, Math.ceil(Math.max(0, ...Object.values(rows).flat().map(point => Math.abs(point.value))) / 10) * 10);
+            const max = sentiment ? 100 : Math.max(10, Math.ceil(Math.max(0, ...ids.filter(id => id !== 'adr').flatMap(id => rows[id]).map(point => Math.abs(point.value))) / 10) * 10);
+            // ADR scale (left axis): the visible range in steps of 10, always showing the 100% balance line.
+            const adrValues = breadth ? rows.adr.map(point => point.value) : [];
+            // ADR axis from the values on screen (2026-11-11): lowest × 0.9 (never below 0) to highest × 1.1, so zoom,
+            // scrolling and loading more history re-fit it. ADR 100 always sits on the bars' 0 line (the middle):
+            // the halves above and below 100 are scaled separately, so their tick steps may differ.
+            const adrLow = adrValues.length ? Math.min(...adrValues) : 90, adrHigh = adrValues.length ? Math.max(...adrValues) : 110;
+            const adrMin = Math.min(99, Math.max(0, Math.floor(adrLow * 0.9))), adrMax = Math.max(101, Math.ceil(adrHigh * 1.1));
+            const adrMid = (top + bottom) / 2; // the bars axis runs -max..max, so its 0 line is the middle
+            const adrY = value => value >= 100 ? adrMid - (value - 100) / (adrMax - 100) * (adrMid - top) : adrMid + (100 - value) / (100 - adrMin) * (bottom - adrMid);
+            const adrTick = i => i <= 2 ? adrMin + (100 - adrMin) * i / 2 : 100 + (adrMax - 100) * (i - 2) / 2;
             const hyMax = sentiment ? Math.max(1, Math.ceil(Math.max(0, ...rows['high-yield-spread'].map(point => point.value)) * 2) / 2) : 1;
             const min = breadth ? -max : 0;
             const y = value => bottom - (value - min) / (max - min) * (bottom - top);
@@ -281,7 +293,16 @@ tip.hidden=false;}
                 if (sentiment) {
                     ctx.fillStyle = colors['fear-greed']; ctx.textAlign = 'right'; ctx.fillText(String(value), left - 8, y(value) + 4);
                     ctx.fillStyle = colors['high-yield-spread']; ctx.textAlign = 'left'; ctx.fillText((hyMax * i / 4).toFixed(1), right + 8, y(value) + 4);
-                } else ctx.fillText(breadth ? Math.round(value).toLocaleString('ko-KR') : value.toFixed(value % 1 ? 1 : 0), w - 4, y(value) + 4);
+                } else {
+                    ctx.fillText(breadth ? Math.round(value).toLocaleString('ko-KR') : value.toFixed(value % 1 ? 1 : 0), w - 4, y(value) + 4);
+                    if (breadth) { ctx.fillStyle = colors.adr; ctx.fillText(`${(i <= 2 ? (100 - adrMin) : (adrMax - 100)) / 2 < 1 ? adrTick(i).toFixed(1) : Math.round(adrTick(i))}%`, left - 8, y(value) + 4); ctx.fillStyle = muted; }
+                }
+            }
+            // ADR 80 (bottom zone) and 120 (overheated zone): solid black guide lines when inside the axis.
+            if (breadth && rows.adr.length) {
+                ctx.save(); ctx.strokeStyle = '#111111'; ctx.lineWidth = 1; ctx.setLineDash([]);
+                for (const level of [80, 120]) if (level > adrMin && level < adrMax) { ctx.beginPath(); ctx.moveTo(left, adrY(level)); ctx.lineTo(right, adrY(level)); ctx.stroke(); }
+                ctx.restore();
             }
             ctx.setLineDash([]);
             if (sentiment) {
@@ -302,20 +323,25 @@ tip.hidden=false;}
             boundaries(ctx, top, bottom);
             axis(ctx, h);
             for (const id of ids) {
-                const seriesY = sentiment && id === 'high-yield-spread' ? hyY : y;
-                ctx.strokeStyle = colors[id]; ctx.lineWidth = 2; ctx.beginPath();
-                if (breadth) {
+                const seriesY = sentiment && id === 'high-yield-spread' ? hyY : breadth && id === 'adr' ? adrY : y;
+                const bars = breadth && id !== 'adr';
+                ctx.strokeStyle = colors[id]; ctx.lineWidth = breadth && id === 'adr' ? 1.5 : 2; ctx.beginPath();
+                if (bars) {
                     const width = Math.max(1, Math.min(12, (right - left) / Math.max(1, n) * .7));
                     ctx.fillStyle = colors[id];
+                    ctx.save(); ctx.globalAlpha = .8; // ADR drawn over them stays readable, bars stay visible around it
                     rows[id].forEach(point => ctx.fillRect(x(point.date) - width / 2, Math.min(y(0), y(point.value)), width, Math.abs(y(point.value) - y(0))));
+                    ctx.restore();
                 } else {
-                    rows[id].forEach((point, index) => { if (!index) ctx.moveTo(x(point.date), seriesY(point.value)); else ctx.lineTo(x(point.date), seriesY(point.value)); }); ctx.stroke();
+                    // A missing ADR value (gap day, before the first sync) breaks the line instead of bridging it.
+                    let previous = null;
+                    rows[id].forEach(point => { const i = indices.get(point.date); if (previous == null || breadth && i !== previous + 1) ctx.moveTo(x(point.date), seriesY(point.value)); else ctx.lineTo(x(point.date), seriesY(point.value)); previous = i; }); ctx.stroke();
                 }
                 const latest = data[id].at(-1)?.date;
-                if (!breadth) rows[id].filter(point => point.date === latest || point.date === hover || rows[id].length === 1).forEach(point => { ctx.fillStyle = point.date === latest ? '#f97316' : colors[id]; ctx.beginPath(); ctx.arc(x(point.date), seriesY(point.value), 4, 0, Math.PI * 2); ctx.fill(); });
+                if (!bars) rows[id].filter(point => point.date === latest || point.date === hover || rows[id].length === 1).forEach(point => { ctx.fillStyle = point.date === latest ? '#f97316' : colors[id]; ctx.beginPath(); ctx.arc(x(point.date), seriesY(point.value), 4, 0, Math.PI * 2); ctx.fill(); });
                 const selected = rows[id].find(point => point.date === hover);
                 if (selected) {
-                    if (!breadth) drawHoverValue(ctx, { left, right, top, bottom, y: seriesY }, selected.value, formatValue(selected.value, id), colors[id], sentiment && id === 'fear-greed');
+                    if (!bars) drawHoverValue(ctx, { left, right, top, bottom, y: seriesY }, selected.value, formatValue(selected.value, id), colors[id], sentiment && id === 'fear-greed' || breadth && id === 'adr', breadth && id === 'adr');
                     else { ctx.fillStyle = colors[id]; ctx.textAlign = 'right'; ctx.fillText(formatValue(selected.value, id), w - 4, seriesY(selected.value) + 14); }
                 }
             }
@@ -324,11 +350,11 @@ tip.hidden=false;}
             if (drag) { ctx.fillStyle = 'rgba(51,154,240,.15)'; ctx.fillRect(Math.min(drag.from, drag.to), top, Math.abs(drag.to - drag.from), bottom - top); }
             if (!candleArea.hidden) drawCandles({ visible, indices, x, left, right, axis, boundaries });
         }
-        function drawHoverValue(context, graph, value, label, color, leftAxis = false) {
+        function drawHoverValue(context, graph, value, label, color, leftAxis = false, regular = false) {
             const py = graph.y(value), badgeY = Math.max(graph.top + 10, Math.min(graph.bottom - 10, py));
             context.save(); context.lineWidth = 1; context.strokeStyle = color; context.setLineDash([3, 3]);
             context.beginPath(); context.moveTo(graph.left, py); context.lineTo(graph.right, py); context.stroke(); context.setLineDash([]);
-            context.font = 'bold 11px Arial'; context.fillStyle = color;
+            context.font = `${regular ? '' : 'bold '}11px Arial`; context.fillStyle = color;
             const width = context.measureText(label).width + 12;
             const badgeX = leftAxis ? Math.max(0, graph.left - width) : Math.max(0, context.canvas.clientWidth - width - 4);
             context.fillRect(badgeX, badgeY - 10, width, 20);

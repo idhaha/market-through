@@ -156,8 +156,8 @@ function createMarketAlerts({ directory, now = Date.now, getToken, rejectToken =
         } catch { connection = 'LS 인증/연결 실패 · 설정 확인 필요'; log('[MarketAlerts] LS 인증/연결 실패'); retry(); }
         finally { connecting = false; }
     }
-    // MARKET_ALERT_REALTIME=false: alerts are received on the other server (local since 2026-11-07).
-    if (!enabled()) connection = '이 서버에서는 경보 수신을 꺼 두었습니다 (로컬 서버에서 수신)';
+    // Off on this server: alerts are received on the other server (Oracle since 2026-11-09, see viAlertsRealtime in server.js).
+    if (!enabled()) connection = '이 서버에서는 경보 수신을 꺼 두었습니다 (오라클 서버에서 수신)';
     function start() { if (!enabled() || !stopped) return; stopped = false; void connect();
         if(require('./trading-session').current()){sessionTimer=setInterval(()=>{
             const open=require('./trading-session').current()?.spotAt(now());

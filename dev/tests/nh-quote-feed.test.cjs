@@ -201,6 +201,8 @@ test('REST polling reads the bid book from the KRX current price without an extr
     await f.feed.pollNow();
     const expected = Array.from({length: 10}, (_, i) => (1000 - i * 10) * (100 + i)).reduce((a, b) => a + b) / 10;
     assert.equal(f.quotes.find(q => q.bidAverage != null)?.bidAverage, expected);
+    // REST acml_tr_pbmn is million KRW like the websocket value: passed through, not divided by 1e6 (2026-11-09).
+    assert.equal(f.quotes.find(q => q.amount != null && q.exchange === 'KRX')?.amount, 5000000);
     // KRX and NXT prices only: the order book rides on the KRX call.
     assert.deepEqual(calls.map(c => c.market_cd).sort(), ['KRX', 'NXT']);
 });

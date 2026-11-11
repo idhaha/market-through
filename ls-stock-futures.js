@@ -19,16 +19,19 @@ const validCode = code => /^[0-9A-Z]{6}$/.test(String(code || ''));
 function createLsStockFutures({ http, getToken, directory, supply, now = Date.now, policy = () => require('./trading-session').current(),
     pause = ms => new Promise(resolve => setTimeout(resolve, ms)), log = () => {}, kisMinute = null }) {
     let master = null, masterTask = null, timer = null, running = null;
-    const dailyCandles = new Map(), dailyFlow = new Map(), status = new Map(), starts = new Map(), probed = new Map(), minuteBars = new Map();
+    const dailyCandles = new Map(), dailyFlow = new Map(), status = new Map(), starts = new Map(), probed = new Map(), minuteBars = new Map(), minuteFailureLogged = new Map();
     // LS allows one call per second per TR (shared app key), so starts of the same TR are 1.1 s apart. Calls may overlap:
     // t8463 takes about 10 s on the LS side whatever the count (2026-11-07), and overlapping calls were all answered.
     // cont: continuation request (tr_cont Y); t8405 needs it for older pages.
+    // t8463 often took more than 20 s on a trading day (2026-11-09: 424 timeouts at 20 s, 270 of 456 runs failed);
+    // collection runs once a minute and never overlaps itself, so 45 s still fits.
+    const T8463_TIMEOUT = 45000;
     function rest(tr, endpoint, input, cont = false) {
         const turn = (starts.get(tr) || Promise.resolve()).then(() => undefined);
         starts.set(tr, turn.then(() => pause(1100)));
         const task = turn.then(async () => {
             const response = await http.post(`https://openapi.ls-sec.co.kr:8080/futureoption/${endpoint}`, { [tr + 'InBlock']: input },
-                { headers: { authorization: 'Bearer ' + await getToken(), 'Content-Type': 'application/json; charset=utf-8', tr_cd: tr, tr_cont: cont ? 'Y' : 'N', tr_cont_key: '' }, timeout: 20000 });
+                { headers: { authorization: 'Bearer ' + await getToken(), 'Content-Type': 'application/json; charset=utf-8', tr_cd: tr, tr_cont: cont ? 'Y' : 'N', tr_cont_key: '' }, timeout: tr === 't8463' ? T8463_TIMEOUT : 20000 });
             if (String(response.data?.rsp_cd) !== '00000') throw failure(`LS ${tr} 조회 실패 (${response.data?.rsp_cd || response.status})`, 502);
             return response.data;
         });
@@ -264,7 +267,14 @@ function createLsStockFutures({ http, getToken, directory, supply, now = Date.no
         const live = date === session.today && session.started && collectingAt(now());
         if (!kisMinute || date < KIS_MINUTE_FIRST || !isOpen(date) || date > session.today) return { contract, candles: [] };
         if (cached && (!live && cached.final || live && now() - cached.at < 20000)) return cached;
-        const top = live && cached?.candles.length ? await fetchKisDay(item, date, { hour: '154600', pages: 1 }) : await fetchKisDay(item, date);
+        let top;
+        try { top = live && cached?.candles.length ? await fetchKisDay(item, date, { hour: '154600', pages: 1 }) : await fetchKisDay(item, date); }
+        catch (error) {
+            // KIS minute bars are not stored, so failures were invisible in the logs (2026-11-09 check). One line per stock-day per minute.
+            const last = minuteFailureLogged.get(key) || 0;
+            if (now() - last >= 60000) { minuteFailureLogged.set(key, now()); log(`[종목 선물 분봉] 한투 FHKIF03020200 조회 실패 ${code} ${contract} ${date}: ${String(error.message || error).slice(0, 120)}`); }
+            throw error;
+        }
         const merged = new Map((live && cached ? cached.candles : []).map(c => [c.t, c]));
         for (const c of top.candles) merged.set(c.t, c);
         const value = { contract, candles: [...merged.values()].sort((a, b) => a.t - b.t), at: now(), final: !live };

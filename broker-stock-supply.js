@@ -28,11 +28,12 @@ function createBrokerStockSupply({ broker, directory, http, credentials, getToke
     now = Date.now, Socket = WebSocket, pause = ms => new Promise(resolve => setTimeout(resolve, ms)),
     // LS only: 'rest' replaces the UPH websocket with per-minute t1637 polling for programRestCodes().
     // The shared LS socket is then not opened, so extra streams (turnover IJ_/US3) are not served.
-    programMode = () => 'websocket', programRestCodes = () => null }) {
+    programMode = () => 'websocket', programRestCodes = () => null, log = message => console.warn(message) }) {
     if (!['kis', 'ls'].includes(broker)) throw new Error('Unknown stock supply broker');
     const store = createSupplyStore({ directory, now });
     const pending = new Map(), subscribed = new Set(), dailyCache = createDailyQueryCache({ now }), historyCache = createHistoryCache({ now });
     const streams = new Map(), streamSubscriptions = new Map();
+    let lastLogged = { reason: '', at: 0 };
     const streamId = entry => `${entry.tr}:${entry.key.trim()}`;
     function setStreams(owner, entries) {
         if (entries.length > 24) throw failure('실시간 추가 구독 한도 초과');
@@ -183,6 +184,9 @@ function createBrokerStockSupply({ broker, directory, http, credentials, getToke
         old?.terminate();
         status.websocket = '재연결 대기'; status.error = error;
         console.warn('[StockSupplyConnection]', JSON.stringify({ broker, event: 'disconnect', reason: error }));
+        // Also to logs/server_debug (2026-11-09: rejections such as 'ALREADY IN USE appkey' only reached the terminal).
+        // The same reason at most once per 10 minutes, so reconnect attempts do not flood the log.
+        if (error && (error !== lastLogged.reason || now() - lastLogged.at >= 600000)) { lastLogged = { reason: error, at: now() }; log(`[종목 수급] ${broker === 'kis' ? '한투' : 'LS'} 실시간 연결 끊김: ${error}`); }
         nextConnect = now() + Math.min(60000, 2000 * 2 ** Math.min(failures++, 5));
     }
     function sync() {
@@ -239,7 +243,10 @@ function createBrokerStockSupply({ broker, directory, http, credentials, getToke
     }
     async function connect() {
         if (programRest()) { status.websocket = '조회 방식(REST)'; return; }
-        if (broker === 'kis' && process.env.KIS_STOCK_REALTIME_ENABLED === 'false') { status.websocket = '실시간 수집 중지'; status.error = '한투 실시간 수집 중지: Oracle 우선 설정'; return; }
+        if (broker === 'kis' && process.env.KIS_STOCK_REALTIME_ENABLED === 'false') {
+            if (status.websocket !== '실시간 수집 중지') log('[종목 수급] 한투 실시간(H0UNPGM0) 꺼짐: KIS_STOCK_REALTIME_ENABLED=false · 앱키를 함께 쓰는 오라클 서버가 받음');
+            status.websocket = '실시간 수집 중지'; status.error = '한투 실시간 수집 중지: Oracle 우선 설정'; return;
+        }
         if (stopped || connecting || socket || now() < nextConnect || !stocks().length && !streams.size) return;
         connecting = true; const revision = generation;
         try {

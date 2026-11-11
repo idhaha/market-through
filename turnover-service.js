@@ -21,9 +21,10 @@ function createTurnoverService({ http, getToken, indexCandles, now = Date.now, p
     }
     async function load(mode,cursor) {
         const daily=mode==='day', today=dayKey(now());
-        // Match the supply chart's default daily page; never impose a calendar range or fixed bar count.
-        const reference=await post('ka10081',{stk_cd:'005930_AL',upd_stkpc_tp:'0',base_dt:cursor || today});
-        const referenceDays=(reference.data.stk_dt_pole_chart_qry || []).map(r=>String(r.dt)).filter(d=>/^\d{8}$/.test(d)&&d<=(cursor||today)).sort();
+        // Trading days from the shared KOSPI index daily page (2026-11-11; was a Samsung 005930_AL daily call per load).
+        // Same 600-day page and inclusive cursor, already loaded for the index candles, so no extra Kiwoom call.
+        const reference=await indexCandles.referencePage({market:'kospi',mode:'day',cursor:cursor?'001'+cursor:''});
+        const referenceDays=(reference.points || []).map(p=>String(p.date).replaceAll('-','')).filter(d=>/^\d{8}$/.test(d)&&d<=(cursor||today)).sort();
         if(!referenceDays.length)throw new Error('거래대금 기준 봉 없음');
         let from=daily?referenceDays[0]:referenceDays.at(-1), to=daily?referenceDays.at(-1):from;
         const markets={}, warnings=[]; let prior=null;
@@ -39,7 +40,7 @@ function createTurnoverService({ http, getToken, indexCandles, now = Date.now, p
             if(previousDay && (!prior || previousDay>prior))prior=previousDay;
         }
         const earlier=new Date(`${from.slice(0,4)}-${from.slice(4,6)}-${from.slice(6,8)}T00:00:00Z`);earlier.setUTCDate(earlier.getUTCDate()-1);
-        const nextCursor=daily ? reference.headers?.['cont-yn']==='Y'?earlier.toISOString().slice(0,10).replaceAll('-',''):null : prior;
+        const nextCursor=daily ? reference.has_more?earlier.toISOString().slice(0,10).replaceAll('-',''):null : prior;
         return {markets,cursor:warnings.length?null:nextCursor,has_more:!warnings.length&&Boolean(nextCursor),warnings};
     }
     return {query};

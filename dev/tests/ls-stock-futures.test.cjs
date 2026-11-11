@@ -3,8 +3,8 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 const {createLsStockFutures}=require('../../ls-stock-futures');
 const friday=Date.parse('2026-11-06T10:00:30+09:00');
 function fakeLs(calls,{daily=179,previous='20261105'}={}){
- return {post:async(url,body,{headers})=>{
-  const tr=headers.tr_cd,input=body[tr+'InBlock'];calls.push({tr,cont:headers.tr_cont,input});const data={rsp_cd:'00000'};
+ return {post:async(url,body,{headers,timeout})=>{
+  const tr=headers.tr_cd,input=body[tr+'InBlock'];calls.push({tr,cont:headers.tr_cont,input,timeout});const data={rsp_cd:'00000'};
   if(tr==='t2522')data.t2522OutBlock1=[{bsc_asts_nm:'삼성전자',bsc_asts_is_cd:'005930',bsc_asts_id:'S11',nmc_is_shrt_cd:'A116B000'}];
   if(tr==='t8463')data.t8463OutBlock1=input.bgubun==='0'?[
    {date:'20261106',time:'100030',indmsvol:3,formsvol:2,sysmsvol:-5},{date:'20261106',time:'100000',indmsvol:1,formsvol:1,sysmsvol:-2},{date:'20261106',time:'095930',indmsvol:9,formsvol:9,sysmsvol:9}]
@@ -53,6 +53,8 @@ test('collection runs only in the futures day session for registered stocks with
  assert.deepEqual(calls.filter(c=>['t8463','t8406'].includes(c.tr)).map(c=>c.tr),['t8463'],'035720 has no futures and is skipped; no t8406');
  const run=JSON.parse(fs.readFileSync(path.join(directory,'collect-2026-11-06.jsonl'),'utf8').trim());
  assert.deepEqual(run.results,[{code:'005930',contract:'A116B000'}],'each run is recorded for the scheduled collection check');
+ // 2026-11-09: t8463 often took over 20 s on a trading day (424 timeouts); it now waits 45 s, other LS calls 20 s.
+ assert.deepEqual([...new Set(calls.filter(c=>c.tr==='t8463').map(c=>c.timeout))],[45000]);assert.deepEqual([...new Set(calls.filter(c=>c.tr==='t2522').map(c=>c.timeout))],[20000]);
  assert.equal(svc.collectingAt(Date.parse('2026-11-06T08:44:00+09:00')),false);assert.equal(svc.collectingAt(Date.parse('2026-11-06T08:45:00+09:00')),true);
  assert.equal(svc.collectingAt(Date.parse('2026-11-06T16:20:00+09:00')),true);assert.equal(svc.collectingAt(Date.parse('2026-11-06T16:21:00+09:00')),false);
  assert.equal(svc.collectingAt(Date.parse('2026-11-07T10:00:00+09:00')),false,'Saturday');
@@ -122,4 +124,13 @@ test('today\'s bars during the session refresh every 20 s with only the newest K
  clock+=10000;await svc.candles({code:'005930',mode:'minute'});assert.equal(kis.length,firstCalls,'within 20 s from memory');
  clock+=60000;const b=await svc.candles({code:'005930',mode:'minute'});assert.equal(kis.length,firstCalls+1,'one newest page');assert.equal(b.points.length,a.points.length+1);
  assert.deepEqual(fs.readdirSync(directory).filter(f=>f!=='master.json'),[],'no bar files written');
+});
+test('KIS minute bar failures are logged once a minute per stock-day (they are not stored, so the log is the only trace)',async()=>{
+ let clock=Date.parse('2026-11-09T10:00:30+09:00');const logs=[],directory=fs.mkdtempSync(path.join(os.tmpdir(),'lsf-test-'));
+ const kisMinute=async()=>{throw new Error('EGW00201 초당 거래건수를 초과하였습니다.');};
+ const svc=createLsStockFutures({http:fakeLs([]),getToken:async()=>'t',directory,supply:{summary:()=>({stocks:[]})},now:()=>clock,policy:()=>({openDate:()=>true}),pause:async()=>{},kisMinute,log:m=>logs.push(m)});
+ await assert.rejects(svc.candles({code:'005930',mode:'minute'}),/EGW00201/);
+ clock+=20000;await assert.rejects(svc.candles({code:'005930',mode:'minute'}));
+ assert.equal(logs.length,1,'not every request');assert.match(logs[0],/종목 선물 분봉.*FHKIF03020200 조회 실패 005930 A116\d+ 2026-11-09: EGW00201/);
+ clock+=41000;await assert.rejects(svc.candles({code:'005930',mode:'minute'}));assert.equal(logs.length,2,'again after a minute');
 });

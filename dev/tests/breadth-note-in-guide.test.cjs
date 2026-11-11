@@ -30,6 +30,6 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=requ
  await panel.locator('.supply-info-button').click();
  const day=await page.locator('#rankBreadthChartPanelGuide [role=tabpanel]:not([hidden])').textContent();
  assert.ok(day.includes('현재 조회 기준: '+notice),'The note is in the guide');
- assert.match(day,/~2026-11-06: 키움 ka10081 종목별 일봉으로 계산/);assert.match(day,/2026-11-09~: 키움 ka10016 마감 목록 중 보통주/);assert.match(day,/시장 범위: 보통주 · KRX\+NXT 통합/);
+ assert.match(day,/~2026-11-06: 키움 ka10081 종목별 일봉으로 계산/);assert.match(day,/2026-11-09~: 키움 ka10016 마감 목록 중 보통주/);assert.match(day,/시장 범위: ADR: 거래소 공식 상승·하락 수\(LS\) · 신고\/신저: 보통주, KRX\+NXT 통합/);
  assert.deepEqual(errors,[]);console.log('PASS breadth card: basis note moved into the i guide, header radios on one row, title not cut');
 }finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});
