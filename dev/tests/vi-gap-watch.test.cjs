@@ -11,7 +11,9 @@ function lsHttp(){
         const data={rsp_cd:'00000'};
         if(headers.tr_cd==='t8436')data.t8436OutBlock=[{shcode:'005930',hname:'삼성전자',gubun:'1'},{shcode:'000001',hname:'선물없음',gubun:'2'}];
         if(headers.tr_cd==='t8401')data.t8401OutBlock=[{basecode:'A005930',shcode:'A116B000',hname:'삼성전자 F 202611'},{basecode:'A005930',shcode:'A116C000',hname:'삼성전자 F 202612'}];
-        if(headers.tr_cd==='t8402')data.t8402OutBlock={lastmonth:body.t8402InBlock.focode==='A116B000'?'20261112':'20261210',recprice:body.t8402InBlock.focode==='A116B000'?'100000':''};
+        if(headers.tr_cd==='t8402')data.t8402OutBlock={lastmonth:body.t8402InBlock.focode==='A116B000'?'20261112':'20261210',recprice:body.t8402InBlock.focode==='A116B000'?'100000':'',mulcnt:'10.00000000'};
+        // t8403: 10 bid levels, price 1,000 down by 10, 5 contracts each, except the last level empty (2026-11-12 futures book).
+        if(headers.tr_cd==='t8403')data.t8403OutBlock=body.t8403InBlock.shcode?Object.fromEntries(Array.from({length:10},(_,i)=>[['bidho'+(i+1),i<9?1000-10*i:0],['bidrem'+(i+1),i<9?5:0]]).flat()):{};
         return {data};
     }};
 }
@@ -206,4 +208,24 @@ test('NXT row 호가 평균 comes from the KIS NX book while the NXT VI is on (0
         clock=at('091000');m.receive(real('000660','091000'));
         assert.equal(sets.at(-1),'');
     }finally{m.stop();assert.equal(sets.at(-1),'stop');fs.rmSync(directory,{recursive:true,force:true});}
+});
+
+test('futures row 매수10호가 평균 in KRW: LS t8403 10 levels × 승수 (t8402 mulcnt) while the row is on (2026-11-12)',async()=>{
+    const directory=fs.mkdtempSync(path.join(os.tmpdir(),'vi-fut-book-'));
+    let clock=at('091000');const asked=[],http=lsHttp(),post=http.post;
+    http.post=async(url,body,opts)=>{if(opts.headers.tr_cd==='t8403')asked.push(body.t8403InBlock);return post(url,body,opts);};
+    const quoteFeed={start(){},stop(){},watch(){},unwatch(){},state:()=>({wanted:0}),nxtSupported:()=>true,snapshot(){}};
+    const m=createViMonitor({now:()=>clock,policy:()=>({spotAt:()=>false}),directory,getToken:async()=>'ls',kiwoomToken:async()=>'k',http,quoteFeed,futuresEventMs:9000,futuresBookMs:200});
+    try{
+        m.start();
+        await m.onFuturesEvent({tr:'JX0',futcode:'A116B000',body:{futcode:'A116B000',upstep:'02',dnstep:'01'},receivedAt:clock});
+        let fut;for(let i=0;i<300&&!Number.isFinite((fut=m.snapshot().rows.find(x=>x.exchange==='FUT'))?.bidAverage);i++)await pause(20);
+        // 9 priced levels: mean of price × 5 contracts × 10 = (1000+990+…+920)/9 × 50 = 960 × 50.
+        assert.equal(fut.bidAverage,960*50);assert.equal(fut.bidAverageVia,'LS');
+        assert.deepEqual(asked[0],{shcode:'A116B000'},'t8403 takes shcode (focode answers no data)');
+        // Released after its countdown: the value at the release is kept and polling stops.
+        for(let i=0;i<600&&m.snapshot().rows.find(x=>x.exchange==='FUT').active;i++)await pause(20);
+        fut=m.snapshot().rows.find(x=>x.exchange==='FUT');assert.equal(fut.atRelease.bidAverage,960*50);
+        await pause(1200);const n=asked.length;await pause(1500);assert.equal(asked.length,n,'no t8403 once no futures row is on (a call already queued may still finish)');
+    }finally{m.stop();fs.rmSync(directory,{recursive:true,force:true});}
 });

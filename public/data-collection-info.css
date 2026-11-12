@@ -6,7 +6,8 @@
 .data-collection-category + .data-collection-category { margin-top:34px; }
 .data-collection-category h3 { margin:18px 0 8px; font-size:18px; }
 .data-collection-note { margin:0 0 8px; color:var(--text-secondary,#475569); }
-.data-collection-scroll { overflow-x:auto; }
+/* 1px room below: a table whose height ends on a fraction of a pixel lost its bottom border to the scroll box (2026-11-12). */
+.data-collection-scroll { overflow-x:auto; padding-bottom:1px; }
 .data-collection-dialog table { width:auto; max-width:100%; border-collapse:collapse; table-layout:auto; }
 .data-collection-dialog th,.data-collection-dialog td { border:1px solid #94a3b8; padding:6px 10px; text-align:left; vertical-align:top; white-space:pre-line; }
 .data-collection-dialog thead th { background:#e2e8f033; white-space:nowrap; }

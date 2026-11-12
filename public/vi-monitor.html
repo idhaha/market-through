@@ -2,9 +2,9 @@
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MarketThrough VI 모니터링</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261108_tabular_nums"><link rel="stylesheet" href="data-collection-info.css?v=20261107_vi_guide"><link rel="stylesheet" href="vi-monitor.css?v=20261112_note">
-<script src="vi-monitor.js?v=20261112_note" defer></script>
-<script src="data-collection-info.js?v=20261112_expiry" defer></script><script src="vi-monitor-info.js?v=20261112_jx0_only" defer></script></head>
+<link rel="stylesheet" href="style.css?v=20261108_tabular_nums"><link rel="stylesheet" href="data-collection-info.css?v=20261112_table_border"><link rel="stylesheet" href="vi-monitor.css?v=20261112_gap_group">
+<script src="vi-monitor.js?v=20261112_expired" defer></script>
+<script src="data-collection-info.js?v=20261112_fut_book" defer></script><script src="vi-monitor-info.js?v=20261112_fut_book" defer></script></head>
 <body class="vi-monitor"><main class="panel vi-panel">
 <header class="panel-header"><h1>VI 실시간 모니터링</h1><span id="viClock" class="vi-clock"></span><span id="viFilterNote" class="vi-filter-note"></span>
 <div class="vi-controls">
@@ -13,18 +13,20 @@
 <label title="발동부터 해제 전까지 Base 대비 다른 시장(KRX · NXT · 선물 최근월 · 차기월) 괴리율의 절댓값이 한 번이라도 1% 이상이었던 행만 봅니다"><input id="viGapOnly" type="checkbox" checked> 괴리율 1% 이상 보기</label><label><input id="viTopmost" type="checkbox"> 항상 위</label></div></header>
 <div class="table-wrapper"><table aria-label="당일 VI 발동·해제와 선물 가격제한 이벤트">
 <thead><tr>
-<th scope="col">순위</th><th scope="col"><button data-sort="market">시장</button></th><th scope="col"><button data-sort="name">종목명</button></th>
-<th scope="col"><button data-sort="rate">등락률</button></th>
-<th scope="col"><button data-sort="marketCap">시가총액</button></th>
-<th scope="col"><button data-sort="amount">거래대금(백만)</button></th>
-<th scope="col"><button data-sort="exchange">발동 거래소</button></th><th scope="col"><button data-sort="kind">구분</button></th>
-<th scope="col" aria-sort="descending"><button data-sort="startedAt">발동 시각</button></th>
-<th scope="col"><button data-sort="releasedAt">해제 시각</button></th><th scope="col"><button data-sort="remaining">해제까지(예상)</button></th>
-<th scope="col"><button data-sort="gapKRX">KRX 괴리율</button></th>
-<th scope="col"><button data-sort="gapNXT">NXT 괴리율</button></th>
-<th scope="col"><button data-sort="gapFUT">선물 괴리율</button>
+<th rowspan="2" scope="col">순위</th><th rowspan="2" scope="col"><button data-sort="market">시장</button></th><th rowspan="2" scope="col"><button data-sort="name">종목명</button></th>
+<th rowspan="2" scope="col"><button data-sort="rate">등락률</button></th>
+<th rowspan="2" scope="col"><button data-sort="marketCap">시가총액</button></th>
+<th rowspan="2" scope="col"><button data-sort="amount">거래대금(백만)</button></th>
+<th rowspan="2" scope="col"><button data-sort="exchange">발동 거래소</button></th><th rowspan="2" scope="col"><button data-sort="kind">구분</button></th>
+<th rowspan="2" scope="col" aria-sort="descending"><button data-sort="startedAt">발동 시각</button></th>
+<th rowspan="2" scope="col"><button data-sort="releasedAt">해제 시각</button></th><th rowspan="2" scope="col"><button data-sort="remaining">해제까지(예상)</button></th>
+<th colspan="3" scope="colgroup" class="comparison-group" title="괴리율 = (그 시장 현재가 ÷ Base 현재가 − 1) × 100">괴리율</th>
+<th rowspan="2" scope="col"><button data-sort="bidAverage" title="발동 거래소 매수 1~10호가 각각의 가격 × 잔량을 평균한 금액 (KRX 행은 NH 호가, NXT 행은 한투 NXT 호가 조회, 선물 행은 LS 주식선물 호가 조회 · 잔량 계약 × 거래승수)"><span class="th-lines">매수<br>10호가평균</span></button></th>
+</tr><tr>
+<th scope="col"><button data-sort="gapKRX">KRX</button></th>
+<th scope="col"><button data-sort="gapNXT">NXT</button></th>
+<th scope="col"><button data-sort="gapFUT">선물</button>
 <select id="viFutureMonth" class="interval-select" aria-label="선물 월물 선택"><option value="recent">최근월</option><option value="next">차기월</option></select></th>
-<th scope="col"><button data-sort="bidAverage" title="발동 거래소 매수 1~10호가 각각의 가격 × 잔량을 평균한 금액 (KRX 행은 NH 호가, NXT 행은 한투 NXT 호가 조회, 선물 행은 없음)"><span class="th-lines">매수<br>10호가평균</span></button></th>
 </tr></thead>
 <tbody id="viBody"><tr><td colspan="15" class="vi-empty">VI 수신 연결 중…</td></tr></tbody></table></div>
 <footer><div id="viSummary" class="vi-summary" aria-live="polite"></div>

@@ -77,6 +77,16 @@
     }
     const tickClock=()=>{document.getElementById('viClock').textContent=new Date().toLocaleString('ko-KR',{timeZone:'Asia/Seoul',hour12:false});};
     const frame=()=>{countdown();requestAnimationFrame(frame);};
+    // Sort arrows are painted when the page opens too, not only when data arrives: after a refresh they were empty
+    // until the first data or a click (2026-11-12).
+    function paintSortIcons() {
+        for(const button of document.querySelectorAll('[data-sort]')) {
+            const on=button.dataset.sort===sort.key;
+            // Like preview.html: once a column is chosen, the other sortable columns show a dot.
+            button.querySelector('.sort-icon').innerHTML=on||!sort.explicit?SORT_ARROWS:SORT_DOT;
+            button.closest('th').setAttribute('aria-sort',on?(sort.direction<0?'descending':'ascending'):'none');
+        }
+    }
     function render() {
         const fragment=document.createDocumentFragment();
         sorted().forEach((r,i)=>{
@@ -107,24 +117,21 @@
             const fv=futureGap(g,month.value),future=r.futures?.[month.value];
             gapCell(fv,r.exchange==='FUT'?'발동 거래소(Base)':fv==='미지원'?'주식선물이 없는 종목':future?`${future.name||future.code} ÷ ${base} − 1 · 만기 ${future.expiry}${released}`:r.detailError||'해당 월물 또는 가격 미수신');
             const bid=shown(r,'bidAverage'),book=cell(tr,money(bid),'amount');
-            book.title=r.exchange==='FUT'?'선물 행은 호가 평균 없음':Number.isFinite(bid)?`${r.exchange} 매수 10호가 평균 ${Math.round(bid).toLocaleString('ko-KR')}원${x?released:` · 수신 ${time(r.bidAverageAt)}${r.bidAverageVia==='REST'?' (NH 조회 5초 주기)':r.bidAverageVia==='KIS'?' (한투 NX 조회 5초 주기)':''}`}`:`${r.exchange} 호가 미수신`;
+            const market=r.exchange==='FUT'?'선물':r.exchange;
+            book.title=Number.isFinite(bid)?`${market} 매수 10호가 평균 ${Math.round(bid).toLocaleString('ko-KR')}원${x?released:` · 수신 ${time(r.bidAverageAt)}${r.bidAverageVia==='REST'?' (NH 조회 5초 주기)':r.bidAverageVia==='KIS'?' (한투 NX 조회 5초 주기)':r.bidAverageVia==='LS'?' (LS t8403 조회 5초 주기 · 잔량 계약 × 거래승수)':''}`}`:`${market} 호가 미수신`;
             fragment.append(tr);
         });
         if(!fragment.childNodes.length){const tr=document.createElement('tr');const td=cell(tr,data.rows.length?'조건에 맞는 VI 종목이 없습니다. (괴리율 1% 이상 보기 · 거래대금 · 시가총액 조건을 바꾸면 더 볼 수 있습니다)':'수신한 당일 VI 종목이 없습니다.','vi-empty');td.colSpan=15;fragment.append(tr);}
         body.replaceChildren(fragment);
         const active=data.rows.filter(r=>r.active),krx=new Set(active.filter(r=>r.exchange==='KRX').map(r=>r.code)),nxt=new Set(active.filter(r=>r.exchange==='NXT').map(r=>r.code));
         summary.textContent=`현재 발동 중 · KRX ${krx.size}종목 · NXT ${nxt.size}종목 · 양 시장 ${[...krx].filter(c=>nxt.has(c)).length}종목 · 선물 이벤트 ${active.filter(r=>r.exchange==='FUT').length}건 · 당일 해제 ${data.rows.filter(r=>!r.active).length}건 · 괴리율 1% 이상 ${data.rows.filter(r=>r.gapHit).length}건`;
-        for(const button of document.querySelectorAll('[data-sort]')) {
-            const on=button.dataset.sort===sort.key;
-            // Like preview.html: once a column is chosen, the other sortable columns show a dot.
-            button.querySelector('.sort-icon').innerHTML=on||!sort.explicit?SORT_ARROWS:SORT_DOT;
-            button.closest('th').setAttribute('aria-sort',on?(sort.direction<0?'descending':'ascending'):'none');
-        }
+        paintSortIcons();
         // Rows hidden only because their value is not known yet (still loading) are counted, so they are not mistaken for "none".
         const unknown=data.rows.filter(r=>(!gapOnly.checked||r.gapHit)&&!passes(r)&&(Number(prevFilter.value)&&r.prevAmount==null||Number(capFilter.value)&&shown(r,'marketCap')==null)).length;
         filterNote.textContent=unknown?`값 확인 전이라 빠진 행 ${unknown}건`:'';filterNote.title=filterNote.textContent;
         countdown();
     }
+    paintSortIcons();
     for(const button of document.querySelectorAll('[data-sort]'))button.addEventListener('click',()=>{
         const key=button.dataset.sort;
         sort=sort.key!==key||!sort.explicit?{key,direction:-1,explicit:true}:sort.direction===-1?{key,direction:1,explicit:true}:{key:'startedAt',direction:-1};render();
@@ -156,7 +163,13 @@
             if(!closed)throw Error('연결 중단');
         } catch(error) {
             if(closed||error.name==='AbortError')return;
-            if(error.message==='연결 만료'){status.textContent='연결 만료 · 메인 화면에서 VI 독립창을 다시 열어주세요.';return;}
+            if(error.message==='연결 만료'){
+                status.textContent='연결 만료 · 메인 화면에서 VI 독립창을 다시 열어주세요.';
+                // The window token lives in the server's memory, so a server restart ends it (2026-11-12). Before any data the
+                // table kept saying "VI 수신 연결 중…"; say it in the table too.
+                if(!data.rows.length){const tr=document.createElement('tr');const td=cell(tr,'연결이 만료됐습니다(서버가 다시 시작됨). 메인 화면에서 VI 독립창을 다시 열어주세요.','vi-empty');td.colSpan=15;body.replaceChildren(tr);}
+                return;
+            }
             status.textContent='서버 연결 재시도 중 · 마지막 수신 자료 표시';
             retryTimer=setTimeout(connect,3000);
         }

@@ -3213,3 +3213,17 @@ body { height:100dvh; min-height:0; overflow:hidden; display:flex; flex-directio
 #tab_rank .lendable-zero-toggle input { margin:0; width:13px; height:13px; }
 /* Table numbers: Inter draws digits with different widths (211 is narrower than 209), so right-aligned rank and amount columns look uneven. Fixed-width digits in every table cell. */
 td, th { font-variant-numeric: tabular-nums; }
+
+/* 노트 그림 크기 조절 (memo-image-resize.js, 2026-11-12): 선택한 그림의 테두리와 조절점 8개. */
+.memo-image-overlay { position:absolute; z-index:20; box-sizing:border-box; border:1px solid #2563eb; pointer-events:none; }
+.memo-image-handle { position:absolute; width:10px; height:10px; box-sizing:border-box; background:#fff; border:1px solid #2563eb; border-radius:1px; pointer-events:auto; }
+/* 10px handles at −6px from the 1px-bordered box: their centres land on the picture's corners and edge midpoints. */
+.memo-image-handle-nw { left:-6px; top:-6px; cursor:nwse-resize; }
+.memo-image-handle-n { left:calc(50% - 5px); top:-6px; cursor:ns-resize; }
+.memo-image-handle-ne { right:-6px; top:-6px; cursor:nesw-resize; }
+.memo-image-handle-e { right:-6px; top:calc(50% - 5px); cursor:ew-resize; }
+.memo-image-handle-se { right:-6px; bottom:-6px; cursor:nwse-resize; }
+.memo-image-handle-s { left:calc(50% - 5px); bottom:-6px; cursor:ns-resize; }
+.memo-image-handle-sw { left:-6px; bottom:-6px; cursor:nesw-resize; }
+.memo-image-handle-w { left:-6px; top:calc(50% - 5px); cursor:ew-resize; }
+.memo-image-size { position:absolute; right:0; bottom:-22px; padding:1px 5px; font-size:11px; line-height:16px; color:#fff; background:#2563ebd9; border-radius:3px; white-space:nowrap; }

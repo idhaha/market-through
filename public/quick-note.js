@@ -77,6 +77,8 @@
             });
             const today = panel.querySelector('.ql-today'); today.textContent = '오늘'; today.title = '오늘 날짜 삽입';
             editor.root.setAttribute('aria-label', '메모 내용'); editor.enable(false);
+            // 붙여 넣은 그림을 선택해 테두리 · 조절점으로 크기를 바꾼다 (memo-image-resize.js, 2026-11-12).
+            window.MemoImageResize?.attach(editor);
             editor.on('text-change', () => {
                 update();
                 if (loaded && !saving && !conflict) status.textContent = dirty ? '저장하지 않은 변경 내용' : '서버에 저장됨';

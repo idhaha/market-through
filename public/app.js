@@ -6162,6 +6162,8 @@ function initMemoEditor() {
             placeholder: '메모를 작성하세요...'
         });
         console.log("✅ [initMemoEditor] Quill successfully initialized");
+        // 붙여 넣은 그림을 선택해 테두리 · 조절점으로 크기를 바꾼다 (memo-image-resize.js, 2026-11-12).
+        window.MemoImageResize?.attach(quillEditor);
         loadMemo();
 
         // [v28] Auto-save disabled per user request. Use manual 'Save' button.

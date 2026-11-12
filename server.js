@@ -344,7 +344,7 @@ const viMonitorService = require('./vi-monitor-service').createViMonitor({
     enabled: viRealtime,
     kiwoomToken: () => getAccessToken((process.env.KIWOOM_APPKEY || '').trim(), (process.env.KIWOOM_SECRETKEY || '').trim()),
     rejectKiwoomToken: () => { cachedToken = null; },
-    quoteFeed: viQuoteFeed,
+    quoteFeed: viQuoteFeed, log: fileLog,
     // NXT 행 매수 10호가 평균: 한투 NX 호가 조회(kis-nxt-book.js), NXT 발동 행이 켜져 있는 동안만 5초마다.
     nxtBook: require('./kis-nxt-book').createKisNxtBook({
         credentials: () => ({ domain: (process.env.EFRIEND_DOMAIN || '').trim(), appKey: (process.env.EFRIEND_APPKEY || '').trim(), secretKey: (process.env.EFRIEND_SECRETKEY || '').trim() }),

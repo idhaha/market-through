@@ -29,10 +29,10 @@ const assert=require('node:assert/strict'),express=require('express'),{chromium}
   await page.goto('http://127.0.0.1:'+server.address().port+'/vi-monitor.html');await page.waitForSelector('#viBody td.name');
   const codes=()=>page.evaluate(()=>[...document.querySelectorAll('#viBody tr[data-code]')].map(tr=>tr.dataset.code).sort());
   const cells=code=>page.locator(`#viBody tr[data-code="${code}"] td`).allTextContents();
-  // Header: no 'KRX대비' group; three 괴리율 columns; 시가총액 left of 거래대금.
+  // Header: one '괴리율' heading over KRX · NXT · 선물(월물 선택) (2026-11-12); 시가총액 left of 거래대금.
   const head=(await page.locator('.vi-panel table thead th').allTextContents()).map(t=>t.replace(/\s+/g,' ').trim());
-  assert.deepEqual(head,['순위','시장','종목명','등락률','시가총액','거래대금(백만)','발동 거래소','구분','발동 시각','해제 시각','해제까지(예상)','KRX 괴리율','NXT 괴리율','선물 괴리율 최근월차기월','매수10호가평균']);
-  assert.equal(await page.locator('.comparison-group').count(),0);
+  assert.deepEqual(head,['순위','시장','종목명','등락률','시가총액','거래대금(백만)','발동 거래소','구분','발동 시각','해제 시각','해제까지(예상)','괴리율','매수10호가평균','KRX','NXT','선물 최근월차기월']);
+  assert.equal(await page.locator('.comparison-group').count(),1);assert.equal(await page.locator('.comparison-group').getAttribute('colspan'),'3');
   // Default: only rows that reached 1%.
   assert.equal(await page.locator('#viGapOnly').isChecked(),true);
   assert.deepEqual(await codes(),['000001','000002','000004','000005','000006']);

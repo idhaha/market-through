@@ -9,7 +9,7 @@ for (const file of ['public/index.html', 'public/rank-independent.html']) {
     assert.deepEqual(list.map(o => o.label), ['30초 간격', '1분 간격', '2분 간격', '3분 간격', '4분 간격', '5분 간격', '10분 간격', '1시간 간격'], file);
     for (const [minutes, value] of [[2, '2m'], [3, '3m'], [4, '4m'], [5, '5m']]) assert.equal(list.find(o => o.value === value).interval, minutes * 60000);
 }
-const html = fs.readFileSync('public/index.html', 'utf8'), app = fs.readFileSync('public/app.js', 'utf8');
+const html = fs.readFileSync('public/index.html', 'utf8'), app = fs.readFileSync('public/app.js', 'utf8').replace(/\r\n/g, '\n'); // the Windows checkout is CRLF (core.autocrlf)
 assert.deepEqual(select(html, 'rankQueryTp').map(o => [o.value, o.label]), [['4', '당일누적'], ['5', '30초'], ['1', '1분'], ['2', '10분'], ['3', '1시간']]);
 assert.match(html, /<option value="4" selected>당일누적<\/option>/, '당일누적 is the default');
 assert.match(app, /: '4';\n\s*if \(rankQuerySelect\) rankQuerySelect\.value = query;/, 'no saved choice → 당일누적');

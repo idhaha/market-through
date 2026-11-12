@@ -41,8 +41,8 @@ function parseKiwoomVi(d) {
         market:{'001':'K','101':'Q'}[String(v['9008']||'').trim()]||null};
 }
 function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws'),directory,now=Date.now,policy=()=>require('./trading-session').current(),
-    enabled=()=>true,kiwoomToken,rejectKiwoomToken=()=>{},quoteFeed=null,nxtBook=null,releaseGraceMs=180000,gapThreshold=1,recordMs=240000,releaseWaitMs=15000,futuresEventMs=300000,futuresEventsState=()=>'',recordTimer=(fn,ms)=>{const t=setTimeout(fn,ms);t.unref?.();return t;}}={}) {
-    let day=dayKey(now()), rows=new Map(), quotes=new Map(), masterDay='', stockMaster=new Map(), futuresMaster=[], expiries={}, futuresRefs={}, masterTask;
+    enabled=()=>true,kiwoomToken,rejectKiwoomToken=()=>{},quoteFeed=null,nxtBook=null,futuresBookMs=5000,log=()=>{},releaseGraceMs=180000,gapThreshold=1,recordMs=240000,releaseWaitMs=15000,futuresEventMs=300000,futuresEventsState=()=>'',recordTimer=(fn,ms)=>{const t=setTimeout(fn,ms);t.unref?.();return t;}}={}) {
+    let day=dayKey(now()), rows=new Map(), quotes=new Map(), masterDay='', stockMaster=new Map(), futuresMaster=[], expiries={}, futuresRefs={}, futuresMul={}, masterTask;
     let socket, stopped=true, connecting=false, retry, ackTimer, regTimer, schedule, saveTimer, masterTimer, emitTimer, registered=0, reconnects=0;
     let state='대기 중', storageError='', lastReceivedAt=null;
     // 거래대금(전일기준) · 시가총액 필터(2026-11-10):
@@ -93,7 +93,7 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
         const saved=masterFile&&fs.existsSync(masterFile)&&JSON.parse(fs.readFileSync(masterFile,'utf8'));
         if(saved&&saved.day===day&&Array.isArray(saved.stocks)&&Array.isArray(saved.futures)) {
             stockMaster=new Map(saved.stocks.filter(s=>Array.isArray(s)&&/^[0-9A-Z]{6}$/.test(s[0])).map(([code,name,market])=>[code,{name,market}]));
-            futuresMaster=saved.futures;expiries=saved.expiries&&typeof saved.expiries==='object'?saved.expiries:{};futuresRefs=saved.futuresRefs&&typeof saved.futuresRefs==='object'?saved.futuresRefs:{};masterDay=day;
+            futuresMaster=saved.futures;expiries=saved.expiries&&typeof saved.expiries==='object'?saved.expiries:{};futuresRefs=saved.futuresRefs&&typeof saved.futuresRefs==='object'?saved.futuresRefs:{};futuresMul=saved.futuresMul&&typeof saved.futuresMul==='object'?saved.futuresMul:{};masterDay=day;
         }
     } catch {}
     function persist() {
@@ -106,14 +106,14 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
         clearTimeout(masterTimer);
         if(!masterFile||masterDay!==day)return;
         masterTimer=setTimeout(()=>{try{fs.mkdirSync(directory,{recursive:true});
-            fs.writeFileSync(masterFile+'.tmp',JSON.stringify({day,stocks:[...stockMaster].map(([code,s])=>[code,s.name,s.market]),futures:futuresMaster,expiries,futuresRefs}));
+            fs.writeFileSync(masterFile+'.tmp',JSON.stringify({day,stocks:[...stockMaster].map(([code,s])=>[code,s.name,s.market]),futures:futuresMaster,expiries,futuresRefs,futuresMul}));
             fs.renameSync(masterFile+'.tmp',masterFile);}catch{storageError='LS 종목 정보 저장 실패';}},100);
         masterTimer.unref?.();
     }
     function rollover() {
         if(day===dayKey(now()))return;
         for(const id of [...records.keys()])finishRecord(id,true);
-        day=dayKey(now());rows.clear();quotes.clear();masterDay='';expiries={};futuresRefs={};enrichments.clear();samples.clear();futureOwner.clear();prevAmounts.clear();kiwoomListDay='';
+        day=dayKey(now());rows.clear();quotes.clear();masterDay='';expiries={};futuresRefs={};futuresMul={};enrichments.clear();samples.clear();futureOwner.clear();prevAmounts.clear();kiwoomListDay='';
         for(const [code,timer] of releaseTimers){clearTimeout(timer);quoteFeed?.unwatch(code);}releaseTimers.clear();
         persist();
     }
@@ -126,7 +126,7 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
     // ---- 발동 거래소 기준(Base) 값 (2026-11-11)
     // The triggering exchange (KRX, NXT or a futures contract) is the Base. 괴리율 of the other markets =
     // (그 시장 현재가 ÷ Base 현재가 − 1) × 100; the Base column shows 'Base'. 등락률 · 거래대금 · 시가총액 · 호가 평균 come
-    // from the triggering exchange too (호가 평균: KRX rows from NH ob, NXT rows from KIS NX since 2026-11-12; futures have no 등락률 · 거래대금 here).
+    // from the triggering exchange too (호가 평균: KRX rows from NH ob, NXT rows from KIS NX, futures rows from LS t8403 × 승수 since 2026-11-12; futures have no 등락률 · 거래대금 here).
     // nxtSupported false → NXT 괴리율 '미지원'; no stock futures → 선물 괴리율 '미지원'.
     // 선물 등락률 = (선물 현재가 ÷ t8402 기준가 − 1) × 100. 선물 거래대금은 받지 않는다.
     const futuresRate=(code,price)=>code&&futuresRefs[code]>0?comparison(price,futuresRefs[code]):null;
@@ -144,7 +144,7 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
             NXT:r.exchange==='NXT'?'Base':nxtSupported===false?'미지원':comparison(nxt?.price,basePrice),
             FUT:r.exchange==='FUT'?'Base':futuresSupported===false?'미지원':{recent:futures.recent?.rate??null,next:futures.next?.rate??null}
         };
-        const book=r.exchange==='KRX'?quotes.get('BID:'+r.code):r.exchange==='NXT'?quotes.get('BID:NXT:'+r.code):null;
+        const book=r.exchange==='KRX'?quotes.get('BID:'+r.code):r.exchange==='NXT'?quotes.get('BID:NXT:'+r.code):r.exchange==='FUT'?quotes.get('BID:FUT:'+r.contract?.code):null;
         const listed=listInfo.get(r.code),spot=(r.exchange==='NXT'?nxt?.price:krx?.price)||krx?.price||nxt?.price||listed?.lastPrice||null,prev=prevAmounts.get(r.code);
         return {...r,bidAverage:book?.value??null,bidAverageAt:book?.receivedAt??null,bidAverageVia:book?.via??null,
             rate:r.exchange==='FUT'?futuresRate(r.contract?.code,basePrice):base?.rate??null,amount:r.exchange==='FUT'?null:base?.amount??null,basePrice:basePrice??null,baseReceivedAt:base?.receivedAt??null,
@@ -175,6 +175,7 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
             'KRX 괴리율':gapText(g?.KRX),'NXT 괴리율':gapText(g?.NXT),
             '선물 괴리율(최근월)':typeof fut==='string'?fut:round2(fut?.recent),'선물 괴리율(차기월)':typeof fut==='string'?fut:round2(fut?.next),
             'KRX 매수10호가평균(원)':v.exchange==='KRX'&&Number.isFinite(rel?rel.bidAverage:v.bidAverage)?Math.round(rel?rel.bidAverage:v.bidAverage):null,
+            '선물 매수10호가평균(원)':v.exchange==='FUT'&&Number.isFinite(rel?rel.bidAverage:v.bidAverage)?Math.round(rel?rel.bidAverage:v.bidAverage):null,
             'NXT 매수10호가평균(원)':v.exchange==='NXT'&&Number.isFinite(rel?rel.bidAverage:v.bidAverage)?Math.round(rel?rel.bidAverage:v.bidAverage):null,'전일 거래대금(원)':v.prevAmount};
     }
     // ---- 발동 때 · 해제 때 값 (2026-11-09)
@@ -269,8 +270,33 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
         if(!nxtBook)return;
         nxtBook.set(stopped?[]:[...new Set([...rows.values()].filter(r=>r.exchange==='NXT'&&(r.active||r.releasePending)).map(r=>r.code))]);
     }
+    // 선물 행의 매수 10호가 평균(원, 2026-11-12): LS t8403(주식선물 현재가호가, 10단계, 입력은 shcode)을 그 선물 행이 켜져 있는
+    // 동안 futuresBookMs마다 조회한다. 금액 = 가격 × 잔량(계약) × 거래승수(t8402 mulcnt), 가격이 있는 단계의 평균.
+    // 한투 FHMIF10010000은 5단계만 줘서 쓰지 않는다(11/12 확인: 1~5호가는 LS와 같음). LS 조회는 rest() 한 줄로 1.05초 간격.
+    let futuresBookTimer=null,futuresBookRunning=false,futuresBookError='';
+    const futuresBookWanted=()=>stopped?[]:[...new Set([...rows.values()].filter(r=>r.exchange==='FUT'&&r.active&&r.contract?.code).map(r=>r.contract.code))];
+    async function pollFuturesBooks(){
+        if(futuresBookRunning)return;futuresBookRunning=true;
+        try{
+            for(const code of futuresBookWanted()){
+                try{
+                    if(futuresMul[code]===undefined)await expiryOf(code);
+                    const o=(await rest('t8403','futureoption/market-data',{shcode:code})).t8403OutBlock||{},mul=futuresMul[code];
+                    const amounts=Array.from({length:10},(_,i)=>[num(o['bidho'+(i+1)]),num(o['bidrem'+(i+1)])]).filter(([p,q])=>p>0&&q!=null&&q>=0).map(([p,q])=>p*q*mul);
+                    if(mul>0&&amounts.length){quotes.set('BID:FUT:'+code,{value:amounts.reduce((a,v)=>a+v,0)/amounts.length,receivedAt:now(),via:'LS',levels:amounts.length,multiplier:mul});emit();}
+                    if(futuresBookError){log('[VI 선물 호가] LS t8403 조회 다시 됨');futuresBookError='';}
+                }catch(e){const text=String(e?.message||e).slice(0,100);if(text!==futuresBookError)log('[VI 선물 호가] LS t8403 조회 실패 '+code+': '+text);futuresBookError=text;}
+            }
+        }finally{futuresBookRunning=false;}
+    }
+    function syncFuturesBook(){
+        const wanted=futuresBookWanted();
+        if(!wanted.length){clearInterval(futuresBookTimer);futuresBookTimer=null;return;}
+        if(!futuresBookTimer){futuresBookTimer=setInterval(()=>void pollFuturesBooks(),futuresBookMs);futuresBookTimer.unref?.();
+            if(wanted.some(c=>!quotes.has('BID:FUT:'+c)))void pollFuturesBooks();}
+    }
     function emit(){
-        syncNxtBook();
+        syncNxtBook();syncFuturesBook();
         if(emitTimer||!listeners.size)return;
         emitTimer=setTimeout(()=>{emitTimer=null;const data=snapshot();for(const listener of listeners)listener(data);},50);emitTimer.unref?.();
     }
@@ -333,18 +359,20 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
             const futures=await rest('t8401','futureoption/market-data',{dummy:''});
             if(!Array.isArray(futures.t8401OutBlock))throw Error('LS 선물 마스터 형식 오류');
             stockMaster=new Map(stocks.t8436OutBlock.map(r=>[r.shcode,{name:r.hname,market:r.gubun==='1'?'K':r.gubun==='2'?'Q':'-'}]));
-            futuresMaster=futures.t8401OutBlock.map(f=>({basecode:f.basecode,shcode:f.shcode,hname:f.hname}));expiries={};futuresRefs={};masterDay=day;persistMasters();
+            futuresMaster=futures.t8401OutBlock.map(f=>({basecode:f.basecode,shcode:f.shcode,hname:f.hname}));expiries={};futuresRefs={};futuresMul={};masterDay=day;persistMasters();
         })().finally(()=>{masterTask=null;});return masterTask;
     }
     // Expiry per futures code (t8402) is part of the saved daily masters; its price only seeds the first quote.
     async function expiryOf(code) {
-        if(expiries[code]!==undefined&&futuresRefs[code]!==undefined)return {expiry:expiries[code],price:null};
+        if(expiries[code]!==undefined&&futuresRefs[code]!==undefined&&futuresMul[code]!==undefined)return {expiry:expiries[code],price:null};
         const d=(await rest('t8402','futureoption/market-data',{focode:code})).t8402OutBlock;
         const expiry=String(d?.lastmonth||'').replaceAll('-','');
         expiries[code]=/^\d{8}$/.test(expiry)?expiry:'';
         // 2026-11-12: 기준가 (recprice; else price − signed change), the base of the futures 등락률 (NH vC carries no rate).
         const change=num(d?.change),ref=num(d?.recprice)||(num(d?.price)>0&&change!=null?num(d.price)-(['4','5'].includes(String(d?.sign))?-Math.abs(change):Math.abs(change)):null);
-        futuresRefs[code]=ref>0?ref:null;persistMasters();
+        futuresRefs[code]=ref>0?ref:null;
+        // 거래승수 (mulcnt: 주식선물 10, ETF 선물 100), for the futures 매수10호가 평균 in KRW (2026-11-12).
+        futuresMul[code]=num(d?.mulcnt)>0?num(d.mulcnt):null;persistMasters();
         return {expiry:expiries[code],price:num(d?.price)};
     }
     const activeCode=code=>[...rows.values()].some(r=>r.code===code&&r.active);
@@ -574,7 +602,7 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
         syncNxtBook();void connect();
         schedule=setInterval(()=>{rollover();if(policy()&&!policy().spotAt(now())&&socket)socket.close();else if(!socket)void connect();},30000);schedule.unref?.();
     }
-    function stop(){for(const t of futuresTimers.values())clearTimeout(t);futuresTimers.clear();for(const id of [...records.keys()])finishRecord(id,true);for(const t of releaseTimers2.values())clearTimeout(t);releaseTimers2.clear();stopped=true;clearTimeout(retry);clearTimeout(emitTimer);clearInterval(schedule);cleanup();for(const t of releaseTimers.values())clearTimeout(t);releaseTimers.clear();quoteFeed?.stop();nxtBook?.stop();socket?.terminate();socket=null;}
+    function stop(){for(const t of futuresTimers.values())clearTimeout(t);futuresTimers.clear();for(const id of [...records.keys()])finishRecord(id,true);for(const t of releaseTimers2.values())clearTimeout(t);releaseTimers2.clear();stopped=true;clearTimeout(retry);clearTimeout(emitTimer);clearInterval(schedule);cleanup();for(const t of releaseTimers.values())clearTimeout(t);releaseTimers.clear();quoteFeed?.stop();nxtBook?.stop();clearInterval(futuresBookTimer);futuresBookTimer=null;socket?.terminate();socket=null;}
     // Stop the new-VI blink for one activation; a later activation creates a fresh row and blinks again.
     function dismissFlash(code,exchange,startedAt) {
         rollover();
