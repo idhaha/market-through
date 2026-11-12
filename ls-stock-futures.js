@@ -17,7 +17,7 @@ const failure = (message, status = 400) => Object.assign(new Error(message), { s
 const validCode = code => /^[0-9A-Z]{6}$/.test(String(code || ''));
 
 function createLsStockFutures({ http, getToken, directory, supply, now = Date.now, policy = () => require('./trading-session').current(),
-    pause = ms => new Promise(resolve => setTimeout(resolve, ms)), log = () => {}, kisMinute = null }) {
+    pause = ms => new Promise(resolve => setTimeout(resolve, ms)), log = () => {}, kisMinute = null, collects = () => true }) {
     let master = null, masterTask = null, timer = null, running = null;
     const dailyCandles = new Map(), dailyFlow = new Map(), status = new Map(), starts = new Map(), probed = new Map(), minuteBars = new Map(), minuteFailureLogged = new Map();
     // LS allows one call per second per TR (shared app key), so starts of the same TR are 1.1 s apart. Calls may overlap:
@@ -146,7 +146,8 @@ function createLsStockFutures({ http, getToken, directory, supply, now = Date.no
         })().catch(error => log('[LS stock futures] ' + error.message)).finally(() => { running = null; });
         return running;
     }
-    function start() { if (timer) return; timer = setInterval(() => void collect(), 60000); timer.unref?.(); void collect(); }
+    // collects(): false on servers that leave the 1-minute collection to Oracle (vi-alerts-host.js stockFuturesCollect, 2026-11-12).
+    function start() { if (timer || !collects()) return; timer = setInterval(() => void collect(), 60000); timer.unref?.(); void collect(); }
     function stop() { clearInterval(timer); timer = null; }
 
     // ---- minute query: a stored day, today on demand, the previous session on demand (t8463 bgubun 1)
@@ -160,7 +161,7 @@ function createLsStockFutures({ http, getToken, directory, supply, now = Date.no
         let saved = readDay(code, date);
         const registered = (supply.summary().stocks || []).some(s => s.code === code);
         if (date === today && session.started) {
-            if (!saved || now() - (saved.updatedAt || 0) > (registered && collectingAt(now()) ? 180000 : 60000))
+            if (!saved || now() - (saved.updatedAt || 0) > (registered && collects() && collectingAt(now()) ? 180000 : 60000))
                 saved = await refreshDay(code, item).catch(() => saved);
         } else if ((date === session.latest || date === session.previous) && !final(saved)) {
             // One try per day and 10 min: LS answers an empty or other day when it no longer serves this one.
@@ -175,7 +176,7 @@ function createLsStockFutures({ http, getToken, directory, supply, now = Date.no
         return { success: true, mode: 'minute', date, multiplier, available_dates: dates, points: (saved?.points || []).filter(p => p.t < Math.floor(now() / 60000) * 60000 || date !== today),
             has_more: !!earlier, cursor: earlier ? compact(earlier) : null, contract: saved?.contract || item.nearest,
             warnings: [], // How the values are collected is in the card's i guide, not the status line (it overflowed the card).
-            status: { error: status.get(code)?.error || '' }, collecting: collectingAt(now()) };
+            status: { error: status.get(code)?.error || '' }, collecting: collects() && collectingAt(now()) };
     }
     // ---- day query: t8462, up to 179 days per call, newest first; the cursor is the day before the oldest row
     async function day(code, input) {
@@ -219,12 +220,17 @@ function createLsStockFutures({ http, getToken, directory, supply, now = Date.no
         for (let i = 0; i < 7 && !isOpen(day); i++) day = new Date(Date.parse(day + 'T00:00:00Z') - 86400000).toISOString().slice(0, 10);
         return day;
     }
-    function kisContract(item, day) {
+    function kisContract(item, day, after = 0) {
         let year = Number(day.slice(0, 4)), month = Number(day.slice(5, 7));
-        if (day > expiryOf(year, month)) { month += 1; if (month > 12) { month = 1; year += 1; } }
+        if (day > expiryOf(year, month)) month += 1;
+        month += after; while (month > 12) { month -= 12; year += 1; }
         const underlying = item.id.slice(1), mm = String(month).padStart(2, '0');
         return year >= 2026 ? 'A' + underlying + String(year % 10) + mm : '1' + underlying + (YEAR_LETTERS[year] || '?') + mm;
     }
+    // On an expiry day the expiring month stops trading at 15:20 (its last bar is 15:19) while the flow runs to 15:45
+    // (2026-11-12: A11611 last bar 15:19, A11612 bars to 15:45). The bars from 15:20 come from the next month.
+    const ROLL_TIME = '152000';
+    const isExpiryDay = day => isOpen(day) && day === expiryOf(Number(day.slice(0, 4)), Number(day.slice(5, 7)));
     // Bars of one day from 'hour' back (all pages down to 08:45, or only the newest page to top up today's bars).
     async function fetchKisDay(item, day, { hour = '154600', pages = 8 } = {}) {
         const contract = kisContract(item, day), ymd = compact(day), bars = new Map();
@@ -243,7 +249,18 @@ function createLsStockFutures({ http, getToken, directory, supply, now = Date.no
             hour = previous;
             await pause(300);
         }
-        return { contract, candles: [...bars.values()].sort((a, b) => a.t - b.t) };
+        let next = null;
+        // Today before 15:20 there is nothing to add yet, so the next month is not asked.
+        if (isExpiryDay(day) && !(day === dayKey(now()) && now() < at(ymd, ROLL_TIME))) {
+            next = kisContract(item, day, 1);
+            const rows = await kisMinute({ code: next, date: ymd, hour: '154600' });
+            for (const r of rows) {
+                const time = String(r.stck_cntg_hour || '').padStart(6, '0'); if (String(r.stck_bsop_date) !== ymd || time < ROLL_TIME) continue;
+                const t = at(ymd, time.slice(0, 4) + '00'), bar = { t, open: Math.abs(num(r.futs_oprc)), high: Math.abs(num(r.futs_hgpr)), low: Math.abs(num(r.futs_lwpr)), close: Math.abs(num(r.futs_prpr)) };
+                if (Number.isFinite(t) && [bar.open, bar.high, bar.low, bar.close].every(v => v > 0)) bars.set(t, bar);
+            }
+        }
+        return { contract, next, candles: [...bars.values()].sort((a, b) => a.t - b.t) };
     }
     // ---- candles: minute from KIS (memory only), day from t8405 연결선물 back to the oldest day served
     // t8405 pages (100 days each, newest first) are kept per code for the day; older pages load on demand.
@@ -277,7 +294,7 @@ function createLsStockFutures({ http, getToken, directory, supply, now = Date.no
         }
         const merged = new Map((live && cached ? cached.candles : []).map(c => [c.t, c]));
         for (const c of top.candles) merged.set(c.t, c);
-        const value = { contract, candles: [...merged.values()].sort((a, b) => a.t - b.t), at: now(), final: !live };
+        const value = { contract, next: top.next, candles: [...merged.values()].sort((a, b) => a.t - b.t), at: now(), final: !live };
         minuteBars.delete(key); minuteBars.set(key, value); if (minuteBars.size > 120) minuteBars.delete(minuteBars.keys().next().value);
         return value;
     }
@@ -289,7 +306,8 @@ function createLsStockFutures({ http, getToken, directory, supply, now = Date.no
             const bars = await minuteCandlesOf(code, item, date);
             // Bars exist for every open day back to KIS_MINUTE_FIRST, with or without stored flow, so 더 불러오기 steps open days.
             const earlier = date > KIS_MINUTE_FIRST ? openBefore(date) : null, more = !!earlier && earlier >= KIS_MINUTE_FIRST;
-            return { success: true, mode, date, points: bars.candles, has_more: more, cursor: more ? compact(earlier) : null, contract: bars.contract, source: 'KIS FHKIF03020200 ' + bars.contract };
+            return { success: true, mode, date, points: bars.candles, has_more: more, cursor: more ? compact(earlier) : null, contract: bars.contract, ...(bars.next ? { next_contract: bars.next, roll_time: '15:20' } : {}),
+                source: 'KIS FHKIF03020200 ' + bars.contract + (bars.next ? ' (만기일 15:20부터 ' + bars.next + ')' : '') };
         }
         const to = /^\d{8}$/.test(String(input.to || '')) ? input.to : compact(dayKey(now()));
         const from = /^\d{8}$/.test(String(input.from || '')) ? input.from : null, count = Math.min(5000, Number(input.count) || 600);

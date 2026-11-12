@@ -6,6 +6,10 @@
 /* Clock right after the title; the check boxes go to the right end (2026-11-09). */
 .vi-panel .vi-clock { color:var(--text-muted); font-size:12px; margin-left:12px; }
 .vi-panel .panel-header .vi-controls { margin-left:auto; }
+/* 2026-11-12: the note sits right of the clock; it never pushes the filters · checkboxes to a new line by itself, it is cut with … and shown whole on hover (title). */
+/* The header still wraps only when the title, clock and controls alone do not fit (500px windows); the note, flex-basis 0, never causes it. */
+.vi-panel .panel-header h1, .vi-panel .vi-clock { flex-shrink:0; white-space:nowrap; }
+.vi-panel .panel-header .vi-filter-note { flex:1 1 0; min-width:0; margin-left:12px; font-size:12px; line-height:16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .vi-panel .table-wrapper { overflow:auto; max-height:calc(100vh - 200px); }
 /* Like the trading independent window: the table fills the window and its columns shrink with it down to their content (no fixed 1050px minimum). */
 .vi-panel table { width:100%; min-width:0; border-collapse:collapse; }

@@ -12,7 +12,7 @@ const assert=require('node:assert/strict'),express=require('express'),{chromium}
   await page.addInitScript(()=>localStorage.setItem('viGapOnly','false'));
   await page.goto('http://127.0.0.1:'+server.address().port+'/vi-monitor.html');await page.waitForSelector('#viBody td.name');
   const header=page.locator('thead th').filter({has:page.locator('[data-sort="bidAverage"]')});
-  assert.equal(await header.locator('.th-lines').innerText(),'KRX 매수\n10호가평균','The title breaks after KRX 매수 (2026-11-09)');
+  assert.equal(await header.locator('.th-lines').innerText(),'매수\n10호가평균','The title breaks after 매수 (KRX 빠짐: NXT 행도 채움, 2026-11-12)');
   assert.equal(await page.locator('#viBody tr:first-child td').count(),15);
   const shown=async()=>page.evaluate(()=>Object.fromEntries([...document.querySelectorAll('#viBody tr')].map(tr=>[tr.dataset.code,tr.lastElementChild.textContent])));
   // Whole numbers with 만 · 억 · 조 (2026-11-09: no decimals).
@@ -26,7 +26,7 @@ const assert=require('node:assert/strict'),express=require('express'),{chromium}
   let size=await fit();assert.ok(Math.abs(size.table-size.panel)<=1,JSON.stringify(size));
   await page.setViewportSize({width:1250,height:600});await page.waitForTimeout(100);
   size=await fit();assert.ok(Math.abs(size.table-size.panel)<=1&&size.scroll<=size.panel,JSON.stringify(size));
-  assert.equal(await header.locator('.th-lines').innerText(),'KRX 매수\n10호가평균','The two-line title keeps its own break');
+  assert.equal(await header.locator('.th-lines').innerText(),'매수\n10호가평균','The two-line title keeps its own break');
   assert.deepEqual(errors,[]);
   console.log('PASS VI bid average column: two-line title, unit formatting, exact title, sorting and window-following width');
  }finally{await browser.close();server.close();}

@@ -489,7 +489,9 @@
                 if (append || !historyLoaded) { cursor = result.cursor; hasMore = result.has_more === true; historyLoaded = true; }
                 if(firstResponse && restoreWindow && mode==='minute'){
                     // A symbol change must refill the existing common period, not just its latest session.
-                    const days=restoreWindow.days.filter(day=>day>=restoreWindow.first.slice(0,10) && day<=restoreWindow.last.slice(0,10));
+                    // Closed days (weekends, holidays) have no flow: skip them (2026-11-12: one browser asked 11/7 · 11/8 4,775 times each on 11/11).
+                    const calendar=window.TradingRefresh?.state?.days || {},open=day=>![0,6].includes(new Date(day+'T00:00:00Z').getUTCDay()) && calendar[day]!==false;
+                    const days=restoreWindow.days.filter(day=>day>=restoreWindow.first.slice(0,10) && day<=restoreWindow.last.slice(0,10) && open(day));
                     for(const day of days){
                         minuteDays.add(day);
                         if(day===result.date)continue;

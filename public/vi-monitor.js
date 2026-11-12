@@ -107,7 +107,7 @@
             const fv=futureGap(g,month.value),future=r.futures?.[month.value];
             gapCell(fv,r.exchange==='FUT'?'발동 거래소(Base)':fv==='미지원'?'주식선물이 없는 종목':future?`${future.name||future.code} ÷ ${base} − 1 · 만기 ${future.expiry}${released}`:r.detailError||'해당 월물 또는 가격 미수신');
             const bid=shown(r,'bidAverage'),book=cell(tr,money(bid),'amount');
-            book.title=r.exchange!=='KRX'?'KRX 발동 행만 (NH 호가는 KRX)':Number.isFinite(bid)?`${Math.round(bid).toLocaleString('ko-KR')}원${x?released:` · 수신 ${time(r.bidAverageAt)}${r.bidAverageVia==='REST'?' (조회 5초 주기)':''}`}`:'KRX 호가 미수신';
+            book.title=r.exchange==='FUT'?'선물 행은 호가 평균 없음':Number.isFinite(bid)?`${r.exchange} 매수 10호가 평균 ${Math.round(bid).toLocaleString('ko-KR')}원${x?released:` · 수신 ${time(r.bidAverageAt)}${r.bidAverageVia==='REST'?' (NH 조회 5초 주기)':r.bidAverageVia==='KIS'?' (한투 NX 조회 5초 주기)':''}`}`:`${r.exchange} 호가 미수신`;
             fragment.append(tr);
         });
         if(!fragment.childNodes.length){const tr=document.createElement('tr');const td=cell(tr,data.rows.length?'조건에 맞는 VI 종목이 없습니다. (괴리율 1% 이상 보기 · 거래대금 · 시가총액 조건을 바꾸면 더 볼 수 있습니다)':'수신한 당일 VI 종목이 없습니다.','vi-empty');td.colSpan=15;fragment.append(tr);}
@@ -122,7 +122,7 @@
         }
         // Rows hidden only because their value is not known yet (still loading) are counted, so they are not mistaken for "none".
         const unknown=data.rows.filter(r=>(!gapOnly.checked||r.gapHit)&&!passes(r)&&(Number(prevFilter.value)&&r.prevAmount==null||Number(capFilter.value)&&shown(r,'marketCap')==null)).length;
-        filterNote.textContent=unknown?`값 확인 전이라 빠진 행 ${unknown}건`:'';
+        filterNote.textContent=unknown?`값 확인 전이라 빠진 행 ${unknown}건`:'';filterNote.title=filterNote.textContent;
         countdown();
     }
     for(const button of document.querySelectorAll('[data-sort]'))button.addEventListener('click',()=>{

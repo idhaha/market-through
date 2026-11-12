@@ -132,7 +132,7 @@ test('filters: listed shares (ka10099, once a day) and the previous-day trade va
         assert.equal(again.snapshot().rows[0].prevAmount,4962835e6);again.stop();
     }finally{m.stop();fs.rmSync(directory,{recursive:true,force:true});}
 });
-test('Base follows the triggering exchange: an NXT VI compares KRX with NXT; a futures JX0 event makes its own row for 5 minutes',async()=>{
+test('Base follows the triggering exchange: an NXT VI compares KRX with NXT; a futures JX0 step above 1 makes its own row for 5 minutes; JD0 makes none',async()=>{
     const directory=fs.mkdtempSync(path.join(os.tmpdir(),'vi-base-'));
     let clock=at('090500');const snaps=[];
     const quoteFeed={start(){},stop(){},watch(){},unwatch(){},state:()=>({wanted:0}),nxtSupported:()=>true,snapshot:(exchange,code)=>snaps.push(exchange+':'+code)};
@@ -148,28 +148,62 @@ test('Base follows the triggering exchange: an NXT VI compares KRX with NXT; a f
         assert.equal(r.gap.NXT,'Base');assert.equal(Math.round(r.gap.KRX*100)/100,-1);assert.equal(Math.round(r.gap.FUT.recent*100)/100,1);
         assert.deepEqual([r.rate,r.amount,r.bidAverage],[4,5000,null],'등락률 · 거래대금 from NXT; the KRX book is not shown for an NXT row');
         assert.equal(r.gapHit.kind,'KRX','|KRX ÷ NXT − 1| = 1% counts');
-        // Futures event: the first JX0 step makes a row; its contract is the Base.
+        // Futures event: a JX0 step above 1 (the normal ±10% band) makes a row; its contract is the Base.
+        // Message shapes as received on 2026-11-12: the side that did not expand still carries '01'.
         clock=at('091000');
-        await m.onFuturesEvent({tr:'JX0',futcode:'A116B000',body:{futcode:'A116B000',upstep:'1',dnstep:'0',uplmtprice:'1100',dnlmtprice:'900'},receivedAt:clock});
+        await m.onFuturesEvent({tr:'JX0',futcode:'A116B000',body:{futcode:'A116B000',upstep:'02',dnstep:'01',uplmtprice:'1200',dnlmtprice:'900'},receivedAt:clock});
         let fut=m.snapshot().rows.find(x=>x.exchange==='FUT');
-        assert.deepEqual([fut.code,fut.name,fut.contract.code,fut.contract.month,fut.kindText,fut.direction,fut.durationMs],['005930','삼성전자','A116B000','202611','제한폭 확대 1단계','up',60]);
+        assert.deepEqual([fut.code,fut.name,fut.contract.code,fut.contract.month,fut.kindText,fut.direction,fut.durationMs],['005930','삼성전자','A116B000','202611','상한 2단계 확대 (±20%)','up',60]);
         // 선물 등락률 = 선물 현재가 ÷ t8402 기준가(recprice 100,000) − 1; no futures 거래대금.
         assert.deepEqual([Math.round(fut.rate*100)/100,fut.amount],[1,null]);
         assert.equal(fut.gap.FUT,'Base');assert.equal(Math.round(fut.gap.KRX*100)/100,-1.98);assert.equal(Math.round(fut.gap.NXT*100)/100,-0.99);
-        // The same step again is not a new event; JD0 only sets its baseline on the first message.
-        await m.onFuturesEvent({tr:'JX0',futcode:'A116B000',body:{futcode:'A116B000',upstep:'1',dnstep:'0'},receivedAt:clock});
-        await m.onFuturesEvent({tr:'JD0',futcode:'A116B000',body:{futcode:'A116B000',dy_gubun:'1',gubun:'0'},receivedAt:clock});
+        // The same step again is not a new event; JD0 (no longer registered) never makes a row, even 2 → 1 at the open.
+        await m.onFuturesEvent({tr:'JX0',futcode:'A116B000',body:{futcode:'A116B000',upstep:'02',dnstep:'01'},receivedAt:clock});
+        await m.onFuturesEvent({tr:'JD0',futcode:'A116B000',body:{futcode:'A116B000',dy_gubun:'2',dy_uplmtprice:'1100',dy_dnlmtprice:'900',gubun:''},receivedAt:clock});
+        await m.onFuturesEvent({tr:'JD0',futcode:'A116B000',body:{futcode:'A116B000',dy_gubun:'1',dy_uplmtprice:'1030',dy_dnlmtprice:'970',gubun:''},receivedAt:clock});
         assert.equal(m.snapshot().rows.filter(x=>x.exchange==='FUT').length,1);
         // After 5 minutes (here 60 ms) the futures row is released with the values at that moment.
         await pause(150);fut=m.snapshot().rows.find(x=>x.exchange==='FUT');
         assert.deepEqual([fut.active,fut.atRelease.basis,fut.atRelease.gap.FUT],[false,'5분 경과','Base']);
-        // A JD0 state change makes a separate row only for a change from the last value seen.
-        await m.onFuturesEvent({tr:'JD0',futcode:'A116B000',body:{futcode:'A116B000',dy_gubun:'2',gubun:'0'},receivedAt:clock+1000});
-        assert.equal(m.snapshot().rows.find(x=>x.exchange==='FUT'&&x.kind==='JD0').kindText,'실시간상하한 (2·0)');
-        // JD0 back to its first (normal) state is the release: the row ends before its 5-minute countdown.
-        await m.onFuturesEvent({tr:'JD0',futcode:'A116B000',body:{futcode:'A116B000',dy_gubun:'1',gubun:'0'},receivedAt:clock+2000});
-        fut=m.snapshot().rows.find(x=>x.exchange==='FUT'&&x.kind==='JD0');
-        assert.deepEqual([fut.active,fut.releasedAt,fut.atRelease.basis],[false,clock+2000,'실시간상하한 해제 이벤트']);
-        assert.equal(m.snapshot().rows.filter(x=>x.exchange==='FUT'&&x.active).length,0,'no new row for the return to normal');
+        // A first message at step 1 on both sides is the normal band: no row (other contract).
+        await m.onFuturesEvent({tr:'JX0',futcode:'A116C000',body:{futcode:'A116C000',upstep:'01',dnstep:'01'},receivedAt:clock});
+        assert.equal(m.snapshot().rows.filter(x=>x.exchange==='FUT').length,1);
+        // The down step rising makes a new row (DB하이텍 2026-11-12: upstep 01, dnstep 02 was shown as '확대 1단계' before).
+        await m.onFuturesEvent({tr:'JX0',futcode:'A116B000',body:{futcode:'A116B000',upstep:'02',dnstep:'02'},receivedAt:clock+1000});
+        fut=m.snapshot().rows.find(x=>x.exchange==='FUT'&&x.active);
+        assert.deepEqual([fut.kindText,fut.direction],['하한 2단계 확대 (±20%)','down']);
+        // A step back down ends the row before its countdown.
+        await m.onFuturesEvent({tr:'JX0',futcode:'A116B000',body:{futcode:'A116B000',upstep:'02',dnstep:'01'},receivedAt:clock+2000});
+        fut=m.snapshot().rows.find(x=>x.exchange==='FUT'&&x.kindText.startsWith('하한'));
+        assert.deepEqual([fut.active,fut.releasedAt,fut.atRelease.basis],[false,clock+2000,'제한폭 축소 이벤트']);
     }finally{m.stop();fs.rmSync(directory,{recursive:true,force:true});}
+});
+test('NXT row 호가 평균 comes from the KIS NX book while the NXT VI is on (08:00~08:50 has no KRX book, 2026-11-12)',async()=>{
+    const directory=fs.mkdtempSync(path.join(os.tmpdir(),'vi-nxt-book-'));
+    let clock=at('081000');const sets=[];
+    const quoteFeed={start(){},stop(){},watch(){},unwatch(){},state:()=>({wanted:0}),nxtSupported:()=>true,snapshot(){}};
+    const nxtBook={set:codes=>sets.push([...codes].join(',')),stop(){sets.push('stop');}};
+    const m=createViMonitor({now:()=>clock,policy:()=>({spotAt:()=>false}),directory,getToken:async()=>'ls',kiwoomToken:async()=>'k',http:lsHttp(),quoteFeed,nxtBook,releaseWaitMs:50});
+    try{
+        m.start();
+        m.receive(real('005930_NX','081000'));
+        assert.equal(sets.at(-1),'005930','the NXT VI starts the NXT book polling for that stock only');
+        // A KRX book (NH ob) must not fill the NXT row; the NXT book does.
+        m.onQuote({exchange:'KRX',key:'005930',bidAverage:9e9,via:'WS',receivedAt:clock});
+        let r=m.snapshot().rows.find(x=>x.exchange==='NXT');assert.equal(r.bidAverage,null);
+        m.onQuote({exchange:'NXT',key:'005930',bidAverage:2.5e9,via:'KIS',receivedAt:clock});
+        r=m.snapshot().rows.find(x=>x.exchange==='NXT');
+        assert.deepEqual([r.bidAverage,r.bidAverageVia],[2.5e9,'KIS']);
+        // Release: polling continues until the first NXT trade settles the release, then stops; the value stays.
+        clock=at('081200');m.receive(real('005930_NX','081000','081200'));
+        assert.equal(sets.at(-1),'005930','still polled while the release waits for the first NXT trade');
+        m.onQuote({exchange:'NXT',key:'005930',price:200000,rate:1,via:'WS',receivedAt:clock+1000});
+        assert.equal(sets.at(-1),'','no NXT row is on: no polling');
+        m.onQuote({exchange:'NXT',key:'005930',bidAverage:1e9,via:'KIS',receivedAt:clock+2000});
+        r=m.snapshot().rows.find(x=>x.exchange==='NXT');
+        assert.equal(r.atRelease.bidAverage,2.5e9,'the released row keeps the value at the release');
+        // A KRX VI does not poll the NXT book.
+        clock=at('091000');m.receive(real('000660','091000'));
+        assert.equal(sets.at(-1),'');
+    }finally{m.stop();assert.equal(sets.at(-1),'stop');fs.rmSync(directory,{recursive:true,force:true});}
 });

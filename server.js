@@ -326,7 +326,7 @@ const lsMarketSupplyProvider = require('./ls-market-supply').createLsMarketSuppl
     axios.interceptors.response.use(response => { check(response); return response; }, error => { check(error.response); throw error; });
 }
 // 장운영 알림은 오라클에서만, VI 모니터는 2026-11-10부터 로컬 PC에서만 받는다(vi-alerts-host.js).
-const { viRealtime, alertsRealtime, viAlertsStartupLines } = require('./vi-alerts-host');
+const { viRealtime, alertsRealtime, stockFuturesCollect, viAlertsStartupLines } = require('./vi-alerts-host');
 const marketAlertService = require('./market-alert-service').createMarketAlerts({
     directory: path.join(__dirname, 'data', 'market-alerts'), getToken: () => lsMarketSupplyProvider.accessToken(),
     rejectToken: () => lsMarketSupplyProvider.invalidateToken(),
@@ -345,10 +345,16 @@ const viMonitorService = require('./vi-monitor-service').createViMonitor({
     kiwoomToken: () => getAccessToken((process.env.KIWOOM_APPKEY || '').trim(), (process.env.KIWOOM_SECRETKEY || '').trim()),
     rejectKiwoomToken: () => { cachedToken = null; },
     quoteFeed: viQuoteFeed,
+    // NXT 행 매수 10호가 평균: 한투 NX 호가 조회(kis-nxt-book.js), NXT 발동 행이 켜져 있는 동안만 5초마다.
+    nxtBook: require('./kis-nxt-book').createKisNxtBook({
+        credentials: () => ({ domain: (process.env.EFRIEND_DOMAIN || '').trim(), appKey: (process.env.EFRIEND_APPKEY || '').trim(), secretKey: (process.env.EFRIEND_SECRETKEY || '').trim() }),
+        getToken: () => getEfriendAccessToken((process.env.EFRIEND_DOMAIN || '').trim(), (process.env.EFRIEND_APPKEY || '').trim(), (process.env.EFRIEND_SECRETKEY || '').trim()),
+        http: axios, onQuote: quote => viQuoteHandler(quote), log: fileLog
+    }),
     futuresEventsState: () => lsFuturesEvents?.state().state || ''
 });
 viQuoteHandler = viMonitorService.onQuote;
-// 주식선물 가격제한 이벤트(LS JD0 · JX0): VI를 받는 서버에서 VI_FUTURES_EVENTS=on일 때만(ls-futures-events.js).
+// 주식선물 가격제한 이벤트(LS JX0, 2026-11-12부터 JD0 뺌): VI를 받는 서버에서 VI_FUTURES_EVENTS=on일 때만(ls-futures-events.js).
 const lsFuturesEvents = require('./ls-futures-events').createLsFuturesEvents({
     getToken: () => lsMarketSupplyProvider.accessToken(), directory: path.join(__dirname, 'data', 'vi-monitor'),
     contracts: () => viMonitorService.futuresContracts(), onEvent: event => viMonitorService.onFuturesEvent(event), log: message => fileLog(message),
@@ -437,7 +443,7 @@ for (const [broker, service] of [['kis', kisStockSupplyService], ['ls', lsStockS
 // 종목 선물 수급 card: LS t8463/t8462 investor contracts, t8406/t8405 futures candles (registered stocks).
 const lsStockFuturesService = require('./ls-stock-futures').createLsStockFutures({
     http: axios, getToken: () => lsMarketSupplyProvider.accessToken(), directory: path.join(__dirname, 'data', 'ls-stock-futures'),
-    supply: supplyService, log: message => fileLog(message),
+    supply: supplyService, log: message => fileLog(message), collects: () => stockFuturesCollect(),
     // Past 1-minute futures bars (days LS t8406 no longer serves): KIS FHKIF03020200, stock futures market JF.
     kisMinute: async ({ code, date, hour }) => {
         const domain = (process.env.EFRIEND_DOMAIN || '').trim(), appKey = (process.env.EFRIEND_APPKEY || '').trim(), secretKey = (process.env.EFRIEND_SECRETKEY || '').trim();

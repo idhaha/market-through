@@ -1,14 +1,16 @@
 'use strict';
-// 주식선물 가격제한 이벤트 수신 (2026-11-11): LS 실시간 JD0(주식선물 실시간 상·하한가) · JX0(주식선물 가격제한폭 확대).
+// 주식선물 가격제한 이벤트 수신 (2026-11-11): LS 실시간 JX0(주식선물 가격제한폭 확대).
+// - 2026-11-12 장중 시험 뒤 JD0(실시간 상·하한가)는 등록하지 않는다: 가격이 움직일 때마다 오는 좁은 범위 갱신(하루 약 11만 건)이고,
+//   이벤트로 볼 변화(1 → 2)는 JX0 확대 직후에만 왔다(vi-monitor-service.js 설명 참고).
 // - 메시지에는 futcode(선물 종목코드)만 있다. 종목은 VI 모니터가 LS 선물 마스터(t8401 basecode)로 찾는다.
 // - 받은 메시지는 원문 그대로 data/vi-monitor/futures-events/날짜.jsonl에 남긴다(칸 뜻 확인 · 거래소 공지 대조용).
-// - 기본은 꺼짐: VI_FUTURES_EVENTS=on일 때만 연결한다. LS 앱키를 오라클과 함께 쓰고, 등록 건수(주식선물 약 250종목 × 2 TR)의
+// - 기본은 꺼짐: VI_FUTURES_EVENTS=on일 때만 연결한다. LS 앱키를 오라클과 함께 쓰고, 등록 건수(주식선물 약 280월물)의
 //   한도와 전체 종목 키 지원 여부를 아직 시험하지 않았기 때문이다. 등록 결과(성공 · 거부 건수와 첫 거부 사유)는 server_debug에 남긴다.
 // - 연결 시간: 평일 08:30~16:30(주식선물 정규장 08:45~15:45 앞뒤).
 // - 거래중단 · 재개 전용 TR은 LS 실시간 목록에서 찾지 못해 받지 않는다(UNKNOWN). 가격 움직임으로 추정하지 않는다.
 const fs = require('node:fs'), path = require('node:path');
 const SOCKET = 'wss://openapi.ls-sec.co.kr:9443/websocket';
-const TRS = ['JD0', 'JX0'];
+const TRS = ['JX0'];
 const dayKey = t => new Date(t + 9 * 3600000).toISOString().slice(0, 10);
 function createLsFuturesEvents({ getToken, WebSocket = require('ws'), directory, now = Date.now, contracts, onEvent = () => {}, log = () => {},
     enabled = () => (process.env.VI_FUTURES_EVENTS || '').trim() === 'on', sendGapMs = 60, sessionAt }) {
@@ -28,7 +30,7 @@ function createLsFuturesEvents({ getToken, WebSocket = require('ws'), directory,
     let reported = false;
     function reportRegistration() {
         if (reported) return; reported = true; clearTimeout(reportTimer);
-        state = `JD0 · JX0 등록 ${registered}건${rejected ? ` · 거부 ${rejected}건` : ''}`;
+        state = `JX0 등록 ${registered}건${rejected ? ` · 거부 ${rejected}건` : ''}`;
         log(`[선물 이벤트] LS ${state}${firstReject ? ' (첫 거부: ' + firstReject + ')' : ''}`);
     }
     async function connect() {

@@ -41,7 +41,7 @@ function parseKiwoomVi(d) {
         market:{'001':'K','101':'Q'}[String(v['9008']||'').trim()]||null};
 }
 function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws'),directory,now=Date.now,policy=()=>require('./trading-session').current(),
-    enabled=()=>true,kiwoomToken,rejectKiwoomToken=()=>{},quoteFeed=null,releaseGraceMs=180000,gapThreshold=1,recordMs=240000,releaseWaitMs=15000,futuresEventMs=300000,futuresEventsState=()=>'',recordTimer=(fn,ms)=>{const t=setTimeout(fn,ms);t.unref?.();return t;}}={}) {
+    enabled=()=>true,kiwoomToken,rejectKiwoomToken=()=>{},quoteFeed=null,nxtBook=null,releaseGraceMs=180000,gapThreshold=1,recordMs=240000,releaseWaitMs=15000,futuresEventMs=300000,futuresEventsState=()=>'',recordTimer=(fn,ms)=>{const t=setTimeout(fn,ms);t.unref?.();return t;}}={}) {
     let day=dayKey(now()), rows=new Map(), quotes=new Map(), masterDay='', stockMaster=new Map(), futuresMaster=[], expiries={}, futuresRefs={}, masterTask;
     let socket, stopped=true, connecting=false, retry, ackTimer, regTimer, schedule, saveTimer, masterTimer, emitTimer, registered=0, reconnects=0;
     let state='대기 중', storageError='', lastReceivedAt=null;
@@ -126,7 +126,7 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
     // ---- 발동 거래소 기준(Base) 값 (2026-11-11)
     // The triggering exchange (KRX, NXT or a futures contract) is the Base. 괴리율 of the other markets =
     // (그 시장 현재가 ÷ Base 현재가 − 1) × 100; the Base column shows 'Base'. 등락률 · 거래대금 · 시가총액 · 호가 평균 come
-    // from the triggering exchange too (호가 평균 only for KRX: NH ob is the KRX book; futures have no 등락률 · 거래대금 here).
+    // from the triggering exchange too (호가 평균: KRX rows from NH ob, NXT rows from KIS NX since 2026-11-12; futures have no 등락률 · 거래대금 here).
     // nxtSupported false → NXT 괴리율 '미지원'; no stock futures → 선물 괴리율 '미지원'.
     // 선물 등락률 = (선물 현재가 ÷ t8402 기준가 − 1) × 100. 선물 거래대금은 받지 않는다.
     const futuresRate=(code,price)=>code&&futuresRefs[code]>0?comparison(price,futuresRefs[code]):null;
@@ -144,7 +144,7 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
             NXT:r.exchange==='NXT'?'Base':nxtSupported===false?'미지원':comparison(nxt?.price,basePrice),
             FUT:r.exchange==='FUT'?'Base':futuresSupported===false?'미지원':{recent:futures.recent?.rate??null,next:futures.next?.rate??null}
         };
-        const book=r.exchange==='KRX'?quotes.get('BID:'+r.code):null;
+        const book=r.exchange==='KRX'?quotes.get('BID:'+r.code):r.exchange==='NXT'?quotes.get('BID:NXT:'+r.code):null;
         const listed=listInfo.get(r.code),spot=(r.exchange==='NXT'?nxt?.price:krx?.price)||krx?.price||nxt?.price||listed?.lastPrice||null,prev=prevAmounts.get(r.code);
         return {...r,bidAverage:book?.value??null,bidAverageAt:book?.receivedAt??null,bidAverageVia:book?.via??null,
             rate:r.exchange==='FUT'?futuresRate(r.contract?.code,basePrice):base?.rate??null,amount:r.exchange==='FUT'?null:base?.amount??null,basePrice:basePrice??null,baseReceivedAt:base?.receivedAt??null,
@@ -174,7 +174,8 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
             '거래대금(백만)':rel?rel.amount:v.amount,'발동 시각':clockText(v.startedAt),'해제 시각':v.active?null:clockText(v.releasedAt),
             'KRX 괴리율':gapText(g?.KRX),'NXT 괴리율':gapText(g?.NXT),
             '선물 괴리율(최근월)':typeof fut==='string'?fut:round2(fut?.recent),'선물 괴리율(차기월)':typeof fut==='string'?fut:round2(fut?.next),
-            'KRX 매수10호가평균(원)':Number.isFinite(rel?rel.bidAverage:v.bidAverage)?Math.round(rel?rel.bidAverage:v.bidAverage):null,'전일 거래대금(원)':v.prevAmount};
+            'KRX 매수10호가평균(원)':v.exchange==='KRX'&&Number.isFinite(rel?rel.bidAverage:v.bidAverage)?Math.round(rel?rel.bidAverage:v.bidAverage):null,
+            'NXT 매수10호가평균(원)':v.exchange==='NXT'&&Number.isFinite(rel?rel.bidAverage:v.bidAverage)?Math.round(rel?rel.bidAverage:v.bidAverage):null,'전일 거래대금(원)':v.prevAmount};
     }
     // ---- 발동 때 · 해제 때 값 (2026-11-09)
     // atStart: the first KRX price after the activation (the NH current-price call at the start). During the VI the KRX
@@ -263,7 +264,13 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
         try{fs.mkdirSync(recordDirectory,{recursive:true});fs.appendFileSync(path.join(recordDirectory,dayKey(from)+'.jsonl'),JSON.stringify(line)+'\n');}
         catch{storageError='괴리율 기록 저장 실패';emit();}
     }
+    // NXT 행의 매수 10호가: NH ob는 KRX뿐이라 NXT 발동 행이 켜져 있는(또는 해제 직후 체결을 기다리는) 동안만 한투 NX 호가를 조회한다.
+    function syncNxtBook(){
+        if(!nxtBook)return;
+        nxtBook.set(stopped?[]:[...new Set([...rows.values()].filter(r=>r.exchange==='NXT'&&(r.active||r.releasePending)).map(r=>r.code))]);
+    }
     function emit(){
+        syncNxtBook();
         if(emitTimer||!listeners.size)return;
         emitTimer=setTimeout(()=>{emitTimer=null;const data=snapshot();for(const listener of listeners)listener(data);},50);emitTimer.unref?.();
     }
@@ -415,9 +422,9 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
         persist();emit();
     }
     function onQuote(q) {
-        // KRX order book: average amount of the 10 bid levels (NH ob, or the REST current price).
-        if(q.exchange==='KRX'&&q.bidAverage!==undefined){
-            if(Number.isFinite(q.bidAverage)&&q.bidAverage>=0){quotes.set('BID:'+q.key,{value:q.bidAverage,receivedAt:q.receivedAt??now(),via:q.via});emit();}
+        // Order book: average amount of the 10 bid levels. KRX: NH ob (or the REST current price). NXT: KIS NX (kis-nxt-book.js).
+        if(['KRX','NXT'].includes(q.exchange)&&q.bidAverage!==undefined){
+            if(Number.isFinite(q.bidAverage)&&q.bidAverage>=0){quotes.set('BID:'+(q.exchange==='NXT'?'NXT:':'')+q.key,{value:q.bidAverage,receivedAt:q.receivedAt??now(),via:q.via});emit();}
             return;
         }
         if(!['KRX','NXT','FUT'].includes(q.exchange)||!(q.price>0))return;
@@ -436,32 +443,27 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
         }
         emit();
     }
-    // ---- 선물 가격제한 이벤트 (LS JD0 실시간 상·하한가, JX0 가격제한폭 확대), 2026-11-11
+    // ---- 선물 가격제한 이벤트 (LS JX0 가격제한폭 확대), 2026-11-11
     // The message only carries futcode; the stock comes from the LS futures master (t8401 basecode). Raw messages are
-    // stored by ls-futures-events.js. A row is made only on a change: JX0 when its up/down step rises, JD0 when its
-    // dy_gubun · gubun changes from the value last seen for the contract (the first message only sets the baseline,
-    // as JD0 may repeat while the band moves; field meanings are still to be confirmed with real messages).
-    // A futures event row counts down 5 minutes (futuresEventMs) and is then released with the values at that moment.
-    // 2026-11-12: a release that comes earlier ends the row then (JD0 back to the first state seen for the contract, i.e.
-    // the normal state; JX0 steps back down). The 5-minute countdown is only the fallback.
-    const futuresState=new Map(),futuresTimers=new Map(),futuresBaseline=new Map();let futuresDay='';
+    // stored by ls-futures-events.js. A row is made when the up or down step rises above the step last seen (1 = the
+    // normal ±10% band; 2 = ±20%, 3 = ±30%). A futures event row counts down 5 minutes (futuresEventMs) and is then
+    // released with the values at that moment; a step going back down ends it earlier.
+    // 2026-11-12 intraday test (282 contracts): JX0 15 messages, steps 01~03 (the first message of a contract already
+    // carries 01 on the side that did not expand). JD0 (실시간 상·하한가) is no longer used: dy_gubun is 2 before the
+    // first trade (daily band) and 1 afterwards (a narrow band that follows the price, ~114,000 messages a day), and it
+    // went 1 → 2 only twice, each a few seconds after a JX0 expansion. The old rule (first message = normal) made 243
+    // false rows at the open.
+    const futuresState=new Map(),futuresTimers=new Map();let futuresDay='';
     function futuresEventKind(e,body) {
         // A new day starts with new baselines.
-        if(futuresDay!==day){futuresDay=day;futuresState.clear();futuresBaseline.clear();}
+        if(futuresDay!==day){futuresDay=day;futuresState.clear();}
         const prev=futuresState.get(e.tr+':'+e.futcode);futuresState.set(e.tr+':'+e.futcode,body);
         if(e.tr==='JX0') {
-            const up=num(body.upstep)||0,dn=num(body.dnstep)||0,pu=num(prev?.upstep)||0,pd=num(prev?.dnstep)||0;
-            if(up>pu)return {kind:'JX0',kindText:'제한폭 확대 '+up+'단계',direction:'up'};
-            if(dn>pd)return {kind:'JX0',kindText:'제한폭 확대 '+dn+'단계',direction:'down'};
+            const up=num(body.upstep)||1,dn=num(body.dnstep)||1,pu=num(prev?.upstep)||1,pd=num(prev?.dnstep)||1;
+            if(up>pu)return {kind:'JX0',kindText:'상한 '+up+'단계 확대 (±'+up*10+'%)',direction:'up'};
+            if(dn>pd)return {kind:'JX0',kindText:'하한 '+dn+'단계 확대 (±'+dn*10+'%)',direction:'down'};
             if(prev&&(up<pu||dn<pd))return {release:'JX0',basis:'제한폭 축소 이벤트'};
             return null;
-        }
-        if(e.tr==='JD0') {
-            const id='JD0:'+e.futcode,state=b=>String(b?.dy_gubun)+'|'+String(b?.gubun);
-            if(!prev){futuresBaseline.set(id,state(body));return null;}
-            if(state(prev)===state(body))return null;
-            if(state(body)===futuresBaseline.get(id))return {release:'JD0',basis:'실시간상하한 해제 이벤트'};
-            return {kind:'JD0',kindText:'실시간상하한 ('+String(body.dy_gubun??'')+'·'+String(body.gubun??'')+')',direction:null};
         }
         return null;
     }
@@ -493,7 +495,7 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
         for(const [id,quote] of quotes){const [exchange,qkey]=id.split(':');if(['KRX','NXT'].includes(exchange)&&qkey===code||exchange==='FUT'&&futureOwner.get(qkey)===code)sample(code,exchange,qkey,quote.price,quote.receivedAt??now(),quote.rate??null);}
         checkGap(code);persist();emit();
     }
-    // The near-month contract of each stock (from the LS master), for the LS JD0 · JX0 registrations.
+    // The near-month contract of each stock (from the LS master), for the LS JX0 registrations.
     async function futuresContracts() {
         await masters();
         const month=day.slice(0,7).replace('-',''),best=new Map();
@@ -569,10 +571,10 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
         if(!stopped)return;stopped=false;quoteFeed?.start();
         // Prices for VIs still active after a restart.
         for(const r of rows.values())if(r.active){watchQuotes(r.code,(r.contracts||[]).map(c=>c.code));void enrich(r.code);}
-        void connect();
+        syncNxtBook();void connect();
         schedule=setInterval(()=>{rollover();if(policy()&&!policy().spotAt(now())&&socket)socket.close();else if(!socket)void connect();},30000);schedule.unref?.();
     }
-    function stop(){for(const t of futuresTimers.values())clearTimeout(t);futuresTimers.clear();for(const id of [...records.keys()])finishRecord(id,true);for(const t of releaseTimers2.values())clearTimeout(t);releaseTimers2.clear();stopped=true;clearTimeout(retry);clearTimeout(emitTimer);clearInterval(schedule);cleanup();for(const t of releaseTimers.values())clearTimeout(t);releaseTimers.clear();quoteFeed?.stop();socket?.terminate();socket=null;}
+    function stop(){for(const t of futuresTimers.values())clearTimeout(t);futuresTimers.clear();for(const id of [...records.keys()])finishRecord(id,true);for(const t of releaseTimers2.values())clearTimeout(t);releaseTimers2.clear();stopped=true;clearTimeout(retry);clearTimeout(emitTimer);clearInterval(schedule);cleanup();for(const t of releaseTimers.values())clearTimeout(t);releaseTimers.clear();quoteFeed?.stop();nxtBook?.stop();socket?.terminate();socket=null;}
     // Stop the new-VI blink for one activation; a later activation creates a fresh row and blinks again.
     function dismissFlash(code,exchange,startedAt) {
         rollover();

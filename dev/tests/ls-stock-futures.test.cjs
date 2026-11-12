@@ -134,3 +134,34 @@ test('KIS minute bar failures are logged once a minute per stock-day (they are n
  assert.equal(logs.length,1,'not every request');assert.match(logs[0],/종목 선물 분봉.*FHKIF03020200 조회 실패 005930 A116\d+ 2026-11-09: EGW00201/);
  clock+=41000;await assert.rejects(svc.candles({code:'005930',mode:'minute'}));assert.equal(logs.length,2,'again after a minute');
 });
+
+// 2026-11-12: collects() false (local PC; Oracle collects) → start() does not collect; screen queries still work on demand.
+test('a server that leaves the collection to Oracle does not collect',async()=>{
+ const calls=[],directory=fs.mkdtempSync(path.join(os.tmpdir(),'lsf-nocollect-'));
+ const svc=createLsStockFutures({http:fakeLs(calls,{}),getToken:async()=>'t',directory,supply:{summary:()=>({stocks:[{code:'005930'}]})},now:()=>friday,policy:()=>({openDate:()=>true}),pause:async()=>{},collects:()=>false});
+ try{svc.start();await new Promise(r=>setTimeout(r,50));assert.equal(calls.filter(c=>c.tr==='t8463').length,0,'no t8463 from start()');
+  const r=await svc.query({code:'005930',mode:'minute'});assert.equal(r.collecting,false);assert.ok(calls.some(c=>c.tr==='t8463'),'the screen query asks LS itself');}
+ finally{svc.stop();fs.rmSync(directory,{recursive:true,force:true});}
+});
+test('on an expiry day the minute candles continue on the next month from 15:20 (2026-11-12: A11611 ends at 15:19)',async()=>{
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'lsf-expiry-'));const calls=[],kis=[];
+ const evening=Date.parse('2026-11-12T20:00:00+09:00');
+ // Fake KIS: the expiring month has bars 08:45~15:19, the next month 08:45~15:45 at a different price.
+ const kisMinute=async({code,date,hour})=>{kis.push(code+':'+hour);const d=date.slice(0,4)+'-'+date.slice(4,6)+'-'+date.slice(6),last=code==='A11611'?'15:19':'15:45';
+  const end=Math.min(Date.parse(d+'T'+hour.slice(0,2)+':'+hour.slice(2,4)+':00+09:00'),Date.parse(d+'T'+last+':00+09:00')),rows=[];
+  for(let i=0;i<102;i++){const t=end-i*60000,hh=new Date(t+9*3600000).toISOString().slice(11,16).replace(':','');if(hh<'0845')break;
+   const p=code==='A11611'?209500:207000;rows.push({stck_bsop_date:date,stck_cntg_hour:hh+'00',futs_oprc:p,futs_hgpr:p,futs_lwpr:p,futs_prpr:p});}
+  return rows;};
+ const svc=createLsStockFutures({http:fakeLs(calls,{previous:'20261111'}),getToken:async()=>'t',directory,supply:{summary:()=>({stocks:[]})},now:()=>evening,policy:()=>({openDate:()=>true}),pause:async()=>{},kisMinute});
+ try{
+  const r=await svc.candles({code:'005930',mode:'minute',date:'2026-11-12'});
+  const hhmm=c=>new Date(c.t+9*3600000).toISOString().slice(11,16);
+  assert.equal(hhmm(r.points.at(-1)),'15:45','the candles reach the end of the flow');
+  assert.deepEqual([r.contract,r.next_contract,r.roll_time],['A11611','A11612','15:20']);
+  assert.equal(r.points.find(c=>hhmm(c)==='15:19').close,209500);assert.equal(r.points.find(c=>hhmm(c)==='15:20').close,207000);
+  assert.match(r.source,/만기일 15:20부터 A11612/);
+  // An ordinary day asks only its own month.
+  kis.length=0;const plain=await svc.candles({code:'005930',mode:'minute',date:'2026-11-11'});
+  assert.ok(kis.every(k=>k.startsWith('A11611')));assert.equal(plain.next_contract,undefined);
+ }finally{fs.rmSync(directory,{recursive:true,force:true});}
+});
