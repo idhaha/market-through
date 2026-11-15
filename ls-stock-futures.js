@@ -38,19 +38,40 @@ function createLsStockFutures({ http, getToken, directory, supply, now = Date.no
         return task;
     }
     // ---- t2522: underlying → bsc_asts_id and nearest contract, once a day
+    // Right after midnight on the day after an expiry, t2522 may still name the expired month as the nearest
+    // (Oracle 2026-11-13 00:01: A116B000, the 11/12 expiry; the 11/14 00:01 list had A116C000). Such a list is asked
+    // again, at most every 30 minutes, until LS names the month that the expiry calendar gives for today.
+    const MASTER_RETRY_MS = 30 * 60000, MONTH_CHARS = '123456789ABC';
+    function staleMaster(map, day) {
+        const expected = kisContract({ id: 'S00' }, day), year = expected.startsWith('A') ? expected[3] : null, month = MONTH_CHARS[Number(expected.slice(-2)) - 1];
+        if (!year) return false;
+        const codes = [...map.values()].map(item => item.nearest).filter(code => /^A[0-9A-Z]{2}[0-9][1-9A-C]/.test(code));
+        return codes.length > 0 && codes.filter(code => code[3] !== year || code[4] !== month).length * 2 > codes.length;
+    }
     async function contracts() {
         const today = dayKey(now());
-        if (master?.day === today) return master.map;
+        if (master?.day === today && !(master.stale && now() - master.fetchedAt >= MASTER_RETRY_MS)) return master.map;
         if (masterTask) return masterTask;
         masterTask = (async () => {
             const file = path.join(directory, 'master.json');
-            try { const saved = JSON.parse(fs.readFileSync(file, 'utf8')); if (saved.day === today) { master = { day: today, map: new Map(saved.rows) }; return master.map; } } catch {}
-            const rows = (await rest('t2522', 'market-data', { dummy: '' })).t2522OutBlock1 || [];
+            if (master?.day !== today) try {
+                const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+                if (saved.day === today) {
+                    const map = new Map(saved.rows), fetchedAt = Number(saved.fetchedAt) || 0;
+                    master = { day: today, map, fetchedAt, stale: staleMaster(map, today) };
+                    if (!master.stale || now() - fetchedAt < MASTER_RETRY_MS) return map;
+                }
+            } catch {}
+            let rows;
+            try { rows = (await rest('t2522', 'market-data', { dummy: '' })).t2522OutBlock1 || []; }
+            catch (error) { if (master?.day === today) { master.fetchedAt = now(); return master.map; } throw error; }
             const map = new Map(rows.filter(r => validCode(r.bsc_asts_is_cd) && /^S[0-9A-Z]{2}$/.test(String(r.bsc_asts_id || '').trim()))
                 .map(r => [r.bsc_asts_is_cd, { id: String(r.bsc_asts_id).trim(), nearest: String(r.nmc_is_shrt_cd || '').trim(), name: String(r.bsc_asts_nm || '').trim() }]));
-            if (!map.size) throw failure('LS 주식선물 기초자산 목록이 비어 있습니다.', 502);
-            master = { day: today, map };
-            try { fs.mkdirSync(directory, { recursive: true }); fs.writeFileSync(file + '.tmp', JSON.stringify({ day: today, rows: [...map] })); fs.renameSync(file + '.tmp', file); } catch {}
+            if (!map.size) { if (master?.day === today) { master.fetchedAt = now(); return master.map; } throw failure('LS 주식선물 기초자산 목록이 비어 있습니다.', 502); }
+            const fetchedAt = now(), stale = staleMaster(map, today);
+            if (stale) log(`[종목 선물 수급] LS t2522 최근월물이 아직 만기 지난 월물이라 30분 뒤 다시 받습니다 (${today})`);
+            master = { day: today, map, fetchedAt, stale };
+            try { fs.mkdirSync(directory, { recursive: true }); fs.writeFileSync(file + '.tmp', JSON.stringify({ day: today, fetchedAt, rows: [...map] })); fs.renameSync(file + '.tmp', file); } catch {}
             return map;
         })().finally(() => { masterTask = null; });
         return masterTask;

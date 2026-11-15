@@ -1,5 +1,5 @@
 const assert=require('node:assert/strict'),express=require('express'),{chromium}=require('playwright');
-// VI window: last column shows the KRX 10-level bid average with a size-based unit, sorts by amount, and the table follows the window width.
+// VI window: the column before the chart button (2026-11-14) shows the KRX 10-level bid average with a size-based unit, sorts by amount, and the table follows the window width.
 (async()=>{
  const now=Date.now(),row=(code,bidAverage,extra={})=>({code,exchange:'KRX',name:'종목'+code,market:'K',kind:'2',active:true,startedAt:now-1000*Number(code.slice(-1)),rate:1,amount:100,nxtRate:0,futures:{},bidAverage,bidAverageAt:now,...extra});
  const rows=[row('000001',2345678901),row('000002',45678900),row('000003',812345),row('000004',null),row('000005',3.2e13),row('000006',5000)];
@@ -13,11 +13,11 @@ const assert=require('node:assert/strict'),express=require('express'),{chromium}
   await page.goto('http://127.0.0.1:'+server.address().port+'/vi-monitor.html');await page.waitForSelector('#viBody td.name');
   const header=page.locator('thead th').filter({has:page.locator('[data-sort="bidAverage"]')});
   assert.equal(await header.locator('.th-lines').innerText(),'매수\n10호가평균','The title breaks after 매수 (KRX 빠짐: NXT 행도 채움, 2026-11-12)');
-  assert.equal(await page.locator('#viBody tr:first-child td').count(),15);
-  const shown=async()=>page.evaluate(()=>Object.fromEntries([...document.querySelectorAll('#viBody tr')].map(tr=>[tr.dataset.code,tr.lastElementChild.textContent])));
+  assert.equal(await page.locator('#viBody tr:first-child td').count(),17,'17 columns: 체결강도 and the chart button (2026-11-14)');
+  const shown=async()=>page.evaluate(()=>Object.fromEntries([...document.querySelectorAll('#viBody tr')].map(tr=>[tr.dataset.code,tr.cells[tr.cells.length-2].textContent])));
   // Whole numbers with 만 · 억 · 조 (2026-11-09: no decimals).
   assert.deepEqual(await shown(),{'000001':'23억','000002':'4,568만','000003':'81만','000004':'—','000005':'32조','000006':'5,000원'});
-  assert.match(await page.locator('#viBody tr[data-code="000001"] td:last-child').getAttribute('title'),/2,345,678,901원/);
+  assert.match(await page.locator('#viBody tr[data-code="000001"] td:nth-last-child(2)').getAttribute('title'),/2,345,678,901원/);
   await page.locator('[data-sort="bidAverage"]').click();
   assert.deepEqual(await page.evaluate(()=>[...document.querySelectorAll('#viBody tr')].map(tr=>tr.dataset.code)),['000005','000001','000002','000003','000006','000004'],'Descending by amount, missing last');
   // Like the trading independent window, the table follows the window: it fills a wide window without blank space

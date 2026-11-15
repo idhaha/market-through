@@ -101,7 +101,7 @@ async function main(){
         event('005930','1','090000');event('000660','2','090100');event('005930_NX','3','090200');event('005930_AL','3','090200');
         await page.waitForFunction(()=>document.querySelectorAll('#viBody tr[data-code]').length===3);
         assert.equal(await page.locator('#viBody tr').first().getAttribute('data-exchange'),'NXT');
-        assert.equal(await page.locator('#viBody tr').first().locator('td').nth(7).textContent(),'동적,정적');
+        assert.equal(await page.locator('#viBody tr').first().locator('td').nth(8).textContent(),'동적,정적');
         // The fixed clock is past activation + 2 minutes, so every active row waits for its release: it blinks (2026-11-09:
         // rows blink only in the last 30 seconds and while waiting; earlier they keep the color).
         assert.equal(await page.locator('#viBody tr[data-code="000660"]').getAttribute('class'),'vi-flash-down vi-blink');
@@ -126,18 +126,18 @@ async function main(){
         assert.equal(await page.locator('thead th').first().evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(234, 240, 249)');
         // The row line is an inset shadow (style.css) so it adds no row height.
         assert.equal(await page.locator('#viBody td').first().evaluate(el=>getComputedStyle(el).boxShadow),'rgb(217, 226, 240) 0px -1px 0px 0px inset');
-        assert.deepEqual(await page.locator('thead tr').first().locator('th').allTextContents(),['순위','시장','종목명','등락률','시가총액','거래대금(백만)','발동 거래소','구분','발동 시각','해제 시각','해제까지(예상)','괴리율','매수10호가평균']);
-        assert.deepEqual(await page.locator('thead tr').nth(1).locator('th').allTextContents(),['KRX','NXT','선물\n최근월차기월'],'괴리율 is written once above; the columns show only the market (2026-11-12)');
+        assert.deepEqual(await page.locator('thead tr').first().locator('th').allTextContents(),['순위','시장','종목명','Base등락률','Base체결강도','시가총액','거래대금(백만)','발동 거래소','구분','발동 시각','해제 시각','해제까지(예상)','괴리율','매수10호가평균','분석 차트']);
+        assert.deepEqual(await page.locator('thead tr').nth(1).locator('th').allTextContents(),['KRX','NXT','선물'],'괴리율 is written once above; the columns show only the market (2026-11-12; no month selector since 2026-11-14)');
         // Default (발동 시각 newest first): every sortable column shows arrows, none shows a dot.
         const sortIcons=()=>page.evaluate(()=>Object.fromEntries([...document.querySelectorAll('[data-sort]')].map(b=>[b.dataset.sort,(b.querySelector('circle')?'dot':'arrows')+':'+b.closest('th').getAttribute('aria-sort')])));
-        assert.deepEqual(await sortIcons(),{market:'arrows:none',name:'arrows:none',rate:'arrows:none',marketCap:'arrows:none',amount:'arrows:none',exchange:'arrows:none',kind:'arrows:none',startedAt:'arrows:descending',releasedAt:'arrows:none',remaining:'arrows:none',gapKRX:'arrows:none',gapNXT:'arrows:none',gapFUT:'arrows:none',bidAverage:'arrows:none'});
+        assert.deepEqual(await sortIcons(),{market:'arrows:none',name:'arrows:none',rate:'arrows:none',cpower:'arrows:none',marketCap:'arrows:none',amount:'arrows:none',exchange:'arrows:none',kind:'arrows:none',startedAt:'arrows:descending',releasedAt:'arrows:none',remaining:'arrows:none',gapKRX:'arrows:none',gapNXT:'arrows:none',gapFUT:'arrows:none',bidAverage:'arrows:none'});
         // Activation time is already beyond 2 minutes: do not falsely release a VI on a timer.
         // The countdown stays at 00:00:00 (two-digit hundredths) instead of being replaced by text; the tooltip says it waits.
-        assert.equal(await page.locator('#viBody tr').first().locator('td').nth(10).textContent(),'00:00:00');
-        assert.match(await page.locator('#viBody tr').first().locator('td').nth(10).getAttribute('title'),/해제 수신 대기/);
+        assert.equal(await page.locator('#viBody tr').first().locator('td').nth(11).textContent(),'00:00:00');
+        assert.match(await page.locator('#viBody tr').first().locator('td').nth(11).getAttribute('title'),/해제 수신 대기/);
         // The release repeats the activation time (1223 = 09:02:00); the shown release time must be 1224.
         event('005930_NX','3','090200','090400');await page.waitForFunction(()=>document.querySelector('#viBody tr[data-exchange="NXT"]').classList.contains('released'));
-        assert.equal(await page.locator('#viBody tr').count(),3);assert.equal(await page.locator('#viBody tr[data-exchange="NXT"] td').nth(9).textContent(),'09:04:00');
+        assert.equal(await page.locator('#viBody tr').count(),3);assert.equal(await page.locator('#viBody tr[data-exchange="NXT"] td').nth(10).textContent(),'09:04:00');
         assert.equal(await page.locator('#viBody tr[data-exchange="NXT"]').getAttribute('class'),'released');
         assert.equal(await page.locator('#viBody tr[data-exchange="NXT"] td').first().evaluate(el=>getComputedStyle(el).animationName),'none');
         // An older activation must not revive a released event.
@@ -147,17 +147,18 @@ async function main(){
         assert.deepEqual(feed.watched.get('005930'),['111V1000','111V2000']);assert.ok(feed.watched.has('000660'));
         const quote=q=>service.onQuote({via:'WS',receivedAt:clock,...q});
         quote({exchange:'KRX',key:'005930',price:100,rate:1.25,amount:123456});quote({exchange:'NXT',key:'005930',price:102,rate:2,amount:55});quote({exchange:'FUT',key:'111V1000',price:103});quote({exchange:'FUT',key:'111V2000',price:104});
-        await page.waitForFunction(()=>[...document.querySelectorAll('#viBody tr[data-code="005930"]')].some(tr=>tr.dataset.exchange==='KRX'&&tr.cells[12].textContent==='+2.00%'));
+        await page.waitForFunction(()=>[...document.querySelectorAll('#viBody tr[data-code="005930"]')].some(tr=>tr.dataset.exchange==='KRX'&&tr.cells[13].textContent==='+2.0%'));
         // Wait for the actual REST enrichment path to assign the current/next contracts.
-        await page.waitForFunction(()=>[...document.querySelectorAll('#viBody tr[data-code="005930"]')].some(tr=>tr.dataset.exchange==='KRX'&&tr.cells[13].textContent==='+3.00%'),null,{timeout:20000});
+        await page.waitForFunction(()=>[...document.querySelectorAll('#viBody tr[data-code="005930"]')].some(tr=>tr.dataset.exchange==='KRX'&&tr.cells[14].textContent==='+3.0% 12월'),null,{timeout:20000});
         // KRX VI row: KRX is the Base; NXT and futures are against KRX (2026-11-11).
-        assert.equal(await page.locator('#viBody tr[data-code="005930"][data-exchange="KRX"] td').nth(11).textContent(),'Base');
-        await page.selectOption('#viFutureMonth','next');assert.equal(await page.locator('#viBody tr[data-code="005930"][data-exchange="KRX"] td').nth(13).textContent(),'+4.00%');
+        assert.equal(await page.locator('#viBody tr[data-code="005930"][data-exchange="KRX"] td').nth(12).textContent(),'Base');
+        // 2026-11-14: no month selector; the futures cell is the watched month (here the nearest, 12월) with its month written next to it.
+        assert.equal(await page.locator('#viFutureMonth').count(),0);assert.equal(await page.locator('#viBody tr[data-code="005930"][data-exchange="KRX"] td .vi-month').textContent(),' 12월');
         // Choosing a column: it shows arrows, all other sortable columns show a dot. Third click returns to default.
-        await page.getByRole('button',{name:'등락률',exact:true}).click();
-        assert.deepEqual(await sortIcons(),{market:'dot:none',name:'dot:none',rate:'arrows:descending',marketCap:'dot:none',amount:'dot:none',exchange:'dot:none',kind:'dot:none',startedAt:'dot:none',releasedAt:'dot:none',remaining:'dot:none',gapKRX:'dot:none',gapNXT:'dot:none',gapFUT:'dot:none',bidAverage:'dot:none'});
-        await page.getByRole('button',{name:'등락률',exact:true}).click();assert.equal((await sortIcons()).rate,'arrows:ascending');
-        await page.getByRole('button',{name:'등락률',exact:true}).click();assert.equal((await sortIcons()).amount,'arrows:none');assert.equal((await sortIcons()).startedAt,'arrows:descending');
+        await page.locator('button[data-sort="rate"]').click();
+        assert.deepEqual(await sortIcons(),{market:'dot:none',name:'dot:none',rate:'arrows:descending',cpower:'dot:none',marketCap:'dot:none',amount:'dot:none',exchange:'dot:none',kind:'dot:none',startedAt:'dot:none',releasedAt:'dot:none',remaining:'dot:none',gapKRX:'dot:none',gapNXT:'dot:none',gapFUT:'dot:none',bidAverage:'dot:none'});
+        await page.locator('button[data-sort="rate"]').click();assert.equal((await sortIcons()).rate,'arrows:ascending');
+        await page.locator('button[data-sort="rate"]').click();assert.equal((await sortIcons()).amount,'arrows:none');assert.equal((await sortIcons()).startedAt,'arrows:descending');
         // New sortable columns order rows by their own values (first click descending, second ascending, third default).
         const order=()=>page.locator('#viBody tr').evaluateAll(rows=>rows.map(r=>r.dataset.code+':'+r.dataset.exchange));
         const sortBy=async(name,clicks=1)=>{for(let i=0;i<clicks;i++)await page.getByRole('button',{name,exact:true}).click();return order();};
@@ -173,7 +174,7 @@ async function main(){
         assert.deepEqual((await sortBy('발동 거래소'))[0],'005930:NXT');await sortBy('발동 거래소',2);
         assert.deepEqual(await sortBy('시장'),await order());await sortBy('시장',2);
         assert.equal((await sortIcons()).startedAt,'arrows:descending');
-        await page.getByRole('button',{name:'등락률',exact:true}).click();
+        await page.locator('button[data-sort="rate"]').click();
         await page.reload();await page.waitForFunction(()=>document.querySelectorAll('#viBody tr[data-code]').length===3);
         await page.evaluate(t=>window.refreshNativeViCredentials(t),grant.token);await page.waitForFunction(()=>document.querySelectorAll('#viBody tr[data-code]').length===3);
         // Dismissal survives reload and SSE re-render; a later activation of the same stock blinks again.
@@ -182,16 +183,17 @@ async function main(){
         await pause(150);const beforeRestart=createViMonitor({directory,now:()=>clock,policy:()=>null});assert.equal(beforeRestart.snapshot().rows.find(r=>r.code==='000660').flashDismissed,true,'Dismissal survives a server restart');beforeRestart.stop();
         event('000660','2','090450');await page.waitForFunction(()=>document.querySelector('#viBody tr[data-code="000660"]')?.classList.contains('vi-flash-down'));
         // 해제까지(예상) counts down as minutes:seconds:hundredths (two digits, 2026-11-09; activation 09:04:50 + 2 min, clock 09:05:00).
-        assert.equal(await page.locator('#viBody tr[data-code="000660"] td').nth(10).textContent(),'01:50:00');
+        assert.equal(await page.locator('#viBody tr[data-code="000660"] td').nth(11).textContent(),'01:50:00');
         // More than 30 seconds left: the row keeps its color without blinking.
         const steady=await page.locator('#viBody tr[data-code="000660"]').evaluate(el=>({blink:el.classList.contains('vi-blink'),animation:getComputedStyle(el.cells[0]).animationName,background:getComputedStyle(el.cells[0]).backgroundColor}));
         assert.deepEqual(steady,{blink:false,animation:'none',background:'rgb(229, 238, 255)'});
         assert.equal(await page.locator('h1').textContent(),'VI 실시간 모니터링');
-        const releasedColor=await page.locator('#viBody tr.released td').first().evaluate(el=>getComputedStyle(el).color);assert.equal(releasedColor,'rgb(100, 116, 139)');
+        // 2026-11-14: released rows are no longer dimmed (active rows have their background color).
+        const releasedStyle=await page.locator('#viBody tr.released td').nth(2).evaluate(el=>({color:getComputedStyle(el).color,opacity:getComputedStyle(el).opacity}));assert.deepEqual(releasedStyle.opacity,'1');assert.notEqual(releasedStyle.color,'rgb(100, 116, 139)');
         const boxes=await page.locator('.panel').count();assert.equal(boxes,1);
         const aligned=await page.evaluate(()=>{
-            // 2026-11-12: 11 columns before the 괴리율 group (KRX · NXT · 선물 in the second row), 매수10호가평균 after it.
-            const row=document.querySelector('#viBody tr'),top=[...document.querySelector('thead tr').cells],headers=top.slice(0,11).concat([...document.querySelectorAll('thead tr:nth-child(2) th')],top.slice(12));
+            // 2026-11-12: 12 columns (체결강도 since 2026-11-14) before the 괴리율 group (KRX · NXT · 선물 in the second row), 매수10호가평균 after it.
+            const row=document.querySelector('#viBody tr'),top=[...document.querySelector('thead tr').cells],headers=top.slice(0,12).concat([...document.querySelectorAll('thead tr:nth-child(2) th')],top.slice(13));
             return headers.every((th,i)=>Math.abs(th.getBoundingClientRect().left-row.cells[i].getBoundingClientRect().left)<1 && Math.abs(th.getBoundingClientRect().width-row.cells[i].getBoundingClientRect().width)<1);
         });assert.equal(aligned,true,'Grouped headings and rows must share the same column boundaries');
         fs.mkdirSync(path.resolve(__dirname,'../output/vi-monitor'),{recursive:true});await page.screenshot({path:path.resolve(__dirname,'../output/vi-monitor/desktop.png'),fullPage:true});

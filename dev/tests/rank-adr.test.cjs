@@ -8,6 +8,8 @@ const assert = require('node:assert/strict');
         const errors = []; page.on('pageerror', e => errors.push(e.message));
         const html = fs.readFileSync('public/index.html', 'utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<link\b[^>]*>/gi, '');
         await page.route('http://adr.test/**', route => route.fulfill({ contentType: 'text/html', body: html }));
+        // The card drops today's points before 09:00 KST, so pin the page clock inside the session (the test ran at 00:39 and failed).
+        await page.clock.setFixedTime(new Date('2026-11-13T10:00:00+09:00'));
         await page.goto('http://adr.test/');
         await page.evaluate(() => { document.getElementById('loginOverlay').style.display = 'none'; });
         await page.evaluate(() => { window.resizeErrors = []; window.addEventListener('error', event => window.resizeErrors.push(event.message)); });

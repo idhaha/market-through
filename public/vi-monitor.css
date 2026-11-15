@@ -30,7 +30,10 @@
 .vi-panel .up { color:#e11d48; }
 .vi-panel .down { color:#2563eb; }
 .vi-panel .muted { color:var(--text-muted); }
-.vi-panel tbody tr.released td, .vi-panel tbody tr.released td * { color:var(--text-muted); opacity:.7; }
+/* 2026-11-14: 해제된 행도 글자색을 흐리게 하지 않는다(켜져 있는 행은 배경색으로 구분). */
+.vi-panel td .vi-month { color:var(--text-muted); font-size:11px; }
+.vi-panel td.vi-pre { font-size:0.88em; opacity:0.6; }
+.vi-panel td .vi-pre-tag { margin-left:3px; font-size:10px; color:var(--text-muted); font-weight:400; }
 .vi-panel .countdown { font-weight:700; }
 .vi-panel .countdown.soon { color:#e11d48; }
 .vi-panel th button { border:0; background:transparent; color:inherit; font:inherit; cursor:pointer; padding:0; }
@@ -74,3 +77,39 @@
 .data-collection-dialog .vi-guide-close { float:right; padding:6px 12px; border:1px solid #64748b; background:transparent; color:inherit; border-radius:6px; cursor:pointer; }
 /* The millisecond countdown keeps a fixed width so the column does not jitter. */
 .vi-panel .countdown { font-variant-numeric:tabular-nums; }
+/* 날짜별 기록(2026-11-14): 날짜 입력은 필터 선택 상자와 같은 높이 · 글자 크기, '실시간으로'는 지난 날짜를 볼 때만. */
+.vi-panel .vi-controls .vi-date { width:96px; height:20px; padding:0 2px; font-size:12px; line-height:18px; border:1px solid var(--border-color,#cbd5e1); border-radius:4px; background:#fff; color:var(--text-primary); box-shadow:none; font-family:inherit; }
+.vi-panel .vi-controls .vi-live { height:20px; padding:0 8px; font-size:12px; line-height:18px; border:1px solid #2563eb; border-radius:4px; background:#2563eb; color:#fff; cursor:pointer; }
+.vi-panel .vi-history-note { color:#b45309; font-weight:600; }
+
+/* 분석 차트 (2026-11-14): 행 맨 오른쪽 네모 버튼(우상향 화살표)과 차트 창. */
+.vi-panel th.vi-chart-col, .vi-panel td.vi-chart-cell { width:30px; padding-left:2px; padding-right:6px; text-align:center; }
+.vi-visually-hidden { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+.vi-panel .vi-chart-button { display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; padding:0; border:1px solid #94a3b8; border-radius:3px; background:#fff; cursor:pointer; vertical-align:middle; }
+.vi-panel .vi-chart-button svg { width:14px; height:14px; fill:none; stroke:#334155; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+.vi-panel .vi-chart-button:hover { border-color:#2563eb; } .vi-panel .vi-chart-button:hover svg { stroke:#2563eb; }
+.vi-panel .vi-chart-button:focus-visible { outline:2px solid #2563eb; outline-offset:1px; }
+.vi-chart-dialog { width:min(1000px,96vw); padding:14px 16px; border:1px solid #cbd5e1; border-radius:8px; color:#0f172a; background:#fff; }
+.vi-chart-dialog::backdrop { background:rgba(15,23,42,.35); }
+.vi-chart-dialog .vc-head { display:flex; align-items:center; gap:8px; }
+.vi-chart-dialog h2 { margin:0; flex:1; font-size:14px; font-weight:700; }
+.vi-chart-dialog .vc-head button { height:24px; padding:0 10px; font-size:12px; border:1px solid #cbd5e1; border-radius:4px; background:#fff; cursor:pointer; }
+.vi-chart-dialog .vc-legend { display:flex; flex-wrap:wrap; gap:4px 14px; margin:8px 0 4px; font-size:12px; color:#334155; }
+.vi-chart-dialog .vc-key::before { content:''; display:inline-block; width:16px; height:0; border-top:2px solid var(--vc-color); margin-right:5px; vertical-align:middle; }
+.vi-chart-dialog .vc-body { position:relative; }
+.vi-chart-dialog svg { display:block; width:100%; height:auto; font-family:inherit; }
+.vi-chart-dialog .vc-plot { fill:#fff; stroke:#cbd5e1; }
+.vi-chart-dialog .vc-grid { stroke:#eef2f7; } .vi-chart-dialog .vc-zero { stroke:#94a3b8; stroke-dasharray:3 3; }
+.vi-chart-dialog .vc-axis { stroke:#94a3b8; }
+.vi-chart-dialog .vc-tick { font-size:11px; fill:#475569; font-variant-numeric:tabular-nums; }
+.vi-chart-dialog .vc-left { text-anchor:end; } .vi-chart-dialog .vc-mid { text-anchor:middle; }
+.vi-chart-dialog .vc-axis-title { font-size:11px; font-weight:600; fill:#334155; } .vi-chart-dialog .vc-right-title { text-anchor:end; }
+.vi-chart-dialog .vc-mark { stroke:#64748b; stroke-dasharray:4 3; } .vi-chart-dialog .vc-mark-label { font-size:11px; fill:#475569; }
+.vi-chart-dialog .vc-line { fill:none; stroke-width:1.6; } .vi-chart-dialog .vc-rate { stroke-width:2; }
+.vi-chart-dialog .vc-strength { stroke-dasharray:5 3; stroke-width:1.4; }
+.vi-chart-dialog .vc-strength-label { font-size:12px; font-weight:700; text-anchor:end; }
+.vi-chart-dialog .vc-cross { stroke:#0f172a; stroke-opacity:.35; }
+.vi-chart-dialog .vc-tip { position:absolute; left:64px; right:64px; bottom:46px; margin:0; padding:3px 6px; font-size:12px; background:rgba(255,255,255,.92); border:1px solid #e2e8f0; border-radius:4px; font-variant-numeric:tabular-nums; }
+.vi-chart-dialog .vc-note { margin:6px 0 0; font-size:11px; color:#64748b; }
+.vi-chart-dialog .vc-mark-end { text-anchor:end; }
+.vi-chart-dialog .vc-strength-label { paint-order:stroke; stroke:#fff; stroke-width:4px; stroke-linejoin:round; }

@@ -28,6 +28,9 @@
         const get = id => document.getElementById(broker ? id.replace(/^concentration/, prefix) : id);
         const api = name => kis ? name.replace('Concentration', combined ? 'CombinedConcentration' : broker === 'ls' ? 'LsConcentration' : 'KisConcentration').replace('RankChart', combined ? 'CombinedRankChart' : broker === 'ls' ? 'LsRankChart' : 'KisRankChart') : name;
         let refreshPending = false, refreshTimer = null;
+        // A new stock or 일/분 load clears state.points (prices load into it separately), but the canvases keep the
+        // previous graphs under the loading blur until the answer arrives, as the automatic refresh does (2026-11-13).
+        let heldView = false;
         function flushRefresh() {
             if (!refreshPending || state.busy || state.drag || (typeof isCapturing !== 'undefined' && isCapturing) || refreshTimer) return;
             refreshTimer = setTimeout(() => { refreshTimer = null; if (refreshPending) window[api('refreshConcentrationChart')]?.(); }, 0);
@@ -300,6 +303,7 @@
             if(window.rankIndependentClient)panel.querySelector('h2').textContent='쏠림율';
             window.RankChartAxis.candleLabel(candleArea,state.selection?.name || state.selection?.code || '');
             if (!kis && !window.rankIndependentClient) document.dispatchEvent(new Event('rank-chart-state'));
+            if (heldView && state.busy) { updateControls(); return; }
             const width = chartArea.clientWidth;
             if (!width) return;
             const height = chartArea.clientHeight;
@@ -478,6 +482,8 @@
                 state.points=[...merged.values()].sort((a,b)=>a.time.localeCompare(b.time));
                 state.visible=visible && visible<oldLength?Math.min(visible,state.points.length):state.points.length;
                 state.start=following?Math.max(0,state.points.length-state.visible):Math.max(0,state.points.findIndex(p=>p.time>=anchor));
+                // Candles of the new stock arrived first: show them now instead of the held previous graph.
+                if(state.points.length)heldView=false;
             }catch(error){if(error.name!=='AbortError' && current===priceController)candleTooltip.title=error.message;}
             finally{if(current===priceController){priceBusy=false;sharedRevision++;updateControls();draw();}}
         }
@@ -499,7 +505,7 @@
             if(append){window.RankChartAxis.showHistory();todayOnly=false;}else if(!refresh){todayOnly=true;}
             state.historyError='';
             const previous = { points: state.points, start: state.start, visible: state.visible };
-            if(!append && !refresh){state.points=[];state.start=0;state.visible=0;}
+            if(!append && !refresh){heldView=heldView||state.points.length>0;state.points=[];state.start=0;state.visible=0;}
             state.controller?.abort();
             const controller = new AbortController();
             state.controller = controller;
@@ -558,7 +564,7 @@
                 status.textContent = `${error.message} · ${refresh ? '다음 갱신 주기에 다시 조회합니다.' : append ? '추가 조회 버튼으로 다시 시도하세요.' : '일/분 버튼으로 다시 시도하세요.'}`;
                 if (error.message.includes('만료')) { state.cursor = null; state.hasMore = false; }
             } finally {
-                if (request === state.request) { state.busy = false; sharedRevision++; draw(); flushRefresh(); }
+                if (request === state.request) { state.busy = false; heldView = false; sharedRevision++; draw(); flushRefresh(); }
             }
         }
         window[api('refreshConcentrationChart')] = () => {

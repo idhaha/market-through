@@ -165,3 +165,23 @@ test('on an expiry day the minute candles continue on the next month from 15:20 
   assert.ok(kis.every(k=>k.startsWith('A11611')));assert.equal(plain.next_contract,undefined);
  }finally{fs.rmSync(directory,{recursive:true,force:true});}
 });
+test('the day after an expiry a t2522 list that still names the expired month is asked again every 30 minutes (Oracle 2026-11-13)',async()=>{
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'lsf-test-')),logs=[];let clock=Date.parse('2026-11-13T00:01:00+09:00'),answer='A116B000';const calls=[];
+ const http={post:async(url,body,{headers})=>{const tr=headers.tr_cd;calls.push(tr);const data={rsp_cd:'00000'};
+  if(tr==='t2522')data.t2522OutBlock1=[{bsc_asts_nm:'삼성전자',bsc_asts_is_cd:'005930',bsc_asts_id:'S11',nmc_is_shrt_cd:answer},{bsc_asts_nm:'SK하이닉스',bsc_asts_is_cd:'000660',bsc_asts_id:'S50',nmc_is_shrt_cd:answer.replace('11','50')}];
+  return {data};}};
+ const make=()=>createLsStockFutures({http,getToken:async()=>'t',directory,supply:{summary:()=>({stocks:[]})},now:()=>clock,policy:()=>({openDate:()=>true}),pause:async()=>{},log:m=>logs.push(m)});
+ try{
+  let svc=make();
+  assert.equal((await svc.contracts()).get('005930').nearest,'A116B000');assert.equal(logs.filter(l=>/t2522/.test(l)).length,1);
+  clock+=10*60000;await svc.contracts();assert.equal(calls.filter(t=>t==='t2522').length,1,'not before 30 minutes');
+  answer='A116C000';clock+=20*60000;
+  assert.equal((await svc.contracts()).get('005930').nearest,'A116C000','asked again after 30 minutes');assert.equal(calls.filter(t=>t==='t2522').length,2);
+  clock+=3*3600000;await svc.contracts();assert.equal(calls.filter(t=>t==='t2522').length,2,'a current list is kept for the day');
+  // A restart reads the saved current list without asking LS.
+  svc=make();assert.equal((await svc.contracts()).get('000660').nearest,'A506C000');assert.equal(calls.filter(t=>t==='t2522').length,2);
+  // An ordinary day (the list matches the expiry calendar) asks once.
+  const before=calls.length;clock=Date.parse('2026-11-06T00:01:00+09:00');answer='A116B000';svc=make();await svc.contracts();clock+=3600000;await svc.contracts();
+  assert.equal(calls.slice(before).filter(t=>t==='t2522').length,1);
+ }finally{fs.rmSync(directory,{recursive:true,force:true});}
+});

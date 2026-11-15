@@ -34,7 +34,11 @@ test('LS masters and futures expiry are fetched once a day and reused after a re
         assert.equal(saved.day,'2026-11-09');assert.deepEqual(saved.expiries,{A116B000:'20261112',A116C000:'20261210'});
         const second=[],b=createViMonitor({...options,http:lsHttp(second)});b.start();b.receive(real('005930','090100'));
         for(let i=0;i<100&&!b.snapshot().rows[0]?.contracts?.length;i++)await pause(20);
-        assert.deepEqual(second,[],'A restart on the same day must not query LS again');
+        await pause(100);
+        // 2026-11-13: the masters and expiries are not asked again; only one t8402 per month without a price checks today's trades
+        // (before, the futures prices stayed empty after a restart).
+        assert.deepEqual(second.filter(tr=>tr!=='t8402'),[],'A restart on the same day must not query the LS masters again');
+        assert.ok(second.length<=2,'at most one t8402 per month: '+second);
         assert.equal(b.snapshot().rows[0].name,'삼성전자');b.stop();
         // A new day fetches the masters again.
         const third=[],c=createViMonitor({...options,now:()=>clock+86400000,http:lsHttp(third)});c.start();c.receive(real('005930','090100'));

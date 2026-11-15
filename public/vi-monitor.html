@@ -2,19 +2,21 @@
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MarketThrough VI 모니터링</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261108_tabular_nums"><link rel="stylesheet" href="data-collection-info.css?v=20261112_table_border"><link rel="stylesheet" href="vi-monitor.css?v=20261112_gap_group">
-<script src="vi-monitor.js?v=20261112_expired" defer></script>
-<script src="data-collection-info.js?v=20261112_fut_book" defer></script><script src="vi-monitor-info.js?v=20261112_fut_book" defer></script></head>
+<link rel="stylesheet" href="style.css?v=20261108_tabular_nums"><link rel="stylesheet" href="data-collection-info.css?v=20261112_table_border"><link rel="stylesheet" href="vi-monitor.css?v=20261115_pre">
+<script src="vi-monitor.js?v=20261115_pre" defer></script><script src="vi-monitor-chart.js?v=20261115_pre" defer></script>
+<script src="data-collection-info.js?v=20261115_pre" defer></script><script src="vi-monitor-info.js?v=20261115_pre" defer></script></head>
 <body class="vi-monitor"><main class="panel vi-panel">
 <header class="panel-header"><h1>VI 실시간 모니터링</h1><span id="viClock" class="vi-clock"></span><span id="viFilterNote" class="vi-filter-note"></span>
 <div class="vi-controls">
+<button id="viLive" type="button" class="vi-live" hidden>실시간으로</button><input id="viDate" type="date" class="vi-date" aria-label="VI 기록 날짜" title="날짜를 고르면 그날 VI 창 기록(해제 때 값)을 봅니다. 기록은 이 서버가 VI를 받은 날부터 쌓입니다">
 <label>거래대금(전일기준) <select id="viPrevAmount" class="vi-filter-select" aria-label="전일 거래대금 필터"><option value="0">전체</option><option value="2e10">200억 이상</option><option value="5e10">500억 이상</option><option value="1e11">1천억 이상</option><option value="3e11">3천억 이상</option><option value="5e11">5천억 이상</option><option value="1e12">1조 이상</option><option value="2e12">2조 이상</option></select></label>
 <label>시가총액 <select id="viMarketCap" class="vi-filter-select" aria-label="시가총액 필터"><option value="0">전체</option><option value="2e11">2천억 이상</option><option value="5e11">5천억 이상</option><option value="1e12">1조 이상</option><option value="2e12">2조 이상</option><option value="5e12">5조 이상</option><option value="1e13">10조 이상</option></select></label>
-<label title="발동부터 해제 전까지 Base 대비 다른 시장(KRX · NXT · 선물 최근월 · 차기월) 괴리율의 절댓값이 한 번이라도 1% 이상이었던 행만 봅니다"><input id="viGapOnly" type="checkbox" checked> 괴리율 1% 이상 보기</label><label><input id="viTopmost" type="checkbox"> 항상 위</label></div></header>
+<label title="발동부터 해제 전까지 Base 대비 다른 시장(KRX · NXT · 선물 감시 월물) 괴리율의 절댓값이 한 번이라도 1% 이상이었던 행만 봅니다 (마지막 체결이 1분 안인 시장만 판정)"><input id="viGapOnly" type="checkbox" checked> 괴리율 1% 이상 보기</label><label><input id="viTopmost" type="checkbox"> 항상 위</label></div></header>
 <div class="table-wrapper"><table aria-label="당일 VI 발동·해제와 선물 가격제한 이벤트">
 <thead><tr>
 <th rowspan="2" scope="col">순위</th><th rowspan="2" scope="col"><button data-sort="market">시장</button></th><th rowspan="2" scope="col"><button data-sort="name">종목명</button></th>
-<th rowspan="2" scope="col"><button data-sort="rate">등락률</button></th>
+<th rowspan="2" scope="col"><button data-sort="rate">Base<br>등락률</button></th>
+<th rowspan="2" scope="col"><button data-sort="cpower" title="발동 때 체결강도 (매수 체결량 ÷ 매도 체결량 × 100, 그날 누적)">Base<br>체결강도</button></th>
 <th rowspan="2" scope="col"><button data-sort="marketCap">시가총액</button></th>
 <th rowspan="2" scope="col"><button data-sort="amount">거래대금(백만)</button></th>
 <th rowspan="2" scope="col"><button data-sort="exchange">발동 거래소</button></th><th rowspan="2" scope="col"><button data-sort="kind">구분</button></th>
@@ -22,14 +24,14 @@
 <th rowspan="2" scope="col"><button data-sort="releasedAt">해제 시각</button></th><th rowspan="2" scope="col"><button data-sort="remaining">해제까지(예상)</button></th>
 <th colspan="3" scope="colgroup" class="comparison-group" title="괴리율 = (그 시장 현재가 ÷ Base 현재가 − 1) × 100">괴리율</th>
 <th rowspan="2" scope="col"><button data-sort="bidAverage" title="발동 거래소 매수 1~10호가 각각의 가격 × 잔량을 평균한 금액 (KRX 행은 NH 호가, NXT 행은 한투 NXT 호가 조회, 선물 행은 LS 주식선물 호가 조회 · 잔량 계약 × 거래승수)"><span class="th-lines">매수<br>10호가평균</span></button></th>
+<th rowspan="2" scope="col" class="vi-chart-col"><span class="vi-visually-hidden">분석 차트</span></th>
 </tr><tr>
 <th scope="col"><button data-sort="gapKRX">KRX</button></th>
 <th scope="col"><button data-sort="gapNXT">NXT</button></th>
-<th scope="col"><button data-sort="gapFUT">선물</button>
-<select id="viFutureMonth" class="interval-select" aria-label="선물 월물 선택"><option value="recent">최근월</option><option value="next">차기월</option></select></th>
+<th scope="col"><button data-sort="gapFUT" title="그 종목의 감시 월물(전일 거래량이 많은 월물)과 비교합니다. 값 옆에 월물을 적습니다">선물</button></th>
 </tr></thead>
-<tbody id="viBody"><tr><td colspan="15" class="vi-empty">VI 수신 연결 중…</td></tr></tbody></table></div>
+<tbody id="viBody"><tr><td colspan="17" class="vi-empty">VI 수신 연결 중…</td></tr></tbody></table></div>
 <footer><div id="viSummary" class="vi-summary" aria-live="polite"></div>
 <p id="viStatus" class="vi-status" role="status">서버 연결 중</p>
-<p class="vi-status">발동 거래소가 Base입니다. 괴리율 = (그 시장 현재가 ÷ Base 현재가 − 1) × 100. 등락률 · 시가총액 · 거래대금 · 호가 평균은 발동 거래소 기준이고, 해제되면 해제 때 값으로 남습니다. 선물 행은 LS 가격제한폭 확대(JX0)이며 5분 뒤 해제로 봅니다. 괴리율이 1% 이상이었던 행은 발동부터 4분간 1초마다 Base 등락률과 각 시장 괴리율을 서버에 기록합니다.</p></footer>
+<p class="vi-status">발동 거래소가 Base입니다. 괴리율 = (그 시장 현재가 ÷ Base 현재가 − 1) × 100. 등락률 · 시가총액 · 거래대금 · 호가 평균은 발동 거래소 기준이고, 해제되면 해제 때 값으로 남습니다. 선물 행은 감시 월물의 체결가가 가격제한(상·하한가)에 도달한 순간 생기고, 가격제한폭 확대(LS JX0)를 받으면 해제됩니다. 괴리율이 1% 이상이었던 행은 발동부터 4분간 1초마다 Base 등락률과 각 시장 괴리율을 서버에 기록합니다.</p></footer>
 </main></body></html>

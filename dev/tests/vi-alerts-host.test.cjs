@@ -8,8 +8,8 @@ test('VI runs on the local Windows PC, market alerts on Oracle (Linux)',()=>{
     assert.equal(alertsRealtime({},'win32'),false);assert.equal(alertsRealtime({},'linux'),true);
     assert.equal(alertsRealtime({VI_ALERTS_REALTIME:'on'},'linux'),true);assert.equal(alertsRealtime({MARKET_ALERTS_REALTIME:'off',VI_ALERTS_REALTIME:'on'},'linux'),false);
     assert.equal(alertsRealtime({VI_MONITOR_REALTIME:'false',MARKET_ALERT_REALTIME:'false'},'linux'),true,'the old settings are not read');
-    assert.deepEqual(viAlertsStartupLines({VI_ALERTS_REALTIME:'on'},'linux'),['[VI 모니터] 이 서버에서 수신 안 함 (기본값: VI는 로컬 PC에서만 · 여기는 오라클)','[장운영 알림] 이 서버에서 수신함 (VI_ALERTS_REALTIME=on)','[종목 선물 수급] 이 서버에서 1분 수집 함 (기본값: 오라클에서만 · 여기는 오라클)']);
-    assert.deepEqual(viAlertsStartupLines({},'win32'),['[VI 모니터] 이 서버에서 수신함 (기본값: VI는 로컬 PC에서만 · 여기는 로컬 PC)','[장운영 알림] 이 서버에서 수신 안 함 (기본값: 오라클에서만 · 여기는 로컬 PC)','[종목 선물 수급] 이 서버에서 1분 수집 안 함 (기본값: 오라클에서만 · 여기는 로컬 PC)']);
+    assert.deepEqual(viAlertsStartupLines({VI_ALERTS_REALTIME:'on'},'linux'),['[VI 모니터] 이 서버에서 수신 안 함 (기본값: VI는 로컬 PC에서만 · 여기는 오라클)','[장운영 알림] 이 서버에서 수신함 (VI_ALERTS_REALTIME=on)','[VI 날짜별 기록] 지난 날 1일 보관 (기본값: 로컬 PC는 모두 · 오라클은 1일 · 여기는 오라클)','[종목 선물 수급] 이 서버에서 1분 수집 함 (기본값: 오라클에서만 · 여기는 오라클)']);
+    assert.deepEqual(viAlertsStartupLines({},'win32'),['[VI 모니터] 이 서버에서 수신함 (기본값: VI는 로컬 PC에서만 · 여기는 로컬 PC)','[장운영 알림] 이 서버에서 수신 안 함 (기본값: 오라클에서만 · 여기는 로컬 PC)','[VI 날짜별 기록] 지난 날 모두 보관 (기본값: 로컬 PC는 모두 · 오라클은 1일 · 여기는 로컬 PC)','[종목 선물 수급] 이 서버에서 1분 수집 안 함 (기본값: 오라클에서만 · 여기는 로컬 PC)']);
 });
 // 2026-11-12: 종목 선물 수급 1분 수집(LS t8463)은 오라클에서만. 같은 LS 앱키로 두 서버가 부르면 부하가 두 배다.
 test('stock futures flow is collected on Oracle only',()=>{

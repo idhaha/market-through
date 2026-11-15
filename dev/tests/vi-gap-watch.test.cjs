@@ -42,7 +42,7 @@ test('a VI whose 괴리율 reaches 1% before the release is flagged and its firs
         assert.deepEqual(row('005930').gapHit,{at:clock,kind:'NXT',value:1.2});
         assert.equal(timers.length,1,'one record per flagged VI');assert.equal(timers[0].ms,240000-31000,'the record ends 4 minutes after the activation');
         clock+=10000;quote('FUT','A116B000',102000);
-        assert.deepEqual(row('005930').gapMax,{at:clock,kind:'최근월',value:2,contract:'A116B000'});
+        assert.deepEqual(row('005930').gapMax,{at:clock,kind:'선물',value:2,contract:'A116B000'},'2026-11-14: one futures cell, the watched month');
         // After the release the gap no longer counts, but prices are still recorded until 4 minutes after the activation.
         assert.deepEqual(row('005930').atStart,{at:at('090500'),rate:2.5,price:100000,via:'REST'},'the change rate at the activation is kept');
         clock=at('090700');m.receive(real('005930','090500','090700'));
@@ -50,7 +50,7 @@ test('a VI whose 괴리율 reaches 1% before the release is flagged and its firs
         assert.equal(row('005930').releasePending,true);assert.equal(row('005930').atRelease,null);
         clock+=1000;quote('KRX','005930',101000,{rate:3.5});
         const released=row('005930').atRelease;
-        assert.deepEqual([released.rate,released.basis,Math.round(released.nxtRate*100)/100,Math.round(released.futures.recent*100)/100],[3.5,'해제 뒤 첫 KRX 체결',0.2,0.99],
+        assert.deepEqual([released.rate,released.basis,Math.round(released.nxtRate*100)/100,Math.round(released.gap.FUT*100)/100,released.futuresBase.code],[3.5,'해제 뒤 첫 KRX 체결',0.2,0.99,'A116B000'],
             'the release keeps its own change rate and 괴리율 (not the activation values)');
         clock+=5000;quote('NXT','005930',103000);
         assert.equal(row('005930').gapMax.value,2,'a gap after the release does not count');
@@ -60,16 +60,16 @@ test('a VI whose 괴리율 reaches 1% before the release is flagged and its firs
         assert.equal(lines.length,1,'000001 never reached 1% and is not recorded');
         const rec=lines[0];
         assert.deepEqual([rec.code,rec.exchange,rec.name,rec.startedAt,rec.releasedAt,rec.recordTo-rec.recordFrom,rec.partial],['005930','KRX','삼성전자',at('090500'),at('090700'),240000,false]);
-        // 2026-11-11: no prices; every second for 4 minutes from the activation: [초, Base 등락률, KRX, NXT, 선물 최근월, 선물 차기월].
+        // 2026-11-11: no prices; every second for 4 minutes from the activation: [초, Base 등락률, KRX, NXT, 선물(감시 월물, 2026-11-14)].
         assert.equal(rec.prices,undefined,'current prices are not stored');
-        assert.deepEqual(rec.secondsFields,['초','Base 등락률','KRX 괴리율','NXT 괴리율','선물 괴리율(최근월)','선물 괴리율(차기월)']);
+        assert.deepEqual(rec.secondsFields,['초','Base 등락률','KRX 괴리율','NXT 괴리율','선물 괴리율(감시 월물)']);
         assert.equal(rec.seconds.length,241,'0 to 240 seconds');
-        assert.deepEqual(rec.seconds[0],[0,2.5,'Base',null,null,null],'KRX is the Base; nothing else known yet');
-        assert.deepEqual(rec.seconds[1],[1,2.5,'Base',0.5,0.9,null]);
-        assert.deepEqual(rec.seconds[31],[31,2.5,'Base',1.2,0.9,null]);
-        assert.deepEqual(rec.seconds[41],[41,2.5,'Base',1.2,2,null]);
-        assert.deepEqual(rec.seconds[121],[121,3.5,'Base',0.2,0.99,null],'after the release the single-price match moves the Base');
-        assert.deepEqual(rec.seconds[240],[240,3.5,'Base',1.98,0.99,null],'the price after 4 minutes is not used');
+        assert.deepEqual(rec.seconds[0],[0,2.5,'Base',null,null],'KRX is the Base; nothing else known yet');
+        assert.deepEqual(rec.seconds[1],[1,2.5,'Base',0.5,0.9]);
+        assert.deepEqual(rec.seconds[31],[31,2.5,'Base',1.2,0.9]);
+        assert.deepEqual(rec.seconds[41],[41,2.5,'Base',1.2,2]);
+        assert.deepEqual(rec.seconds[121],[121,3.5,'Base',0.2,0.99],'after the release the single-price match moves the Base');
+        assert.deepEqual(rec.seconds[240],[240,3.5,'Base',1.98,0.99],'the price after 4 minutes is not used');
         // The VI window columns are saved as shown: at 1%, at the release and at the end of the 4 minutes.
         const hitColumns=rec.columns['1% 도달 때'];
         assert.deepEqual([hitColumns.시장,hitColumns.종목명,hitColumns.등락률,hitColumns['발동 거래소'],hitColumns.구분,hitColumns['발동 시각'],hitColumns['KRX 괴리율'],hitColumns['NXT 괴리율'],hitColumns['KRX 현재가']],['K','삼성전자',2.5,'KRX','정적','09:05:00','Base',1.2,undefined]);
@@ -134,11 +134,11 @@ test('filters: listed shares (ka10099, once a day) and the previous-day trade va
         assert.equal(again.snapshot().rows[0].prevAmount,4962835e6);again.stop();
     }finally{m.stop();fs.rmSync(directory,{recursive:true,force:true});}
 });
-test('Base follows the triggering exchange: an NXT VI compares KRX with NXT; a futures JX0 step above 1 makes its own row for 5 minutes; JD0 makes none',async()=>{
+test('Base follows the triggering exchange: an NXT VI compares KRX with NXT; a futures trade at the limit makes its own row (+10% 도달) until JX0',async()=>{
     const directory=fs.mkdtempSync(path.join(os.tmpdir(),'vi-base-'));
     let clock=at('090500');const snaps=[];
     const quoteFeed={start(){},stop(){},watch(){},unwatch(){},state:()=>({wanted:0}),nxtSupported:()=>true,snapshot:(exchange,code)=>snaps.push(exchange+':'+code)};
-    const m=createViMonitor({now:()=>clock,policy:()=>({spotAt:()=>false}),directory,getToken:async()=>'ls',kiwoomToken:async()=>'k',http:lsHttp(),quoteFeed,futuresEventMs:60});
+    const m=createViMonitor({now:()=>clock,policy:()=>({spotAt:()=>false}),directory,getToken:async()=>'ls',kiwoomToken:async()=>'k',http:lsHttp(),quoteFeed,futuresEventMs:60,futuresWaitMs:40,restGapMs:1});
     try{
         m.start();
         // NXT VI: the NXT price is the Base, the activation asks the NXT price once.
@@ -147,37 +147,33 @@ test('Base follows the triggering exchange: an NXT VI compares KRX with NXT; a f
         const q=(exchange,key,price,extra={})=>m.onQuote({exchange,key,price,via:'WS',receivedAt:clock,...extra});
         q('NXT','005930',100000,{rate:4,amount:5000,via:'REST'});q('KRX','005930',99000,{rate:3,amount:9000});q('FUT','A116B000',101000);
         let r=m.snapshot().rows.find(x=>x.exchange==='NXT');
-        assert.equal(r.gap.NXT,'Base');assert.equal(Math.round(r.gap.KRX*100)/100,-1);assert.equal(Math.round(r.gap.FUT.recent*100)/100,1);
+        assert.equal(r.gap.NXT,'Base');assert.equal(Math.round(r.gap.KRX*100)/100,-1);assert.equal(Math.round(r.gap.FUT*100)/100,1);
         assert.deepEqual([r.rate,r.amount,r.bidAverage],[4,5000,null],'등락률 · 거래대금 from NXT; the KRX book is not shown for an NXT row');
         assert.equal(r.gapHit.kind,'KRX','|KRX ÷ NXT − 1| = 1% counts');
-        // Futures event: a JX0 step above 1 (the normal ±10% band) makes a row; its contract is the Base.
-        // Message shapes as received on 2026-11-12: the side that did not expand still carries '01'.
+        // Futures: the day limits (JD0 before the first trade), near the limit, a trade at the limit = +10% 도달; its contract is the Base.
         clock=at('091000');
-        await m.onFuturesEvent({tr:'JX0',futcode:'A116B000',body:{futcode:'A116B000',upstep:'02',dnstep:'01',uplmtprice:'1200',dnlmtprice:'900'},receivedAt:clock});
-        let fut=m.snapshot().rows.find(x=>x.exchange==='FUT');
-        assert.deepEqual([fut.code,fut.name,fut.contract.code,fut.contract.month,fut.kindText,fut.direction,fut.durationMs],['005930','삼성전자','A116B000','202611','상한 2단계 확대 (±20%)','up',60]);
+        const ev=(tr,body)=>m.onFuturesEvent({tr,futcode:'A116B000',body:{futcode:'A116B000',...body},receivedAt:clock});
+        await ev('JD0',{dy_gubun:'2',dy_uplmtprice:'110000',dy_dnlmtprice:'90000'});
+        await ev('JD0',{dy_gubun:'1',dy_uplmtprice:'110000',dy_dnlmtprice:'108000'});
+        assert.equal(m.snapshot().rows.filter(x=>x.exchange==='FUT').length,0,'near the limit is not a row');
+        await ev('JC0',{price:'110000'});
+        let fut;for(let i=0;i<100&&!(fut=m.snapshot().rows.find(x=>x.exchange==='FUT'));i++)await pause(10);
+        assert.deepEqual([fut.code,fut.name,fut.contract.code,fut.contract.month,fut.kindText,fut.direction,fut.durationMs],['005930','삼성전자','A116B000','202611','+10% 도달','up',60]);
         // 선물 등락률 = 선물 현재가 ÷ t8402 기준가(recprice 100,000) − 1; no futures 거래대금.
-        assert.deepEqual([Math.round(fut.rate*100)/100,fut.amount],[1,null]);
-        assert.equal(fut.gap.FUT,'Base');assert.equal(Math.round(fut.gap.KRX*100)/100,-1.98);assert.equal(Math.round(fut.gap.NXT*100)/100,-0.99);
-        // The same step again is not a new event; JD0 (no longer registered) never makes a row, even 2 → 1 at the open.
-        await m.onFuturesEvent({tr:'JX0',futcode:'A116B000',body:{futcode:'A116B000',upstep:'02',dnstep:'01'},receivedAt:clock});
-        await m.onFuturesEvent({tr:'JD0',futcode:'A116B000',body:{futcode:'A116B000',dy_gubun:'2',dy_uplmtprice:'1100',dy_dnlmtprice:'900',gubun:''},receivedAt:clock});
-        await m.onFuturesEvent({tr:'JD0',futcode:'A116B000',body:{futcode:'A116B000',dy_gubun:'1',dy_uplmtprice:'1030',dy_dnlmtprice:'970',gubun:''},receivedAt:clock});
-        assert.equal(m.snapshot().rows.filter(x=>x.exchange==='FUT').length,1);
-        // After 5 minutes (here 60 ms) the futures row is released with the values at that moment.
-        await pause(150);fut=m.snapshot().rows.find(x=>x.exchange==='FUT');
-        assert.deepEqual([fut.active,fut.atRelease.basis,fut.atRelease.gap.FUT],[false,'5분 경과','Base']);
-        // A first message at step 1 on both sides is the normal band: no row (other contract).
-        await m.onFuturesEvent({tr:'JX0',futcode:'A116C000',body:{futcode:'A116C000',upstep:'01',dnstep:'01'},receivedAt:clock});
-        assert.equal(m.snapshot().rows.filter(x=>x.exchange==='FUT').length,1);
-        // The down step rising makes a new row (DB하이텍 2026-11-12: upstep 01, dnstep 02 was shown as '확대 1단계' before).
-        await m.onFuturesEvent({tr:'JX0',futcode:'A116B000',body:{futcode:'A116B000',upstep:'02',dnstep:'02'},receivedAt:clock+1000});
-        fut=m.snapshot().rows.find(x=>x.exchange==='FUT'&&x.active);
-        assert.deepEqual([fut.kindText,fut.direction],['하한 2단계 확대 (±20%)','down']);
-        // A step back down ends the row before its countdown.
-        await m.onFuturesEvent({tr:'JX0',futcode:'A116B000',body:{futcode:'A116B000',upstep:'02',dnstep:'01'},receivedAt:clock+2000});
-        fut=m.snapshot().rows.find(x=>x.exchange==='FUT'&&x.kindText.startsWith('하한'));
-        assert.deepEqual([fut.active,fut.releasedAt,fut.atRelease.basis],[false,clock+2000,'제한폭 축소 이벤트']);
+        assert.deepEqual([Math.round(fut.rate*100)/100,fut.amount],[10,null]);
+        assert.equal(fut.gap.FUT,'Base');assert.equal(Math.round(fut.gap.KRX*100)/100,-10);
+        // The same price again is not a new row; after the 5 minutes (60 ms here) it waits for the expansion.
+        await ev('JC0',{price:'110000'});await pause(100);
+        fut=m.snapshot().rows.find(x=>x.exchange==='FUT');assert.equal(m.snapshot().rows.filter(x=>x.exchange==='FUT').length,1);
+        assert.deepEqual([fut.active,fut.waiting],[true,true],'해제 대기');
+        // JX0: released; no futures trade within the wait (40 ms here) → 체결 없음.
+        await ev('JX0',{upstep:'02',dnstep:'01',uplmtprice:'120000',dnlmtprice:'90000'});await pause(80);
+        fut=m.snapshot().rows.find(x=>x.exchange==='FUT');
+        assert.deepEqual([fut.active,fut.releasedAt,fut.atRelease.noTrade,fut.atRelease.gap.FUT],[false,clock,true,'Base']);
+        // The down side: its own row.
+        await ev('JD0',{dy_gubun:'1',dy_uplmtprice:'92000',dy_dnlmtprice:'90000'});await ev('JC0',{price:'90000'});
+        for(let i=0;i<100&&!(fut=m.snapshot().rows.find(x=>x.exchange==='FUT'&&x.active));i++)await pause(10);
+        assert.deepEqual([fut.kindText,fut.direction],['-10% 도달','down']);
     }finally{m.stop();fs.rmSync(directory,{recursive:true,force:true});}
 });
 test('NXT row 호가 평균 comes from the KIS NX book while the NXT VI is on (08:00~08:50 has no KRX book, 2026-11-12)',async()=>{
@@ -215,16 +211,19 @@ test('futures row 매수10호가 평균 in KRW: LS t8403 10 levels × 승수 (t8
     let clock=at('091000');const asked=[],http=lsHttp(),post=http.post;
     http.post=async(url,body,opts)=>{if(opts.headers.tr_cd==='t8403')asked.push(body.t8403InBlock);return post(url,body,opts);};
     const quoteFeed={start(){},stop(){},watch(){},unwatch(){},state:()=>({wanted:0}),nxtSupported:()=>true,snapshot(){}};
-    const m=createViMonitor({now:()=>clock,policy:()=>({spotAt:()=>false}),directory,getToken:async()=>'ls',kiwoomToken:async()=>'k',http,quoteFeed,futuresEventMs:9000,futuresBookMs:200});
+    const m=createViMonitor({now:()=>clock,policy:()=>({spotAt:()=>false}),directory,getToken:async()=>'ls',kiwoomToken:async()=>'k',http,quoteFeed,futuresEventMs:9000,futuresBookMs:200,futuresWaitMs:50});
     try{
         m.start();
-        await m.onFuturesEvent({tr:'JX0',futcode:'A116B000',body:{futcode:'A116B000',upstep:'02',dnstep:'01'},receivedAt:clock});
+        // 2026-11-14: a row starts at the trade at the limit (JD0 limits, then JC0).
+        await m.onFuturesEvent({tr:'JD0',futcode:'A116B000',body:{futcode:'A116B000',dy_gubun:'2',dy_uplmtprice:'1100',dy_dnlmtprice:'900'},receivedAt:clock});
+        await m.onFuturesEvent({tr:'JC0',futcode:'A116B000',body:{futcode:'A116B000',price:'1100'},receivedAt:clock});
         let fut;for(let i=0;i<300&&!Number.isFinite((fut=m.snapshot().rows.find(x=>x.exchange==='FUT'))?.bidAverage);i++)await pause(20);
         // 9 priced levels: mean of price × 5 contracts × 10 = (1000+990+…+920)/9 × 50 = 960 × 50.
         assert.equal(fut.bidAverage,960*50);assert.equal(fut.bidAverageVia,'LS');
         assert.deepEqual(asked[0],{shcode:'A116B000'},'t8403 takes shcode (focode answers no data)');
-        // Released after its countdown: the value at the release is kept and polling stops.
-        for(let i=0;i<600&&m.snapshot().rows.find(x=>x.exchange==='FUT').active;i++)await pause(20);
+        // Released by the expansion (JX0): the value at the release is kept and polling stops.
+        await m.onFuturesEvent({tr:'JX0',futcode:'A116B000',body:{futcode:'A116B000',upstep:'02',dnstep:'01',uplmtprice:'1200',dnlmtprice:'900'},receivedAt:clock});
+        for(let i=0;i<600&&(m.snapshot().rows.find(x=>x.exchange==='FUT').active||m.snapshot().rows.find(x=>x.exchange==='FUT').releasePending);i++)await pause(20);
         fut=m.snapshot().rows.find(x=>x.exchange==='FUT');assert.equal(fut.atRelease.bidAverage,960*50);
         await pause(1200);const n=asked.length;await pause(1500);assert.equal(asked.length,n,'no t8403 once no futures row is on (a call already queued may still finish)');
     }finally{m.stop();fs.rmSync(directory,{recursive:true,force:true});}

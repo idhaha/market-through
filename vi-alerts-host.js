@@ -18,6 +18,14 @@ function alertsRealtime(env = process.env, platform = process.platform) {
 function stockFuturesCollect(env = process.env, platform = process.platform) {
     return flag(env.STOCK_FUTURES_COLLECT) ?? platform !== 'win32';
 }
+// - VI 창 날짜별 기록(data/vi-monitor/days, 2026-11-14): 로컬은 모두 남기고, 오라클은 마지막 1일(직전 장)만 남긴다.
+//   VI_HISTORY_DAYS=숫자(남길 지난 날 수) 또는 all. 오늘 행은 state.json에 있어 이 수에 들지 않는다.
+function viHistoryDays(env = process.env, platform = process.platform) {
+    const v = String(env.VI_HISTORY_DAYS || '').trim().toLowerCase();
+    if (v === 'all') return Infinity;
+    if (/^\d+$/.test(v) && Number(v) >= 1) return Number(v);
+    return platform === 'win32' ? Infinity : 1;
+}
 // 서버 시작 때 server_debug에 남기는 줄.
 function viAlertsStartupLines(env = process.env, platform = process.platform) {
     const where = platform === 'win32' ? '로컬 PC' : '오라클';
@@ -25,6 +33,8 @@ function viAlertsStartupLines(env = process.env, platform = process.platform) {
         `[VI 모니터] 이 서버에서 ${viRealtime(env, platform) ? '수신함' : '수신 안 함'} (${flag(env.VI_REALTIME) == null ? '기본값: VI는 로컬 PC에서만 · 여기는 ' + where : 'VI_REALTIME=' + String(env.VI_REALTIME).trim()})`,
         `[장운영 알림] 이 서버에서 ${alertsRealtime(env, platform) ? '수신함' : '수신 안 함'} (${flag(env.MARKET_ALERTS_REALTIME) != null ? 'MARKET_ALERTS_REALTIME=' + String(env.MARKET_ALERTS_REALTIME).trim() : flag(env.VI_ALERTS_REALTIME) != null ? 'VI_ALERTS_REALTIME=' + String(env.VI_ALERTS_REALTIME).trim() : '기본값: 오라클에서만 · 여기는 ' + where})`
     ];
+    const keep = viHistoryDays(env, platform);
+    lines.push(`[VI 날짜별 기록] 지난 날 ${keep === Infinity ? '모두' : keep + '일'} 보관 (${String(env.VI_HISTORY_DAYS || '').trim() ? 'VI_HISTORY_DAYS=' + String(env.VI_HISTORY_DAYS).trim() : '기본값: 로컬 PC는 모두 · 오라클은 1일 · 여기는 ' + where})`);
     lines.push(`[종목 선물 수급] 이 서버에서 1분 수집 ${stockFuturesCollect(env, platform) ? '함' : '안 함'} (${flag(env.STOCK_FUTURES_COLLECT) == null ? '기본값: 오라클에서만 · 여기는 ' + where : 'STOCK_FUTURES_COLLECT=' + String(env.STOCK_FUTURES_COLLECT).trim()})`);
     if (['VI_MONITOR_REALTIME', 'MARKET_ALERT_REALTIME'].some(name => env[name] != null))
         lines.push('[VI · 장운영 알림] 예전 설정 VI_MONITOR_REALTIME · MARKET_ALERT_REALTIME은 더 쓰지 않음');
@@ -32,4 +42,4 @@ function viAlertsStartupLines(env = process.env, platform = process.platform) {
 }
 // 예전 이름: 2026-11-09 코드와 테스트 호환.
 const viAlertsRealtime = alertsRealtime;
-module.exports = { viRealtime, alertsRealtime, viAlertsRealtime, stockFuturesCollect, viAlertsStartupLines };
+module.exports = { viRealtime, alertsRealtime, viAlertsRealtime, stockFuturesCollect, viHistoryDays, viAlertsStartupLines };

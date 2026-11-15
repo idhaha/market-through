@@ -326,7 +326,7 @@ const lsMarketSupplyProvider = require('./ls-market-supply').createLsMarketSuppl
     axios.interceptors.response.use(response => { check(response); return response; }, error => { check(error.response); throw error; });
 }
 // 장운영 알림은 오라클에서만, VI 모니터는 2026-11-10부터 로컬 PC에서만 받는다(vi-alerts-host.js).
-const { viRealtime, alertsRealtime, stockFuturesCollect, viAlertsStartupLines } = require('./vi-alerts-host');
+const { viRealtime, alertsRealtime, stockFuturesCollect, viHistoryDays, viAlertsStartupLines } = require('./vi-alerts-host');
 const marketAlertService = require('./market-alert-service').createMarketAlerts({
     directory: path.join(__dirname, 'data', 'market-alerts'), getToken: () => lsMarketSupplyProvider.accessToken(),
     rejectToken: () => lsMarketSupplyProvider.invalidateToken(),
@@ -339,9 +339,20 @@ const viQuoteFeed = require('./nh-quote-feed').createNhQuoteFeed({
     credentials: () => ({ appKey: (process.env.NAMU_APPKEY || '').trim(), secretKey: (process.env.NAMU_SECRETKEY || '').trim() }),
     tokenFile: path.join(__dirname, 'data', 'nh-plug', 'token.json'), onQuote: quote => viQuoteHandler(quote)
 });
+// 주식선물 1분봉(한투 FHKIF03020200, 시장 JF): 종목 선물 수급 카드와 VI 창(해제 때 선물 가격 확인)이 같이 쓴다.
+async function kisFuturesMinute({ code, date, hour }) {
+    const domain = (process.env.EFRIEND_DOMAIN || '').trim(), appKey = (process.env.EFRIEND_APPKEY || '').trim(), secretKey = (process.env.EFRIEND_SECRETKEY || '').trim();
+    if (!domain || !appKey || !secretKey) throw Error('한투 키 없음');
+    const response = await kisHttp.get(domain + '/uapi/domestic-futureoption/v1/quotations/inquire-time-fuopchartprice', {
+        params: { FID_COND_MRKT_DIV_CODE: 'JF', FID_INPUT_ISCD: code, FID_HOUR_CLS_CODE: '60', FID_PW_DATA_INCU_YN: 'Y', FID_FAKE_TICK_INCU_YN: 'N', FID_INPUT_DATE_1: date, FID_INPUT_HOUR_1: hour },
+        headers: { authorization: 'Bearer ' + await getEfriendAccessToken(domain, appKey, secretKey), appkey: appKey, appsecret: secretKey, tr_id: 'FHKIF03020200', custtype: 'P' }, timeout: 15000
+    });
+    if (String(response.data?.rt_cd) !== '0') throw Error(`FHKIF03020200 ${response.data?.msg_cd || ''} ${response.data?.msg1 || ''}`.trim());
+    return response.data?.output2 || [];
+}
 const viMonitorService = require('./vi-monitor-service').createViMonitor({
     directory: path.join(__dirname, 'data', 'vi-monitor'), getToken: () => lsMarketSupplyProvider.accessToken(), http: axios,
-    enabled: viRealtime,
+    enabled: viRealtime, historyDays: viHistoryDays(),
     kiwoomToken: () => getAccessToken((process.env.KIWOOM_APPKEY || '').trim(), (process.env.KIWOOM_SECRETKEY || '').trim()),
     rejectKiwoomToken: () => { cachedToken = null; },
     quoteFeed: viQuoteFeed, log: fileLog,
@@ -351,15 +362,38 @@ const viMonitorService = require('./vi-monitor-service').createViMonitor({
         getToken: () => getEfriendAccessToken((process.env.EFRIEND_DOMAIN || '').trim(), (process.env.EFRIEND_APPKEY || '').trim(), (process.env.EFRIEND_SECRETKEY || '').trim()),
         http: axios, onQuote: quote => viQuoteHandler(quote), log: fileLog
     }),
-    futuresEventsState: () => lsFuturesEvents?.state().state || ''
+    futuresEventsState: () => lsFuturesEvents?.state().state || '', futuresMinute: kisFuturesMinute,
+    // 체결강도(2026-11-14): 발동 때 한 번, 한투 FHKST01010300(주식현재가 체결) tday_rltv. KRX 행은 시장 J, NXT 행은 NX.
+    strength: async ({ exchange, code }) => {
+        const domain = (process.env.EFRIEND_DOMAIN || '').trim(), appKey = (process.env.EFRIEND_APPKEY || '').trim(), secretKey = (process.env.EFRIEND_SECRETKEY || '').trim();
+        if (!domain || !appKey || !secretKey) return null;
+        const r = await axios.get(domain + '/uapi/domestic-stock/v1/quotations/inquire-ccnl', { params: { FID_COND_MRKT_DIV_CODE: exchange === 'NXT' ? 'NX' : 'J', FID_INPUT_ISCD: code },
+            headers: { authorization: 'Bearer ' + await getEfriendAccessToken(domain, appKey, secretKey), appkey: appKey, appsecret: secretKey, tr_id: 'FHKST01010300', custtype: 'P' }, timeout: 8000 });
+        const row = Array.isArray(r.data?.output) ? r.data.output[0] : null, value = Number(row?.tday_rltv);
+        return String(r.data?.rt_cd) === '0' && row && Number.isFinite(value) ? { value } : null;
+    },
+    // 행 분석 차트(2026-11-14): 한투 FHPST01060000(주식현재가 당일시간대별체결) — hour(HHMMSS) 이전 30건, 시장 J(KRX) · NX(NXT).
+    stockTrades: async ({ market, code, hour }) => {
+        const domain = (process.env.EFRIEND_DOMAIN || '').trim(), appKey = (process.env.EFRIEND_APPKEY || '').trim(), secretKey = (process.env.EFRIEND_SECRETKEY || '').trim();
+        if (!domain || !appKey || !secretKey) throw Error('한투 키 없음');
+        const r = await axios.get(domain + '/uapi/domestic-stock/v1/quotations/inquire-time-itemconclusion', { params: { FID_COND_MRKT_DIV_CODE: market, FID_INPUT_ISCD: code, FID_INPUT_HOUR_1: hour },
+            headers: { authorization: 'Bearer ' + await getEfriendAccessToken(domain, appKey, secretKey), appkey: appKey, appsecret: secretKey, tr_id: 'FHPST01060000', custtype: 'P' }, timeout: 8000 });
+        if (String(r.data?.rt_cd) !== '0') throw Error(String(r.data?.msg1 || '응답 오류').slice(0, 60));
+        // 11/14 확인: 80 ms 간격은 500(초당 한도), 300 ms는 정상. 차트 조회는 250 ms 간격.
+        await new Promise(resolve => setTimeout(resolve, 250));
+        return r.data.output2 || [];
+    }
 });
 viQuoteHandler = viMonitorService.onQuote;
-// 주식선물 가격제한 이벤트(LS JX0, 2026-11-12부터 JD0 뺌): VI를 받는 서버에서 VI_FUTURES_EVENTS=on일 때만(ls-futures-events.js).
+// 주식선물 가격제한 도달(2026-11-14 정책): 감시 월물 JX0 · JD0, 장운영 JIF, 한도 근처 월물 JC0를 LS 연결 하나에 등록한다.
+// VI를 받는 서버에서 VI_FUTURES_EVENTS=on일 때만(ls-futures-events.js, futures-limit-watch.js).
 const lsFuturesEvents = require('./ls-futures-events').createLsFuturesEvents({
     getToken: () => lsMarketSupplyProvider.accessToken(), directory: path.join(__dirname, 'data', 'vi-monitor'),
-    contracts: () => viMonitorService.futuresContracts(), onEvent: event => viMonitorService.onFuturesEvent(event), log: message => fileLog(message),
+    registrations: () => viMonitorService.futuresRegistrations(), onEvent: event => viMonitorService.onFuturesEvent(event),
+    onConnection: up => viMonitorService.onFuturesConnection(up), log: message => fileLog(message),
     enabled: () => viRealtime() && (process.env.VI_FUTURES_EVENTS || '').trim() === 'on'
 });
+viMonitorService.onRegistrations(() => void lsFuturesEvents.sync());
 viWindowAccess.mount(app, viMonitorService);
 app.get('/api/market-alerts', (req, res) => res.set('Cache-Control', 'no-store').json(marketAlertService.snapshot(req.authUser.email)));
 app.post('/api/market-alerts/acknowledge', (req, res) => {
@@ -445,16 +479,7 @@ const lsStockFuturesService = require('./ls-stock-futures').createLsStockFutures
     http: axios, getToken: () => lsMarketSupplyProvider.accessToken(), directory: path.join(__dirname, 'data', 'ls-stock-futures'),
     supply: supplyService, log: message => fileLog(message), collects: () => stockFuturesCollect(),
     // Past 1-minute futures bars (days LS t8406 no longer serves): KIS FHKIF03020200, stock futures market JF.
-    kisMinute: async ({ code, date, hour }) => {
-        const domain = (process.env.EFRIEND_DOMAIN || '').trim(), appKey = (process.env.EFRIEND_APPKEY || '').trim(), secretKey = (process.env.EFRIEND_SECRETKEY || '').trim();
-        if (!domain || !appKey || !secretKey) throw Error('한투 키 없음');
-        const response = await kisHttp.get(domain + '/uapi/domestic-futureoption/v1/quotations/inquire-time-fuopchartprice', {
-            params: { FID_COND_MRKT_DIV_CODE: 'JF', FID_INPUT_ISCD: code, FID_HOUR_CLS_CODE: '60', FID_PW_DATA_INCU_YN: 'Y', FID_FAKE_TICK_INCU_YN: 'N', FID_INPUT_DATE_1: date, FID_INPUT_HOUR_1: hour },
-            headers: { authorization: 'Bearer ' + await getEfriendAccessToken(domain, appKey, secretKey), appkey: appKey, appsecret: secretKey, tr_id: 'FHKIF03020200', custtype: 'P' }, timeout: 15000
-        });
-        if (String(response.data?.rt_cd) !== '0') throw Error(`FHKIF03020200 ${response.data?.msg_cd || ''} ${response.data?.msg1 || ''}`.trim());
-        return response.data?.output2 || [];
-    }
+    kisMinute: kisFuturesMinute
 });
 app.get('/api/ls-stock-futures/chart', async (req, res) => {
     try { res.set('Cache-Control', 'no-store').json(await lsStockFuturesService.query(req.query)); }

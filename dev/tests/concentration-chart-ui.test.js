@@ -8,7 +8,6 @@ const puppeteer = require('puppeteer');
 test('Rank table selection, timeframe controls, history, zoom, retries and stale response handling', { timeout: 60000 }, async () => {
     const requests = [];
     const errors = [];
-    const debugRequests = [];
     const savedSettings = [];
     let autocompleteRequests = 0;
     let fail = false;
@@ -34,15 +33,10 @@ test('Rank table selection, timeframe controls, history, zoom, retries and stale
             else res.end(JSON.stringify({ success: true, stock: { code: '000660', name: 'SK하이닉스', market: 'K' } }));
             return;
         }
-        if (req.url.startsWith('/api/concentration-chart')) {
+        // The main-screen card asks 1분봉 from LS (/api/ls-concentration-chart) since 2026-10-28; the mock answers both alike.
+        if (req.url.startsWith('/api/concentration-chart') || req.url.startsWith('/api/ls-concentration-chart')) {
             let body = ''; for await (const part of req) body += part;
             const input = JSON.parse(body);
-            if (input.debug_five) {
-                debugRequests.push(input);
-                res.setHeader('Content-Type', 'application/json');
-                const bars = Array.from({ length: 5 }, (_, i) => ({ cntr_tm: `2026100710${String(25-i*5).padStart(2,'0')}00`, cur_prc: '-276000', trde_qty: '00198028' }));
-                res.end(JSON.stringify({ success: true, market: input.code === '123456' ? 'Q' : 'K', debug_five_bars: { fetched_at: '2026-10-07T01:30:02Z', stock: bars, market: bars } })); return;
-            }
             requests.push(input);
             if (delay && input.code === '005930') await new Promise(resolve => setTimeout(resolve, 150));
             res.setHeader('Content-Type', 'application/json');
@@ -61,6 +55,8 @@ test('Rank table selection, timeframe controls, history, zoom, retries and stale
                 points, has_more: !input.cursor, cursor: 'mock-cursor' }));
             return;
         }
+        // Automatic chart refresh runs only while the market is open (trading-refresh.js); the mock market is open.
+        if (req.url.startsWith('/api/trading-session')) { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ spot: true, futures: true, night: false, days: {} })); return; }
         if (req.url.startsWith('/api/')) { res.setHeader('Content-Type', 'application/json'); res.end('{"authenticated":false}'); return; }
         const url = req.url.split('?')[0];
         const file = path.join(root, url === '/' ? 'index.html' : url);
@@ -82,7 +78,7 @@ test('Rank table selection, timeframe controls, history, zoom, retries and stale
             const prototype = CanvasRenderingContext2D.prototype;
             const originals = Object.fromEntries(['clearRect', 'beginPath', 'moveTo', 'lineTo', 'stroke', 'fillText', 'fillRect'].map(key => [key, prototype[key]]));
             for (const method of Object.keys(originals)) prototype[method] = function (...args) {
-                if (this.canvas.id === 'concentrationCanvas') {
+                if (this.canvas.id === 'combinedConcentrationCanvas') {
                     if (method === 'clearRect') window.chartDrawing = { strokes: [], texts: [], selections: [] };
                     if (method === 'beginPath') this.recordedPath = [];
                     if (method === 'moveTo' || method === 'lineTo') (this.recordedPath ||= []).push(args);
@@ -90,7 +86,7 @@ test('Rank table selection, timeframe controls, history, zoom, retries and stale
                     if (method === 'fillText') window.chartDrawing.texts.push(args);
                     if (method === 'fillRect') window.chartDrawing.selections.push(args);
                 }
-                if (this.canvas.id === 'concentrationCandleCanvas') {
+                if (this.canvas.id === 'combinedConcentrationCandleCanvas') {
                     if (method === 'clearRect') window.candleDrawing = { wicks: [], bodies: [] };
                     if (method === 'beginPath') this.candlePath = [];
                     if (method === 'moveTo' || method === 'lineTo') (this.candlePath ||= []).push(args);
@@ -118,119 +114,122 @@ test('Rank table selection, timeframe controls, history, zoom, retries and stale
                 : originalFetch(url, ...args);
             await loadTransactionRank();
         });
-        assert.deepEqual(await page.evaluate(() => window.getConcentrationDisplaySettings()), { debugOpen: false, candleOpen: false, mode: 'day', interval: 1 });
-        assert.equal(await page.$eval('#concentrationFiveDebug', el => el.hidden), true);
-        assert.equal(await page.$eval('#concentrationCandleArea', el => el.hidden), true);
+        // The 5분봉 디버깅 panel was removed on 2026-10-15 (70a66c1); the saved display now also carries the other cards' settings.
+        const pick = s => ({ candleOpen: s.candleOpen, mode: s.mode, interval: s.interval });
+        assert.deepEqual(pick(await page.evaluate(() => window.getConcentrationDisplaySettings())), { candleOpen: false, mode: 'day', interval: 1 });
+        assert.equal(await page.$('#combinedConcentrationDebugToggle'), null);
+        assert.equal(await page.$eval('#combinedConcentrationCandleArea', el => el.hidden), true);
         await page.evaluate(() => { isInitializing = false; });
-        await page.click('#concentrationDebugToggle');
-        await page.click('#concentrationCandleToggle');
-        const savedDisplay = await page.evaluate(() => getSerializedState().rankChartDisplay);
-        assert.deepEqual(savedDisplay, { debugOpen: true, candleOpen: true, mode: 'day', interval: 1 });
-        assert(savedSettings.some(settings => settings.rankChartDisplay?.debugOpen === true));
+        await page.click('#combinedConcentrationCandleToggle');
+        const savedDisplay = pick(await page.evaluate(() => getSerializedState().rankChartDisplay));
+        assert.deepEqual(savedDisplay, { candleOpen: true, mode: 'day', interval: 1 });
+        assert(savedSettings.some(settings => settings.rankChartDisplay?.candleOpen === true));
         await page.evaluate(() => window.applyConcentrationDisplaySettings(undefined));
-        assert.equal(await page.$eval('#concentrationFiveDebug', el => el.hidden), true);
-        assert.equal(await page.$eval('#concentrationCandleArea', el => el.hidden), true);
+        assert.equal(await page.$eval('#combinedConcentrationCandleArea', el => el.hidden), true);
         await page.evaluate(settings => window.applyConcentrationDisplaySettings(settings), savedDisplay);
-        assert.equal(await page.$eval('#concentrationFiveDebug', el => el.hidden), false);
-        assert.equal(await page.$eval('#concentrationCandleArea', el => el.hidden), false);
-        async function idle() { await page.waitForFunction(() => document.getElementById('concentrationMore').getAttribute('aria-busy') === 'false'); }
-        assert.equal(await page.$eval('[data-chart-mode="day"]', el => el.getAttribute('aria-pressed')), 'true');
-        assert.equal(await page.$$eval('[data-chart-interval]', nodes => nodes.every(el => el.disabled)), true);
-        await page.evaluate(() => window.applyConcentrationDisplaySettings({ debugOpen: true, candleOpen: true, mode: 'minute', interval: 5 }));
-        assert.equal(await page.$eval('[data-chart-interval="5"]', el => el.getAttribute('aria-pressed')), 'true');
-        assert.deepEqual(await page.evaluate(() => getSerializedState().rankChartDisplay), { debugOpen: true, candleOpen: true, mode: 'minute', interval: 5 });
-        await page.evaluate(() => window.applyConcentrationDisplaySettings({ debugOpen: true, candleOpen: true, mode: 'day', interval: 1 }));
-        await page.click('[data-chart-mode="minute"]');
+        assert.equal(await page.$eval('#combinedConcentrationCandleArea', el => el.hidden), false);
+        async function idle() { await page.waitForFunction(() => document.getElementById('combinedConcentrationMore').getAttribute('aria-busy') === 'false'); }
+        assert.equal(await page.$eval('#combinedConcentrationChartPanel [data-chart-mode="day"]', el => el.getAttribute('aria-pressed')), 'true');
+        // The 5 · 15분 interval buttons were removed on 2026-10-23 (844ae72); only 1분봉 is left and an old saved interval falls back to 1.
+        assert.equal((await page.$$('[data-chart-interval]')).length, 0);
+        await page.evaluate(() => window.applyConcentrationDisplaySettings({ candleOpen: true, mode: 'minute', interval: 5 }));
+        assert.equal(await page.$eval('#combinedConcentrationChartPanel [data-chart-mode="minute"]', el => el.getAttribute('aria-pressed')), 'true');
+        assert.deepEqual(pick(await page.evaluate(() => getSerializedState().rankChartDisplay)), { candleOpen: true, mode: 'minute', interval: 1 });
+        await page.evaluate(() => window.applyConcentrationDisplaySettings({ candleOpen: true, mode: 'day', interval: 1 }));
+        await page.click('#combinedConcentrationChartPanel [data-chart-mode="minute"]');
         await page.click('#transactionBody tr'); await idle();
-        assert.equal(await page.$eval('#concentrationStockName', el => el.value), '삼성전자');
+        assert.equal(await page.$eval('#combinedConcentrationStockName', el => el.value), '삼성전자');
         assert.equal(requests.at(-1).code, '005930');
-        const candleDrawing = await page.evaluate(() => ({ candle: window.candleDrawing, line: window.chartDrawing.strokes.find(stroke => stroke.color === '#ea580c' && stroke.path.length > 2) }));
-        assert.equal(candleDrawing.candle.wicks.length, 290);
+        // The 쏠림율 line is blue (#339af0); orange is the 분봉 누적 line, which needs an 08:00 bar the mock does not have.
+        // Bars without a ratio keep their x slot (candles still draw), and 1분봉 opens on the latest session (2026-10-23 shared axis).
+        const candleDrawing = await page.evaluate(() => ({ candle: window.candleDrawing, line: window.chartDrawing.strokes.find(stroke => stroke.color === '#339af0' && stroke.path.length > 2) }));
+        assert.match(await page.$eval('#combinedConcentrationPeriod', el => el.textContent), /^2026-10-07 09:00 — 2026-10-07 13:57 · 100 \/ 300봉$/);
+        assert.equal(candleDrawing.candle.wicks.length, 100);
         assert(candleDrawing.candle.bodies.some(body => body.color === '#e11d48'));
         assert(candleDrawing.candle.bodies.some(body => body.color === '#2563eb'));
-        assert.deepEqual(candleDrawing.candle.wicks.map(wick => wick[0][0]), candleDrawing.line.path.map(point => point[0]));
-        const hoverBounds = await page.$eval('#concentrationCandleCanvas', el => { const r = el.getBoundingClientRect(); return { x: r.left + 100, y: r.top + 60 }; });
+        const wickX = candleDrawing.candle.wicks.map(wick => wick[0][0]);
+        assert.equal(candleDrawing.line.path.length, 100 - [217, 248, 279].length, 'bars without a ratio leave a gap in the line');
+        assert(candleDrawing.line.path.every(([x]) => wickX.some(w => Math.abs(w - x) < 0.01)), 'line and candles share the time axis');
+        // More Rank cards now sit above this one, so bring the chart into the viewport before using the mouse.
+        await page.$eval('#combinedConcentrationChartPanel', el => el.scrollIntoView({ block: 'start' }));
+        const hoverBounds = await page.$eval('#combinedConcentrationCandleCanvas', el => { const r = el.getBoundingClientRect(); return { x: r.left + 100, y: r.top + 60 }; });
         await page.mouse.move(hoverBounds.x, hoverBounds.y);
-        assert((await page.$eval('#concentrationCandleTooltip', el => el.textContent)).includes('상승률 +3.46%'));
-        assert.equal(await page.$eval('#concentrationTooltip', el => el.textContent), await page.$eval('#concentrationCandleTooltip', el => el.textContent));
-        const hoverLayout = await page.evaluate(() => ({ info: document.getElementById('concentrationTooltip').getBoundingClientRect().top, chart: document.getElementById('concentrationCanvas').getBoundingClientRect().top, text: document.getElementById('concentrationTooltip').textContent }));
-        assert(hoverLayout.info >= hoverLayout.chart);
+        // One shared info line above the charts (the candle tooltip stays hidden), rates to one decimal.
+        assert.match(await page.$eval('#combinedConcentrationTooltip', el => el.textContent), /^2026-10-07 \d\d:\d\d · 쏠림율 \d+\.\d% · 당일 누적 미제공 · 상승률 3\.5%$/);
+        assert.equal(await page.$eval('#combinedConcentrationCandleTooltip', el => el.hidden), true);
+        // The info line now sits in the chart column above the graph instead of floating over it.
+        const hoverLayout = await page.evaluate(() => ({ info: document.getElementById('combinedConcentrationTooltip').getBoundingClientRect().bottom, chart: document.getElementById('combinedConcentrationCanvas').getBoundingClientRect().top, text: document.getElementById('combinedConcentrationTooltip').textContent }));
+        assert(hoverLayout.info <= hoverLayout.chart + 1, 'the info line must not cover the graph');
         assert(!hoverLayout.text.includes('시가 대비'));
         assert(!hoverLayout.text.includes('현재'));
 
-        await page.click('#concentrationCandleToggle');
-        assert.equal(await page.$eval('#concentrationCandleArea', el => el.hidden), true);
-        await page.click('#concentrationCandleToggle');
-        assert.equal(await page.$eval('#concentrationCandleToggle', el => el.getAttribute('aria-expanded')), 'true');
+        await page.click('#combinedConcentrationCandleToggle');
+        assert.equal(await page.$eval('#combinedConcentrationCandleArea', el => el.hidden), true);
+        await page.click('#combinedConcentrationCandleToggle');
+        assert.equal(await page.$eval('#combinedConcentrationCandleToggle', el => el.getAttribute('aria-expanded')), 'true');
 
-        await page.$eval('#concentrationStockName', el => { el.value = 'SK하이닉스'; });
-        await page.focus('#concentrationStockName');
+        await page.$eval('#combinedConcentrationStockName', el => { el.value = 'SK하이닉스'; });
+        await page.focus('#combinedConcentrationStockName');
         const manualChartResponse = page.waitForResponse(response => response.url().includes('/api/concentration-chart') && response.request().postData()?.includes('000660'));
         await page.keyboard.press('Enter'); await manualChartResponse; await idle();
-        await page.waitForFunction(() => document.getElementById('concentrationStockName').value === 'SK하이닉스' && document.getElementById('concentrationMore').getAttribute('aria-busy') === 'false');
+        await page.waitForFunction(() => document.getElementById('combinedConcentrationStockName').value === 'SK하이닉스' && document.getElementById('combinedConcentrationMore').getAttribute('aria-busy') === 'false');
         assert.equal(requests.at(-1).code, '000660');
-        await page.$eval('#concentrationStockName', el => { el.value = '하이'; el.dispatchEvent(new CompositionEvent('compositionupdate', { data: '이' })); });
-        await page.waitForFunction(() => !document.getElementById('concentrationStockSuggestions').hidden);
-        assert.equal(await page.$eval('#concentrationStockSuggestions', el => el.children.length), 1);
+        await page.$eval('#combinedConcentrationStockName', el => { el.value = '하이'; el.dispatchEvent(new CompositionEvent('compositionupdate', { data: '이' })); });
+        await page.waitForFunction(() => !document.getElementById('combinedConcentrationStockSuggestions').hidden);
+        assert.equal(await page.$eval('#combinedConcentrationStockSuggestions', el => el.children.length), 1);
         const searchesBeforeNavigation = autocompleteRequests;
-        await page.$eval('#concentrationStockName', el => {
+        await page.$eval('#combinedConcentrationStockName', el => {
             el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', isComposing: true, bubbles: true, cancelable: true }));
             el.dispatchEvent(new CompositionEvent('compositionend', { data: '이' }));
             el.dispatchEvent(new InputEvent('input', { isComposing: false }));
         });
-        await page.waitForFunction(() => document.getElementById('concentrationStockName').getAttribute('aria-activedescendant') === 'stock-suggestion-0');
+        await page.waitForFunction(() => document.getElementById('combinedConcentrationStockName').getAttribute('aria-activedescendant') === 'combinedConcentration-stock-suggestion-0');
         // Allow any mistakenly scheduled debounce request to finish before asserting.
         await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 250)));
         assert.equal(autocompleteRequests, searchesBeforeNavigation);
-        assert.equal(await page.$eval('#stock-suggestion-0', el => el.getAttribute('aria-selected')), 'true');
+        assert.equal(await page.$eval('#combinedConcentration-stock-suggestion-0', el => el.getAttribute('aria-selected')), 'true');
         const autocompleteResponse = page.waitForResponse(response => response.url().includes('/api/concentration-chart') && response.request().postData()?.includes('000660'));
         await page.keyboard.press('Enter'); await autocompleteResponse; await idle();
-        assert.equal(await page.$eval('#concentrationStockName', el => el.value), 'SK하이닉스');
-        assert.equal(await page.$eval('#concentrationStockSuggestions', el => el.hidden), true);
-        await page.$eval('#concentrationStockName', el => { el.value = '없는종목'; });
+        assert.equal(await page.$eval('#combinedConcentrationStockName', el => el.value), 'SK하이닉스');
+        assert.equal(await page.$eval('#combinedConcentrationStockSuggestions', el => el.hidden), true);
+        await page.$eval('#combinedConcentrationStockName', el => { el.value = '없는종목'; });
         await page.keyboard.press('Enter');
-        await page.waitForFunction(() => document.getElementById('concentrationStatus').textContent.includes('종목을 찾을 수 없습니다.'));
+        await page.waitForFunction(() => document.getElementById('combinedConcentrationStatus').textContent.includes('종목을 찾을 수 없습니다.'));
         assert.equal(requests.at(-1).code, '000660');
         await page.click('#transactionBody tr'); await idle();
-        const positions = await page.evaluate(() => ({ chart: document.getElementById('concentrationChartPanel').getBoundingClientRect().top,
+        const positions = await page.evaluate(() => ({ chart: document.getElementById('combinedConcentrationChartPanel').getBoundingClientRect().top,
             tables: ['transactionTable', 'stockTable', 'efriendStockTable'].map(id => document.getElementById(id).getBoundingClientRect().bottom) }));
         assert(positions.tables.every(bottom => bottom < positions.chart));
-        const debugCountAtClose = debugRequests.length;
-        const debugValuesAtClose = await page.$eval('#concentrationDebugStock', el => el.textContent);
         await page.evaluate(() => {
             window.testClock = Date.parse('2026-10-08T06:35:00Z');
             document.dispatchEvent(new Event('visibilitychange'));
         });
-        await page.waitForFunction(() => document.getElementById('concentrationDebugStatus').textContent.includes('갱신 중지'));
-        assert.equal(debugRequests.length, debugCountAtClose);
-        assert.equal(await page.$eval('#concentrationDebugStock', el => el.textContent), debugValuesAtClose);
         await page.evaluate(() => {
             window.testClock = Date.parse('2026-10-09T01:00:00Z');
             document.dispatchEvent(new Event('visibilitychange'));
         });
-        await page.waitForFunction(() => document.getElementById('concentrationDebugStatus').textContent.startsWith('조회'));
-        await page.click('[data-chart-mode="day"]'); await idle();
+        await page.click('#combinedConcentrationChartPanel [data-chart-mode="day"]'); await idle();
         assert.equal(requests.at(-1).mode, 'day');
         const dailyDrawing = await page.evaluate(() => window.chartDrawing);
         const horizontal = dailyDrawing.strokes.filter(stroke => stroke.path.length === 2 && stroke.path[0][1] === stroke.path[1][1]);
         const vertical = dailyDrawing.strokes.filter(stroke => stroke.path.length === 2 && stroke.path[0][0] === stroke.path[1][0]);
-        assert.equal(horizontal.length, 8);
+        // Fixed 0~100% axis with 10% ticks since 2026-11-07 (a0d8fbb): 11 grid lines.
+        assert.equal(horizontal.length, 11);
         assert(vertical.length < 20);
         assert(dailyDrawing.texts.every(([text]) => !/\d{4}-\d{2}-\d{2}/.test(text)));
-        assert.equal(await page.$$eval('[data-chart-interval]', buttons => buttons.every(button => button.disabled)), true);
-        await page.click('[data-chart-mode="minute"]'); await idle();
-        assert.equal(await page.$$eval('[data-chart-interval]', buttons => buttons.every(button => !button.disabled)), true);
+        await page.click('#combinedConcentrationChartPanel [data-chart-mode="minute"]'); await idle();
         assert.equal(await page.$('.concentration-diagnostics'), null);
-        assert.equal(await page.$eval('#concentrationStatus', el => el.textContent), '');
-        await page.click('[data-chart-interval="15"]'); await idle();
-        assert.equal(requests.at(-1).interval, 15);
-        assert.equal(await page.evaluate(() => getSerializedState().rankChartDisplay.interval), 15);
-        const currentBeforeZoom = await page.$eval('#concentrationCurrentRate', el => el.textContent);
+        // The mock leaves 10 of 300 bars without a ratio (i % 31 === 0); they keep their slot and the status says so.
+        assert.equal(await page.$eval('#combinedConcentrationStatus', el => el.textContent), '시장 거래대금 10개 시점 누락 · 쏠림율 계산 불가');
+        assert.equal(requests.at(-1).interval, 1);
+        assert.equal(await page.evaluate(() => getSerializedState().rankChartDisplay.interval), 1);
+        const currentBeforeZoom = await page.$eval('#combinedConcentrationCurrentRate', el => el.textContent);
         const requestsBeforeZoom = requests.length;
-        async function dragChart(from, to, selector = '#concentrationCanvas') {
+        async function dragChart(from, to, selector = '#combinedConcentrationCanvas') {
+            await page.$eval(selector, el => el.scrollIntoView({ block: 'center' }));
             const bounds = await page.$eval(selector, el => {
                 const rect = el.getBoundingClientRect();
-                const graph = window.chartDrawing.strokes.find(stroke => stroke.color === '#ea580c' && stroke.path.length > 2);
+                const graph = window.chartDrawing.strokes.find(stroke => stroke.color === '#339af0' && stroke.path.length > 2);
                 return { left: rect.left, top: rect.top, start: graph.path[0][0], end: graph.path.at(-1)[0] };
             });
             const start = bounds.left + bounds.start + (bounds.end - bounds.start) * from;
@@ -248,161 +247,185 @@ test('Rank table selection, timeframe controls, history, zoom, retries and stale
 
             await page.mouse.up();
         }
+        // 1분봉 opens on the latest session (100 of the 300 loaded bars); a right-to-left drag goes back to that view.
+        const sessionPeriod = await page.$eval('#combinedConcentrationPeriod', el => el.textContent);
+        assert.equal(sessionPeriod, '2026-10-07 09:00 — 2026-10-07 13:57 · 100 / 300봉');
         await dragChart(0.2, 0.55);
-        const selectedPeriod = await page.$eval('#concentrationPeriod', el => el.textContent);
-        const selectedCount = Number(selectedPeriod.match(/· (\d+) \/ 290봉/)[1]);
-        assert(selectedCount >= 10 && selectedCount < 290, 'left-to-right drag must zoom to selected range');
-        assert.equal(await page.$eval('#concentrationCurrentRate', el => el.textContent), currentBeforeZoom, 'header must always show the current value');
+        const selectedPeriod = await page.$eval('#combinedConcentrationPeriod', el => el.textContent);
+        const selectedCount = Number(selectedPeriod.match(/· (\d+) \/ 300봉/)[1]);
+        assert(selectedCount >= 10 && selectedCount < 100, 'left-to-right drag must zoom to selected range');
+        assert.equal(await page.$eval('#combinedConcentrationCurrentRate', el => el.textContent), currentBeforeZoom, 'header must always show the current value');
         await dragChart(0.8, 0.2);
-        assert((await page.$eval('#concentrationPeriod', el => el.textContent)).includes('290 / 290봉'), 'right-to-left drag must restore full range');
+        assert.equal(await page.$eval('#combinedConcentrationPeriod', el => el.textContent), sessionPeriod, 'right-to-left drag must restore the session view');
         assert.equal(requests.length, requestsBeforeZoom, 'drag zoom must not fetch data');
-        await dragChart(0.25, 0.65, '#concentrationCandleCanvas');
-        assert(!(await page.$eval('#concentrationPeriod', el => el.textContent)).includes('290 / 290봉'));
-        await dragChart(0.8, 0.2, '#concentrationCandleCanvas');
-        assert((await page.$eval('#concentrationPeriod', el => el.textContent)).includes('290 / 290봉'));
+        await dragChart(0.25, 0.65, '#combinedConcentrationCandleCanvas');
+        assert.notEqual(await page.$eval('#combinedConcentrationPeriod', el => el.textContent), sessionPeriod);
+        await dragChart(0.8, 0.2, '#combinedConcentrationCandleCanvas');
+        assert.equal(await page.$eval('#combinedConcentrationPeriod', el => el.textContent), sessionPeriod);
         assert.equal(requests.length, requestsBeforeZoom);
 
 
-        await page.click('#concentrationZoomIn');
-        await page.click('#concentrationZoomIn');
-        assert((await page.$eval('#concentrationPeriod', el => el.textContent)).includes('73 / 290봉'));
-        await page.$eval('#concentrationRange', el => { el.value = '0'; el.dispatchEvent(new Event('input')); });
-        await page.click('#concentrationZoomOut');
-        await page.click('#concentrationMore'); await idle();
+        await page.click('#combinedConcentrationZoomIn');
+        await page.click('#combinedConcentrationZoomIn');
+        // Each zoom-in halves the 100-bar session view.
+        assert((await page.$eval('#combinedConcentrationPeriod', el => el.textContent)).includes('25 / 300봉'));
+        await page.$eval('#combinedConcentrationRange', el => { el.value = '0'; el.dispatchEvent(new Event('input')); });
+        await page.click('#combinedConcentrationZoomOut');
+        await page.click('#combinedConcentrationMore'); await idle();
         assert.equal(requests.at(-1).cursor, 'mock-cursor');
-        assert((await page.$eval('#concentrationPeriod', el => el.textContent)).includes('580 / 580봉'));
-        assert.equal(await page.$eval('#concentrationMore', el => el.disabled), true);
+        // The 600-bar older page overlaps the first one (10/2 ~ 10/7 → 600 distinct bars).
+        // The footer is redrawn on the next frame after the shared axis takes the older page, so wait for it.
+        await page.waitForFunction(() => document.getElementById('combinedConcentrationPeriod').textContent.includes('600 / 600봉'), { timeout: 5000 });
+        assert.equal(await page.$eval('#combinedConcentrationMore', el => el.disabled), true);
         await page.click('#tableBody tr'); await idle();
         assert.equal(requests.at(-1).code, '123456');
-        assert.equal(await page.$eval('#concentrationStockName', el => el.value), '조회순위 종목');
-        await page.waitForFunction(() => document.getElementById('concentrationDebugStock').textContent.includes('조회순위 종목') && document.getElementById('concentrationDebugMarket').textContent.includes('코스닥'));
+        // The shared axis keeps the loaded history, so the new stock is fetched up to the same past page.
+        assert.equal(requests.at(-1).cursor, 'mock-cursor');
+        assert.equal(await page.$eval('#combinedConcentrationStockName', el => el.value), '조회순위 종목');
+        // Nothing more to load here, so a failed fetch is checked through the 일/분 buttons, which the message names.
         fail = true;
-        await page.click('#concentrationMore'); await idle();
-        assert((await page.$eval('#concentrationStatus', el => el.textContent)).includes('모의 조회 실패'));
-        assert.equal(await page.$eval('#concentrationMore', el => el.disabled), false);
+        await page.click('#combinedConcentrationChartPanel [data-chart-mode="day"]'); await idle();
+        assert.equal(await page.$eval('#combinedConcentrationStatus', el => el.textContent), '모의 조회 실패 · 일/분 버튼으로 다시 시도하세요.');
         fail = false;
-        await page.click('#concentrationMore'); await idle();
+        await page.click('#combinedConcentrationChartPanel [data-chart-mode="minute"]'); await idle();
+        assert(!(await page.$eval('#combinedConcentrationStatus', el => el.textContent)).includes('모의 조회 실패'), 'retry after a failure recovers');
         await page.focus('#efriendTableBody tr'); await page.keyboard.press('Enter'); await idle();
         assert.equal(requests.at(-1).code, '234567');
-        assert.equal(await page.$eval('#concentrationStockName', el => el.value), '대주 종목');
+        assert.equal(await page.$eval('#combinedConcentrationStockName', el => el.value), '대주 종목');
         delay = true;
         await page.click('#transactionBody tr');
         await page.click('#tableBody tr'); await idle();
-        assert.equal(await page.$eval('#concentrationStockName', el => el.value), '조회순위 종목');
-        assert.equal(await page.$eval('#concentrationMarket', el => el.textContent), '코스닥');
+        assert.equal(await page.$eval('#combinedConcentrationStockName', el => el.value), '조회순위 종목');
+        assert.equal(await page.$eval('#combinedConcentrationMarket', el => el.textContent), '코스닥');
         await page.evaluate(() => renderTable([{ stk_cd: '123456', stk_nm: '조회순위 종목', mkt_type: 'Q' }]));
         await page.waitForSelector('#tableBody tr.concentration-selected');
         delay = true;
+        // Choosing another stock keeps both previous graphs (ratio and candles) under the blur until its answer arrives.
+        const images = () => page.evaluate(() => ['combinedConcentrationCanvas', 'combinedConcentrationCandleCanvas'].map(id => document.getElementById(id).toDataURL()));
+        const beforeSwitch = await images();
         await page.click('#transactionBody tr');
-        const loadingMarket = await page.$eval('#concentrationMarket', el => el.textContent);
-        const loadingButtonX = await page.$eval('[data-chart-mode="day"]', el => el.getBoundingClientRect().left);
+        assert.equal(await page.$eval('.concentration-chart-area', el => el.getAttribute('aria-busy')), 'true');
+        assert.deepEqual(await images(), beforeSwitch, 'retain the previous graphs while another stock loads');
+        const loadingMarket = await page.$eval('#combinedConcentrationMarket', el => el.textContent);
+        const loadingButtonX = await page.$eval('#combinedConcentrationChartPanel [data-chart-mode="day"]', el => el.getBoundingClientRect().left);
         assert.equal(loadingMarket, '코스피');
         await idle();
-        assert.equal(await page.$eval('[data-chart-mode="day"]', el => el.getBoundingClientRect().left), loadingButtonX);
+        assert.equal(await page.$eval('#combinedConcentrationChartPanel [data-chart-mode="day"]', el => el.getBoundingClientRect().left), loadingButtonX);
         highValues = true;
         const loading = await page.evaluate(() => {
-            const canvas = document.getElementById('concentrationCanvas');
+            const canvas = document.getElementById('combinedConcentrationCanvas');
             const area = canvas.parentElement;
             const before = { top: area.getBoundingClientRect().top, height: area.getBoundingClientRect().height, image: canvas.toDataURL() };
-            document.querySelector('[data-chart-mode="day"]').click();
+            document.querySelector('#combinedConcentrationChartPanel [data-chart-mode="day"]').click();
             return { before, top: area.getBoundingClientRect().top, height: area.getBoundingClientRect().height,
                 image: canvas.toDataURL(), filter: getComputedStyle(canvas).filter,
-                message: document.getElementById('concentrationStatus').textContent,
+                message: document.getElementById('combinedConcentrationStatus').textContent,
                 busy: area.getAttribute('aria-busy') };
         });
         assert.equal(loading.top, loading.before.top, 'loading must not move the chart');
         assert.equal(loading.height, loading.before.height);
+        // A new stock or 일/분 load keeps the previous graph under the blur until the answer arrives, like the automatic refresh (2026-11-13).
         assert.equal(loading.image, loading.before.image, 'retain the previous graph while loading');
         assert.equal(loading.filter, 'blur(2px)');
         assert.equal(loading.message, '');
         assert.equal(loading.busy, 'true');
-        assert.equal(await page.$eval('#concentrationMarket', el => el.textContent), '코스피');
+        assert.equal(await page.$eval('#combinedConcentrationMarket', el => el.textContent), '코스피');
         await idle();
-        assert.equal(await page.$eval('#concentrationCanvas', el => getComputedStyle(el).filter), 'none');
+        assert.equal(await page.$eval('#combinedConcentrationCanvas', el => getComputedStyle(el).filter), 'none');
         assert.equal(await page.$eval('.concentration-chart-area', el => el.getAttribute('aria-busy')), 'false');
         const highDrawing = await page.evaluate(() => window.chartDrawing);
-        const graph = highDrawing.strokes.find(stroke => stroke.color === '#ea580c' && stroke.path.length > 2);
+        const graph = highDrawing.strokes.find(stroke => stroke.color === '#339af0' && stroke.path.length > 2);
         assert(graph, 'large actual-like ratios must have a visible graph');
-        assert(graph.path.every(([, y]) => y >= 18 && y <= 306), 'auto axis must keep graph inside plot');
-        assert(highDrawing.texts.some(([text]) => text === '12,000%'));
-        assert.equal(await page.$eval('#concentrationCurrentRate', el => el.textContent), '32.79%');
-        assert(!highDrawing.texts.some(([text]) => text === '32.79%'), 'current ratio belongs in header, not over the graph');
+        // Fixed 0~100% axis (2026-11-07): ratios above 100% (a data glitch) are drawn at the top edge, never outside the plot.
+        const axisY = label => highDrawing.texts.find(([text]) => text === label)?.[2];
+        const [top, bottom] = [axisY('100%'), axisY('0%')];
+        assert(Number.isFinite(top) && Number.isFinite(bottom), '0% and 100% axis labels');
+        assert(graph.path.every(([, y]) => y >= top - 0.5 && y <= bottom + 0.5), 'the graph stays inside the plot');
+        assert(graph.path.some(([, y]) => Math.abs(y - top) < 0.5), 'ratios above 100% sit on the top edge');
+        assert(!highDrawing.texts.some(([text]) => text === '12,000%'), 'no auto-scaled axis');
+        // The header shows one decimal.
+        assert.equal(await page.$eval('#combinedConcentrationCurrentRate', el => el.textContent), '32.8%');
+        assert(!highDrawing.texts.some(([text]) => text === '32.8%'), 'current ratio belongs in header, not over the graph');
         assert.equal(await page.$('.concentration-chart-title'), null);
+        // The current rate (with its date under it) sits at the right end of the button row.
         const controlLayout = await page.evaluate(() => {
-            const rate = document.getElementById('concentrationCurrentRate').getBoundingClientRect();
-            const candle = document.getElementById('concentrationCandleToggle').getBoundingClientRect();
-            const debug = document.getElementById('concentrationDebugToggle').getBoundingClientRect();
-            const canvas = document.getElementById('concentrationCanvas').getBoundingClientRect();
-            return { sameRow: Math.abs((rate.top + rate.bottom) / 2 - (candle.top + candle.bottom) / 2),
-                rightGap: canvas.right - debug.right, ordered: rate.left >= candle.right };
+            const rate = document.getElementById('combinedConcentrationCurrentRate').getBoundingClientRect();
+            const candle = document.getElementById('combinedConcentrationCandleToggle').getBoundingClientRect();
+            const canvas = document.getElementById('combinedConcentrationCanvas').getBoundingClientRect();
+            return { sameRow: rate.top < candle.bottom && rate.bottom > candle.top, ordered: rate.left >= candle.right, rightGap: canvas.right - rate.right };
         });
-        assert(controlLayout.sameRow < 2);
+        assert(controlLayout.sameRow, 'rate and buttons share the header row');
         assert(controlLayout.ordered);
-        assert(Math.abs(controlLayout.rightGap) < 2);
+        assert(controlLayout.rightGap >= 0 && controlLayout.rightGap < 8, 'rate ends at the chart right edge');
         assert.equal(await page.$('.concentration-diagnostics'), null);
+        // Since 2026-10-15 the Rank cards sit in a 3-column grid (.rank-chart-row) instead of next to the tables.
         const desktopWidth = await page.evaluate(() => {
-            const panel = document.getElementById('concentrationChartPanel');
-            return [panel.getBoundingClientRect().width, document.getElementById('transactionTable').closest('.panel').getBoundingClientRect().width];
+            const panel = document.getElementById('combinedConcentrationChartPanel'), row = panel.closest('.rank-chart-row');
+            const gap = parseFloat(getComputedStyle(row).columnGap);
+            return { panel: panel.getBoundingClientRect().width, column: (row.getBoundingClientRect().width - 2 * gap) / 3,
+                canvas: (({ left, right }) => ({ left, right }))(document.getElementById('combinedConcentrationCanvas').getBoundingClientRect()), box: (({ left, right }) => ({ left, right }))(panel.getBoundingClientRect()) };
         });
-        assert(Math.abs(desktopWidth[0] - (desktopWidth[1] + 450)) < 2);
-        const footerOpen = await page.$eval('.concentration-chart-footer', el => el.getBoundingClientRect().width);
-        await page.click('#concentrationDebugToggle');
-        assert.equal(await page.$eval('#concentrationFiveDebug', el => el.hidden), true);
-        const matchingWidths = await page.evaluate(() => [document.getElementById('concentrationCanvas').getBoundingClientRect().width, document.getElementById('transactionTable').getBoundingClientRect().width]);
-        assert(Math.abs(matchingWidths[0] - matchingWidths[1]) < 2);
-        assert.equal(await page.$eval('#concentrationCandleToggle', el => el.textContent), '캔들차트');
-        const controlTops = await page.$$eval('[data-chart-mode], [data-chart-interval], #concentrationMore, #concentrationCandleToggle', nodes => nodes.map(node => node.getBoundingClientRect().top));
+        assert(Math.abs(desktopWidth.panel - desktopWidth.column) < 2, 'one grid column wide');
+        assert(desktopWidth.canvas.left >= desktopWidth.box.left && desktopWidth.canvas.right <= desktopWidth.box.right, 'the chart fits in its card');
+        assert.equal(await page.$eval('#combinedConcentrationCandleToggle', el => el.textContent), '캔들차트');
+        const controlTops = await page.$$eval('#combinedConcentrationChartPanel [data-chart-mode], #combinedConcentrationMore, #combinedConcentrationCandleToggle', nodes => nodes.map(node => node.getBoundingClientRect().top));
         assert(Math.max(...controlTops) - Math.min(...controlTops) < 2);
 
-        const footerClosed = await page.$eval('.concentration-chart-footer', el => el.getBoundingClientRect().width);
-        assert(Math.abs(footerOpen - footerClosed) < 2, 'debug expansion must not extend zoom controls');
-        assert.equal(await page.$eval('#concentrationDebugToggle', el => el.getAttribute('aria-expanded')), 'false');
-        await page.click('#concentrationDebugToggle');
-        assert.equal(await page.$eval('#concentrationFiveDebug', el => el.hidden), false);
-
-        await page.waitForFunction(() => document.querySelectorAll('#concentrationDebugStock tbody tr').length === 5);
-        assert.equal(await page.$$eval('#concentrationDebugMarket tbody tr', rows => rows.length), 5);
-        assert.equal(await page.$eval('#concentrationDebugStock tbody tr td:nth-child(2)', el => el.textContent), '-276000');
-        assert.equal(await page.$eval('#concentrationDebugStock tbody tr td:nth-child(3)', el => el.textContent), '00198028');
-        assert.equal(await page.$eval('#concentrationDebugStock tbody tr td:nth-child(4)', el => el.textContent), (276000 * 198028).toLocaleString('ko-KR'));
-        assert.equal(await page.$eval('#concentrationDebugMarket tbody tr td:nth-child(4)', el => el.textContent), ((276000 / 100) * (198028 * 10000)).toLocaleString('ko-KR'));
 
         if (process.env.CHART_SCREENSHOT) await page.screenshot({ path: process.env.CHART_SCREENSHOT, fullPage: true });
+        // Since 2026-10-18 (021b5bc) the Rank tab keeps a 1750px minimum width and scrolls sideways on a narrow window,
+        // so the card keeps its desktop size instead of shrinking to the phone width.
+        const desktopPanelWidth = desktopWidth.panel;
         await page.setViewport({ width: 390, height: 850 });
-        await page.waitForFunction(() => document.getElementById('concentrationChartPanel').getBoundingClientRect().width < 390);
+        // Let the layout settle after the resize (a timer, not requestAnimationFrame, which a resizing headless page may drop).
+        await new Promise(resolve => setTimeout(resolve, 200));
         const mobile = await page.evaluate(() => {
-            const panel = document.getElementById('concentrationChartPanel').getBoundingClientRect();
-            const canvas = document.getElementById('concentrationCanvas').getBoundingClientRect();
-            const more = document.querySelector('.concentration-timeframe-row').getBoundingClientRect();
-            return { left: panel.left, right: panel.right, canvas: canvas.width, moreRight: more.right };
+            const panel = document.getElementById('combinedConcentrationChartPanel').getBoundingClientRect();
+            const more = document.querySelector('#combinedConcentrationChartPanel .concentration-timeframe-row').getBoundingClientRect();
+            return { width: panel.width, right: panel.right, moreRight: more.right, scroll: document.querySelector('#tab_rank .tab-scroll-body')?.scrollWidth };
         });
-        assert(mobile.left >= 0 && mobile.right <= 390, 'mobile chart must fit viewport');
-        assert(mobile.canvas > 200 && mobile.moreRight <= mobile.right, 'mobile plot and controls must fit');
-        await page.click('[data-chart-mode="minute"]'); await idle();
+        assert(Math.abs(mobile.width - desktopPanelWidth) < 2, 'the card keeps its width on a narrow window');
+        assert(mobile.moreRight <= mobile.right, 'controls stay inside the card');
+        assert(mobile.scroll >= 1750, 'the Rank tab scrolls sideways');
+        await page.setViewport({ width: 1900, height: 1200 });
+        await page.$eval('#combinedConcentrationChartPanel', el => el.scrollIntoView({ block: 'start' }));
+        await page.click('#combinedConcentrationChartPanel [data-chart-mode="minute"]'); await idle();
         highValues = false;
-        await page.click('[data-chart-mode="minute"]'); await idle();
-        assert((await page.$eval('#concentrationPeriod', el => el.textContent)).includes('290 / 290봉'));
+        await page.click('#combinedConcentrationChartPanel [data-chart-mode="minute"]'); await idle();
+        assert.equal(await page.$eval('#combinedConcentrationPeriod', el => el.textContent), sessionPeriod);
         const minuteDrawing = await page.evaluate(() => window.chartDrawing);
-        const minuteGraph = minuteDrawing.strokes.find(stroke => stroke.color === '#ea580c' && stroke.path.length > 2);
-        assert.equal(minuteGraph.path.length, 290, 'missing market bars must consume no x-axis space');
-        assert.equal(await page.$eval('#concentrationStatus', el => el.textContent), '');
+        const minuteGraph = minuteDrawing.strokes.find(stroke => stroke.color === '#339af0' && stroke.path.length > 2);
+        assert.equal(minuteGraph.path.length, 97, 'bars without a ratio keep their slot but draw no line point');
+        assert.equal(await page.$eval('#combinedConcentrationStatus', el => el.textContent), '시장 거래대금 10개 시점 누락 · 쏠림율 계산 불가');
         if (process.env.CHART_SCREENSHOT) await page.screenshot({ path: process.env.CHART_SCREENSHOT.replace('.png', '-mobile.png'), fullPage: false });
-        await page.click('#concentrationMore'); await idle();
-        await page.click('#concentrationZoomIn');
-        await page.$eval('#concentrationRange', el => { el.value = '0'; el.dispatchEvent(new Event('input')); });
-        const periodBeforeRefresh = await page.$eval('#concentrationPeriod', el => el.textContent);
-        assert(periodBeforeRefresh.includes('290 / 580봉'));
+        await page.click('#combinedConcentrationMore'); await idle();
+        await page.click('#combinedConcentrationZoomIn');
+        await page.$eval('#combinedConcentrationRange', el => { el.value = '0'; el.dispatchEvent(new Event('input')); });
+        const periodBeforeRefresh = await page.$eval('#combinedConcentrationPeriod', el => el.textContent);
+        assert.equal(periodBeforeRefresh, '2026-10-02 09:00 — 2026-10-04 13:57 · 300 / 600봉');
         lastOverride = 45.67;
-        await page.evaluate(() => window.refreshConcentrationChart());
-        assert.equal(await page.$eval('#concentrationPeriod', el => el.textContent), periodBeforeRefresh, 'refresh must retain loaded history and zoomed historical range');
-        assert.equal(await page.$eval('#concentrationCurrentRate', el => el.textContent), '45.67%');
+        // The browser chart cache only re-asks the server once a saved answer is a second old; the page clock is frozen, so move it.
+        const tick = () => page.evaluate(() => { window.testClock += 2000; });
+        await tick();
+        const refreshBefore = requests.length;
+        // Wait for the card to go idle instead of the refresh promise: awaiting it sometimes ended with puppeteer's "Promise was collected".
+        await page.evaluate(() => { void window.refreshConcentrationChart(); }); await idle();
+        const perRefresh = requests.length - refreshBefore;
+        assert(perRefresh >= 1);
+        assert.equal(await page.$eval('#combinedConcentrationPeriod', el => el.textContent), periodBeforeRefresh, 'refresh must retain loaded history and zoomed historical range');
+        assert.equal(await page.$eval('#combinedConcentrationCurrentRate', el => el.textContent), '45.7%');
+        // Since 2026-10-12 a refresh asked while one is running is kept and run once after it, not dropped:
+        // three overlapping calls make two refreshes.
+        await tick();
         const concurrentBefore = requests.length;
-        await page.evaluate(() => Promise.all([window.refreshConcentrationChart(), window.refreshConcentrationChart()]));
-        assert.equal(requests.length, concurrentBefore + 1, 'overlapping refresh must be skipped');
+        await page.evaluate(() => { void Promise.all([window.refreshConcentrationChart(), window.refreshConcentrationChart(), window.refreshConcentrationChart()]); });
+        await idle(); await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 300))); await idle();
+        assert.equal(requests.length, concurrentBefore + 2 * perRefresh, 'overlapping refreshes are coalesced into one more');
         fail = true;
-        await page.evaluate(() => window.refreshConcentrationChart());
-        assert.equal(await page.$eval('#concentrationPeriod', el => el.textContent), periodBeforeRefresh, 'failed refresh must retain graph');
-        assert.equal(await page.$eval('#concentrationCurrentRate', el => el.textContent), '45.67%');
+        await tick();
+        await page.evaluate(() => { void window.refreshConcentrationChart(); }); await idle();
+        assert.equal(await page.$eval('#combinedConcentrationPeriod', el => el.textContent), periodBeforeRefresh, 'failed refresh must retain graph');
+        assert.equal(await page.$eval('#combinedConcentrationCurrentRate', el => el.textContent), '45.7%');
         fail = false;
         await page.evaluate(() => {
             loadData = async () => {};
@@ -413,20 +436,23 @@ test('Rank table selection, timeframe controls, history, zoom, retries and stale
             startAutoRefresh();
         });
         assert.equal(await page.evaluate(() => window.rankTimer.milliseconds), 600000);
+        await tick();
         const timerBefore = requests.length;
         lastOverride = 46.12;
         await page.evaluate(() => window.rankTimer.run()); await idle();
-        assert.equal(requests.length, timerBefore + 1);
+        assert.equal(requests.length, timerBefore + perRefresh);
         assert.equal(requests.at(-1).mode, 'minute');
-        assert.equal(requests.at(-1).interval, 15);
-        assert.equal(await page.$eval('#concentrationCurrentRate', el => el.textContent), '46.12%');
+        assert.equal(requests.at(-1).interval, 1);
+        assert.equal(await page.$eval('#combinedConcentrationCurrentRate', el => el.textContent), '46.1%');
         await page.select('#refreshInterval', '5'); await idle();
         assert.equal(await page.evaluate(() => window.rankTimer.milliseconds), 30000, 'Rank interval changes must use the new timer period');
-        await page.click('[data-chart-mode="day"]'); await idle();
+        await page.click('#combinedConcentrationChartPanel [data-chart-mode="day"]'); await idle();
+        await tick();
         const dailyTimerBefore = requests.length;
         await page.evaluate(() => window.rankTimer.run()); await idle();
-        assert.equal(requests.length, dailyTimerBefore + 1);
+        assert.equal(requests.length, dailyTimerBefore + perRefresh, 'the timer refreshes the day chart too');
         assert.equal(requests.at(-1).mode, 'day');
+        await tick();
         const captureBefore = requests.length;
         await page.evaluate(() => { isCapturing = true; window.rankTimer.run(); window.refreshConcentrationChart(); isCapturing = false; });
         assert.equal(requests.length, captureBefore, 'capture must suppress chart refresh');
