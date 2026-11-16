@@ -35,6 +35,9 @@
 - 버전 번호 규칙: 반영할 때마다 3번째 자리(Z)를 1 올린다. Z가 999에 도달한 다음 반영은 2번째 자리(Y)를 1 올리고 Z를 0으로 한다(v3.1.999 → v3.2.0). Y가 99에 도달한 다음 자리올림은 1번째 자리(X)를 1 올리고 Y·Z를 0으로 한다(v3.99.999 → v4.0.0). 원격에 더 큰 태그가 있으면 그 다음 번호를 쓰며 이미 쓴 번호를 되돌리지 않는다.
 - 한국어 메시지가 깨지지 않도록 다음을 지킨다.
   - 메시지는 BOM 없는 UTF-8 파일로 저장한 뒤 `git commit -F <파일>`과 `git tag -a vX.Y.Z -F <파일>`로 전달한다. PowerShell 5.1의 `Set-Content`·`Out-File`은 ANSI 또는 BOM 포함 UTF-8로 저장하므로 메시지 파일 작성에 쓰지 않는다.
+  - 메시지 파일은 반영할 때마다 버전이 들어간 새 이름(예: `msg-vX.Y.Z-commit.txt`, `msg-vX.Y.Z-tag.txt`)으로 새로 만든다. `commit-msg.txt`처럼 예전에 쓴 이름을 다시 쓰지 않는다. 파일 쓰기가 실패하면(예: Write 도구의 "먼저 읽으세요" 거부) 그 자리에서 멈추고 고친 뒤 진행한다. 파일 쓰기와 commit·push를 한 번에 묶어 실행하지 않는다.
+  - push 전에 반드시 `git log -1 --format=%s`와 `git cat-file -p vX.Y.Z`로 메시지가 이번 반영 내용인지 확인하고, 다르면 push하지 않는다. 2026-11-17에 남아 있던 예전 메시지 파일이 그대로 쓰여 v3.0.124가 v3.0.118의 메시지로 올라간 일이 있었다.
+  - 반영할 파일은 `git status --short`와 `git diff --stat`로 확인하고, 이번 작업과 관계없이 바뀐 파일은 원인을 확인하기 전에 넣지 않는다. 파일을 만들어 내는 스크립트를 돌린 뒤에는 생성된 파일의 차이를 보고 관련 테스트를 돌린다. 같은 날 예전 생성 스크립트(`desktop/generate-page.cjs`, 이후 삭제)가 `public/rank-independent.html`을 예전 버전으로 되돌려 독립창 테스트가 실패한 일이 있었다.
   - Git 기본 인코딩(UTF-8)을 바꾸지 않는다. `i18n.commitEncoding`·`i18n.logOutputEncoding`을 다른 값으로 설정하지 않는다.
   - 반영 후 `git log -1 --format=%s`와 `git cat-file -p vX.Y.Z`로 커밋·태그 메시지가 같은 한국어 문장으로 저장됐는지 확인한다. 터미널에서만 깨져 보이면 저장 문제가 아니라 출력 설정 문제이므로 `git config --global core.quotepath false`, PowerShell의 `$env:LESSCHARSET='utf-8'`와 `[Console]::OutputEncoding=[Text.Encoding]::UTF8`로 표시만 바로잡는다.
 - 실제 운영은 오라클 서버에서 하고, 로컬 PC는 반영 전 검증용이다. 검증과 측정은 로컬에서만 수행하며, 사용자 요청 없이 오라클 서버에 접속하거나 배포하지 않는다.

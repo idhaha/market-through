@@ -31,9 +31,10 @@ Windows x64와 .NET Framework 4.6.2 이상을 사용한다. WebView2 Runtime이 
 저장소 루트에서 Windows PowerShell:
 
 ```powershell
-node desktop/generate-page.cjs
 ./desktop/build.ps1 -Publish
 ```
+
+독립창 화면(`public/rank-independent.html`)은 설치 파일에 들어가지 않고 서버에서 불러오므로 빌드와 관계없다. 이 페이지는 직접 고쳐 관리한다. 메인 화면에서 페이지를 만들던 `desktop/generate-page.cjs`는 2026-10 이후의 스크립트·안내를 몰라 페이지를 예전 상태로 되돌리므로 2026-11-17에 지웠다.
 
 SDK package는 고정 버전 `Microsoft.Web.WebView2 1.0.3537.50`을 공식 NuGet에서 받아 캐시한다. `build`와 `packages`, `dist`는 Git에서 제외한다. 게시 대상은 `public/downloads/MarketThroughSetup.exe` 하나이며 runtime 포함 없이 약 260KB다. 새 앱 코드를 변경할 때 반드시 재빌드한다. .NET SDK/Rust/Node를 최종 사용자 PC에 추가 설치하지 않는다.
 
