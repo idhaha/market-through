@@ -101,7 +101,10 @@ async function main(){
         event('005930','1','090000');event('000660','2','090100');event('005930_NX','3','090200');event('005930_AL','3','090200');
         await page.waitForFunction(()=>document.querySelectorAll('#viBody tr[data-code]').length===3);
         assert.equal(await page.locator('#viBody tr').first().getAttribute('data-exchange'),'NXT');
-        assert.equal(await page.locator('#viBody tr').first().locator('td').nth(8).textContent(),'동적,정적');
+        assert.equal(await page.locator('#viBody tr').first().locator('td').nth(8).textContent(),'▲ 동적,정적');
+        // 2026-11-16: the direction stays in the 구분 cell (▲ up, ▼ down) after the release too.
+        assert.equal(await page.locator('#viBody tr[data-code="000660"] td').nth(8).textContent(),'▼ 동적');
+        assert.equal(await page.locator('#viBody tr[data-code="000660"] td').nth(8).getAttribute('class'),'down');
         // The fixed clock is past activation + 2 minutes, so every active row waits for its release: it blinks (2026-11-09:
         // rows blink only in the last 30 seconds and while waiting; earlier they keep the color).
         assert.equal(await page.locator('#viBody tr[data-code="000660"]').getAttribute('class'),'vi-flash-down vi-blink');
@@ -118,6 +121,8 @@ async function main(){
         const other=await browser.newPage();await other.addInitScript(t=>{Date.now=()=>t;localStorage.setItem('viGapOnly','false');},clock);
         await other.goto(origin+'/vi-monitor.html#token='+grant.token);await other.waitForFunction(()=>document.querySelectorAll('#viBody tr[data-code]').length===3);
         assert.equal(await other.locator('#viBody tr[data-code="000660"]').evaluate(el=>el.classList.contains('vi-flash-down')),false);
+        // 2026-11-16: once it no longer blinks, the row keeps a light direction background (down: light blue) and the light grey row line.
+        assert.deepEqual(await other.locator('#viBody tr[data-code="000660"] td').first().evaluate(td=>[td.parentElement.className,getComputedStyle(td).backgroundColor,getComputedStyle(td).boxShadow]),['vi-dir-down','rgb(239, 246, 255)','rgb(217, 226, 240) 0px -1px 0px 0px inset']);
         assert.equal(await other.locator('#viBody tr[data-code="005930"][data-exchange="KRX"]').evaluate(el=>el.classList.contains('vi-flash-up')),true);await other.close();
         assert.equal((await fetch(origin+'/api/vi-monitor/flash-dismiss',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:'005930',exchange:'KRX',startedAt:0})})).status,401);
         assert.equal(await page.locator('#viBody tr[data-code="000660"] td').first().evaluate(el=>getComputedStyle(el).animationName),'none');
@@ -138,7 +143,9 @@ async function main(){
         // The release repeats the activation time (1223 = 09:02:00); the shown release time must be 1224.
         event('005930_NX','3','090200','090400');await page.waitForFunction(()=>document.querySelector('#viBody tr[data-exchange="NXT"]').classList.contains('released'));
         assert.equal(await page.locator('#viBody tr').count(),3);assert.equal(await page.locator('#viBody tr[data-exchange="NXT"] td').nth(10).textContent(),'09:04:00');
-        assert.equal(await page.locator('#viBody tr[data-exchange="NXT"]').getAttribute('class'),'released');
+        // 2026-11-16: a released up-VI row keeps the light red direction background.
+        assert.equal(await page.locator('#viBody tr[data-exchange="NXT"]').getAttribute('class'),'released vi-dir-up');
+        assert.equal(await page.locator('#viBody tr[data-exchange="NXT"] td').first().evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(255, 241, 242)');
         assert.equal(await page.locator('#viBody tr[data-exchange="NXT"] td').first().evaluate(el=>getComputedStyle(el).animationName),'none');
         // An older activation must not revive a released event.
         event('005930_NX','2','090300');assert.equal(service.snapshot().rows.find(r=>r.exchange==='NXT').active,false);

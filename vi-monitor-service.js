@@ -42,7 +42,7 @@ function parseKiwoomVi(d) {
         market:{'001':'K','101':'Q'}[String(v['9008']||'').trim()]||null};
 }
 function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws'),directory,now=Date.now,policy=()=>require('./trading-session').current(),
-    enabled=()=>true,kiwoomToken,rejectKiwoomToken=()=>{},quoteFeed=null,nxtBook=null,futuresBookMs=5000,log=()=>{},releaseGraceMs=180000,gapThreshold=1,recordMs=240000,releaseWaitMs=15000,futuresEventMs=300000,futuresEventsState=()=>'',futuresMinute=null,historyDays=Infinity,futuresWaitMs=60000,unsubscribeDelayMs=30000,strength=null,staleMs=60000,lateMs=30000,restGapMs=1050,stockTrades=null,chartPages=40,chartKisPages=400,chartStepMs=1000,recordTimer=(fn,ms)=>{const t=setTimeout(fn,ms);t.unref?.();return t;}}={}) {
+    enabled=()=>true,kiwoomToken,rejectKiwoomToken=()=>{},quoteFeed=null,nxtBook=null,futuresBookMs=5000,log=()=>{},releaseGraceMs=180000,gapThreshold=1,recordMs=240000,releaseWaitMs=15000,futuresEventMs=300000,futuresEventsState=()=>'',futuresMinute=null,historyDays=Infinity,futuresWaitMs=60000,unsubscribeDelayMs=30000,strength=null,staleMs=60000,lateMs=30000,restGapMs=1050,connectLeadMs=120000,stockTrades=null,chartPages=40,chartKisPages=400,chartStepMs=1000,recordTimer=(fn,ms)=>{const t=setTimeout(fn,ms);t.unref?.();return t;}}={}) {
     let day=dayKey(now()), rows=new Map(), quotes=new Map(), masterDay='', stockMaster=new Map(), futuresMaster=[], expiries={}, futuresRefs={}, futuresMul={}, masterTask;
     // 선물 오늘 체결 여부(2026-11-13): 월물마다 LS t8402 거래량 · 현재가를 확인한 값 {volume, price, at}. NH 실시간 체결이 오면 volume을 null(체결 있음, 수량 모름)로 바꾼다.
     // 가격이 없는 이유가 '오늘 체결 없음'인지 '아직 못 받음'인지 가르는 데 쓴다. 메모리에만 두고 날이 바뀌면 지운다.
@@ -1017,9 +1017,12 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
         for(const d of m.data){const e=parseKiwoomVi(d);if(e)applyVi(e);}
     }
     function cleanup(){clearTimeout(ackTimer);clearTimeout(regTimer);}
+    // 수신 시간대(2026-11-16): 현물 장(08:00~20:00)보다 2분 먼저 붙는다. 08:00부터 붙으면 30초 확인 간격과 로그인 · 등록 시간 때문에
+    // NXT 개장 직후(08:00:00~08:00:20) 발동을 놓치고 해제만 받는다(11/16 12건 '발동 이벤트 미수신').
+    function listening(t=now()){const p=policy();return !p||p.spotAt(t)||p.spotAt(t+connectLeadMs);}
     async function connect() {
         if(stopped||socket||connecting)return;
-        if(policy()&&!policy().spotAt(now())){state='장외 · 당일 수신 이력';emit();return;}
+        if(!listening()){state='장외 · 당일 수신 이력';emit();return;}
         connecting=true;state='키움 VI 연결 중';emit();
         try {
             const token=await kiwoomToken();if(stopped)return;
@@ -1045,7 +1048,7 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
         // Prices for VIs still active after a restart.
         for(const r of rows.values())if(r.active){watchQuotes(r.code,(r.contracts||[]).map(c=>c.code));void enrich(r.code);}
         syncNxtBook();void connect();void verifyReleasedFutures();
-        schedule=setInterval(()=>{tick();const showing=!rows.size&&!sessionStarted();if(showing!==showingPrevious){showingPrevious=showing;emit();}if(policy()&&!policy().spotAt(now())&&socket)socket.close();else if(!socket)void connect();},30000);schedule.unref?.();
+        schedule=setInterval(()=>{tick();const showing=!rows.size&&!sessionStarted();if(showing!==showingPrevious){showingPrevious=showing;emit();}if(!listening()&&socket)socket.close();else if(!socket)void connect();},30000);schedule.unref?.();
     }
     function stop(){watch.stop();for(const t of futuresTimers.values())clearTimeout(t);futuresTimers.clear();for(const id of [...records.keys()])finishRecord(id,true);for(const t of releaseTimers2.values())clearTimeout(t);releaseTimers2.clear();stopped=true;clearTimeout(retry);clearTimeout(emitTimer);clearInterval(schedule);cleanup();for(const t of releaseTimers.values())clearTimeout(t);releaseTimers.clear();quoteFeed?.stop();nxtBook?.stop();clearInterval(futuresBookTimer);futuresBookTimer=null;socket?.terminate();socket=null;}
     // Stop the new-VI blink for one activation; a later activation creates a fresh row and blinks again.

@@ -109,12 +109,13 @@
         sorted().forEach((r,i)=>{
             const tr=document.createElement('tr');tr.dataset.code=r.code;tr.dataset.exchange=r.exchange;
             tr.classList.toggle('released',!r.active);
+            // 방향 배경(2026-11-16): 상승 VI · 상한가 도달 행은 연한 빨강, 하락은 연한 파랑. 깜박이는 행은 깜박임 색만 쓴다. 테두리는 기존 연한 회색 그대로.
             if(r.active && ['up','down'].includes(r.direction) && !r.flashDismissed && !dismissing.has(flashKey(r))) {
                 tr.dataset.flash=flashKey(r);
                 tr.classList.add('vi-flash-'+r.direction);
                 // Rebuilding rows for quotes or sorting must preserve the blink phase.
                 tr.style.setProperty('--vi-flash-delay',`-${performance.now()%1500}ms`);
-            }
+            } else if(['up','down'].includes(r.direction))tr.classList.add('vi-dir-'+r.direction);
             cell(tr,i+1);cell(tr,r.market||'-');
             const hit=r.gapHit?` · 괴리율 1% 이상: ${r.gapHit.kind} ${percent(r.gapHit.value)} (${time(r.gapHit.at)})${r.gapMax&&r.gapMax!==r.gapHit?` · 최대 ${r.gapMax.kind} ${percent(r.gapMax.value)}`:''}`:'';
             cell(tr,r.name||r.code,'name').title=r.code+(r.restored?' · '+r.restored:'')+hit+` · 전일 거래대금 ${r.prevAmount!=null?money(r.prevAmount):r.prevAmountState==='pending'?'확인 중':'없음'}`;
@@ -129,7 +130,10 @@
             const amount=shown(r,'amount');cell(tr,Number.isFinite(amount)?amount.toLocaleString('ko-KR',{maximumFractionDigits:0}):'—','amount').title=r.exchange==='FUT'?'선물 거래대금은 받지 않습니다':`${base} 누적 거래대금(백만 원)${released}`;
             cell(tr,base).title=r.exchange==='FUT'?`${r.contract?.name||r.contract?.code} (${r.contract?.code})${r.limit?' · 감시 월물(전일 거래량이 많은 월물)':''}`:'';
             // 구분: 선물 도달 행은 "+10% 도달" 등, 가격제한폭 先확대, 마우스 오버에 한도 · 해제 근거.
-            const kindCell=cell(tr,r.kindText||kind[r.kind]||'—');
+            // VI 방향(2026-11-16): 주식 행은 정적 · 동적 앞에 ▲(상승) · ▼(하락)을 붙여 해제된 행 · 지난 기록에서도 보이게 한다. 방향을 정하지 못한 행은 그대로.
+            const arrow=!r.kindText&&kind[r.kind]?{up:'▲ ',down:'▼ '}[r.direction]||'':'';
+            const kindCell=cell(tr,arrow+(r.kindText||kind[r.kind]||'—'),arrow?r.direction:'');
+            if(arrow)kindCell.title=(r.direction==='up'?'상승':'하락')+' VI · '+kind[r.kind];
             if(r.limit){
                 const lines=[`${r.reachText||r.kindText}: ${r.contract?.name||r.contract?.code} 체결가가 ${r.limit.side==='up'?'상한가':'하한가'} ${Number.isFinite(r.limit.price)?r.limit.price.toLocaleString('ko-KR')+'원':''}에 도달 (${r.limit.stage}단계 ±${r.limit.stage*10}%)`];
                 if(r.backfilled)lines.push('도달을 받지 못해 확대(JX0) 수신 시각 − 5분으로 발동 시각을 역산한 행입니다. 괴리율 1% 판정은 해제 때 값으로 했습니다.');

@@ -13,6 +13,15 @@ const num = v => v == null || String(v).trim() === '' || !Number.isFinite(Number
 // (4/5/8/9 = 하한/하락). value is the accumulated trade value in million KRW, the VI table's unit.
 const falling = sign => ['4', '5', '8', '9'].includes(String(sign || '').trim());
 const signedRate = (rate, sign) => { const n = num(rate); return n == null ? null : falling(sign) && n > 0 ? -n : n; };
+// REST currentPrice (2026-11-16 확인): prdy_ctrt는 부호 없이 오고 prdy_vrss_sign은 빈 값이다(SK하이닉스 1,118,000 대 기준가 1,216,000에
+// prdy_ctrt 8.06). 부호가 오면 그대로 쓰고, 없으면 현재가와 기준가(stck_prdy_clpr)를 비교한다. 기준가도 없으면 prdy_vrss의 부호를 쓴다.
+const restRate = o => {
+    const n = num(o?.prdy_ctrt); if (n == null) return null;
+    if (String(o.prdy_vrss_sign ?? '').trim()) return signedRate(n, o.prdy_vrss_sign);
+    const p = num(o.stck_prpr), b = num(o.stck_prdy_clpr), m = Math.abs(n);
+    if (p > 0 && b > 0) return p < b ? -m : p > b ? m : 0;
+    const v = num(o.prdy_vrss); return v != null && v < 0 ? -m : n;
+};
 // Average amount resting on the 10 KRX bid levels: mean of price × quantity over the levels that have a price.
 // Websocket ob names the levels bid, P_bid, S_bid, S4_bid … S10_bid; REST currentPrice uses bidp1~10 / bidp_rsqn1~10.
 const WS_BID_LEVELS = ['', 'P_', 'S_', 'S4_', 'S5_', 'S6_', 'S7_', 'S8_', 'S9_', 'S10_'];
@@ -225,7 +234,7 @@ function createNhQuoteFeed({ credentials, tokenFile, fetch = globalThis.fetch, W
                 // Kiwoom ka10032 5,698,229 million for 005930; NH is KRX only, Kiwoom KRX+NXT). It used to be divided by 1e6.
                 const amount = num(output.acml_tr_pbmn);
                 if (price > 0) deliver(entry.exchange, entry.key, price, '', 'REST',
-                    entry.exchange === 'FUT' ? {} : { rate: signedRate(output.prdy_ctrt, output.prdy_vrss_sign), amount });
+                    entry.exchange === 'FUT' ? {} : { rate: restRate(output), amount });
                 if (entry.exchange === 'KRX') deliverBook(entry.key, restBidAverage(output), '', 'REST');
             } catch (error) {
                 if (entry.exchange === 'NXT' && error.code === '00500') { markNxtUnavailable(entry.code); continue; }
@@ -256,7 +265,7 @@ function createNhQuoteFeed({ credentials, tokenFile, fetch = globalThis.fetch, W
         void paced(() => rest('/krstock/quote/v1/currentPrice', { market_cd: exchange, iem_cd: code })).then(output => {
             if (stopped) return;
             const price = num(output.stck_prpr);
-            if (price > 0) deliver(exchange, code, price, '', 'REST', { rate: signedRate(output.prdy_ctrt, output.prdy_vrss_sign), amount: num(output.acml_tr_pbmn) });
+            if (price > 0) deliver(exchange, code, price, '', 'REST', { rate: restRate(output), amount: num(output.acml_tr_pbmn) });
             if (exchange === 'KRX') deliverBook(code, restBidAverage(output), '', 'REST');
         }, error => {
             if (exchange === 'NXT' && error.code === '00500') { markNxtUnavailable(code); return; }

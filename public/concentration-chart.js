@@ -502,6 +502,7 @@
         async function load(append = false, refresh = false) {
             if(window.rankManagedChartRefresh && !window.rankChartRefreshStarted)return;
             if (!state.selection || (append && state.busy)) return;
+            let recover = false;
             if(append){window.RankChartAxis.showHistory();todayOnly=false;}else if(!refresh){todayOnly=true;}
             state.historyError='';
             const previous = { points: state.points, start: state.start, visible: state.visible };
@@ -525,7 +526,7 @@
                 });
                 const result = await response.json();
                 if (request !== state.request) return;
-                if (!response.ok || !result.success) throw new Error(result.error || '차트 조회 실패');
+                if (!response.ok || !result.success) throw Object.assign(new Error(result.error || '차트 조회 실패'), { status: response.status });
                 const prices=new Map(state.points.map(p=>[p.time,p]));
                 const freshPoints = result.points.map(p=>({...prices.get(p.time),...p}));
                 if (append) {
@@ -563,9 +564,14 @@
                 if (!append && !refresh) { state.points = state.points.filter(p=>Number.isFinite(p.stock_price)); state.start = 0; state.visible = state.points.length; }
                 status.textContent = `${error.message} · ${refresh ? '다음 갱신 주기에 다시 조회합니다.' : append ? '추가 조회 버튼으로 다시 시도하세요.' : '일/분 버튼으로 다시 시도하세요.'}`;
                 if (error.message.includes('만료')) { state.cursor = null; state.hasMore = false; }
+                // 2026-11-16: the server forgot the history cursor (30 minutes or a restart). Read the first page again for a new
+                // session (keeping the minutes already shown); the history read then continues from it.
+                if (append && error.status === 410 && !state.cursorRecovered) { state.cursorRecovered = true; recover = true; }
             } finally {
                 if (request === state.request) { state.busy = false; heldView = false; sharedRevision++; draw(); flushRefresh(); }
             }
+            if (recover && request === state.request) { status.textContent = ''; await load(false, true); }
+            else if (!append && request === state.request && state.cursor) state.cursorRecovered = false;
         }
         window[api('refreshConcentrationChart')] = () => {
             restoreSelection();

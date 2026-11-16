@@ -30,10 +30,12 @@ async function probe() {
 function state() {
     try {
         const s = JSON.parse(fs.readFileSync(path.join(root, 'data', 'vi-monitor', 'state.json'), 'utf8'));
-        const cut = Date.parse(day + 'T08:50:00+09:00'), rows = (s.rows || []).filter(r => r.exchange === 'NXT' && r.startedAt < cut);
+        const cut = Date.parse(day + 'T08:50:00+09:00'), rows = (s.rows || []).filter(r => r.exchange === 'NXT' && (r.startedAt ?? r.releasedAt) < cut);
+        // 발동 이벤트를 못 받고 해제만 받은 행은 startedAt이 null이다. kst(null)은 09:00:00이 되므로 그대로 쓰지 않는다.
+        const started = r => Number.isFinite(r.startedAt) ? '발동 ' + kst(r.startedAt).slice(11) : '발동 이벤트 미수신';
         const filled = rows.filter(r => Number.isFinite(r.atRelease?.bidAverage));
-        lines.push(`- state.json 날짜 ${s.day} · 08:50 전에 시작한 NXT 행 ${rows.length}건 · 해제 때 호가 평균이 있는 행 ${filled.length}건`);
-        for (const r of rows.slice(0, 30)) lines.push(`  - ${r.name}(${r.code}) 발동 ${kst(r.startedAt).slice(11)} ${r.active ? '발동 중' : '해제 ' + (r.releasedAt ? kst(r.releasedAt).slice(11) : '-')} · 호가 평균 ${Number.isFinite(r.atRelease?.bidAverage) ? Math.round(r.atRelease.bidAverage).toLocaleString('ko-KR') + '원' : '없음'}`);
+        lines.push(`- state.json 날짜 ${s.day} · 08:50 전에 시작한 NXT 행 ${rows.length}건(발동 이벤트 미수신 ${rows.filter(r => !Number.isFinite(r.startedAt)).length}건은 해제 시각 기준) · 해제 때 호가 평균이 있는 행 ${filled.length}건`);
+        for (const r of rows.slice(0, 30)) lines.push(`  - ${r.name}(${r.code}) ${started(r)} ${r.active ? '발동 중' : '해제 ' + (r.releasedAt ? kst(r.releasedAt).slice(11) : '-')} · 호가 평균 ${Number.isFinite(r.atRelease?.bidAverage) ? Math.round(r.atRelease.bidAverage).toLocaleString('ko-KR') + '원' : '없음'}`);
     } catch (x) { lines.push('- state.json 읽기 실패: ' + x.message); }
     try {
         const log = fs.readFileSync(path.join(root, 'logs', `server_debug.${day}.log`), 'utf8').split('\n').filter(l => l.includes('[VI NXT 호가]'));

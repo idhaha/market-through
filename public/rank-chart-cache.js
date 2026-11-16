@@ -4,7 +4,7 @@
     // HISTORY_TTL: past pages (date cursor before today). Their data only changes when the server rewrites
     // stored past data, which the data revisions below catch, so they can be kept longer.
     const TTL=16*3600000,HISTORY_TTL=7*24*3600000,FRESH=60000,MAX_BYTES=24*1024*1024,MAX_ENTRIES=180;
-    const nativeFetch=window.fetch.bind(window),memory=new Map(),pending=new Map(),blocked=new Set(),handoff=new Map(),closedRefresh=new Map(),CLOSE_GRACE=2*60000;
+    const nativeFetch=window.fetch.bind(window),memory=new Map(),pending=new Map(),blocked=new Set(),handoff=new Map(),closedRefresh=new Map(),CLOSE_GRACE=2*60000,CURSOR_TTL=20*60000;
     let database,identity,identityAt=0,identityJob,revision=0;
     const routes=/^\/api\/(?:concentration-chart|kis-concentration-chart|ls-concentration-chart|chart-reference|(?:kis-|ls-)?turnover\/chart|(?:kis-|ls-)?supply\/chart|ls-stock-futures\/chart|(?:kiwoom-|ls-)?market-supply\/chart|adr\/(?:candles|history|today)|risk\/(?:breadth|sentiment|volatility))$/;
     const day=()=>new Date(Date.now()+32400000).toISOString().slice(0,10);
@@ -94,7 +94,9 @@
         if(url.origin!==location.origin||!routes.test(url.pathname)||!['GET','POST'].includes(method))return nativeFetch(input,options);
         let body;try{body=method==='POST'?JSON.parse(options.body||'{}'):null;}catch{return nativeFetch(input,options);}
         // Concentration cursors are short-lived, owner-bound server sessions.
-        if(body?.cursor)return nativeFetch(input,options);
+        // 2026-11-16: the server forgets a cursor after 30 minutes or a restart (410). Drop the cached first pages that carry it,
+        // so the card's next first-page read gets a new session instead of the dead cursor again.
+        if(body?.cursor){const r=await nativeFetch(input,options);if(r.status===410)for(const [k,e] of memory)if(e.data?.cursor===body.cursor)memory.delete(k);return r;}
         const owner=await account();throwIfAborted(options.signal);if(!owner)return nativeFetch(input,options);
         await syncRevisions(owner);throwIfAborted(options.signal);
         url.searchParams.sort();const canonical=body?JSON.stringify(Object.fromEntries(Object.entries(body).sort(([a],[b])=>a.localeCompare(b)))):'';
@@ -133,7 +135,8 @@
             // Persisted concentration responses have no reusable server cursor.
             // A user-initiated initial read must restore pagination even while
             // periodic broker refresh is paused for a closed market.
-            if(body && !entry.data.cursor)return network();
+            // A cursor older than CURSOR_TTL may already be gone on the server (30 minutes): read the first page again.
+            if(body && (!entry.data.cursor || Date.now()-entry.at>=CURSOR_TTL))return network();
             const isHistorical=method==='GET'&&historical(url);
             // Persisted POST responses deliberately have no reusable pagination cursor.
             const marketOpen=window.TradingRefresh?.allowsUrl(url)!==false;

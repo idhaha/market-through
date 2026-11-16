@@ -206,3 +206,22 @@ test('REST polling reads the bid book from the KRX current price without an extr
     // KRX and NXT prices only: the order book rides on the KRX call.
     assert.deepEqual(calls.map(c => c.market_cd).sort(), ['KRX', 'NXT']);
 });
+
+// 2026-11-16: the live NH currentPrice sends prdy_ctrt without a sign and an empty prdy_vrss_sign (SK하이닉스 1,118,000 against
+// 기준가 1,216,000 came as 8.06), so every falling VI stock showed a positive 등락률. The sign now comes from 현재가 vs 기준가.
+test('REST currentPrice rate takes its sign from the price against stck_prdy_clpr when prdy_vrss_sign is empty', async t => {
+    const outputs = {
+        '000660': {stck_prpr: 1118000, prdy_vrss_sign: '', prdy_vrss: 98000, prdy_ctrt: 8.06, stck_prdy_clpr: 1216000},
+        '001450': {stck_prpr: 37700, prdy_vrss_sign: '', prdy_vrss: 1500, prdy_ctrt: 4.14, stck_prdy_clpr: 36200},
+        '005930': {stck_prpr: 100000, prdy_vrss_sign: '', prdy_vrss: 0, prdy_ctrt: 0, stck_prdy_clpr: 100000},
+        '035900': {stck_prpr: 38000, prdy_vrss_sign: '5', prdy_ctrt: 1.8},
+    };
+    const f = fixture(t, {rest: async (url, body) => ({status: 200, ok: true, json: async () => ({rsp_cd: '00000', Output_0: outputs[body.Input_0.iem_cd]})})});
+    f.feed.start(); for (const code of Object.keys(outputs)) f.feed.snapshot('KRX', code);
+    for (let i = 0; i < 100 && f.quotes.filter(q => q.rate !== undefined).length < 4; i++) await new Promise(r => setTimeout(r, 20));
+    const rate = code => f.quotes.find(q => q.key === code && q.exchange === 'KRX')?.rate;
+    assert.equal(rate('000660'), -8.06, 'falling: 현재가 below 기준가');
+    assert.equal(rate('001450'), 4.14, 'rising stays positive');
+    assert.equal(rate('005930'), 0);
+    assert.equal(rate('035900'), -1.8, 'a sign code, when sent, still decides');
+});

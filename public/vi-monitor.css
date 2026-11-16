@@ -51,6 +51,8 @@
 /* Active VI rows keep the side car alert color (steady) until clicked; they blink only in the last 30 seconds before
    the expected release and while waiting for it (vi-blink, set by the countdown). */
 /* 2026-11-09: a little lighter than the side car colors (was #c90000/#ff9999 and #2563eb/#dbeafe). */
+.vi-panel tbody tr.vi-dir-up td { background-color:#fff1f2; }
+.vi-panel tbody tr.vi-dir-down td { background-color:#eff6ff; }
 .vi-panel tbody tr.vi-flash-up { --vi-dark:#e05a5a; --vi-bright:#ffc9c9; }
 .vi-panel tbody tr.vi-flash-down { --vi-dark:#5b8def; --vi-bright:#e5eeff; }
 .vi-panel tbody tr.vi-flash-up, .vi-panel tbody tr.vi-flash-down { cursor:pointer; }
