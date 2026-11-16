@@ -47,17 +47,41 @@
         let token = new URLSearchParams(location.hash.slice(1)).get('token') || '';
         history.replaceState(null, '', location.pathname);
         const noteFetch = (options = {}) => fetch('/api/quick-note', { ...options, headers: { ...options.headers, 'X-Note-Token': token } });
+        // nginx error pages (413 too large, 502/504) are HTML, not JSON: turn them into a readable message.
+        async function readNoteJson(response) {
+            const body = await response.text();
+            try { return JSON.parse(body); } catch {
+                const error = response.status === 413 ? '노트가 너무 커서 서버가 받지 않았습니다(413). 그림을 줄이거나 빼고 다시 저장하세요.'
+                    : response.status === 502 || response.status === 504 ? `서버가 응답하지 않았습니다(${response.status}). 잠시 뒤 저장 버튼으로 다시 시도하세요.`
+                    : `서버 응답을 읽지 못했습니다(${response.status}). 저장 버튼으로 다시 시도하세요.`;
+                return { success: false, error };
+            }
+        }
         const panel = document.createElement('section');
         panel.id = 'quickNotePanel'; panel.className = 'quick-note-panel'; panel.hidden = true;
         panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-labelledby', 'quickNoteTitle');
-        panel.innerHTML = '<div class="quick-note-header"><strong id="quickNoteTitle">노트</strong><label><input type="checkbox" id="quickNoteTopmost"> 항상 위</label><button type="button" class="quick-note-close" aria-label="노트 닫기">×</button></div><div class="quick-note-editor"><div id="quickNoteText"></div></div><div class="quick-note-footer"><div class="quick-note-status" role="status" aria-live="polite"></div><button type="button" class="quick-note-cancel">취소</button><button type="button" class="quick-note-save">저장</button></div>';
+        panel.innerHTML = '<div class="quick-note-header"><strong id="quickNoteTitle">노트</strong><output class="quick-note-usage" aria-live="off"></output><label><input type="checkbox" id="quickNoteTopmost"> 항상 위</label><button type="button" class="quick-note-close" aria-label="노트 닫기">×</button></div><div class="quick-note-editor"><div id="quickNoteText"></div></div><div class="quick-note-footer"><div class="quick-note-status" role="status" aria-live="polite"></div><button type="button" class="quick-note-cancel">취소</button><button type="button" class="quick-note-save">저장</button></div>';
         document.body.append(panel);
         const status = panel.querySelector('[role="status"]'), saveButton = panel.querySelector('.quick-note-save');
         const cancelButton = panel.querySelector('.quick-note-cancel'), closeButton = panel.querySelector('.quick-note-close');
+        const usage = panel.querySelector('.quick-note-usage');
+        let limitBytes = 10 * 1024 * 1024, noteBytes = 0;
+        // Same body the save sends (text + delta with images), UTF-8 bytes; same format as the trading tab's server usage.
+        const noteBody = () => JSON.stringify({ text: editor.getText(), delta: editor.getContents(), revision });
+        const showUsage = () => {
+            if (!editor || !loaded) { usage.textContent = ''; return; }
+            noteBytes = new Blob([noteBody()]).size;
+            const mb = value => (value / 1024 ** 2).toLocaleString('ko-KR', { maximumFractionDigits: 1 });
+            const percent = Math.round(noteBytes / limitBytes * 100);
+            usage.textContent = `노트 사용 ${percent}% (${mb(noteBytes)} / ${mb(limitBytes)} MB)`;
+            usage.title = `편집 중 내용 기준(그림 포함) · ${noteBytes.toLocaleString('ko-KR')}바이트\nMB 표시는 1,024²바이트 기준`;
+            usage.classList.toggle('over', noteBytes > limitBytes);
+        };
         let editor, loaded = false, loading = false, saving = false, conflict = false, revision = 0, saved = '', dirty = false;
         const update = () => {
             dirty = loaded && !!editor && JSON.stringify(editor.getContents()) !== saved;
-            saveButton.disabled = !loaded || saving || conflict || !dirty;
+            showUsage();
+            saveButton.disabled = !loaded || saving || conflict || !dirty || noteBytes > limitBytes;
             cancelButton.disabled = saving; closeButton.disabled = saving;
             window.chrome?.webview?.postMessage('note-dirty:' + (dirty || saving));
         };
@@ -81,7 +105,7 @@
             window.MemoImageResize?.attach(editor);
             editor.on('text-change', () => {
                 update();
-                if (loaded && !saving && !conflict) status.textContent = dirty ? '저장하지 않은 변경 내용' : '서버에 저장됨';
+                if (loaded && !saving && !conflict) status.textContent = noteBytes > limitBytes ? '노트가 10 MB를 넘어 저장할 수 없습니다. 그림을 줄이거나 빼세요.' : dirty ? '저장하지 않은 변경 내용' : '서버에 저장됨';
             });
             return true;
         };
@@ -90,9 +114,9 @@
             loading = true; loaded = false; update(); editor.enable(false);
             status.textContent = '서버에서 노트를 불러오는 중…';
             try {
-                const response = await noteFetch({ cache: 'no-store' }), result = await response.json();
+                const response = await noteFetch({ cache: 'no-store' }), result = await readNoteJson(response);
                 if (!response.ok || !result.success) throw new Error();
-                revision = result.revision;
+                revision = result.revision; if (Number.isSafeInteger(result.limitBytes)) limitBytes = result.limitBytes;
                 if (result.delta) editor.setContents(result.delta); else editor.setText(result.text || '');
                 saved = JSON.stringify(editor.getContents()); loaded = true; conflict = false; editor.enable(true);
                 status.textContent = '저장 버튼을 누르면 서버에 반영됩니다.';
@@ -102,13 +126,14 @@
         }
         async function save() {
             if (!loaded || saving || !dirty || conflict) return;
+            if (noteBytes > limitBytes) return;
             const delta = editor.getContents(); saving = true; editor.enable(false); update(); status.textContent = '서버에 저장 중…';
             try {
                 const response = await noteFetch({
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: editor.getText(), delta, revision })
+                    body: noteBody()
                 });
-                const result = await response.json(); if (response.status === 409) conflict = true;
+                const result = await readNoteJson(response); if (response.status === 409) conflict = true;
                 if (!response.ok || !result.success) throw new Error(result.error || '서버에 저장하지 못했습니다. 저장 버튼으로 재시도하세요.');
                 revision = result.revision; saved = JSON.stringify(delta); status.textContent = '서버에 저장됨';
             } catch (error) { status.textContent = error.message; }

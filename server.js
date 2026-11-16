@@ -2750,6 +2750,9 @@ require('./background-refresh').mountBackgroundRoutes(app,backgroundRefreshServi
 require('./browser-live-check').mountBrowserLiveCheck(app,{directory:path.join(__dirname,'outputs','browser-live-check-20261102'),background:backgroundRefreshService});
 const MEMO_BACKUP_FILE = path.join(__dirname, 'user_settings.memo-backup.json');
 const QUICK_NOTE_FILE = path.join(__dirname, 'user_settings.quick-note.json');
+// Note limit (2026-11-17): the whole save request (text + delta incl. pasted images) as UTF-8 JSON, 10 MiB.
+// Oracle nginx client_max_body_size must stay above this (11m) so the user gets this JSON message, not an nginx page.
+const QUICK_NOTE_LIMIT_BYTES = 10 * 1024 * 1024;
 
 app.post('/api/quick-note/window', (req, res) => {
     for (const [key, grant] of quickNoteGrants) if (grant.expiresAt < Date.now()) quickNoteGrants.delete(key);
@@ -2771,28 +2774,32 @@ function readQuickNote() {
 
 app.get('/api/quick-note', (req, res) => {
     res.set('Cache-Control', 'no-store');
-    try { res.json({ success: true, ...readQuickNote() }); }
+    try { res.json({ success: true, ...readQuickNote(), limitBytes: QUICK_NOTE_LIMIT_BYTES }); }
     catch { res.status(500).json({ success: false, error: '노트를 불러오지 못했습니다.' }); }
 });
 
 app.post('/api/quick-note', (req, res) => {
     const { text, revision, delta = null } = req.body || {};
-    if (typeof text !== 'string' || text.length > 1000000 || !Number.isSafeInteger(revision) || revision < 0) {
-        return res.status(400).json({ success: false, error: '올바른 노트 내용과 버전이 필요합니다. (최대 100만 자)' });
+    if (typeof text !== 'string' || !Number.isSafeInteger(revision) || revision < 0) {
+        return res.status(400).json({ success: false, error: '올바른 노트 내용과 버전이 필요합니다.' });
+    }
+    const bytes = Buffer.byteLength(JSON.stringify({ text, delta, revision }), 'utf8');
+    if (bytes > QUICK_NOTE_LIMIT_BYTES) {
+        return res.status(413).json({ success: false, limitBytes: QUICK_NOTE_LIMIT_BYTES, bytes, error: `노트가 한도(10 MB)를 넘었습니다(${(bytes / 1024 ** 2).toFixed(1)} MB). 그림을 줄이거나 빼고 다시 저장하세요.` });
     }
     try {
         const current = readQuickNote();
         if (current.revision !== revision) {
             return res.status(409).json({ success: false, error: '다른 창에서 노트가 변경되었습니다. 작성 내용을 복사한 후 새로고침하세요.' });
         }
-        if (delta !== null && (!Array.isArray(delta?.ops) || JSON.stringify(delta).length > 12000000 || delta.ops.some(op =>
+        if (delta !== null && (!Array.isArray(delta?.ops) || delta.ops.some(op =>
             typeof op?.insert !== 'string' && !(op?.insert && Object.keys(op.insert).length === 1 &&
                 typeof op.insert.image === 'string' && /^(https?:\/\/|data:image\/(png|jpeg|gif|webp);base64,)/i.test(op.insert.image))))) {
             return res.status(400).json({ success: false, error: '올바른 노트 서식이 필요합니다.' });
         }
         const note = { text, delta, revision: current.revision + 1, updatedAt: Date.now() };
         writeJsonAtomically(QUICK_NOTE_FILE, note);
-        res.json({ success: true, ...note });
+        res.json({ success: true, ...note, limitBytes: QUICK_NOTE_LIMIT_BYTES });
     } catch { res.status(500).json({ success: false, error: '노트를 서버에 저장하지 못했습니다.' }); }
 });
 const BACKUP_NAME_PATTERN = /^(user_settings_manualsaved|user_settings_autosaved|manualsaved_user_settings|autosaved_user_settings|full_backup)_\d{8}_\d{6}_\d{3}\.json$/;

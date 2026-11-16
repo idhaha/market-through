@@ -60,6 +60,7 @@ internal sealed class IndependentForm : Form {
     readonly System.Windows.Forms.Timer boundsRecovery = new System.Windows.Forms.Timer { Interval = 2000 };
     NamedPipeServerStream serverPipe;
     readonly JavaScriptSerializer json = new JavaScriptSerializer();
+    static readonly string[] NoteMenuItems = { "undo", "redo", "cut", "copy", "paste", "pasteAndMatchStyle", "selectAll", "copyImage", "emoji" };
     internal IndependentForm(string url) : this(url, null) { }
     internal IndependentForm(string url, string stateDirectory) {
         pagePath = new Uri(url).AbsolutePath;
@@ -83,7 +84,19 @@ internal sealed class IndependentForm : Form {
                 var env = await CoreWebView2Environment.CreateAsync(null, Path.Combine(folder, "WebView2"));
                 await web.EnsureCoreWebView2Async(env);
                 web.CoreWebView2.Settings.AreDevToolsEnabled = false;
-                web.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+                // 노트 창만 기본 오른쪽 메뉴를 켜고 편집 항목(그림 복사 포함)만 남긴다(2026-11-17). 다른 창은 끈다.
+                web.CoreWebView2.Settings.AreDefaultContextMenusEnabled = pagePath == "/quick-note.html";
+                if (pagePath == "/quick-note.html") web.CoreWebView2.ContextMenuRequested += delegate(object sender, CoreWebView2ContextMenuRequestedEventArgs e) {
+                    var items = e.MenuItems; bool separator = false;
+                    for (int i = items.Count - 1; i >= 0; i--) {
+                        var item = items[i];
+                        if (item.Kind == CoreWebView2ContextMenuItemKind.Separator) { if (separator || i == items.Count - 1) items.RemoveAt(i); separator = true; continue; }
+                        if (Array.IndexOf(NoteMenuItems, item.Name) < 0) { items.RemoveAt(i); continue; }
+                        separator = false;
+                    }
+                    while (items.Count > 0 && items[0].Kind == CoreWebView2ContextMenuItemKind.Separator) items.RemoveAt(0);
+                    if (items.Count == 0) e.Handled = true;
+                };
                 web.CoreWebView2.Settings.IsStatusBarEnabled = false;
                 web.CoreWebView2.NewWindowRequested += delegate(object sender, CoreWebView2NewWindowRequestedEventArgs e) { e.Handled = true; };
                 web.CoreWebView2.PermissionRequested += delegate(object sender, CoreWebView2PermissionRequestedEventArgs e) { e.State = CoreWebView2PermissionState.Deny; };
