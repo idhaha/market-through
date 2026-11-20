@@ -34,7 +34,9 @@ class ViNativeSmoke {
                             for (int i = 0; i < 150; i++) {
                                 await Task.Delay(200);
                                 if (web.CoreWebView2 == null) continue;
-                                var result = await web.CoreWebView2.ExecuteScriptAsync("document.querySelectorAll('#viBody tr[data-code]').length === 3 && document.querySelectorAll('#viBody tr.released').length === 1 && document.querySelector('.comparison-group').textContent === 'KRX대비'");
+                                // 2026-11-20: '괴리율 1% 이상 보기'가 기본으로 켜져 있어(2026-11-09) 모든 행을 보려면 끈다. 괴리율 머리글은 2026-11-13부터 '괴리율'.
+                                await web.CoreWebView2.ExecuteScriptAsync("(function(){var g=document.getElementById('viGapOnly');if(g&&g.checked){g.checked=false;g.dispatchEvent(new Event('change'));}})()");
+                                var result = await web.CoreWebView2.ExecuteScriptAsync("document.querySelectorAll('#viBody tr[data-code]').length === 3 && document.querySelectorAll('#viBody tr.released').length === 1 && document.querySelector('.comparison-group').textContent === '괴리율'");
                                 if (result == "true") { loaded = true; break; }
                             }
                             Check(loaded, "Actual native VI WebView did not receive server state");

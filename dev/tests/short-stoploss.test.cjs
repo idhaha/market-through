@@ -89,7 +89,7 @@ async function runUntilDone(e, w, rounds = 40) { for (let i = 0; i < rounds; i++
         const done = await runUntilDone(e, w);
         assert.equal(k.orders.length, 1, '주문 1건');
         assert.deepEqual({ ex: k.orders[0].dmst_stex_tp, code: k.orders[0].stk_cd, crd: k.orders[0].crd_deal_tp, loan: k.orders[0].crd_loan_dt, qty: k.orders[0].ord_qty, price: k.orders[0].ord_uv },
-            { ex: 'KRX', code: '004980', crd: '77', loan: '20261123', qty: '1', price: '7450' });
+            { ex: 'SOR', code: '004980', crd: '77', loan: '20261123', qty: '1', price: '7450' }); // 정규장 · NXT 거래 종목은 SOR(2026-11-20 결정)
         assert.equal(done.status, '체결완료');
         await e.step(); await settle();
         assert.equal(k.orders.length, 1, '한 번만 발동');
@@ -219,13 +219,13 @@ async function runUntilDone(e, w, rounds = 40) { for (let i = 0; i < rounds; i++
         vi.receive({ trnm: 'REAL', data: [{ type: '0B', item: '004980', values: { '10': '7000' } }, { type: '04', item: '', values: {} }] });
         assert.deepEqual(got, ['0B', '04']);
     }
-    // 15) KRX 정규장 조회 감시: KRX 체결이 감시가 아래여도 NXT 체결이 감시가 이상이면 발동하고, 주문은 KRX로 낸다
+    // 15) KRX 정규장 조회 감시: KRX 체결이 감시가 아래여도 NXT 체결이 감시가 이상이면 발동하고, 주문은 SOR로 낸다(2026-11-20부터)
     {
         const k = fakeKiwoom({ price: 7200 }); k.nxtPrice = 7320;
         const { e } = engine(k);
         await e.loadLots(); const w = await e.create(input('004980:20261123'));
         await e.step(); const done = await runUntilDone(e, w);
-        assert.equal(k.orders.length, 1); assert.equal(k.orders[0].dmst_stex_tp, 'KRX'); assert.equal(k.orders[0].ord_uv, String(S.addTicks(7320, 10)));
+        assert.equal(k.orders.length, 1); assert.equal(k.orders[0].dmst_stex_tp, 'SOR'); assert.equal(k.orders[0].ord_uv, String(S.addTicks(7320, 10)));
         assert.equal(done.fireSrc, 'NXT'); assert.equal(done.status, '체결완료');
     }
     // 16) 00(내 주문체결) 실시간: 접수 · 체결 이벤트로 바로 확인하고, 조회상으로는 미체결이어도 정정하지 않는다
@@ -259,6 +259,21 @@ async function runUntilDone(e, w, rounds = 40) { for (let i = 0; i < rounds; i++
         listeners[0]({ type: '0B', item: '004980', values: { '10': '+7350' } });
         const done = await runUntilDone(e, w);
         assert.equal(k.cancels.length, 1); assert.equal(e._state().halted, true); assert.equal(done.status, '실패');
+    }
+    // 19) 정규장 주문 거래소: NXT 비대상 종목은 KRX로 낸다(SOR은 NXT 거래 종목만, 2026-11-20 결정). 미체결 조회는 SOR이면 전체(0)로 본다
+    {
+        const k = fakeKiwoom({ nxt: false }); const bodies = []; const post = k.http.post; k.http.post = async (u, b, o) => { bodies.push({ api: o.headers['api-id'], b }); return post(u, b, o); };
+        const { e } = engine(k);
+        await e.loadLots(); const w = await e.create(input('004980:20261123'));
+        await e.step(); const done = await runUntilDone(e, w);
+        assert.equal(k.orders[0].dmst_stex_tp, 'KRX'); assert.equal(done.status, '체결완료');
+        assert.ok(bodies.filter(x => x.api === 'ka10075').every(x => x.b.stex_tp === '1'), 'KRX 주문은 KRX(1)로 미체결 조회');
+        const k2 = fakeKiwoom(); const bodies2 = []; const post2 = k2.http.post; k2.http.post = async (u, b, o) => { bodies2.push({ api: o.headers['api-id'], b }); return post2(u, b, o); };
+        const { e: e2 } = engine(k2);
+        await e2.loadLots(); const w2 = await e2.create(input('004980:20261123'));
+        await e2.step(); await runUntilDone(e2, w2);
+        assert.equal(k2.orders[0].dmst_stex_tp, 'SOR');
+        assert.ok(bodies2.some(x => x.api === 'ka10075' && x.b.stex_tp === '0') && !bodies2.some(x => x.api === 'ka10075' && x.b.stex_tp === '1'), 'SOR 주문은 전체(0)로 미체결 조회');
     }
     // 18) 30초 점검 기록(realtime-날짜.jsonl): 끝나지 않은 감시 건이 있을 때만 남기고, 지난 날짜 파일은 지운다(2026-11-20 사용자 결정)
     {

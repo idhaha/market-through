@@ -248,8 +248,12 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
         return { cur: abs(r.cur_prc), exp: abs(r.exp_cntr_pric), volume: abs(r.trde_qty), upper: abs(r.upl_pric), base: abs(r.base_pric), ok: r.return_code === 0 };
     }
     async function bestAsk(code, ex) { const r = await call('mrkcond', 'ka10004', { stk_cd: ex === 'NXT' ? code + '_NX' : code }); return abs(r.sel_fpr_bid); }
+    // 정규장 주문 거래소(2026-11-20 사용자 결정): NXT 거래 종목은 SOR(키움이 KRX · NXT 중 유리한 곳으로 보냄), NXT 비대상은 KRX.
+    // SOR 대주상환은 11/20 실계좌로 접수 · 취소 · 체결을 확인했다(outputs/kiwoom-short-cover-20261120). 단일가 · NXT 시간대는 그대로.
+    const orderExFor = (seg, w) => seg.id === 'KRX' && w.nxt ? 'SOR' : seg.ex;
     async function orderState(code, ex, ordNos) {
-        const oso = await call('acnt', 'ka10075', { all_stk_tp: '1', trde_tp: '2', stk_cd: code, stex_tp: ex === 'NXT' ? '2' : '1' });
+        // 미체결 조회 거래소: KRX 1 · NXT 2 · 전체 0(SOR 주문은 전체로 봐야 보인다, 11/20 시험)
+        const oso = await call('acnt', 'ka10075', { all_stk_tp: '1', trde_tp: '2', stk_cd: code, stex_tp: ex === 'NXT' ? '2' : ex === 'SOR' ? '0' : '1' });
         const prst = await call('acnt', 'kt00009', { ord_dt: '', stk_bond_tp: '0', mrkt_tp: '0', sell_tp: '2', qry_tp: '0', stk_cd: code, fr_ord_no: '', dmst_stex_tp: '%' });
         const set = new Set(ordNos), open = (oso.oso || []).filter(r => set.has(r.ord_no));
         const rows = (prst.acnt_ord_cntr_prst_array || []).filter(r => set.has(r.ord_no));
@@ -276,8 +280,10 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
         const mine = new Set((w.orders || []).flatMap(o => o.ordNos || []));
         for (const r of oso.oso || []) {
             if (!/상환대주/.test(r.io_tp_nm || '') || mine.has(r.ord_no) || !(abs(r.oso_qty) > 0)) continue;
-            const exOf = r.stex_tp_txt === 'NXT' || r.stex_tp === '2' ? 'NXT' : 'KRX';
-            const c = await cancelOrder(w.code, exOf, r.ord_no);
+            const exOf = /SOR/i.test(r.stex_tp_txt || '') ? 'SOR' : r.stex_tp_txt === 'NXT' || r.stex_tp === '2' ? 'NXT' : 'KRX';
+            let c = await cancelOrder(w.code, exOf, r.ord_no).catch(e => ({ error: String(e.message || e) }));
+            // SOR로 낸 주문은 미체결 조회에 어느 거래소로 나오는지 확인하지 못했다: 실패하면 SOR로 한 번 더 취소한다
+            if ((c.error || (c.return_code != null && Number(c.return_code) !== 0)) && exOf !== 'SOR') c = await cancelOrder(w.code, 'SOR', r.ord_no).catch(e => ({ error: String(e.message || e) }));
             event(w, '미체결 취소', `기존 대주상환 주문 ${r.ord_no}(${exOf}, ${abs(r.oso_qty)}주) 취소: ${c.return_msg || c.error || ''}`);
         }
         await wait(1500);
@@ -303,9 +309,10 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
     async function fire(w, firePrice, seg, srcEx = seg.ex, via = '조회') {
         running.add(w.id);
         try {
-            w.status = '발동'; w.firedAt = now(); w.firePrice = firePrice; w.fireEx = seg.ex; w.enabled = false;
+            const orderEx = orderExFor(seg, w);
+            w.status = '발동'; w.firedAt = now(); w.firePrice = firePrice; w.fireEx = orderEx; w.enabled = false;
             w.fireSrc = srcEx; w.fireVia = via;
-            event(w, '발동', `${srcEx} ${seg.id === 'KRX_CLOSE' ? '예상체결가' : '체결가'} ${firePrice.toLocaleString('ko-KR')} ≥ 감시가 ${w.trigger.toLocaleString('ko-KR')} · ${via} 판정 · 주문 거래소 ${seg.ex}`);
+            event(w, '발동', `${srcEx} ${seg.id === 'KRX_CLOSE' ? '예상체결가' : '체결가'} ${firePrice.toLocaleString('ko-KR')} ≥ 감시가 ${w.trigger.toLocaleString('ko-KR')} · ${via} 판정 · 주문 거래소 ${orderEx}`);
             save();
             await loadLots();
             let targets = lots.filter(l => l.code === w.code && (w.allLots || l.key === w.lotKey)).sort((a, b) => String(a.maturity).localeCompare(String(b.maturity)));
@@ -317,7 +324,7 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
                 const qty = w.qtyMode === 'pct' ? Math.max(1, Math.floor(lot.able * w.qtyValue / 100)) : Math.min(w.qtyValue, lot.able);
                 if (!(lot.able >= 1) || !(qty >= 1)) { event(w, '잔고 확인', `대출일 ${lot.loanDt} 가능수량 0 · 주문하지 않음`); continue; }
                 event(w, '잔고 확인', `대출일 ${lot.loanDt} 가능수량 ${lot.able}주 → ${qty}주 상환`);
-                const o = { loanRaw: lot.loanRaw, qty, ex: seg.ex, ordNos: [], price: 0, filled: 0, attempts: 0, state: '주문', cap, upper };
+                const o = { loanRaw: lot.loanRaw, qty, ex: orderEx, ordNos: [], price: 0, filled: 0, attempts: 0, state: '주문', cap, upper };
                 w.orders.push(o);
                 let price = w.upperLimit && upper ? upper : addTicks(firePrice, w.ticks);
                 price = Math.min(price, upper || price, w.fix ? cap : Infinity);
@@ -352,10 +359,10 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
                 if (o.filled >= o.qty) { o.state = '체결'; continue; }
                 const seg = segmentAt(now(), openDate);
                 if (s.open === 0) {
-                    if (o.ex === 'KRX' && seg?.id === 'NXT_AFTER' && w.nxt && !o.rerouted) {
-                        o.rerouted = true; o.ex = 'NXT'; o.qty -= o.filled; o.filled = 0; o.ordNos = []; o.attempts = 0;
+                    if ((o.ex === 'KRX' || o.ex === 'SOR') && seg?.id === 'NXT_AFTER' && w.nxt && !o.rerouted) {
+                        const was = o.ex; o.rerouted = true; o.ex = 'NXT'; o.qty -= o.filled; o.filled = 0; o.ordNos = []; o.attempts = 0;
                         const ask = await bestAsk(w.code, 'NXT'); const price = Math.min(o.cap, addTicks(ask || w.firePrice, w.ticks));
-                        event(w, '재주문', `KRX 마감 뒤 남은 ${o.qty}주를 NXT로 다시 냅니다`);
+                        event(w, '재주문', `${was === 'SOR' ? 'SOR 주문이 정규장 마감 뒤 남아' : 'KRX 마감 뒤'} 남은 ${o.qty}주를 NXT로 다시 냅니다`);
                         if (!await sendCover(w, o, price)) o.state = '실패';
                         pending = true; continue;
                     }
