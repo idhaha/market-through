@@ -18,6 +18,7 @@ internal static class Program {
         catch (Exception error) { MessageBox.Show(error.Message, "독립창"); return; }
         if (new Uri(url).AbsolutePath == "/quick-note.html") Identity = "MarketThrough.Note.Independent.v1";
         if (new Uri(url).AbsolutePath == "/vi-monitor.html") Identity = "MarketThrough.VI.Independent.v1";
+        if (new Uri(url).AbsolutePath == "/short-stoploss.html") Identity = "MarketThrough.ShortStopLoss.Independent.v1";
         bool created;
         using (var mutex = new Mutex(true, "Local\\" + Identity, out created)) {
             if (!created) {
@@ -38,7 +39,7 @@ internal static class Program {
         string[] allowed = File.ReadAllLines(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "server-origin.txt"));
         bool trusted = Array.Exists(allowed, address => address.Trim().TrimEnd('/') == target.GetLeftPart(UriPartial.Authority));
         bool note = target.AbsolutePath == "/quick-note.html";
-        bool vi = target.AbsolutePath == "/vi-monitor.html";
+        bool vi = target.AbsolutePath == "/vi-monitor.html" || target.AbsolutePath == "/short-stoploss.html"; // 대주창(2026-11-20)도 VI 창처럼 #token=
         if (!trusted || (!note && !vi && target.AbsolutePath != "/rank-independent.html") || target.Query.Length != 0 || target.UserInfo.Length != 0
             || !System.Text.RegularExpressions.Regex.IsMatch(target.Fragment, note || vi ? "^#token=[a-f0-9]{64}$" : "^#id=[a-f0-9]{32}&token=[a-f0-9]{64}$")) throw new Exception("허용되지 않은 독립창 서버 주소입니다.");
         return url;
@@ -53,6 +54,7 @@ internal sealed class IndependentForm : Form {
     readonly string pagePath;
     bool ready, exiting;
     bool noteDirty;
+    string rankPeerToken; // 수급 창이 여는 토큰을 바꿔 받은 창 토큰(2026-11-20). 창을 닫을 때 이 값으로 닫힘을 알린다
     Rectangle preferredBounds;
     bool movingBounds;
     string displayLayout;
@@ -64,11 +66,12 @@ internal sealed class IndependentForm : Form {
     internal IndependentForm(string url) : this(url, null) { }
     internal IndependentForm(string url, string stateDirectory) {
         pagePath = new Uri(url).AbsolutePath;
-        folder = stateDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MarketThrough", "State", pagePath == "/quick-note.html" ? "Note" : pagePath == "/vi-monitor.html" ? "VI" : "");
+        folder = stateDirectory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MarketThrough", "State", pagePath == "/quick-note.html" ? "Note" : pagePath == "/vi-monitor.html" ? "VI" : pagePath == "/short-stoploss.html" ? "ShortStopLoss" : "");
         initial = url; current = url; allowed = new Uri(url).GetLeftPart(UriPartial.Authority);
         Text = "MarketThrough 독립창"; Font = new Font("맑은 고딕", 9F); FormBorderStyle = FormBorderStyle.Sizable; BackColor = Color.FromArgb(210, 218, 230);
         if (pagePath == "/quick-note.html") Text = "MarketThrough 노트";
         if (pagePath == "/vi-monitor.html") Text = "MarketThrough VI 모니터링";
+        if (pagePath == "/short-stoploss.html") Text = "MarketThrough 대주 StopLoss";
         MinimumSize = new Size(320, 160); Size = new Size(1250, 800); StartPosition = FormStartPosition.Manual;
         Directory.CreateDirectory(folder); RestoreBoundsFromDisk();
         displayLayout = GetDisplayLayout();
@@ -118,6 +121,7 @@ internal sealed class IndependentForm : Form {
                     if (message == "connection-ended") Close();
                     else if (message.StartsWith("note-dirty:") && pagePath == "/quick-note.html") noteDirty = message == "note-dirty:true";
                     else if (message == "note-close" && pagePath == "/quick-note.html") Close();
+                    else if (message.StartsWith("rank-peer-token:") && pagePath == "/rank-independent.html" && System.Text.RegularExpressions.Regex.IsMatch(message.Substring(16), "^[a-f0-9]{64}$")) rankPeerToken = message.Substring(16);
                     else if (message == "topmost:true") TopMost = true;
                     else if (message == "topmost:false") TopMost = false;
                     else if (message.StartsWith("page-scale:")) {
@@ -131,9 +135,14 @@ internal sealed class IndependentForm : Form {
                         var previousSize = Size; var previousClientSize = web.ClientSize;
                         WindowState = FormWindowState.Normal;
                         var area = Screen.FromRectangle(Bounds).WorkingArea;
+                        if (pagePath == "/short-stoploss.html") {
+                            // 대주창 접기 · 펴기(2026-11-20): 창 위치(왼쪽 위)는 옮기지 않고 폭만 바꾼다. 화면 오른쪽 끝을 넘으면 거기까지만 늘린다
+                            Width = Math.Max(MinimumSize.Width, Math.Min(Math.Max(area.Right - Left, MinimumSize.Width), previousSize.Width + (int)Math.Round(dw * (double)previousClientSize.Width / vw)));
+                        } else {
                         Width = Math.Max(MinimumSize.Width, Math.Min(area.Width, previousSize.Width + (int)Math.Round(dw * (double)previousClientSize.Width / vw)));
                         Height = Math.Max(MinimumSize.Height, Math.Min(area.Height, previousSize.Height + (int)Math.Round(dh * (double)previousClientSize.Height / vh)));
                         Left = Math.Max(area.Left, Math.Min(Left, area.Right - Width)); Top = Math.Max(area.Top, Math.Min(Top, area.Bottom - Height));
+                        }
                         RememberBounds();
                         web.CoreWebView2.ExecuteScriptAsync("window.dispatchEvent(new Event('rank-native-resize-complete'))");
                     }
@@ -163,10 +172,11 @@ internal sealed class IndependentForm : Form {
                     if (url != null && !exiting) BeginInvoke(new Action(delegate {
                         try { Program.Validate("marketthrough://open?url=" + Uri.EscapeDataString(url));
                             if (new Uri(url).AbsolutePath != pagePath || new Uri(url).GetLeftPart(UriPartial.Authority) != allowed) return;
-                            NotifyClose(); current = url; allowed = new Uri(url).GetLeftPart(UriPartial.Authority);
+                            NotifyClose(); current = url; rankPeerToken = null; allowed = new Uri(url).GetLeftPart(UriPartial.Authority);
                             WindowState = FormWindowState.Normal; TopMost = false; EnsureVisibleBounds(); Show(); BringToFront(); Activate();
                             if (pagePath == "/quick-note.html") web.CoreWebView2.ExecuteScriptAsync("window.refreshNativeNoteCredentials(" + json.Serialize(new Uri(url).Fragment.Substring(7)) + ")");
                             else if (pagePath == "/vi-monitor.html") web.CoreWebView2.ExecuteScriptAsync("window.refreshNativeViCredentials(" + json.Serialize(new Uri(url).Fragment.Substring(7)) + ")");
+                            else if (pagePath == "/short-stoploss.html") web.CoreWebView2.ExecuteScriptAsync("window.refreshNativeShortStopLossCredentials(" + json.Serialize(new Uri(url).Fragment.Substring(7)) + ")");
                             else web.CoreWebView2.Navigate(url);
                         } catch { }
                     }));
@@ -175,10 +185,10 @@ internal sealed class IndependentForm : Form {
         }
     }
     void NotifyClose() {
-        if (pagePath == "/quick-note.html" || pagePath == "/vi-monitor.html") return;
+        if (pagePath == "/quick-note.html" || pagePath == "/vi-monitor.html" || pagePath == "/short-stoploss.html") return;
         try {
             var target = new Uri(current); var values = target.Fragment.TrimStart('#').Split('&');
-            string id = values[0].Substring(3), token = values[1].Substring(6);
+            string id = values[0].Substring(3), token = rankPeerToken ?? values[1].Substring(6);
             var request = (HttpWebRequest)WebRequest.Create(allowed + "/api/rank-independent/peer/" + id);
             request.Method = "POST"; request.ContentType = "application/json"; request.Headers["Authorization"] = "Bearer " + token; request.Timeout = 1500;
             var bytes = System.Text.Encoding.UTF8.GetBytes("{\"close\":true}"); request.ContentLength = bytes.Length;
@@ -188,7 +198,14 @@ internal sealed class IndependentForm : Form {
     }
     void RestoreBoundsFromDisk() {
         var area = Screen.PrimaryScreen.WorkingArea;
-        Bounds = new Rectangle(area.Left + 30, area.Top + 30, Math.Min(1250, area.Width), Math.Min(800, area.Height));
+        int width = 1250, height = 800;
+        if (pagePath == "/short-stoploss.html") {
+            // 대주창 처음 크기: 화면 안쪽 1200×660(웹 화면 단위). 이 앱은 화면 배율을 인식하므로 배율만큼 키우고 테두리 · 제목 표시줄을 더한다
+            float dpi = 96; using (var g = CreateGraphics()) dpi = g.DpiX;
+            width = (int)Math.Round(1200 * dpi / 96) + SystemInformation.FrameBorderSize.Width * 2;
+            height = (int)Math.Round(660 * dpi / 96) + SystemInformation.CaptionHeight + SystemInformation.FrameBorderSize.Height * 2;
+        }
+        Bounds = new Rectangle(area.Left + 30, area.Top + 30, Math.Min(width, area.Width), Math.Min(height, area.Height));
         preferredBounds = Bounds;
         try {
             var values = json.Deserialize<int[]>(File.ReadAllText(Path.Combine(folder, "bounds.json")));

@@ -49,6 +49,16 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
     const futuresTrade=new Map(),futuresTradeTasks=new Map();
     let socket, stopped=true, connecting=false, retry, ackTimer, regTimer, schedule, saveTimer, masterTimer, emitTimer, registered=0, reconnects=0;
     let state='대기 중', storageError='', lastReceivedAt=null;
+    // 공용 키움 연결(2026-11-20): 키움은 앱키당 웹소켓 하나만 허용(R10001, 새 연결이 기존 연결을 끊음)하므로
+    // 대주 StopLoss의 0B · 00 · 04를 이 연결에 함께 등록한다. 그룹 1 · 2는 VI(1h), 그 밖의 그룹은 sharedRealtime.set으로 등록하고,
+    // 그 등록이 거부돼도 VI 연결은 끊지 않는다. 충돌하면 대주가 우선이다(사용자 결정 2026-11-20): 공용 등록이 거부되면
+    // VI 등록(그룹 1 · 2)을 해지하고 공용 그룹을 다시 등록한다. 다음 로그인(재연결) 때 VI를 다시 시도한다.
+    const sharedGroups=new Map(),sharedListeners=new Set(),sharedStatus={acks:0,errors:[],viSuspended:false};
+    function sendShared(grp){
+        const g=sharedGroups.get(grp);if(!g||!socket||socket.readyState!==WebSocket.OPEN||registered<2)return;
+        if(g.sent&&g.sent.length)socket.send(JSON.stringify({trnm:'REMOVE',grp_no:grp,refresh:'1',data:[{item:g.sent,type:g.types}]}));
+        g.sent=null;if(g.items.length){socket.send(JSON.stringify({trnm:'REG',grp_no:grp,refresh:'1',data:[{item:g.items,type:g.types}]}));g.sent=g.items.slice();}
+    }
     // 거래대금(전일기준) · 시가총액 필터(2026-11-10):
     //  - 상장주식수 · 전일 종가: 키움 ka10099(코스피 0 · 코스닥 10), 하루 1회.
     //  - 전일 거래대금: 키움 ka10081 일봉(종목코드_AL = KRX+NXT 통합, trde_prica 백만 원)의 오늘 전 마지막 날, VI가 난 종목만
@@ -201,9 +211,9 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
     // 계산하되(1% 판정 포함) gapState에 '장 전'을 적어 화면이 작고 흐리게 + "장 전"을 붙인다(11/12 JYP Ent. NXT 08:03 행 KRX −9.3%).
     // KRX가 열렸어도 그날 거래대금이 0이면(시가 단일가에서 바로 VI 등) '체결 전'(11/12 JYP Ent. KRX 09:00:05 행의 Base).
     // 개장: KRX 09:00, 주식선물 08:45, NXT 08:00(프리마켓). 수능일은 거래소 공지대로 1시간 늦고 NXT 프리마켓이 없다.
-    const OPEN_DELAY={'2026-11-19':60};// 2027학년도 수능(한국거래소 2026-11-05 공지: 정규장 10:00, 주식 파생 09:45)
+    const {openDelay}=require('./market-open-delay');// 2027학년도 수능(한국거래소 2026-11-05 공지: 정규장 10:00, 주식 파생 09:45)
     function preOpen(market,t=now()){
-        const k=new Date(t+9*3600000),m=k.getUTCHours()*60+k.getUTCMinutes(),d=OPEN_DELAY[dayKey(t)]||0;
+        const k=new Date(t+9*3600000),m=k.getUTCHours()*60+k.getUTCMinutes(),d=openDelay(dayKey(t));
         return m<({KRX:540,FUT:525,NXT:d?540:480}[market]??0)+d;
     }
     const baseQuote=r=>r.exchange==='FUT'?quotes.get('FUT:'+r.contract?.code):quotes.get(r.exchange+':'+r.code);
@@ -1002,19 +1012,34 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
         if(m.trnm==='PING'){socket?.send(typeof raw==='string'||Buffer.isBuffer(raw)?String(raw):JSON.stringify(m));return;}
         if(m.trnm==='LOGIN') {
             if(String(m.return_code)!=='0'){state='키움 로그인 거부';rejectKiwoomToken();emit();socket?.close();return;}
-            registered=0;state='VI 등록 확인 중';emit();
+            registered=0;sharedStatus.viSuspended=false;state='VI 등록 확인 중';emit();
             // Group 1: the whole market (KRX, plus SOR copies). Group 2: NXT (_NX).
             socket?.send(JSON.stringify({trnm:'REG',grp_no:'1',refresh:'1',data:[{item:[''],type:['1h']}]}));
             const ws=socket;regTimer=setTimeout(()=>{if(socket===ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({trnm:'REG',grp_no:'2',refresh:'1',data:[{item:['_NX'],type:['1h']}]}));},1000);regTimer.unref?.();
             return;
         }
         if(m.trnm==='REG') {
+            if(registered>=2){
+                sharedStatus.acks++;
+                if(String(m.return_code)!=='0'){
+                    sharedStatus.errors.push({at:now(),code:m.return_code,msg:m.return_msg});if(sharedStatus.errors.length>20)sharedStatus.errors.shift();log('공용 키움 등록 거부: '+m.return_code+' '+(m.return_msg||''));
+                    if(!sharedStatus.viSuspended&&sharedGroups.size&&socket?.readyState===WebSocket.OPEN){
+                        sharedStatus.viSuspended=true;state='대주 우선 · VI 수신 중지';emit();log('대주 우선: VI 등록(1h)을 해지하고 대주 실시간을 다시 등록합니다');
+                        socket.send(JSON.stringify({trnm:'REMOVE',grp_no:'1',refresh:'1',data:[{item:[''],type:['1h']}]}));
+                        socket.send(JSON.stringify({trnm:'REMOVE',grp_no:'2',refresh:'1',data:[{item:['_NX'],type:['1h']}]}));
+                        for(const g of sharedGroups.values())g.sent=null;
+                        const ws=socket;const again=setTimeout(()=>{if(socket===ws)for(const grp of sharedGroups.keys())sendShared(grp);},500);again.unref?.();
+                    }
+                }
+                return;
+            }
             if(String(m.return_code)!=='0'){state='키움 VI 등록 거부';emit();socket?.close();return;}
-            if(++registered>=2){clearTimeout(ackTimer);state='VI 실시간 수신 중';reconnects=0;}
+            if(++registered>=2){clearTimeout(ackTimer);state='VI 실시간 수신 중';reconnects=0;for(const g of sharedGroups.values())g.sent=null;for(const grp of sharedGroups.keys())sendShared(grp);}
             emit();return;
         }
+        if(m.trnm==='REMOVE')return;
         if(m.trnm!=='REAL'||!Array.isArray(m.data))return;
-        for(const d of m.data){const e=parseKiwoomVi(d);if(e)applyVi(e);}
+        for(const d of m.data){if(d?.type!=='1h'){for(const fn of sharedListeners)try{fn(d);}catch{}continue;}const e=parseKiwoomVi(d);if(e)applyVi(e);}
     }
     function cleanup(){clearTimeout(ackTimer);clearTimeout(regTimer);}
     // 수신 시간대(2026-11-16): 현물 장(08:00~20:00)보다 2분 먼저 붙는다. 08:00부터 붙으면 30초 확인 간격과 로그인 · 등록 시간 때문에
@@ -1071,6 +1096,12 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
         try{archiveDay(staleSaved.day,valid.map(view));}finally{[listInfo,prevAmounts]=keep;}
     }
     staleSaved=null;savedFilters=null;
-    return {start,stop,archivedDays,archivedDay,chartData,setRecordFilter,recordFilter:()=>({...recordFilter}),tick,onFuturesConnection,futuresRegistrations,baseContracts,onRegistrations(fn){registrationListeners.add(fn);return()=>registrationListeners.delete(fn);},receive,onQuote,onFuturesEvent,futuresContracts,checkSamsungAmount,snapshot,dismissFlash,subscribe(listener){listeners.add(listener);listener(snapshot());return()=>listeners.delete(listener);}};
+    const sharedRealtime={
+        set(grp,items,types){grp=String(grp);if(['1','2'].includes(grp))throw Error('VI 그룹은 쓸 수 없습니다');const g=sharedGroups.get(grp)||{sent:null};g.items=[...new Set(items)];g.types=types;sharedGroups.set(grp,g);sendShared(grp);},
+        onReal(fn){sharedListeners.add(fn);return()=>sharedListeners.delete(fn);},
+        connected:()=>!!socket&&registered>=2&&(state==='VI 실시간 수신 중'||sharedStatus.viSuspended),state:()=>state,
+        status:()=>({acks:sharedStatus.acks,errors:sharedStatus.errors.slice(),viSuspended:sharedStatus.viSuspended,groups:Object.fromEntries([...sharedGroups].map(([k,g])=>[k,{items:g.items.length,sent:!!g.sent,types:g.types}]))})
+    };
+    return {sharedRealtime,start,stop,archivedDays,archivedDay,chartData,setRecordFilter,recordFilter:()=>({...recordFilter}),tick,onFuturesConnection,futuresRegistrations,baseContracts,onRegistrations(fn){registrationListeners.add(fn);return()=>registrationListeners.delete(fn);},receive,onQuote,onFuturesEvent,futuresContracts,checkSamsungAmount,snapshot,dismissFlash,subscribe(listener){listeners.add(listener);listener(snapshot());return()=>listeners.delete(listener);}};
 }
 module.exports={createViMonitor,eventTime,parseKiwoomVi};

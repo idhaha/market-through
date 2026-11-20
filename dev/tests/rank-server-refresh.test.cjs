@@ -5,7 +5,7 @@ const {createRankIndependentRelay} = require('../../rank-independent');
  const routes=new Map(), app={use(){},post(p,f){routes.set('POST '+p,f)},delete(p,f){routes.set('DELETE '+p,f)}};
  createRankIndependentRelay({now:()=>clock,canAutoRefresh:()=>open,session:()=>({spot:open,futures:true}),schedule:fn=>{tick=fn;return {unref(){}}},refresh:async snapshot=>{calls++;if(fail)throw Error('offline');return {items:[{stk_cd:'005930'}],chart:snapshot.chart}},request:async()=>({success:true})}).mount(app);
  function call(path,ticket={},body={}) {let result,status=200;routes.get('POST '+path)({params:{id:ticket.id},body,authUser:{email:'test'},get:n=>n==='X-Rank-Owner'?ticket.ownerKey:'Bearer '+ticket.token},{status(v){status=v;return this},json(v){result=v;return this}});return {result,status}}
- const t=call('/api/rank-independent').result;
+ const t=call('/api/rank-independent').result;t.token=call('/api/rank-independent/peer/:id/exchange',t).result.token;
  const owner=body=>call('/api/rank-independent/:id/owner',t,body).result;
  const peer=body=>call('/api/rank-independent/peer/:id',t,body).result;
  const flush=()=>new Promise(resolve=>setImmediate(resolve));

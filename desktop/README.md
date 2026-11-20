@@ -26,6 +26,19 @@ Windows x64와 .NET Framework 4.6.2 이상을 사용한다. WebView2 Runtime이 
 
 캔들을 열 때 해당 차트의 현재 그래프 높이를 측정해 같은 높이의 캔들 영역을 추가한다. 다른 차트와 기존 그래프의 높이는 유지하며 실제 창은 세로로만 늘린다. 접으면 실제 늘어난 높이만큼 줄인다. 사용자가 변경한 창 너비는 유지한다. 모니터 경계로 창을 늘릴 수 없으면 내부 스크롤을 사용한다. 수동 크기 변경 후에는 변경된 높이를 기준으로 다시 측정한다. 네이티브 크기 변경 완료 신호로 자동 변경과 수동 변경을 구분한다.
 
+## 대주 StopLoss 창(2026-11-20)
+
+트레이딩 탭의 "대주StopLoss" 버튼도 같은 앱으로 연다(`/short-stoploss.html#token=<64자리>`, 창 제목 "MarketThrough 대주 StopLoss", 상태 폴더 `StateShortStopLoss`). 처음 크기는 화면 안쪽 1200×660(화면 배율 반영)이고 이후에는 마지막 위치 · 크기로 연다. 화면의 접기 · 펴기는 `resize-window` 메시지로 창 폭만 바꾸며, 다른 창과 달리 창 위치는 옮기지 않고 화면 오른쪽 끝까지만 늘린다. 새 설치 파일로 덮어 설치해야 적용된다. 자세한 내용은 [대주 StopLoss](../docs/KIWOOM_SHORT_STOPLOSS.md).
+
+## 여는 토큰과 창 토큰(2026-11-20)
+
+수급 · VI · 대주 창 주소의 토큰(`#token=`)은 '여는 토큰'이다. 이 주소는 앱 실행 인자로 넘어가 같은 PC의 다른 프로그램이 읽을 수 있으므로, 창이 열리자마자 서버에서 '창 토큰'으로 한 번 바꿔 받고(5분 안, 한 번만) 이후에는 창 토큰으로만 연결한다.
+
+- 수급: `POST /api/rank-independent/peer/:id/exchange`(Authorization: Bearer 여는 토큰). 메인 페이지는 owner 응답의 `peerToken`을 받아 서버 재시작 뒤 복구(recover)에 함께 보내 열린 창이 이어지게 한다. 창은 `rank-peer-token:` 메시지로 창 토큰을 앱에 알리고, 앱은 창을 닫을 때 그 값으로 닫힘을 알린다.
+- VI: `POST /api/vi-monitor/window-exchange`(`X-VI-Launch`). 메인 화면은 여는 토큰으로 연결 상태 · 배율을 보고한다.
+- 대주: `POST /api/short-stoploss/window-exchange`(`X-SS-Launch`).
+- 메인 화면은 20초 안에 연결되지 않으면 설치 안내를 보이되 5분 동안 계속 확인하고, 늦게라도 연결되면 안내를 지운다(수급은 설치 파일 자동 다운로드 후에도 연결을 끊지 않는다).
+
 ## 빌드
 
 저장소 루트에서 Windows PowerShell:

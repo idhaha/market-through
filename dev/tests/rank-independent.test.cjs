@@ -15,6 +15,10 @@ const { promisify } = require('node:util');
         if (req.path === '/api/rank-independent' && req.method === 'POST') {
             const send = res.json.bind(res); res.json = value => { ticket = value; return send(value); };
         }
+        // 독립창이 바꿔 받은 창 토큰(2026-11-20): 닫힘 알림 시험에 쓴다
+        if (/^\/api\/rank-independent\/peer\/[a-f0-9]{32}\/exchange$/.test(req.path)) {
+            const send = res.json.bind(res); res.json = value => { if (ticket && value.token) ticket.peerToken = value.token; return send(value); };
+        }
         next();
     });
     createRankIndependentRelay({ now: () => clock, request:async command=>{
@@ -102,6 +106,9 @@ const { promisify } = require('node:util');
         assert.equal((await json(own, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 404);
         assert.equal((await json(peerPath, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer wrong' }, body: '{}' })).status, 401);
         assert.equal((await json(own, { method: 'POST', headers, body: JSON.stringify({ snapshot: { value: 'x'.repeat(2000001) } }) })).status, 413);
+        // 2026-11-20: 주소의 여는 토큰은 peer에 쓸 수 없고 한 번만 창 토큰으로 바꾼다
+        assert.equal((await json(peerPath, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${channel.token}` }, body: '{}' })).status, 401);
+        channel.token = (await json(peerPath + '/exchange', { method: 'POST', headers: { Authorization: `Bearer ${channel.token}` } })).body.token;
         const peerHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${channel.token}` };
         const commandId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
         const delivery = { command: { id: commandId, type: 'refresh' } };
@@ -274,7 +281,7 @@ const { promisify } = require('node:util');
         assert.equal(await child.locator('#concentrationStockName').getAttribute('readonly'), null);
         await verifyIndependentRefresh(main, child);
         // Native close notification enables the original button and leaves original content intact.
-        await json(`/api/rank-independent/peer/${ticket.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ticket.token}` }, body: '{"close":true}' });
+        await json(`/api/rank-independent/peer/${ticket.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ticket.peerToken}` }, body: '{"close":true}' });
         await main.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent === '수급' && !button.disabled));
         assert.equal(await main.locator('#transactionBody tr').count(), 2);
         await child.close();

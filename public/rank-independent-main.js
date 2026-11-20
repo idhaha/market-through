@@ -42,9 +42,12 @@
             if (channel) rawFetch(`/api/rank-independent/${channel.id}/owner`, { method: 'DELETE', headers: { 'X-Rank-Owner': channel.ownerKey } }).catch(() => {});
             channel = null; connected = false; replies = []; acknowledgements = []; handled.clear(); button.disabled = false; message.textContent = text;
         }
+        // 2026-11-20: 20초 안에 연결되지 않으면 설치 파일을 받게 하되 연결은 끊지 않는다. "앱 열기"를 늦게 허용해도
+        // 여는 토큰이 살아 있는 5분 안이면 창이 그대로 연결되고 이 안내는 지워진다. 버튼은 다시 누를 수 있게 둔다(누르면 새 연결)
+        let installerShown = false;
         async function downloadInstaller() {
             const text = '독립창 앱이 설치되지 않았거나 실행이 취소되어 연결하지 못했습니다. 설치 파일을 다운로드합니다. 다운로드한 MarketThroughSetup.exe를 실행해 설치한 뒤 독립창 버튼을 다시 누르세요.';
-            reset(text);
+            installerShown = true; button.disabled = false; message.textContent = text;
             try {
                 const response = await rawFetch('/downloads/MarketThroughSetup.exe', { method: 'HEAD' });
                 if (!response.ok) throw new Error('설치 파일을 다운로드할 수 없습니다. 서버에 설치 파일이 배포되어 있는지 확인하세요.');
@@ -114,7 +117,7 @@
                 const response = await rawFetch(`/api/rank-independent/${channel.id}/owner`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Rank-Owner': channel.ownerKey }, body: JSON.stringify(payload), signal: AbortSignal.timeout(10000) });
                 if (response.status === 404) {
                     const restored = await rawFetch(`/api/rank-independent/${channel.id}/recover`, { method: 'POST',
-                        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: channel.token, ownerKey: channel.ownerKey }), signal: AbortSignal.timeout(10000) });
+                        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: channel.token, ownerKey: channel.ownerKey, ...(channel.peerToken ? { peerToken: channel.peerToken } : {}) }), signal: AbortSignal.timeout(10000) });
                     if (!restored.ok) throw new Error('독립창 연결 복구 재시도');
                     replies.unshift(...pending); acknowledgements.unshift(...acks); dirty = true;
                     message.textContent = '독립창 연결 복구 중';
@@ -122,12 +125,13 @@
                 }
                 if (!response.ok) throw new Error('독립창 연결 재시도');
                 const result = await response.json();
+                // 독립창이 여는 토큰을 바꿔 받은 창 토큰: 서버 재시작 뒤 복구할 때 같이 보내 열린 창이 그대로 이어지게 한다(2026-11-20)
+                if (result.peerToken) channel.peerToken = result.peerToken;
                 if (result.connected) { connected = true; peerLastSeen = Date.now(); message.textContent = ''; }
                 if (result.closed) { reset(); return; }
                 if (connected && Date.now() - peerLastSeen > 120000) message.textContent = '독립창 연결 재시도 중';
-                if (!connected && Date.now() - started > 20000) {
-                    await downloadInstaller(); return;
-                }
+                if (!connected && Date.now() - started > 5 * 60000) { reset('독립창이 5분 안에 열리지 않아 연결을 끝냈습니다. 독립창 버튼을 다시 누르세요.'); return; }
+                if (!connected && !installerShown && Date.now() - started > 20000) await downloadInstaller();
                 for (const command of result.commands) {
                     acknowledgements.push(command.id);
                     if (!handled.has(command.id)) {
@@ -139,12 +143,13 @@
             finally { running = false; if (channel) timer = setTimeout(tick, 500); }
         }
         button.addEventListener('click', async () => {
-            if (channel || button.disabled) return;
+            if (button.disabled || (channel && connected)) return;
+            if (channel) reset(); // 아직 연결되지 않은 이전 시도는 끝내고 새로 연다
             button.disabled = true;
             try {
                 const response = await rawFetch('/api/rank-independent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
                 if (!response.ok) throw new Error('로그인과 서버 연결을 확인하세요.');
-                channel = await response.json(); started = Date.now(); dirty = true; message.textContent = '독립창 앱 실행 중';
+                channel = await response.json(); started = Date.now(); installerShown = false; dirty = true; message.textContent = '독립창 앱 실행 중';
                 tick();
                 // Capability is placed in the fragment, never in HTTP access logs.
                 const url = location.origin + '/rank-independent.html#' + new URLSearchParams({ id: channel.id, token: channel.token });

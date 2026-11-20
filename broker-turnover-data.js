@@ -1,18 +1,20 @@
 const { createSupplyStore, dayKey, validCode, failure } = require('./supply-store');
 const { quantity, timestamp, collectingAt } = require('./supply-service');
+const { openDelay, closeDelay, shiftClock } = require('./market-open-delay');
 const compact = day => day.replaceAll('-', '');
 const marketCodes = { kospi: 'KOSPI0', kosdaq: 'KOSDAQ' };
 const lsIndices = { kospi: '001', kosdaq: '301' }, kisIndices = { kospi: '0001', kosdaq: '1001' };
 const million = raw => { const text=String(raw ?? '').replaceAll(',', '').trim(),value=Number(text);return /^\d+(\.\d+)?$/.test(text)&&Number.isSafeInteger(value*1000000)?value*1000000:null; };
 // LS minute charts label the end of an interval (09:01 -> 09:00).
 // The 15:30 closing auction is a distinct execution, not a 15:29 bar.
-const lsMinuteTime = (date, clock) => timestamp(date,clock) - (clock === '153000' ? 0 : 60000);
-function createBrokerTurnoverData({ broker, directory, transport, http, getToken, kisMarketAmounts, supply, now = Date.now,
+// On a delayed-open day the close moves too (2026-11-19 수능: 16:30 closing auction).
+const lsMinuteTime = (date, clock) => timestamp(date,clock) - (clock === shiftClock('153000', closeDelay(`${date.slice(0,4)}-${date.slice(4,6)}-${date.slice(6,8)}`)) ? 0 : 60000);
+function createBrokerTurnoverData({ broker, directory, transport, http, getToken, kisMarketAmounts, supply, now = Date.now, log = message => console.warn(message),
     pause = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
     const store = createSupplyStore({ directory, now, fields: ['amount'] });
     const pending = new Map(), owners = new Map(), cache = new Map(), latest = new Map();
     let backgroundStocks=[];
-    let queue = Promise.resolve(), timer, archiveMinute = -1;
+    let queue = Promise.resolve(), timer, archiveMinute = -1, warnedLate = '';
     function flush() {
         const minute = Math.floor(now()/60000)*60000;
         for (const [key, value] of pending) if (value.t < minute) { store.merge(value.code, value); pending.delete(key); }
@@ -158,7 +160,11 @@ function createBrokerTurnoverData({ broker, directory, transport, http, getToken
             for(const p of data.rows){
                 // A fully requested LS day may start at the regular 09:00
                 // session for a stock with no 08:00 premarket bars.
-                const date=dayKey(p.t);if(date!==lastDay){lastDay=date;total=0;const first=new Date(p.t+9*3600000).toISOString().slice(11,19).replaceAll(':','');complete=first===opening || stock&&first==='090000';}
+                // On a delayed-open day (market-open-delay.js, e.g. 수능 10:00) the index day starts at the delayed open.
+                const date=dayKey(p.t);if(date!==lastDay){lastDay=date;total=0;const first=new Date(p.t+9*3600000).toISOString().slice(11,19).replaceAll(':',''),delayed=shiftClock('090000',openDelay(date));
+                    complete=first===opening || stock&&first==='090000' || first===delayed;
+                    // A late index start on a day the table does not know: likely an unlisted delayed open (warn once a day).
+                    if(!stock&&first>delayed&&date===dayKey(now())&&warnedLate!==date){warnedLate=date;log(`[개장 지연] 오늘 ${instrument} 업종지수 첫 분봉이 ${first.slice(0,2)}:${first.slice(2,4)}입니다. 수능일이면 설정(⚙)의 올해 수능일 칸에 오늘을 입력하고, 다른 이유의 지연이면 market-open-delay.js 표에 더하고 배포해야 시장 누적 거래대금(쏠림율 누적 · LS 거래대금 분봉)이 그려집니다.`);}}
                 total+=p.amount;result.set(p.t,cumulative?(complete?total:null):p.amount);
             }
         } else {

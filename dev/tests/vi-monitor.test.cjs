@@ -80,7 +80,10 @@ async function main(){
             assert.equal(JSON.parse((await reported).postData()).scale,1.5);
             await launcher.close();
         }
-        const grant=await fetch(origin+'/api/vi-monitor/window',{method:'POST',headers:{cookie:'login=valid','Content-Type':'application/json'},body:JSON.stringify({scale:0.8})}).then(r=>r.json());assert.match(grant.token,/^[a-f0-9]{64}$/);
+        // 2026-11-20: /window가 주는 값은 '여는 토큰'(5분 안에 한 번만 창 토큰으로 바꿀 수 있음). 창을 열 때마다 새로 받는다
+        const newLaunch=()=>fetch(origin+'/api/vi-monitor/window',{method:'POST',headers:{cookie:'login=valid','Content-Type':'application/json'},body:JSON.stringify({scale:0.8})}).then(r=>r.json()).then(r=>r.token);
+        const grant=await fetch(origin+'/api/vi-monitor/window',{method:'POST',headers:{cookie:'login=valid','Content-Type':'application/json'},body:JSON.stringify({scale:0.8})}).then(r=>r.json());
+        assert.equal((await fetch(origin+'/api/vi-monitor/stream',{headers:{'X-VI-Token':grant.token}})).status,401,'Launch token cannot read the VI stream');assert.match(grant.token,/^[a-f0-9]{64}$/);
         const page=await browser.newPage({viewport:{width:1500,height:700}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
         // 괴리율 1% 이상 보기 is on by default (2026-11-09); these checks cover every VI row, so it is turned off here.
         await page.addInitScript(t=>{Date.now=()=>t;localStorage.setItem('viGapOnly','false');window.__native=[];window.chrome={webview:{postMessage:m=>window.__native.push(m)}};},clock);
@@ -119,7 +122,7 @@ async function main(){
         assert.equal(service.snapshot().rows.find(r=>r.code==='000660').flashDismissed,true,'Dismissal must be stored on the server');
         // Another independent window receives the dismissal through the server.
         const other=await browser.newPage();await other.addInitScript(t=>{Date.now=()=>t;localStorage.setItem('viGapOnly','false');},clock);
-        await other.goto(origin+'/vi-monitor.html#token='+grant.token);await other.waitForFunction(()=>document.querySelectorAll('#viBody tr[data-code]').length===3);
+        await other.goto(origin+'/vi-monitor.html#token='+await newLaunch());await other.waitForFunction(()=>document.querySelectorAll('#viBody tr[data-code]').length===3);
         assert.equal(await other.locator('#viBody tr[data-code="000660"]').evaluate(el=>el.classList.contains('vi-flash-down')),false);
         // 2026-11-16: once it no longer blinks, the row keeps a light direction background (down: light blue) and the light grey row line.
         assert.deepEqual(await other.locator('#viBody tr[data-code="000660"] td').first().evaluate(td=>[td.parentElement.className,getComputedStyle(td).backgroundColor,getComputedStyle(td).boxShadow]),['vi-dir-down','rgb(239, 246, 255)','rgb(217, 226, 240) 0px -1px 0px 0px inset']);
@@ -183,7 +186,8 @@ async function main(){
         assert.equal((await sortIcons()).startedAt,'arrows:descending');
         await page.locator('button[data-sort="rate"]').click();
         await page.reload();await page.waitForFunction(()=>document.querySelectorAll('#viBody tr[data-code]').length===3);
-        await page.evaluate(t=>window.refreshNativeViCredentials(t),grant.token);await page.waitForFunction(()=>document.querySelectorAll('#viBody tr[data-code]').length===3);
+        assert.equal((await fetch(origin+'/api/vi-monitor/window-exchange',{method:'POST',headers:{'X-VI-Launch':grant.token}})).status,401,'Launch token works only once');
+        await page.evaluate(t=>window.refreshNativeViCredentials(t),await newLaunch());await page.waitForFunction(()=>document.querySelectorAll('#viBody tr[data-code]').length===3);
         // Dismissal survives reload and SSE re-render; a later activation of the same stock blinks again.
         assert.equal(await page.locator('#viBody tr[data-code="000660"]').evaluate(el=>el.classList.contains('vi-flash-down')),false);
         assert.equal(await page.locator('#viBody tr[data-code="005930"][data-exchange="KRX"]').evaluate(el=>el.classList.contains('vi-flash-up')),true);
@@ -207,14 +211,15 @@ async function main(){
         await page.setViewportSize({width:500,height:700});
         assert.equal(await page.evaluate(()=>{const el=document.querySelector('.table-wrapper');return el.scrollWidth>el.clientWidth && document.documentElement.scrollWidth<=innerWidth;}),true,'Narrow independent windows must scroll the table inside the panel');
         if(process.argv.includes('--native')) {
-            const result=await promisify(execFile)(path.resolve(__dirname,'../../desktop/build/ViNativeSmoke.exe'),[origin+'/vi-monitor.html#token='+grant.token],{cwd:path.resolve(__dirname,'../../desktop/build'),timeout:45000});process.stdout.write(result.stdout);
+            const result=await promisify(execFile)(path.resolve(__dirname,'../../desktop/build/ViNativeSmoke.exe'),[origin+'/vi-monitor.html#token='+await newLaunch()],{cwd:path.resolve(__dirname,'../../desktop/build'),timeout:45000});process.stdout.write(result.stdout);
         }
         // Prices stop a grace period after the stock's last VI ends, and not while one is active.
         await pause(120);assert.equal(feed.unwatched.length,0);
         event('005930','1','090000','090410');await pause(150);assert.deepEqual(feed.unwatched,['005930']);
         await pause(150);const restored=createViMonitor({directory,now:()=>clock,policy:()=>null});assert.equal(restored.snapshot().rows.length,3);assert.equal(restored.snapshot().rows.find(r=>r.exchange==='NXT').active,false);assert.equal(restored.snapshot().rows.find(r=>r.code==='000660').flashDismissed,undefined,'A later activation resets the dismissal');restored.stop();
         clock+=86400000;assert.equal(service.snapshot().rows.length,0);
-        sessionValid=false;assert.equal((await fetch(origin+'/api/vi-monitor/stream',{headers:{'X-VI-Token':grant.token}})).status,401);
+        const windowToken=await page.evaluate(()=>sessionStorage.getItem('vi-window-token'));assert.match(windowToken,/^[a-f0-9]{64}$/);
+        sessionValid=false;assert.equal((await fetch(origin+'/api/vi-monitor/stream',{headers:{'X-VI-Token':windowToken}})).status,401);
         assert.deepEqual(errors,[]);
         console.log('PASS VI upstream → event state → SSE → independent view, retention, dimming, type, sorting, KRX comparisons, month switch, reconnect, restore, day rollover, scoped access; cadence ignores acknowledgements');
     } finally {service.stop();await browser?.close();server.closeAllConnections();await new Promise(r=>server.close(r));fs.rmSync(directory,{recursive:true,force:true});}

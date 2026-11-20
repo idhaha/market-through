@@ -21,6 +21,7 @@ const { createRankIndependentRelay } = require('../../rank-independent');
             if (req.path.endsWith('/recover')) recoveries++;
             const send = res.json.bind(res); res.json = value => {
                 if (req.path === '/api/rank-independent' && req.method === 'POST') ticket = value;
+                if (req.path.endsWith('/exchange') && value?.token) ticket.peerToken = value.token; // 2026-11-20: 독립창이 바꿔 받은 창 토큰
                 return send(value);
             };
             return router(req, res, next);
@@ -46,9 +47,11 @@ const { createRankIndependentRelay } = require('../../rank-independent');
         await child.goto(`${origin}/rank-independent.html#id=${ticket.id}&token=${ticket.token}`);
         await child.waitForFunction(() => document.getElementById('transactionBody').textContent.includes('before'));
         const peerCall = async body => (await fetch(`${origin}/api/rank-independent/peer/${ticket.id}`, { method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ticket.token}` }, body: JSON.stringify(body) })).json();
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ticket.peerToken}` }, body: JSON.stringify(body) })).json();
         const oldEpoch = (await peerCall({})).epoch;
         const retainedUrl = child.url();
+        // 메인 페이지가 독립창의 창 토큰을 받아 둔 뒤(owner 응답의 peerToken) 서버가 멈춰야 재시작 뒤 같은 창이 이어진다(2026-11-20)
+        await main.waitForResponse(async r => r.url().endsWith('/owner') && (await r.text()).includes(ticket.peerToken));
         offline = true;
         await child.waitForFunction(() => document.getElementById('rankConnectionStatus').textContent.includes('재시도'));
         assert.match(await child.locator('#transactionBody').textContent(), /before/, 'Outage retains the previous display');

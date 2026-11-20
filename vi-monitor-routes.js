@@ -3,11 +3,24 @@ const crypto=require('node:crypto');
 // The native app only accepts '#token=<hex>' URLs, so the main browser's zoom travels through the server stream.
 const windowRoutes=new Set(['GET /vi-monitor/stream','POST /vi-monitor/flash-dismiss','GET /vi-monitor/history','GET /vi-monitor/chart','POST /vi-monitor/record-filter']);
 const validScale=v=>{const n=Number(v);return n>=0.25&&n<=8?n:null;};
+// 2026-11-20: 창 주소(#token=)의 값은 '여는 토큰'이다. 앱 실행 인자로 PC 안에 남으므로 5분 안에 한 번만 '창 토큰'으로 바꿔 주고
+// (POST /api/vi-monitor/window-exchange, X-VI-Launch), VI 자료는 창 토큰(X-VI-Token)으로만 받는다. 메인 화면은 여는 토큰으로 상태 · 배율을 보고한다.
+const LAUNCH_MS=5*60000;
 function createViWindowAccess({session,now=Date.now}) {
-    const grants=new Map();
-    const handles=req=>windowRoutes.has(req.method+' '+req.path)&&!!req.headers['x-vi-token'];
+    const grants=new Map(),launches=new Map();
+    const exchangeRoute='POST /vi-monitor/window-exchange';
+    const handles=req=>(req.method+' '+req.path===exchangeRoute&&!!req.headers['x-vi-launch'])||(windowRoutes.has(req.method+' '+req.path)&&!!req.headers['x-vi-token']);
     function authorize(req,res,next) {
         if(!handles(req))return next();
+        if(req.method+' '+req.path===exchangeRoute){
+            const launch=launches.get(String(req.headers['x-vi-launch']));
+            if(!launch||launch.used||launch.openBy<=now()||!session({headers:{cookie:launch.cookie}}))
+                return res.status(401).json({error:launch?.used?'이미 쓴 연결입니다. 메인 화면에서 VI 독립창을 다시 열어주세요.':launch&&launch.openBy<=now()?'창이 늦게 열려 연결 시간(5분)이 지났습니다. 메인 화면에서 VI 독립창을 다시 열어주세요.':'VI 독립창 연결 만료'});
+            const token=crypto.randomBytes(32).toString('hex');
+            grants.set(token,{cookie:launch.cookie,expiresAt:launch.expiresAt,email:launch.email,connected:true,scale:launch.scale,streams:new Set()});
+            launch.used=true;launch.grant=token;
+            return res.set('Cache-Control','no-store').json({token});
+        }
         const token=req.headers['x-vi-token'],grant=grants.get(token);
         const user=grant&&grant.expiresAt>now()&&session({headers:{cookie:grant.cookie}});
         if(!user){grants.delete(token);return res.status(401).json({error:'VI 독립창 연결 만료'});}
@@ -15,21 +28,23 @@ function createViWindowAccess({session,now=Date.now}) {
     }
     function mount(app,service) {
         app.post('/api/vi-monitor/window',(req,res)=>{
-            for(const [key,g]of grants)if(g.expiresAt<=now())grants.delete(key);
-            if(grants.size>=1000)return res.status(429).json({error:'VI 독립창 연결 한도'});
+            for(const m of [grants,launches])for(const [key,g]of m)if(g.expiresAt<=now())m.delete(key);
+            if(grants.size>=1000||launches.size>=1000)return res.status(429).json({error:'VI 독립창 연결 한도'});
             const token=crypto.randomBytes(32).toString('hex');
-            grants.set(token,{cookie:req.headers.cookie,expiresAt:now()+86400000,email:req.authUser.email,connected:false,scale:validScale(req.body?.scale),streams:new Set()});
+            launches.set(token,{cookie:req.headers.cookie,openBy:now()+LAUNCH_MS,expiresAt:now()+86400000,email:req.authUser.email,scale:validScale(req.body?.scale),used:false,grant:''});
             service.start();res.set('Cache-Control','no-store').json({token});
         });
+        // 메인 화면은 여는 토큰만 안다: 그 토큰으로 바꿔 준 창 토큰을 찾는다
+        const launchOf=req=>{const l=launches.get(req.body?.token);return l&&l.email===req.authUser.email&&l.expiresAt>now()?l:null;};
         app.post('/api/vi-monitor/window-status',(req,res)=>{
-            const g=grants.get(req.body?.token);res.set('Cache-Control','no-store').json({connected:!!g&&g.email===req.authUser.email&&g.expiresAt>now()&&g.connected});
+            const l=launchOf(req),g=l&&grants.get(l.grant);res.set('Cache-Control','no-store').json({connected:!!g&&g.expiresAt>now()&&g.connected});
         });
         // The main page reports zoom changes; open VI windows of that grant follow immediately.
         app.post('/api/vi-monitor/window-scale',(req,res)=>{
-            const g=grants.get(req.body?.token),scale=validScale(req.body?.scale);
-            if(!g||g.email!==req.authUser.email||g.expiresAt<=now())return res.status(404).json({error:'VI 독립창 없음'});
+            const l=launchOf(req),scale=validScale(req.body?.scale);
+            if(!l)return res.status(404).json({error:'VI 독립창 없음'});
             if(scale==null)return res.status(400).json({error:'잘못된 배율'});
-            g.scale=scale;for(const send of g.streams)send(scale);
+            l.scale=scale;const g=grants.get(l.grant);if(g){g.scale=scale;for(const send of g.streams)send(scale);}
             res.set('Cache-Control','no-store').json({ok:true});
         });
         app.post('/api/vi-monitor/flash-dismiss',(req,res)=>{

@@ -1,9 +1,19 @@
 (() => {
     'use strict';
-    let token=new URLSearchParams(location.hash.slice(1)).get('token')||sessionStorage.getItem('vi-window-token')||'';
+    // 2026-11-20: 주소의 token은 '여는 토큰'(5분 안에 한 번만 쓸 수 있음). 곧바로 '창 토큰'으로 바꿔 받아 창 안(sessionStorage)에만 두고 쓴다.
+    // 바꾸기에 실패해도 이미 쓰던 창 토큰이 있으면 그대로 쓴다(그 토큰도 끝났으면 연결 만료 안내).
+    let token=sessionStorage.getItem('vi-window-token')||'',linkError='';
+    const launch=new URLSearchParams(location.hash.slice(1)).get('token');
+    async function exchange(value){
+        try{
+            const r=await fetch('/api/vi-monitor/window-exchange',{method:'POST',headers:{'X-VI-Launch':value}});const d=await r.json().catch(()=>({}));
+            if(r.ok&&d.token){token=d.token;linkError='';sessionStorage.setItem('vi-window-token',token);return;}
+            if(!token)linkError=d.error||'VI 독립창 연결 만료';
+        }catch{if(!token)linkError='서버에 연결하지 못했습니다';}
+    }
+    let ready=launch?exchange(launch):Promise.resolve();
     // Follow the main browser's zoom (sent by the server). The ratio uses the current zoom, so repeats are harmless.
     const applyScale=scale=>{const ratio=Number(scale)/devicePixelRatio;if(Number.isFinite(ratio)&&ratio>=0.25&&ratio<=4&&Math.abs(ratio-1)>0.02)window.chrome?.webview?.postMessage('page-scale:'+ratio);};
-    if(token)sessionStorage.setItem('vi-window-token',token);
     history.replaceState(null,'',location.pathname);
     const body=document.getElementById('viBody'),status=document.getElementById('viStatus'),summary=document.getElementById('viSummary');
     // liveData: the server stream. historyData: a past day chosen with the date picker (2026-11-14); shown instead of the stream.
@@ -30,8 +40,8 @@
     // 거래대금(전일기준) · 시가총액 filters (remembered). A row whose value is not known yet is hidden while a filter is set.
     const prevFilter=document.getElementById('viPrevAmount'),capFilter=document.getElementById('viMarketCap'),filterNote=document.getElementById('viFilterNote');
     // 2026-11-14: the same two values tell the server which rows get a chart record (해제 + 1분 뒤 1초 간격 자료).
-    const sendRecordFilter=()=>fetch('/api/vi-monitor/record-filter',{method:'POST',headers:{'Content-Type':'application/json',...(token?{'X-VI-Token':token}:{})},
-        body:JSON.stringify({prevAmount:Number(prevFilter.value)||0,marketCap:Number(capFilter.value)||0})}).catch(()=>{});
+    const sendRecordFilter=()=>ready.then(()=>fetch('/api/vi-monitor/record-filter',{method:'POST',headers:{'Content-Type':'application/json',...(token?{'X-VI-Token':token}:{})},
+        body:JSON.stringify({prevAmount:Number(prevFilter.value)||0,marketCap:Number(capFilter.value)||0})})).catch(()=>{});
     for(const [select,key] of [[prevFilter,'viPrevAmount'],[capFilter,'viMarketCap']]){
         const saved=localStorage.getItem(key);if(saved&&[...select.options].some(o=>o.value===saved))select.value=saved;
         select.addEventListener('change',()=>{localStorage.setItem(key,select.value);void sendRecordFilter();render();});
@@ -226,7 +236,9 @@
     liveButton.addEventListener('click',showLive);
     async function connect() {
         controller?.abort();controller=new AbortController();
+        await ready;
         try {
+            if(linkError)throw Error('연결 만료');
             const response=await fetch('/api/vi-monitor/stream',{headers:token?{'X-VI-Token':token}:{},signal:controller.signal});
             if(!response.ok)throw Error(response.status===401?'연결 만료':'HTTP '+response.status);
             const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';
@@ -242,7 +254,7 @@
         } catch(error) {
             if(closed||error.name==='AbortError')return;
             if(error.message==='연결 만료'){
-                status.textContent='연결 만료 · 메인 화면에서 VI 독립창을 다시 열어주세요.';
+                status.textContent=linkError&&/[.]/.test(linkError)?linkError:'연결 만료 · 메인 화면에서 VI 독립창을 다시 열어주세요.';
                 // The window token lives in the server's memory, so a server restart ends it (2026-11-12). Before any data the
                 // table kept saying "VI 수신 연결 중…"; say it in the table too.
                 if(!data.rows.length){const tr=document.createElement('tr');const td=cell(tr,'연결이 만료됐습니다(서버가 다시 시작됨). 메인 화면에서 VI 독립창을 다시 열어주세요.','vi-empty');td.colSpan=17;body.replaceChildren(tr);}
@@ -252,7 +264,7 @@
             retryTimer=setTimeout(connect,3000);
         }
     }
-    window.refreshNativeViCredentials=newToken=>{token=newToken;sessionStorage.setItem('vi-window-token',token);clearTimeout(retryTimer);void connect();};
+    window.refreshNativeViCredentials=newLaunch=>{ready=exchange(newLaunch);clearTimeout(retryTimer);void connect();};
     window.addEventListener('pagehide',()=>{closed=true;clearTimeout(retryTimer);controller?.abort();});
     setInterval(tickClock,1000);tickClock();requestAnimationFrame(frame);void connect();void sendRecordFilter();
 })();

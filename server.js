@@ -117,7 +117,16 @@ const tradingSession = require('./trading-session').createTradingSession({
     }
 });
 require('./trading-session').install(tradingSession);
-app.get('/api/trading-session',(req,res)=>res.set('Cache-Control','no-store').json(tradingSession.snapshot()));
+// 수능일 개장 지연 표 알림: 10/20부터 그해 수능일이 market-open-delay.js에 없으면 하루 한 번 로그에 남긴다(화면 알림은 /api/trading-session의 examReminder).
+{
+    let remindedDay = '';
+    const remind = () => {
+        const today = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10), message = require('./market-open-delay').examReminder(today);
+        if (message && remindedDay !== today) { remindedDay = today; console.warn('[개장 지연] ' + message); fileLog('[개장 지연] ' + message); }
+    };
+    remind(); setInterval(remind, 3600000).unref?.();
+}
+app.get('/api/trading-session',(req,res)=>{const snapshot=tradingSession.snapshot();res.set('Cache-Control','no-store').json({...snapshot,examReminder:require('./market-open-delay').examReminder(snapshot.date)});});
 app.get('/api/trading-session/calendar',async(req,res)=>{
     try{res.set('Cache-Control','no-store').json(await tradingSession.calendarRange(req.query.from,req.query.to));}
     catch(error){res.status(error.status || 502).json({error:'Market calendar unavailable'});}
@@ -135,6 +144,8 @@ const authSessionStore = createSessionStore({
 // 미들웨어 설정
 const quickNoteGrants = new Map();
 const viWindowAccess = require('./vi-monitor-routes').createViWindowAccess({ session: req => getSessionFromRequest(req) });
+// 대주 StopLoss 독립창(2026-11-20): 데스크톱 앱 안의 대주창은 메인 화면이 받은 토큰(X-SS-Token)으로 대주 API를 쓴다.
+const shortStopLossWindow = require('./short-stoploss-window').createShortStopLossWindowAccess({ session: req => getSessionFromRequest(req), allowed: req => req.authUser?.email === AUTH_ADMIN_EMAIL });
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -159,8 +170,9 @@ app.use((req, res, next) => {
 app.use('/api', (req, res, next) => {
     if (req.method === 'OPTIONS' || ['/auth/login', '/auth/session', '/auth/logout'].includes(req.path)) return next();
     if (viWindowAccess.handles(req)) return viWindowAccess.authorize(req, res, next);
+    if (shortStopLossWindow.handles(req)) return shortStopLossWindow.authorize(req, res, next);
     // This single endpoint uses a short-lived, scoped capability instead of browser cookies.
-    if (req.method === 'POST' && /^\/rank-independent\/peer\/[a-f0-9]{32}$/.test(req.path)) return next();
+    if (req.method === 'POST' && /^\/rank-independent\/peer\/[a-f0-9]{32}(\/exchange)?$/.test(req.path)) return next();
     if (req.path === '/quick-note' && ['GET', 'POST'].includes(req.method) && req.headers['x-note-token']) {
         const token = req.headers['x-note-token'];
         const grant = quickNoteGrants.get(token);
@@ -395,6 +407,20 @@ const lsFuturesEvents = require('./ls-futures-events').createLsFuturesEvents({
 });
 viMonitorService.onRegistrations(() => void lsFuturesEvents.sync());
 viWindowAccess.mount(app, viMonitorService);
+// 대주 StopLoss (2026-11-19, docs/KIWOOM_SHORT_STOPLOSS.md): 관리자 계정만, 자동 주문은 SHORT_STOPLOSS=on인 서버에서만.
+const shortStopLoss = require('./short-stoploss-service').createShortStopLoss({
+    directory: path.join(__dirname, 'data', 'short-stoploss'), http: axios,
+    getToken: () => getAccessToken((process.env.KIWOOM_APPKEY || '').trim(), (process.env.KIWOOM_SECRETKEY || '').trim()),
+    rejectToken: () => { cachedToken = null; },
+    enabled: () => /^(on|true|1)$/i.test(String(process.env.SHORT_STOPLOSS || '').trim()),
+    openDate: date => tradingSession.openDate(date), log: fileLog,
+    // 키움 웹소켓은 앱키당 하나(2026-11-20 확인): VI 모니터의 연결에 0B · 00 · 04를 함께 등록한다. VI가 꺼진 서버는 조회만 쓴다.
+    realtime: viMonitorService.sharedRealtime,
+    testCodes: () => String(process.env.SHORT_STOPLOSS_WS_TEST || '').split(',').map(s => s.trim()).filter(Boolean)
+});
+shortStopLossWindow.mount(app);
+shortStopLoss.mount(app, { allowed: req => req.authUser?.email === AUTH_ADMIN_EMAIL });
+shortStopLoss.start();
 app.get('/api/market-alerts', (req, res) => res.set('Cache-Control', 'no-store').json(marketAlertService.snapshot(req.authUser.email)));
 app.post('/api/market-alerts/acknowledge', (req, res) => {
     try { res.set('Cache-Control', 'no-store').json(marketAlertService.acknowledge(req.authUser.email, req.body.ids)); }
@@ -2184,6 +2210,18 @@ function requireAdmin(req, res, next) {
     next();
 }
 
+// 수능일(개장 지연) 설정(2026-11-20): 설정 창에서 입력 → calendar.json의 openDelays. 보기는 로그인 사용자, 바꾸기는 관리자만.
+function examDaysView(){const D=require('./market-open-delay'),saved=tradingSession.openDelays();
+    return Object.entries(D.table()).filter(([,v])=>v?.reason==='수능').sort(([a],[b])=>b.localeCompare(a)).map(([date,v])=>({date,open:v.open,close:v.close,source:Object.hasOwn(saved,date)?'settings':'code'}));}
+app.get('/api/trading-session/exam-days',(req,res)=>res.set('Cache-Control','no-store').json({success:true,days:examDaysView(),canEdit:Boolean(req.authUser?.isAdmin)}));
+app.post('/api/trading-session/exam-days',requireAdmin,(req,res)=>{
+    try{tradingSession.setExamDay(String(req.body?.date||''));fileLog(`[개장 지연] 수능일 등록 ${req.body?.date} (${req.authUser.email})`);res.json({success:true,days:examDaysView(),canEdit:true});}
+    catch(error){res.status(error.status||500).json({success:false,error:error.status?error.message:'수능일을 저장하지 못했습니다.'});}
+});
+app.delete('/api/trading-session/exam-days/:date',requireAdmin,(req,res)=>{
+    try{tradingSession.removeExamDay(String(req.params.date));fileLog(`[개장 지연] 수능일 삭제 ${req.params.date} (${req.authUser.email})`);res.json({success:true,days:examDaysView(),canEdit:true});}
+    catch(error){res.status(error.status||500).json({success:false,error:error.status?error.message:'수능일을 삭제하지 못했습니다.'});}
+});
 app.get('/api/auth/users', requireAdmin, (req, res) => {
     res.set('Cache-Control', 'no-store');
     res.json({ success: true, emails: [...new Set([AUTH_ADMIN_EMAIL, ...readAuthorizedEmails()])].filter(Boolean) });

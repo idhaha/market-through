@@ -116,6 +116,7 @@ test('independent peer reads owner acknowledgement but cannot acknowledge alerts
         return { status, result };
     }
     const ticket = call('/api/rank-independent').result;
+    ticket.token = call('/api/rank-independent/peer/:id/exchange', ticket).result.token;
     const id = service.snapshot('owner').events[0].id;
     assert.equal(call('/api/rank-independent/peer/:id', ticket, { marketAlertAck: [id] }, 'wrong').status, 401);
     assert.equal(service.snapshot('owner').events[0].acknowledged, false);

@@ -1,3 +1,4 @@
+const { openDelay, shiftClock } = require('./market-open-delay');
 const fs = require('node:fs');
 const path = require('node:path');
 const amount = value => value !== '' && value != null && /^\d+(\.\d+)?$/.test(String(value)) && Number.isFinite(Number(value)) ? Number(value) : null;
@@ -6,7 +7,8 @@ const minute = key => Number(key.slice(8,10))*60 + Number(key.slice(10,12));
 const clock = m => String(Math.floor(m/60)).padStart(2,'0') + String(m%60).padStart(2,'0') + '00';
 
 // Never spread the difference across a missing time interval or fold special session rows into 15:30.
-function differences(rows, opening, scale = 1) {
+// shift: the opening follows a delayed-open day (market-open-delay.js; index rows start at 10:00 on 2026-11-19).
+function differences(rows, opening, scale = 1, shift = false) {
     const result = new Map();
     let previous;
     for (const [key, row] of [...rows].sort(([a],[b]) => a.localeCompare(b))) {
@@ -14,7 +16,7 @@ function differences(rows, opening, scale = 1) {
         const total = amount(row.acml_tr_pbmn);
         const contiguous = previous && key.slice(0,8) === previous.key.slice(0,8) && minute(key) === minute(previous.key) + 1;
         let value = contiguous && total != null && previous.total != null ? total - previous.total
-            : key.slice(8) === opening && total != null ? total : null;
+            : key.slice(8) === (shift ? shiftClock(opening, openDelay(`${key.slice(0,4)}-${key.slice(4,6)}-${key.slice(6,8)}`)) : opening) && total != null ? total : null;
         // 15:20–15:29 is the closing auction: APIs may omit all of its no-trade rows.
         if (value == null && key.slice(8) === '153000' && ['151900','152000'].some(hour => previous?.key === key.slice(0,8)+hour)
             && total != null && previous.total != null) value = total - previous.total;
@@ -220,7 +222,7 @@ function createKisConcentrationChartService({ reference, http, credentials, getT
                 notice:`한투 거래대금 조회 실패: ${error.message} · 가격 캔들은 표시합니다.`,warnings:[error.message]};
         }
         const stockAmounts=base.mode==='day'?null:differences(stocks,'080000');
-        const indexAmounts=base.mode==='day'?null:differences(indices,'090000',1000000);
+        const indexAmounts=base.mode==='day'?null:differences(indices,'090000',1000000,true);
         let missing=0;
         const points=base.points.map(point=>{
             const numerator=base.mode==='day'?amount(stocks.get(point.time)?.acml_tr_pbmn):stockAmounts.get(point.time)??null;

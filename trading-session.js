@@ -36,7 +36,23 @@ function createTradingSession({directory,loadCalendar,now=Date.now}){
         return {spot,futures};
     }
     function snapshot(){return {date:day(now()),spot:spotAt(),futures:futuresAt(),night:nightAt(),closedAt:closedAt(),calendarKnown:openDate(day(now()))===false || fresh() && openDate(day(now()))!==null,checkedDay:saved.checkedDay,calendarFresh:fresh(),days:{...saved.days}};}
-    function persist(){fs.mkdirSync(directory,{recursive:true});fs.writeFileSync(file+'.tmp',JSON.stringify(saved));fs.renameSync(file+'.tmp',file);}
+    function persist(){fs.mkdirSync(directory,{recursive:true});fs.writeFileSync(file+'.tmp',JSON.stringify({...saved,days:Object.fromEntries(Object.entries(saved.days).sort(([a],[b])=>a.localeCompare(b)))},null,2));fs.renameSync(file+'.tmp',file);}
+    // 개장이 늦은 날(2026-11-20): 설정 창에서 입력한 수능일을 calendar.json의 openDelays에 둔다. market-open-delay.js가 코드 표와 합쳐 쓴다.
+    // { 'YYYY-MM-DD': { open: 분, close: 분, reason: '수능' } }. 한 해에 수능은 하나라서 같은 해 수능 줄은 바꿔 쓴다.
+    function openDelays(){return {...(saved.openDelays && typeof saved.openDelays==='object'?saved.openDelays:{})};}
+    // 수능일은 개장 · 마감 모두 60분 늦다(날짜만 받는다).
+    function setExamDay(date){const open=60,close=60;
+        const valid=/^\d{4}-\d{2}-\d{2}$/.test(date)&&Number.isFinite(dateTime(date))&&day(dateTime(date))===date;
+        if(!valid)throw Object.assign(Error('날짜 형식이 올바르지 않습니다(YYYY-MM-DD).'),{status:400});
+        if(date.slice(0,4)!==day(now()).slice(0,4))throw Object.assign(Error(`올해(${day(now()).slice(0,4)}년) 날짜만 수능일로 등록할 수 있습니다.`),{status:400});
+        if(openDate(date)===false)throw Object.assign(Error('휴장일(주말·공휴일)에는 수능일을 등록할 수 없습니다.'),{status:400});
+        const next=Object.fromEntries(Object.entries(openDelays()).filter(([d,v])=>!(d.slice(0,4)===date.slice(0,4)&&v?.reason==='수능')));
+        next[date]={open,close,reason:'수능'};saved.openDelays=next;persist();return openDelays();
+    }
+    function removeExamDay(date){
+        const current=openDelays();if(current[date]?.reason!=='수능')throw Object.assign(Error('등록된 수능일이 아닙니다.'),{status:404});
+        delete current[date];saved.openDelays=current;persist();return openDelays();
+    }
     function merge(rows){
         if(!Array.isArray(rows))throw Error('Invalid market calendar');
         for(const r of rows){const raw=String(r.bass_dt||'');if(/^\d{8}$/.test(raw)&&['Y','N'].includes(r.opnd_yn))saved.days[`${raw.slice(0,4)}-${raw.slice(4,6)}-${raw.slice(6)}`]=r.opnd_yn==='Y';}
@@ -76,6 +92,6 @@ function createTradingSession({directory,loadCalendar,now=Date.now}){
             return snapshot();
         })().finally(()=>{pending=null;});return pending;
     }
-    return {spotAt,nightAt,futuresAt,closedAt,openDate,snapshot,calendarRange,refresh,start(){if(timer)return;void refresh();timer=setInterval(()=>void refresh(),60000);timer.unref?.();},stop(){clearInterval(timer);timer=null;}};
+    return {spotAt,nightAt,futuresAt,closedAt,openDate,openDelays,setExamDay,removeExamDay,snapshot,calendarRange,refresh,start(){if(timer)return;void refresh();timer=setInterval(()=>void refresh(),60000);timer.unref?.();},stop(){clearInterval(timer);timer=null;}};
 }
 module.exports={createTradingSession,install,current};

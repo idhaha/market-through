@@ -6,8 +6,11 @@ function createRankIndependentRelay({ now = Date.now, refresh, request, schedule
     const channels = new Map();
     const ttl = 120000;
     const hash = value => crypto.createHash('sha256').update(String(value || '')).digest('hex');
-    function newChannel(email, token, ownerKey) {
-        return { owner: email, ownerKey: hash(ownerKey), token: hash(token), epoch: crypto.randomUUID(),
+    // 2026-11-20: 창 주소(#token=)의 값은 '여는 토큰'이다. 앱 실행 인자로 PC 안에 남으므로 5분 안에 한 번만 '창 토큰'으로 바꿔 줄 수 있고
+    // (peer/:id/exchange), 이후 peer 요청은 창 토큰으로만 받는다. 메인 페이지는 owner 응답으로 창 토큰을 받아 서버 재시작 뒤 복구에 쓴다.
+    const launchMs = 5 * 60000;
+    function newChannel(email, launch, ownerKey, peerToken) {
+        return { owner: email, ownerKey: hash(ownerKey), launch: hash(launch), launchBy: peerToken ? 0 : now() + launchMs, token: peerToken ? hash(peerToken) : null, peerToken: peerToken || null, epoch: crypto.randomUUID(),
             generation: 0, nextRefresh: 0, refreshing: false, data: null, error: false, overrides: {}, ownerSeen: now(), peerSeen: 0, snapshot: null, version: 0, commands: [], commandIds: new Set(), replies: {}, closed: false };
     }
     function prune() {
@@ -25,7 +28,7 @@ function createRankIndependentRelay({ now = Date.now, refresh, request, schedule
         prune();
         const channel = channels.get(req.params.id);
         const token = hash((req.get('Authorization') || '').replace(/^Bearer /, ''));
-        if (!channel || !crypto.timingSafeEqual(Buffer.from(channel.token), Buffer.from(token))) {
+        if (!channel || !channel.token || !crypto.timingSafeEqual(Buffer.from(channel.token), Buffer.from(token))) {
             res.status(401).json({ error: '독립창 연결이 만료되었습니다.' }); return null;
         }
         channel.peerSeen = now(); return channel;
@@ -96,24 +99,34 @@ function createRankIndependentRelay({ now = Date.now, refresh, request, schedule
             channels.set(id, newChannel(req.authUser.email, token, ownerKey));
             res.json({ id, token, ownerKey });
         });
+        // 독립창이 여는 토큰을 창 토큰으로 바꾼다(5분 안에 한 번). 쿠키 없이 부르는 곳이라 server.js가 이 경로를 로그인 확인에서 뺀다
+        app.post('/api/rank-independent/peer/:id/exchange', (req, res) => {
+            prune();
+            const channel = channels.get(req.params.id), launch = hash((req.get('Authorization') || '').replace(/^Bearer /, ''));
+            if (!channel || !channel.launchBy || channel.launchBy <= now() || !crypto.timingSafeEqual(Buffer.from(channel.launch), Buffer.from(launch)))
+                return res.status(401).json({ error: channel && channel.launchBy === 0 ? '이미 쓴 연결입니다. 메인 페이지에서 독립창 버튼을 다시 누르세요.' : '독립창 연결이 만료되었습니다. 메인 페이지에서 독립창 버튼을 다시 누르세요.' });
+            const peerToken = crypto.randomBytes(32).toString('hex');
+            channel.token = hash(peerToken); channel.peerToken = peerToken; channel.launchBy = 0; channel.peerSeen = now();
+            res.json({ token: peerToken });
+        });
         // Only the authenticated main page can restore a lost in-memory channel.
         // Reusing its capability keeps the already-open native window connected.
         app.post('/api/rank-independent/:id/recover', (req, res) => {
             if (!req.authUser?.email) return res.status(401).json({ error: '로그인이 필요합니다.' });
-            const { token, ownerKey } = req.body || {}, id = req.params.id;
-            if (!/^[a-f0-9]{32}$/.test(id) || !/^[a-f0-9]{64}$/.test(token || '') || !/^[a-f0-9]{64}$/.test(ownerKey || ''))
+            const { token, ownerKey } = req.body || {}, id = req.params.id, peerToken = req.body?.peerToken || null;
+            if (!/^[a-f0-9]{32}$/.test(id) || !/^[a-f0-9]{64}$/.test(token || '') || !/^[a-f0-9]{64}$/.test(ownerKey || '') || (peerToken && !/^[a-f0-9]{64}$/.test(peerToken)))
                 return res.status(400).json({ error: '잘못된 복구 정보입니다.' });
             prune();
             const existing = channels.get(id);
             if (existing) {
-                if (existing.owner !== req.authUser.email || existing.ownerKey !== hash(ownerKey) || existing.token !== hash(token))
+                if (existing.owner !== req.authUser.email || existing.ownerKey !== hash(ownerKey) || existing.launch !== hash(token))
                     return res.status(403).json({ error: '연결 소유자가 일치하지 않습니다.' });
                 if (existing.closed) return res.status(409).json({ error: '닫힌 독립창입니다.' });
                 existing.ownerSeen = now();
             } else {
                 if (channels.size >= 8 || [...channels.values()].filter(channel => channel.owner === req.authUser.email).length >= 2)
                     return res.status(503).json({ error: '독립창 연결 한도를 초과했습니다.' });
-                channels.set(id, newChannel(req.authUser.email, token, ownerKey));
+                channels.set(id, newChannel(req.authUser.email, token, ownerKey, peerToken));
             }
             res.json({ success: true });
         });
@@ -148,7 +161,7 @@ function createRankIndependentRelay({ now = Date.now, refresh, request, schedule
             const replies = Object.keys(channel.replies);
             for (const key of replies.slice(0, Math.max(0, replies.length - 32))) delete channel.replies[key];
             while (Buffer.byteLength(JSON.stringify(channel.replies)) > 4000000) delete channel.replies[Object.keys(channel.replies)[0]];
-            res.json({ commands: channel.commands.slice(), connected: channel.peerSeen > 0 && now() - channel.peerSeen < ttl, closed: channel.closed });
+            res.json({ commands: channel.commands.slice(), connected: channel.peerSeen > 0 && now() - channel.peerSeen < ttl, closed: channel.closed, ...(channel.peerToken ? { peerToken: channel.peerToken } : {}) });
         });
         app.delete('/api/rank-independent/:id/owner', (req, res) => {
             if (!owner(req, res)) return; channels.delete(req.params.id); res.json({ success: true });

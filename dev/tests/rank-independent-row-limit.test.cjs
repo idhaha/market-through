@@ -17,7 +17,7 @@ const { chromium } = require('playwright');
             const file = 'public' + url.pathname;
             return route.fulfill({ contentType: file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html', body: fs.readFileSync(file) });
         });
-        await page.goto('http://rows.test/rank-independent.html#id=' + 'a'.repeat(32) + '&token=' + 'b'.repeat(64));
+        await page.route('**/api/rank-independent/peer/*/exchange',route=>route.fulfill({json:{token:'c'.repeat(64)}}));await page.goto('http://rows.test/rank-independent.html#id=' + 'a'.repeat(32) + '&token=' + 'b'.repeat(64));
         await page.waitForFunction(() => document.querySelectorAll('#transactionBody tr').length === 20);
         const table = page.locator('#transactionTable').locator('xpath=ancestor::*[contains(@class,"panel")][1]');
         const heights = () => page.locator('#tab_rank > .panel').evaluateAll(es => es.map(el => el.getBoundingClientRect().height));

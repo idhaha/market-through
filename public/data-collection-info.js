@@ -15,7 +15,7 @@
         sections: [
             ['실시간 연결 · 연결 하나에 여러 항목이 함께 들어옵니다', [
                 ['실시간-LS1', 'LS 웹소켓 1개 · JIF', '장운영 알림(사이드카 · 서킷브레이커) · 오라클 서버에서만', 'market-alerts (당일 경보 · 상태)'],
-                ['실시간-키움VI', '키움 웹소켓 1개 · 1h (전체 종목, _NX)', 'VI 모니터의 VI 발동 · 해제(KRX · NXT) · 로컬 PC 서버에서만', 'vi-monitor (당일 VI 목록)'],
+                ['실시간-키움VI', '키움 웹소켓 1개 · 1h (전체 종목, _NX)\n+ 대주 StopLoss 0B(감시 종목 체결, KRX · _NX) · 00 · 04(주문체결 · 잔고) 같은 연결에 함께 등록(2026-11-20부터)\n※ 키움은 앱키당 웹소켓 하나만 허용(새 연결이 기존 연결을 끊음) · 충돌하면 대주 우선', 'VI 모니터의 VI 발동 · 해제(KRX · NXT), 대주 StopLoss 실시간 판정 · 로컬 PC 서버에서만', 'vi-monitor (당일 VI 목록)'],
                 ['실시간-LS선물이벤트', 'LS 웹소켓 1개 · JX0, JD0, JC0, JIF (VI_FUTURES_EVENTS=on일 때)', 'VI 모니터의 주식선물 가격제한 도달 · 확대: 감시 월물(전일 거래량이 많은 월물)마다 JX0(확대) · JD0(실시간 상·하한가, 근처 신호), 한도 근처 · 확대된 · 행이 있는 월물만 JC0(체결, 도달 판정, 해지는 30초 늦춤), JIF(CB, 가격제한폭 先확대 판정) · 로컬 PC 서버에서만', 'vi-monitor/futures-events (JX0 · JIF 원문)'],
                 ['실시간-NH', 'NH 웹소켓 1개 · oc, nc, vC, ob (최대 30건)', 'VI 걸린 종목의 KRX · NXT · 주식선물 현재가와 등락률 · 거래대금, KRX 매수10호가 평균(ob). 한도를 넘는 종목은 NH 조회(5초) · 로컬 서버에서만', '저장 안 함'],
                 ['실시간-한투', '한투 웹소켓 1개 · H0UNPGM0', '등록 종목 프로그램 매매\n※ KOSPI · KOSDAQ 지수 거래대금은 같은 연결의 한투 H0UPCNT0 [실시간-한투] · FHKUP03500200 [정기-한투지수]로도 수집 가능', 'kis-supply (프로그램)']
@@ -30,6 +30,7 @@
                 ['정기-지표', 'jusikbot risk-history · 1시간', '변동성 · Fear & Greed · 하이일드', 'volatility'],
                 ['정기-LS종목정보', 'LS t8436, t8401 · 하루 1회\nLS t8402 · 종목마다 하루 1회','VI 모니터의 종목명 · 시장, 주식선물 대응 · 만기(그날 첫 VI 때 조회) · 로컬 서버에서만', 'vi-monitor (masters.json)'],
                 ['정기-LS선물감시월물', 'LS t8405(futcheck 0) · 개장일 07:30부터 하루 1회, 종목마다 최근월 · 차월 2회', 'VI 모니터 선물 감시 월물(최근월 · 차월 중 전일 거래량이 많은 월물, 오늘 만기 월물 제외) · 로컬 서버에서만', 'vi-monitor (futures-base.json)'],
+                ['정기-키움대주', '키움 ka10001(현재가 · KRX는 종목코드, NXT는 _NX, 정규장에는 둘 다) · 감시 중인 종목마다 5초(실시간이 끊기거나 15:20~15:30이면 1초)\n키움 kt00018(개별, 대주 잔고) · ka10085(만기일) · 30초(창을 열었거나 감시 중일 때)와 발동 때\n키움 ka10004(매도1호가) · ka10075 · kt00009(접수 · 체결 확인, [실시간-키움VI] 00 이벤트가 먼저이고 조회는 주문 뒤 3초마다 보조)', '대주 StopLoss 감시와 자동 대주상환(kt10006 신용구분 77 · 정정 kt10008 · 취소 kt10009) · 주문은 SHORT_STOPLOSS=on인 서버에서만(기본 끔), 관리자 계정만', 'short-stoploss (감시 조건 · 처리 기록, 30초마다 확인 기록 realtime-날짜)'],
                 ['정기-LS선물종목', 'LS t8463(투자자) · 1분\nLS t2522(기초자산 · 최근월물) · 하루 1회', '등록 종목의 주식선물 개인 · 외국인 · 기관 순매수 계약(08:45~16:20) · 오라클 서버에서만', 'ls-stock-futures']
             ]],
             ['화면 조회', [
@@ -39,14 +40,15 @@
         ]
     };
     const tables = {
-        title: '표 5개',
+        title: '표 6개',
         head: ['표', '증권사 · TR', '방식', '파일 저장'],
         sections: [[null, [
             ['거래대금 상위', '키움 ka10032, 종목정보 ka10100', '[조회] 장중에만 새로고침', '저장 안 함'],
             ['실시간 조회 순위', '키움 ka00198', '[조회] 장중에만 새로고침', '저장 안 함'],
             ['대주가능 종목', '한투 CTSC2702R(대주 수량), FHKST11300006(현재가 · 30종목씩, ETN만 FHKST01010100), 한투 종목 마스터 파일(후보 · 종목명)\n수량이 없는 후보는 0으로 표시(표의 체크박스로 숨김 가능)', '[조회] 실시간 조회 순위를 받을 때 함께 조회', '저장 안 함'],
             ['관심종목 하락률 순위 (탭 맨 아래)', '키움 ka01301(관심종목 목록), ka10095(시세 일괄), 보조 ka10007 · ka10100', '[조회] 장중에만 새로고침 · 백그라운드 갱신은 하지 않음', '저장 안 함'],
-            ['VI 모니터 (별도 창)', 'VI 발동 · 해제: 키움 1h\n현재가 · 등락률 · 거래대금: NH oc · nc · vC (발동 때 KRX는 NH 조회 1회)\n괴리율 1% 이상 VI: 발동부터 4분 가격을 vi-monitor/gap-records에 저장\n매수10호가 평균: KRX 행 NH ob · NXT 행 한투 FHKST01010200(NX) 조회 5초 · 선물 행 LS t8403 조회 5초(× 거래승수)\n체결강도: KRX · NXT 행 한투 FHKST01010300(J · NX) 발동 때 1회 · 선물 행 LS JC0 또는 t8404\n선물 가격제한 도달 · 확대: LS JD0 · JC0 · JX0 · JIF (VI_FUTURES_EVENTS=on일 때), 한도 · 놓친 체결 LS t8402 · t8404\n선물 감시 월물: LS t8405\n분석 차트: 한투 FHPST01060000(J · NX) · LS t8404, 1초 간격, 설정 만족 행은 해제 + 1분 뒤 자동 기록\n종목명 · 선물 대응 · 만기: LS t8436 · t8401 · t8402', '[실시간-키움VI] · [실시간-NH] · [실시간-LS선물이벤트] · [정기-LS종목정보] · [정기-LS선물감시월물]\n로컬 서버에서만 수신 · 자세한 내용은 VI 창의 i', 'vi-monitor (당일 VI 목록, 종목 정보, futures-base.json)\nvi-monitor/days (날짜별 VI 창 기록, 날이 바뀔 때)\nvi-monitor/charts (분석 차트, 거래대금 · 시가총액 설정 만족 행, 1초 간격)\nvi-monitor/futures-events (JX0 · JIF 원문)\n현재가는 저장 안 함']
+            ['VI 모니터 (별도 창)', 'VI 발동 · 해제: 키움 1h\n현재가 · 등락률 · 거래대금: NH oc · nc · vC (발동 때 KRX는 NH 조회 1회)\n괴리율 1% 이상 VI: 발동부터 4분 가격을 vi-monitor/gap-records에 저장\n매수10호가 평균: KRX 행 NH ob · NXT 행 한투 FHKST01010200(NX) 조회 5초 · 선물 행 LS t8403 조회 5초(× 거래승수)\n체결강도: KRX · NXT 행 한투 FHKST01010300(J · NX) 발동 때 1회 · 선물 행 LS JC0 또는 t8404\n선물 가격제한 도달 · 확대: LS JD0 · JC0 · JX0 · JIF (VI_FUTURES_EVENTS=on일 때), 한도 · 놓친 체결 LS t8402 · t8404\n선물 감시 월물: LS t8405\n분석 차트: 한투 FHPST01060000(J · NX) · LS t8404, 1초 간격, 설정 만족 행은 해제 + 1분 뒤 자동 기록\n종목명 · 선물 대응 · 만기: LS t8436 · t8401 · t8402', '[실시간-키움VI] · [실시간-NH] · [실시간-LS선물이벤트] · [정기-LS종목정보] · [정기-LS선물감시월물]\n로컬 서버에서만 수신 · 자세한 내용은 VI 창의 i', 'vi-monitor (당일 VI 목록, 종목 정보, futures-base.json)\nvi-monitor/days (날짜별 VI 창 기록, 날이 바뀔 때)\nvi-monitor/charts (분석 차트, 거래대금 · 시가총액 설정 만족 행, 1초 간격)\nvi-monitor/futures-events (JX0 · JIF 원문)\n현재가는 저장 안 함'],
+            ['대주 StopLoss (독립창 앱, 수급 버튼 왼쪽 대주StopLoss)', '대주 잔고: 키움 kt00018(개별) · ka10085 · NXT 거래 여부 ka10001(_NX, 하루 1회)\n감시 · 주문: [실시간-키움VI] 0B · 00 · 04 + [정기-키움대주]', '[실시간-키움VI] · [정기-키움대주] · 창을 열면 2초마다 서버 상태를 읽음 · 자동 주문은 SHORT_STOPLOSS=on인 서버에서만', 'short-stoploss (감시 조건 · 처리 기록)'],
         ]]]
     };
     const index = '키움 지수 ka20005(분) · ka20006(일)\n[조회] · 저장 안 함';
@@ -81,7 +83,7 @@
         ],
         head: ['증권사', '저장 위치', '다시 받는 때', '서버 재시작 때', '같이 쓰는 곳'],
         sections: [[null, [
-            ['키움', 'kiwoom-token', '받은 뒤 24시간으로 보고 만료 5분 전\n토큰 오류 응답이면 바로', '파일의 토큰 재사용', '52주 신고 과거 채우기 작업'],
+            ['키움', 'kiwoom-token', '받은 뒤 24시간으로 보고 만료 5분 전\n토큰 오류 응답이면 바로', '파일의 토큰 재사용', '52주 신고 과거 채우기 작업 · 대주 StopLoss(서버) · 대주 시험 스크립트(dev/kiwoom-short-*)'],
             ['LS', 'ls-token', '응답의 유효시간 기준 만료 1분 전\n거절(401 또는 토큰 오류)이면 바로, 1분 안에 받은 토큰은 유지', '파일의 토큰 재사용', '만기일 시험 등 예약 작업'],
             ['한투', 'kis-token', '응답의 유효시간 기준 만료 5분 전\n토큰 오류(EGW00121 · EGW00123)면 바로, 1분 안에 받은 토큰은 유지', '파일의 토큰 재사용 (같은 도메인 · 앱키일 때만)', '없음 (서버만)'],
             ['NH', 'nh-plug', '24시간 재사용\n인증 오류(401 · IGW40043)일 때만 다시 받음 (다시 받으면 NH 보안 알림)', '파일의 토큰 재사용', 'VI 모니터 (로컬 PC 서버에서만)']
@@ -104,6 +106,22 @@
             ['쏠림율 분봉의 과거 쪽 (서버 세션 커서)', '보관 안 함', '매번'],
             ['버전이 있는 차트', '-', 'ADR 및 52주 신고/신저(breadth) · 종목 수급 분봉(kis-supply, ls-supply, supply) · 종목 선물 수급(ls-stock-futures) · 시장 수급(market-supply, kiwoom-market-supply, ls-market-supply) · 시장 선물 수급(ls-futures-test, market-supply) · 시장 거래대금 분봉과 쏠림율 LS(ls-turnover) · 한투 쏠림율(kis-concentration) · 변동성과 F&G·하이일드(volatility)'],
             ['한도', '전체 180개 · 24MB', '넘치면 오래된 응답부터 지움 (응답 하나가 5MB를 넘으면 보관 안 함)']
+        ]]]
+    };
+
+    // 장 일정(2026-11-20): 휴장일 달력(calendar.json)과 개장 지연표(market-open-delay.js)를 누가 언제 바꾸는지.
+    const schedule = {
+        title: '장 일정 (휴장일 · 개장 지연)',
+        note: [
+            '휴장일 달력은 서버가 혼자 갱신합니다. 이 창이나 Claude · Codex가 켜져 있지 않아도 되고, 오라클은 pm2가 띄워 둔 서버가 합니다.',
+            '개장이 늦은 날(수능일)은 증권사 API가 개장 · 마감 시각을 주지 않아 사람이 입력합니다. 입력은 calendar.json에 저장되고 market-open-delay.js가 코드 기본값과 합쳐 바로 씁니다(배포 필요 없음).'
+        ],
+        head: ['항목', '저장 위치', '누가', '언제', '빠뜨리면'],
+        sections: [[null, [
+            ['휴장일 (공휴일 · 대체 · 임시공휴일 · 연말 휴장)', 'data/trading-session/calendar.json의 days\n(날짜마다 개장 true · 휴장 false)', '서버 자동\n(한투 국내휴장일조회 CTCA0903R)', '매일 처음 확인할 때 전날부터 몇 주치를 다시 받아 덮어씀. 실패하면 15분마다 다시\n그날 확인이 끝나면 그날 안에는 다시 조회하지 않음(장중 긴급 휴장은 다음 날 반영)\n차트에서 과거를 보면 빈 기간을 28일 단위로 채움', '조회 실패 중에는 장이 열렸다고 보지 않아 자동갱신 · 수집을 멈춤'],
+            ['수능일 (정규장 늦게 열고 늦게 닫음)', 'calendar.json의 openDelays\n(코드 기본값: market-open-delay.js 표)', '관리자가 설정(⚙)의 올해 수능일 칸에 입력', '한국거래소 공지가 나오면(2026년은 11/05)\n10/20부터 그해 수능일이 없으면 맨 위 바에 "⚠ 수능일 미등록"이 뜸(최대 12/31)', '그날 시장 누적 거래대금이 비어 쏠림율 누적 · LS 거래대금 분봉이 안 그려짐(2026-11-19)'],
+            ['새해 첫 거래일 (10:00 개장)', '없음 (계산)', '서버 자동', '휴장일 달력에서 1월 1일부터 그 전날까지 평일이 모두 휴장인 첫 개장일로 판정', '달력에 빈 평일이 끼면 판정하지 않고 평소 시각으로 봄'],
+            ['그 밖의 지연 (거래소 장애 등)', 'market-open-delay.js 표', 'Claude · Codex가 코드 표에 더하고 배포', '생겼을 때', '그날 업종지수 첫 분봉이 09:00보다 늦으면 서버 로그에 [개장 지연] 경고']
         ]]]
     };
 
@@ -150,7 +168,7 @@
         const close = document.createElement('button'); close.type = 'button'; close.className = 'market-alert-dialog-close'; close.textContent = '닫기';
         close.addEventListener('click', () => dialog.close()); dialog.append(close);
         const heading = document.createElement('h2'); heading.id = 'dataCollectionGuideTitle'; heading.textContent = '데이터 수집 안내'; dialog.append(heading);
-        for (const spec of [groups, tables, charts, tokens, cache]) build(dialog, spec);
+        for (const spec of [groups, tables, charts, tokens, cache, schedule]) build(dialog, spec);
         document.body.append(dialog);
         icon.addEventListener('click', () => dialog.showModal());
         dialog.addEventListener('click', event => {

@@ -97,6 +97,21 @@ test('LS stock cumulative accepts a complete 09:00 start as well as 08:00, but l
   assert.equal(result.values.get(at('090200')),available?30000000:null,opening);
  }
 });
+test('LS market cumulative starts at the delayed open on 2026-11-19 (수능) but a 10:00 start stays partial on a normal day',async t=>{
+ // 2026-11-19 오라클: 업종지수 첫 행이 10:00이라 시장 누적이 모두 비어 쏠림율 누적 · LS 거래대금 분봉이 안 그려졌다.
+ const exam=clock=>timestamp('20261119',clock);
+ // 그날은 마감 단일가도 16:30이다(평소 15:30처럼 그 시각 그대로).
+ assert.equal(lsMinuteTime('20261119','163000'),exam('163000'));assert.equal(lsMinuteTime('20261119','153000'),exam('152900'));
+ for(const [date,instrument,available]of [['20261119','kospi',true],['20261119','353200',true],['20261026','kospi',false]]){
+  const f=fixture(t,'ls',[{date,time:'100100',value:10},{date,time:'100200',value:20}]);f.setTime(timestamp(date,'110000'));
+  const result=await f.data.amounts(instrument,'minute',[date],true),stamp=date==='20261119'?exam:at;
+  assert.equal(result.values.get(stamp('100100')),available?30000000:null,date+' '+instrument);
+ }
+ const {differences}=require('../../kis-concentration-chart');
+ const rows=day=>new Map([[day+'100000',{acml_tr_pbmn:'5'}],[day+'100100',{acml_tr_pbmn:'8'}]]);
+ assert.equal(differences(rows('20261119'),'090000',1,true).get('20261119100000'),5);
+ assert.equal(differences(rows('20261026'),'090000',1,true).get('20261026100000'),null);
+});
 test('comparison service retains shared candles but replaces only the broker amounts',async()=>{
  const seen=[];const service=createBrokerComparisonService({broker:'ls',data:{watchStock:(...args)=>seen.push(args),amounts:async(instrument,mode,dates,cumulative)=>({values:new Map([[at('090000'),cumulative?(instrument==='005930'?5000:10000):(instrument==='005930'?500:2000)]]),warnings:[]})},
   concentrationReference:{query:async()=>({success:true,mode:'minute',market:'K',points:[{time:'20261026090000',stock_price:100,value:999,stock_turnover:999}]})},

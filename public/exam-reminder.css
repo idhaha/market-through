@@ -1,0 +1,33 @@
+/* 수능일 미등록 알림(2026-11-20): 맨 위 바에서 "Market Through" 제목과 오른쪽 버튼 묶음 사이 빈 칸만 쓴다.
+   flex 1 1 0 · min-width 0이라 칸이 좁으면 글자만 줄고 바 높이 · 버튼 · 표 위치는 그대로다. 가상화면: outputs/exam-reminder-header-mockup-20261120.html */
+.exam-reminder { flex:1 1 0; min-width:0; max-width:640px; height:34px; margin:0 8px 0 16px; display:flex; align-items:center; gap:8px; padding:0 6px 0 8px;
+  background:#fef3c7; border:1px solid #f59e0b; border-left:4px solid #d97706; border-radius:6px; color:#78350f; font-size:13px; white-space:nowrap; overflow:hidden; container-type:inline-size; }
+.exam-reminder[hidden] { display:none!important; }
+.exam-reminder .exam-reminder-mark { flex-shrink:0; font-size:15px; }
+.exam-reminder strong { flex:0 0 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; font-weight:700; }
+.exam-reminder .exam-reminder-detail { flex:0 100 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.exam-reminder button { flex-shrink:0; margin-left:auto; height:24px; padding:0 8px; border:1px solid #d97706; border-radius:4px; background:#fff; color:#92400e; font-size:12px; cursor:pointer; }
+.exam-reminder button:focus-visible { outline:3px solid #2563eb; outline-offset:2px; }
+.exam-reminder .exam-reminder-short { display:none; }
+/* 알림 칸이 아주 좁으면 설명을 빼고 제목 · 닫기만 남긴다 */
+@container (max-width:340px) {
+  .exam-reminder .exam-reminder-detail, .exam-reminder .exam-reminder-long { display:none; }
+  .exam-reminder .exam-reminder-short { display:inline; }
+  .exam-reminder strong { flex-shrink:1; }
+  .exam-reminder button { padding:0 6px; }
+}
+/* 빈 칸이 아주 좁으면(2026-11-20 실제 바 860px 화면에서 약 27px) ⚠ 표시만 남긴다. 마우스를 올리면 전체 문구가 보인다. */
+@container (max-width:80px) {
+  .exam-reminder strong, .exam-reminder button { display:none; }
+}
+/* 설정 창의 수능일 칸 · 서버 자동갱신 칸: 로그인 허용 이메일 칸(.authorized-accounts-section)과 같은 테두리 */
+.profile-body .exam-day-section, .profile-body .background-refresh-section { border:1px solid var(--border-color); border-radius:8px; padding:16px; }
+.profile-body .exam-day-section { margin-top:20px; }
+.exam-day-section h3 { margin:0 0 6px; font-size:1rem; }
+.exam-day-form { display:flex; flex-wrap:wrap; align-items:flex-end; gap:8px; }
+.exam-day-form label { display:flex; flex-direction:column; gap:4px; font-size:.8rem; color:var(--text-secondary); }
+.exam-day-form input { padding:8px 10px; border:1px solid var(--border-color); border-radius:8px; background:var(--bg-primary); color:var(--text-primary); font:inherit; font-size:.9rem; }
+.exam-day-form button { height:38px; }
+.exam-day-list li small { color:var(--text-muted); margin-left:6px; }
+/* 메시지가 없을 때는 칸 아래 빈 줄을 남기지 않는다 */
+.profile-body .background-refresh-section .profile-message:empty, .profile-body .exam-day-section .profile-message:empty { display:none; }

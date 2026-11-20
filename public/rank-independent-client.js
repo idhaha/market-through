@@ -2,7 +2,9 @@
     'use strict';
     window.rankIndependentClient = true;
     const rawFetch = window.fetch.bind(window), params = new URLSearchParams(location.hash.slice(1));
-    const id = params.get('id'), token = params.get('token');
+    // 2026-11-20: 주소의 token은 '여는 토큰'(5분 안에 한 번만 쓸 수 있음). 시작할 때 창 토큰으로 바꿔 받고 그 값으로만 연결한다
+    const id = params.get('id'), launch = params.get('token');
+    let token = '';
     history.replaceState(null, '', location.pathname);
     let version = -1, relayEpoch = null, lastSnapshot, closed = false, serverRefresh = null, receivedAt = 0, serverAge = 0, transportFailed = false, renderFailed = false;
     const pending = new Map(), outgoing = [], acknowledgements = [];
@@ -26,7 +28,7 @@
             selection: window.getRankChartState?.()?.selection, pinned: true }, options.signal);
         return new Response(result.body, { status: result.status, headers: { 'Content-Type': 'application/json' } });
     };
-    document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('DOMContentLoaded', async () => {
         const status = document.getElementById('rankConnectionStatus');
         document.getElementById('independentAlwaysOnTop').addEventListener('change', event => {
             window.chrome?.webview?.postMessage(`topmost:${event.target.checked}`);
@@ -389,7 +391,14 @@
             }
             finally { if (!closed) setTimeout(tick, transportFailed ? 1000 : outgoing.length ? 50 : 500); }
         }
-        if (!/^[a-f0-9]{32}$/.test(id || '') || !/^[a-f0-9]{64}$/.test(token || '')) { status.textContent = '메인 페이지의 독립창 버튼으로 실행하세요.'; closed = true; return; }
+        if (!/^[a-f0-9]{32}$/.test(id || '') || !/^[a-f0-9]{64}$/.test(launch || '')) { status.textContent = '메인 페이지의 독립창 버튼으로 실행하세요.'; closed = true; return; }
+        try {
+            const response = await rawFetch(`/api/rank-independent/peer/${id}/exchange`, { method: 'POST', headers: { Authorization: `Bearer ${launch}` }, signal: AbortSignal.timeout(10000) });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !/^[a-f0-9]{64}$/.test(result.token || '')) throw new Error(result.error || '독립창 연결 만료 · 메인 페이지에서 독립창 버튼으로 다시 열어주세요');
+            token = result.token;
+            window.chrome?.webview?.postMessage('rank-peer-token:' + token); // 앱이 창을 닫을 때 이 토큰으로 닫힘을 알린다
+        } catch (error) { status.textContent = error.name === 'TimeoutError' || error.name === 'TypeError' ? '서버에 연결하지 못했습니다 · 메인 페이지에서 독립창 버튼으로 다시 열어주세요' : error.message; closed = true; return; }
         tick();
         window.addEventListener('pagehide', () => peer({ close: true }));
     });

@@ -127,7 +127,7 @@ const assert = require('node:assert/strict');
             window.layoutResizeFinished = 0;
             window.chrome.webview.postMessage = message => { window.resizeMessages.push(message); window.resizeLayoutWindow(message); };
         });
-        await independent.goto('http://layout.test/rank-independent.html#id=' + 'a'.repeat(32) + '&token=' + 'b'.repeat(64));
+        await independent.route('**/api/rank-independent/peer/*/exchange',route=>route.fulfill({json:{token:'c'.repeat(64)}}));await independent.goto('http://layout.test/rank-independent.html#id=' + 'a'.repeat(32) + '&token=' + 'b'.repeat(64));
         await independent.waitForFunction(() => window.getRankChartState?.().points.length === 20);
         const stockInput = independent.locator('#concentrationStockName');
         await stockInput.fill('');
