@@ -124,7 +124,10 @@ const { chromium } = require('playwright');
         await panel.getByRole('button', { name: '과거 데이터 더 불러오기', exact: true }).click();
         await page.waitForFunction(() => document.querySelector('#rankCombinedSupplyChartPanel .rank-adr-status').textContent.includes('2026-10-19'));
         assert.match(await panel.locator('.rank-adr-status').textContent(), /2026-10-19 ~ 2026-10-20/);
-        await page.evaluate(() => window.refreshRankCombinedSupplyChart());
+        // 바쁜 컴퓨터에서는 과거 조회가 아직 끝나지 않았을 수 있다(2026-11-21 병렬 실행). 조회가 끝난 뒤 새로고침하고, 새로고침이 끝난 뒤 본다.
+        const idleStatus = () => page.waitForFunction(() => { const t = document.querySelector('#rankCombinedSupplyChartPanel .rank-adr-status').textContent; return !t.includes('조회 중') && t.includes('2026-10-19'); });
+        await idleStatus();
+        await page.evaluate(() => window.refreshRankCombinedSupplyChart()); await idleStatus();
         assert.match(await panel.locator('.rank-adr-status').textContent(), /2026-10-19 ~ 2026-10-20/, 'Refresh retains loaded minute days');
         await panel.getByRole('button', { name: '캔들차트', exact: true }).click();
         await page.waitForFunction(() => !document.querySelector('#rankCombinedSupplyChartPanel .rank-adr-candle-area').hidden);

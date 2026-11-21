@@ -27,7 +27,7 @@ const title=c=>c.locator('h2').innerText();
 assert.deepEqual([await title(card),await title(secondary)],['시장 선물 수급','시장 선물 수급'],'futures defaults');
 const positions=await page.evaluate(()=>['rankTestMarketSupplyChartPanel','rankTestMarketSupplySecondaryChartPanel'].map(id=>{const s=getComputedStyle(document.getElementById(id));return [s.gridColumnStart,s.gridRowStart]}));
 assert.deepEqual(positions,[['3','1'],['3','2']]);
-assert.equal(await page.evaluate(()=>[...document.querySelectorAll('.rank-chart-row>.panel')].filter(p=>getComputedStyle(p).gridColumnStart==='3'&&getComputedStyle(p).gridRowStart==='3').length),0,'column 3 row 3 stays empty');
+assert.equal(await page.evaluate(()=>JSON.stringify([...document.querySelectorAll('.rank-chart-row>.panel')].filter(p=>getComputedStyle(p).gridColumnStart==='3'&&getComputedStyle(p).gridRowStart==='3').map(p=>p.id))),JSON.stringify(['rankCombinedTurnoverChartPanel']),'column 3 row 3 holds 시장 거래대금 since 2026-11-21');
 // Each card keeps its own market: defaults differ and are saved under separate keys.
 assert.equal(await card.locator('input[value=futures]').isChecked(),true);
 assert.equal(await secondary.locator('input[value=futuresKosdaq]').isChecked(),true);

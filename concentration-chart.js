@@ -308,17 +308,20 @@ function createConcentrationChartService({ axios, getAccessToken, marketCache, n
         } else {
             const market = await marketFor(code, token);
             const baseDate = now().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }).replace(/-/g, '');
+            // 과거 분봉 구간 보기(2026-11-21): base_dt(YYYYMMDD)를 주면 오늘이 아니라 그날 끝(19:59)부터 거슬러 받는다.
+            // 키움 ka10080 · ka20005의 선택 항목 기준일자(base_dt). 2026-11-21 조회로 그날 19:59부터 900봉, 연속조회도 되는 것을 확인했다.
+            const minuteBase = !(mode === 'day') && /^\d{8}$/.test(String(input.base_dt || '')) && String(input.base_dt) <= baseDate ? String(input.base_dt) : '';
             const indexInterval = INDEX_SCOPES.filter(value => interval % value === 0).at(-1);
             const daily = mode === 'day';
             session = {
                 owner, code, mode, interval, market, pricesOnly:!!input.prices_only, expires: Date.now() + TTL,
                 stock: stream(daily ? 'ka10081' : 'ka10080', {
                     stk_cd: `${code}_AL`, upd_stkpc_tp: '0',
-                    ...(daily ? { base_dt: baseDate } : { tic_scope: String(interval) })
+                    ...(daily ? { base_dt: baseDate } : { tic_scope: String(interval), ...(minuteBase ? { base_dt: minuteBase } : {}) })
                 }, daily ? 'stk_dt_pole_chart_qry' : 'stk_min_pole_chart_qry'),
                 index: stream(daily ? 'ka20006' : 'ka20005', {
                     inds_cd: market === 'K' ? '001' : '101',
-                    ...(daily ? { base_dt: baseDate } : { tic_scope: String(indexInterval) })
+                    ...(daily ? { base_dt: baseDate } : { tic_scope: String(indexInterval), ...(minuteBase ? { base_dt: minuteBase } : {}) })
                 }, daily ? 'inds_dt_pole_qry' : 'inds_min_pole_qry')
             };
             cursor = crypto.randomUUID();

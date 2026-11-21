@@ -322,3 +322,21 @@ test('cold autocomplete initializes once for concurrent searches and retries a f
     assert.equal(calls,3,'One failed request plus one shared two-market initialization');
     await api.searchStocksReady('005930');assert.equal(calls,3,'Warm autocomplete reads the master without another TR');
 });
+test('과거 분봉 구간 보기: base_dt를 주면 종목 · 업종 분봉을 그날 끝부터 받고, 이어지는 쪽은 그 세션 커서로 거슬러 간다(2026-11-21)',async()=>{
+    const bodies=[];
+    const api=service(async(url,body,options)=>{
+        const id=options.headers['api-id'];bodies.push({id,base:body.base_dt,next:options.headers['next-key']||''});
+        if(id==='ka10080')return options.headers['next-key']?response('stk_min_pole_chart_qry',[{...minute('20261001150000'),open_pric:'100',high_pric:'110',low_pric:'90'}],''):response('stk_min_pole_chart_qry',[{...minute('20261002150000'),open_pric:'100',high_pric:'110',low_pric:'90'}],'stock-next');
+        return response('inds_min_pole_qry',[minute('20261002150000','-1000','100')],'');
+    });
+    const first=await api.query({code:'005930',mode:'minute',interval:1,base_dt:'20261002'},'owner');
+    assert.deepEqual(bodies.filter(b=>!b.next).map(b=>[b.id,b.base]),[['ka10080','20261002'],['ka20005','20261002']]);
+    assert.equal(first.points[0].time,'20261002150000');
+    await api.query({code:'005930',mode:'minute',interval:1,cursor:first.cursor},'owner');
+    assert.ok(bodies.some(b=>b.id==='ka10080'&&b.next==='stock-next'),'다음 쪽은 연속조회 키로');
+    // 일봉 · 잘못된 날짜 · 미래 날짜는 base_dt를 쓰지 않는다.
+    bodies.length=0;await api.query({code:'005930',mode:'minute',interval:1,base_dt:'2026-10-02'},'owner2');
+    assert.ok(bodies.every(b=>b.base===undefined));
+    bodies.length=0;await api.query({code:'005930',mode:'minute',interval:1,base_dt:'20991231'},'owner3');
+    assert.ok(bodies.every(b=>b.base===undefined));
+});

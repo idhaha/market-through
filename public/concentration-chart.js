@@ -239,7 +239,9 @@
             candleCanvas.width = Math.round(width * ratio); candleCanvas.height = Math.round(height * ratio);
             candleCtx.setTransform(ratio, 0, 0, ratio, 0, 0); candleCtx.clearRect(0, 0, width, height);
 
-            const candles = points.filter(validCandle);
+            // 그래프 영역(plot.left~right) 밖 봉은 빼고 그린다(2026-11-21: 과거 분봉 구간 보기에서 구간 밖 오늘 봉이 오른쪽 가격축 위에 그려졌다).
+            const inside = i => { const px = x(i); return Number.isFinite(px) && px >= plot.left - 0.5 && px <= plot.right + 0.5; };
+            const candles = points.filter((p, i) => validCandle(p) && inside(i));
             if (!candles.length) {
                 candleCtx.font='12px Inter, sans-serif';candleCtx.textAlign='center';candleCtx.fillStyle='#64748b';labels.forEach(({label,labelX})=>candleCtx.fillText(label,labelX,height-14));
                 candleCtx.fillStyle = '#64748b'; candleCtx.font = '12px Inter, sans-serif'; candleCtx.textAlign = 'center';
@@ -264,14 +266,16 @@
             });
             candleCtx.setLineDash([]);
             const bodyWidth = candleWidth;
+            candleCtx.save(); candleCtx.beginPath(); candleCtx.rect(plot.left - bodyWidth, top - 1, plot.right - plot.left + bodyWidth * 2, bottom - top + 2); candleCtx.clip();
             points.forEach((point, i) => {
-                if (!validCandle(point)) return;
+                if (!validCandle(point) || !inside(i)) return;
                 const color = point.stock_price >= point.stock_open ? '#e11d48' : '#2563eb';
                 candleCtx.strokeStyle = color; candleCtx.fillStyle = color; candleCtx.lineWidth = 1;
                 candleCtx.beginPath(); candleCtx.moveTo(x(i), y(point.stock_high)); candleCtx.lineTo(x(i), y(point.stock_low)); candleCtx.stroke();
                 const bodyTop = Math.min(y(point.stock_open), y(point.stock_price));
                 candleCtx.fillRect(x(i) - bodyWidth / 2, bodyTop, bodyWidth, Math.max(1, Math.abs(y(point.stock_open) - y(point.stock_price))));
             });
+            candleCtx.restore();
             if (state.hover != null && points[state.hover]) {
                 candleCtx.beginPath(); candleCtx.setLineDash([3,3]); candleCtx.strokeStyle = '#000';
                 candleCtx.moveTo(x(state.hover), top); candleCtx.lineTo(x(state.hover), bottom); candleCtx.stroke(); candleCtx.setLineDash([]);
@@ -444,6 +448,16 @@
             updateControls();
         }
         let todayOnly = true;
+        // 과거 분봉 구간 보기(2026-11-21, RankChartAxis.showWindow): windowBase(YYYYMMDD)가 있으면 첫 쪽을 오늘이 아니라 그날 끝부터 받는다(서버 base_dt).
+        // 그 뒤 더 불러오기 · 구간 채우기는 그 세션 커서로 거슬러 간다.
+        let windowBase = '';
+        async function seekWindow(day) {
+            if (!state.selection || state.mode !== 'minute') return;
+            windowBase = day; priceIdentity = ''; priceCursor = null;
+            await load(false, false); todayOnly = false;
+            if (!candleArea.hidden) await loadIndependentPrices(false);
+        }
+        function leaveWindow() { if (!windowBase) return; windowBase = ''; priceIdentity = ''; priceCursor = null; void load(false, false); }
         let priceController,priceIdentity='',priceCursor=null,priceBusy=false,priceWork;
         function hasPriceHistory(){return !candleArea.hidden && priceIdentity===`${state.selection?.code}:${state.mode}:${state.interval}` && !!priceCursor;}
         function loadIndependentPrices(append){
@@ -461,7 +475,7 @@
             try{
                 const response=await (window.RankChartCache?.fetch || fetch)('/api/concentration-chart',{
                     method:'POST',headers:{'Content-Type':'application/json'},signal:current.signal,
-                    body:JSON.stringify({code:state.selection.code,mode:state.mode,interval:state.interval,prices_only:true,cursor:append?priceCursor:null})
+                    body:JSON.stringify({code:state.selection.code,mode:state.mode,interval:state.interval,prices_only:true,cursor:append?priceCursor:null,...(!append&&windowBase&&state.mode==='minute'?{base_dt:windowBase}:{})})
                 });
                 const result=await response.json();
                 if(current!==priceController || identity!==`${state.selection?.code}:${state.mode}:${state.interval}`)return;
@@ -516,7 +530,7 @@
                 void loadIndependentPrices(append);
                 const response = await (window.RankChartCache?.fetch || fetch)(combined ? state.mode === 'minute' ? '/api/ls-concentration-chart' : '/api/concentration-chart' : kis ? `/api/${broker}-concentration-chart` : window.rankIndependentClient && state.mode === 'minute' ? '/api/ls-concentration-chart' : '/api/concentration-chart', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ code: state.selection.code, mode: state.mode, interval: state.interval, cursor: append ? state.cursor : null }),
+                    body: JSON.stringify({ code: state.selection.code, mode: state.mode, interval: state.interval, cursor: append ? state.cursor : null, ...(!append && windowBase && state.mode === 'minute' ? { base_dt: windowBase } : {}) }),
                     signal: controller.signal
                 });
                 const result = await response.json();
@@ -712,7 +726,7 @@
             if (button.dataset.chartMode === 'minute' && state.mode !== 'minute') state.interval = 1;
             state.mode = button.dataset.chartMode; updateControls(); saveDisplaySettings(); load();
         }));
-        window.RankChartAxis.registerHistoryLoader(chartKey,()=>state.hasMore?load(true):loadIndependentPrices(true),()=>state.busy,()=>({hasMore:!!state.selection && !!(state.hasMore || hasPriceHistory()),cursor:[state.cursor,priceCursor].join(':'),progress:state.historyProgress,error:state.historyError,identity:state.selection?.code,ensureRange:ensurePriceRange}));
+        window.RankChartAxis.registerHistoryLoader(chartKey,()=>state.hasMore?load(true):loadIndependentPrices(true),()=>state.busy,()=>({hasMore:!!state.selection && !!(state.hasMore || hasPriceHistory()),cursor:[state.cursor,priceCursor].join(':'),progress:state.historyProgress,error:state.historyError,identity:state.selection?.code,ensureRange:ensurePriceRange,seek:state.mode==='minute'?seekWindow:undefined,leaveWindow:state.mode==='minute'?leaveWindow:undefined}));
         more.addEventListener('click', () => window.RankChartAxis.requestHistory(state.mode));
         function zoom(factor, anchor = .5) {
             if (!state.points.length) return;

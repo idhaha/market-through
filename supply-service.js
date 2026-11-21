@@ -265,7 +265,8 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
         const points = new Map(); let next = '', partial = false, previousDay = null;
         for (let page = 0; page < 80; page++) {
             const response = await post(mode === 'day' ? 'ka10081' : 'ka10080', {
-                stk_cd: `${code}_AL`, upd_stkpc_tp: '0', ...(mode === 'day' ? { base_dt: to } : { tic_scope: '1' })
+                // 분봉도 날짜를 주면 base_dt로 그날 끝부터 받는다(2026-11-21). 예전에는 오늘부터 그날까지 거슬러 와서, 먼 날일수록 쪽이 늘었다.
+                stk_cd: `${code}_AL`, upd_stkpc_tp: '0', ...(mode === 'day' ? { base_dt: to } : { tic_scope: '1', ...(input.date ? { base_dt: to } : {}) })
             }, next);
             const rows = response.data[mode === 'day' ? 'stk_dt_pole_chart_qry' : 'stk_min_pole_chart_qry'];
             if (!Array.isArray(rows)) throw new Error('캔들 응답 형식 오류');

@@ -3159,16 +3159,16 @@ body { height:100dvh; min-height:0; overflow:hidden; display:flex; flex-directio
 /* Trading charts follow the three ranking tables. */
 .rank-chart-row > #combinedConcentrationChartPanel { grid-column:1; grid-row:1; order:0; }
 .rank-chart-row > #rankCombinedSupplyChartPanel { grid-column:2; grid-row:1; order:1; }
-/* Column 3 rows 1-2: two day+night market supply (test) cards titled 시장 수급, replacing the combined cards; row 3 is left empty. */
+/* Column 3 rows 1-2: two day+night market supply (test) cards titled 시장 수급, replacing the combined cards; row 3 holds 시장 거래대금 since 2026-11-21. */
 .rank-chart-row > #rankTestMarketSupplyChartPanel { grid-column:3; grid-row:1; order:2; }
 .rank-chart-row > #rankBreadthChartPanel { grid-column:1; grid-row:2; order:3; }
 .rank-chart-row > #rankFuturesSupplyChartPanel { grid-column:2; grid-row:2; order:4; }
 /* 2026-11-07: 종목 선물 수급 takes column 2 row 2; 시장 거래대금 and 변동성 move one row down. */
-.rank-chart-row > #rankCombinedTurnoverChartPanel { grid-column:2; grid-row:3; order:7; }
+.rank-chart-row > #rankCombinedTurnoverChartPanel { grid-column:3; grid-row:3; order:8; }
 .rank-chart-row > #rankTestMarketSupplySecondaryChartPanel { grid-column:3; grid-row:2; order:5; }
-/* 2026-11-21: 단독 ADR 카드를 지워 비은 1열 3행에 심리(CNN) 카드를 올린다. 2열(종목 수급 · 종목 선물 수급 · 시장 거래대금 · 변동성)은 그대로. */
+/* 2026-11-21: 단독 ADR 카드를 지워 비은 1열 3행에 심리(CNN) 카드를 올리고, 3행은 심리 · 변동성 · 시장 거래대금(3열로 옮김) 순서로 채운다. */
 .rank-chart-row > #rankSentimentChartPanel { grid-column:1; grid-row:3; order:6; }
-.rank-chart-row > #rankVolatilityChartPanel { grid-column:2; grid-row:4; order:10; }
+.rank-chart-row > #rankVolatilityChartPanel { grid-column:2; grid-row:3; order:7; }
 .market-test-session { font-size:12px; white-space:nowrap; }
 @media(max-width:700px) {
     .rank-chart-row > :is(#rankTestMarketSupplyChartPanel,#rankTestMarketSupplySecondaryChartPanel) { grid-column:1 / -1!important; grid-row:auto!important; }

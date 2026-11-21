@@ -432,3 +432,18 @@ test('progressive daily exposes investor data while program is blocked and share
     await f.service.query({code:'005930',progressive:'1'});assert.equal(f.calls.length,3);
     release();const final=await f.service.query({code:'005930'});assert.equal(final.points[0].program,-40);assert.equal(f.calls.length,3);
 });
+test('지난날 분봉 캔들은 base_dt로 그날 끝부터 한 쪽만 받는다(2026-11-21: 오늘부터 거슬러 오느라 먼 날일수록 느렸다)', async t => {
+    const pages = [];
+    const f = fixture(t, (api, body, headers) => {
+        if (api !== 'ka10080') throw new Error(`Unexpected API ${api}`);
+        pages.push({ base: body.base_dt, next: headers['next-key'] || '' });
+        // base_dt를 주면 그날 19:59부터 거슬러 900봉: 그날과 전 거래일 일부.
+        if (body.base_dt !== '20261016') return { data: { stk_min_pole_chart_qry: [{ cntr_tm: '20261020101500', open_pric: '1', high_pric: '1', low_pric: '1', cur_prc: '1' }] }, headers: { 'cont-yn': 'Y', 'next-key': 'K' + pages.length } };
+        return { data: { stk_min_pole_chart_qry: [['20261016195900', 120], ['20261016090000', 110], ['20261015195900', 105]].map(([cntr_tm, p]) => ({ cntr_tm, open_pric: String(p), high_pric: String(p), low_pric: String(p), cur_prc: String(p) })) }, headers: { 'cont-yn': 'Y', 'next-key': 'K' } };
+    });
+    f.setTime(timestamp(today, '220000')); await f.service.configure(['005930'], 0);
+    const price = await f.service.candles({ code: '005930', mode: 'minute', date: '2026-10-16' });
+    assert.deepEqual(pages, [{ base: '20261016', next: '' }], '기준일 한 쪽으로 끝난다');
+    assert.equal(price.date, '2026-10-16'); assert.deepEqual(price.points.map(p => p.close), [110, 120]);
+    assert.equal(price.cursor, '20261015');
+});

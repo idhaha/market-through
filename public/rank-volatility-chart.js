@@ -413,9 +413,12 @@ tip.hidden=false;}
         }
         let todayOnly = true;
         if(breadth)window.RankChartAxis.todayButton(panel,'[data-breadth-mode="minute"]',()=>breadthMode,()=>{todayOnly=true;draw();void refreshBreadth();});
+        // 구간 보기 시작 · 끝(clearBreadth)마다 늘린다. 그 전에 나간 조회의 응답은 버린다(2026-11-21).
+        let breadthGeneration = 0;
         async function refreshBreadth(more = false) {
             if(window.rankManagedChartRefresh && !window.rankChartRefreshStarted)return;
             if (breadthLoading) return;
+            const generation = breadthGeneration;
             if(more){window.RankChartAxis.showHistory();todayOnly=false;}
             breadthLoading = true;window.RankChartAxis.loadingBar(canvas.parentElement,true,'신고가·신저가');
             canvas.classList.add('is-loading'); candle.classList.add('is-loading');
@@ -427,6 +430,7 @@ tip.hidden=false;}
                 for (const cursor of cursors) {
                     const response = await (window.RankChartCache?.fetch || fetch)(`/api/risk/breadth?market=${breadthMarket}&mode=${breadthMode}&cursor=${encodeURIComponent(cursor || '')}`);
                     const result = await response.json(); if (!response.ok) throw new Error(result.error || '신고저가 조회 실패');
+                    if (generation !== breadthGeneration) return;
                     breadthPages.set(cursor || '', result);
                 }
                 const pages = [...breadthPages.values()];
@@ -448,6 +452,7 @@ tip.hidden=false;}
                 candleKey = ''; draw(); void loadCandles();
             } catch (error) { status.textContent = error.message; window.setRankCardConnection?.(panel, false); }
             finally {
+                if (generation !== breadthGeneration) return;
                 breadthLoading = false;
                 if(pendingBreadthMarket){const market=pendingBreadthMarket;pendingBreadthMarket=null;changeBreadthMarket(market);}
                 button.disabled = !breadthCursor;
@@ -460,7 +465,7 @@ tip.hidden=false;}
             }
         }
         // 과거 분봉 구간 보기(2026-11-21, RankChartAxis.showWindow): 분봉 커서가 날짜(YYYYMMDD, 그날 포함)가 되어 그 날짜부터 다시 받는다.
-        function clearBreadth(){breadthPages.clear();breadthCursor=null;candleController?.abort();candleRequest++;candleKey='';breadthPricePending='';breadthPriceError='';start=0;count=null;hover=null;tip.hidden=true;data=Object.fromEntries(ids.map(id=>[id,[]]));dates=[];candles=[];}
+        function clearBreadth(){breadthGeneration++;breadthLoading=false;breadthPages.clear();breadthCursor=null;candleController?.abort();candleRequest++;candleKey='';breadthPricePending='';breadthPriceError='';start=0;count=null;hover=null;tip.hidden=true;data=Object.fromEntries(ids.map(id=>[id,[]]));dates=[];candles=[];}
         const seekBreadth=day=>{clearBreadth();todayOnly=false;breadthCursor=day;draw();};
         const leaveBreadthWindow=()=>{clearBreadth();todayOnly=true;void refreshBreadth();};
         if(breadth)window.RankChartAxis.registerHistoryLoader('breadth',()=>refreshBreadth(true),()=>breadthLoading || !!breadthPricePending,()=>({identity:breadthMarket,seek:breadthMode==='minute'?seekBreadth:undefined,leaveWindow:breadthMode==='minute'?leaveBreadthWindow:undefined,coverageFirst:[...breadthPages.values()].flatMap(p=>p.dates || []).sort()[0],error:breadthPriceError,hasMore:!!breadthCursor,cursor:breadthCursor,ensureRange:async target=>{candleEnsureActive=true;try{await loadCandles(target);if(breadthPriceError)throw new Error(breadthPriceError);}finally{candleEnsureActive=false;}}}));

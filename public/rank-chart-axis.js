@@ -123,7 +123,7 @@
     function showHistory(){if(historyBusy)return;historyMode=true;todayPinned=false;for(const chart of minuteCharts.values())chart.applied=undefined;notifyCharts();}
     function resetHistoryWork(){
         historyEpoch++;historyBusy=false;pendingHistoryTargets.clear();
-        if(typeof document!=='undefined')document.querySelectorAll('#tab_rank .rank-history-notice').forEach(notice=>notice.remove());
+        if(typeof document!=='undefined')document.querySelectorAll('#tab_rank .rank-history-notice,#tab_rank .rank-selection-history-notice').forEach(notice=>notice.remove());
         scheduleHistoryButtons();
     }
     // The day 당일 shows: today once its session started (08:00), otherwise the last open day (weekend, holiday,
@@ -185,7 +185,9 @@
         const token={},loader=historyLoaders.get(id);if(!loader?.state)return;
         selectionRestores.set(id,token);
         const chart=minuteCharts.get(id),mode=chart?.mode,identity=loader.state().identity;
-        const current=()=>selectionRestores.get(id)===token && minuteCharts.get(id)?.mode===mode && loader.state().identity===identity;
+        // 당일 · 구간 보기 · 주기 전환(resetHistoryWork)이 있으면 진행 중이던 채우기를 멈춘다(2026-11-21: 당일을 누른 뒤에도 앞선 구간 채우기가 이어져 옛 구간 분봉이 뒤늦게 떴다).
+        const epoch=historyEpoch;
+        const current=()=>selectionRestores.get(id)===token && historyEpoch===epoch && minuteCharts.get(id)?.mode===mode && loader.state().identity===identity;
         const ready=async()=>{const until=Date.now()+20000;while(loader.busy() && current() && Date.now()<until)await new Promise(r=>setTimeout(r,50));if(!current())throw new Error('cancelled');if(loader.busy())throw new Error('조회 대기 시간 초과');};
         try{
             await ready();let pages=0;
@@ -208,6 +210,8 @@
             if(!current())return;
             await loader.state().ensureRange?.(range.first);await ready();
             if(loader.state().error)throw new Error(loader.state().error);
+            // 채우기가 끝나면 앞서 실패했던 안내를 지운다(2026-11-21: 나중에 다 받아도 옛 실패 문구가 남아 있었다).
+            if(typeof document!=='undefined')document.getElementById(viewportPanels[id])?.querySelector('.rank-selection-history-notice')?.remove();
         }catch(error){
             if(!current())return;
             if(typeof document!=='undefined'){

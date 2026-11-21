@@ -84,11 +84,12 @@ for(const open of [false,true]){await page.evaluate(open=>window.applyConcentrat
  const [panel,foot]=await page.evaluate(()=>{const p=document.getElementById('rankFuturesSupplyChartPanel'),f=p.querySelector('.rank-card-footer');return [p.getBoundingClientRect().bottom,f.getBoundingClientRect().bottom];});
  assert.ok(foot<=panel,'footer stays inside the card '+foot+' > '+panel);
  await page.screenshot({path:require('node:path').join(require('node:os').tmpdir(),'futures-footer.png'),clip:await card.boundingBox()});}
-// Layout: column 2 = 종목 수급, 종목 선물 수급, 시장 거래대금, 변동성 from the top.
+// Layout: column 2 = 종목 수급, 종목 선물 수급, 변동성 from the top; 시장 거래대금 beside 변동성 in column 3 (2026-11-21).
 const box=id=>page.evaluate(id=>{const r=document.getElementById(id).getBoundingClientRect(),s=getComputedStyle(document.getElementById(id));return {left:Math.round(r.left),top:r.top,bottom:r.bottom,row:s.gridRowStart,col:s.gridColumnStart};},id);
 const supply=await box('rankCombinedSupplyChartPanel'),fut=await box('rankFuturesSupplyChartPanel'),turn=await box('rankCombinedTurnoverChartPanel'),vol=await box('rankVolatilityChartPanel');
-assert.deepEqual([supply.col,fut.col,turn.col,vol.col],['2','2','2','2']);assert.deepEqual([supply.row,fut.row,turn.row,vol.row],['1','2','3','4']);
-assert.ok(fut.top>=supply.bottom&&turn.top>=fut.bottom&&vol.top>=turn.bottom,JSON.stringify({supply,fut,turn,vol}));
+// 2026-11-21: 3행은 변동성(2열) · 시장 거래대금(3열).
+assert.deepEqual([supply.col,fut.col,vol.col,turn.col],['2','2','2','3']);assert.deepEqual([supply.row,fut.row,vol.row,turn.row],['1','2','3','3']);
+assert.ok(fut.top>=supply.bottom&&vol.top>=fut.bottom&&turn.top===vol.top&&turn.left>vol.left,JSON.stringify({supply,fut,turn,vol}));
 assert.equal(await page.locator('.rank-chart-row>.panel').count(),9); // 단독 ADR 카드 삭제(2026-11-21)
 assert.deepEqual(errors,[]);await card.screenshot({path:require('node:path').join(require('node:os').tmpdir(),'futures-supply-card.png')});
 console.log('Futures supply card: contracts x multiplier (shares) with program as 미제공 (empty day lane), 연결선물 day and minute candles, guide, two-way selection, no-futures notice and column-2 layout passed');

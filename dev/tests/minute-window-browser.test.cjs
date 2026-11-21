@@ -15,7 +15,7 @@ const before=(day,cursor)=>DAYS.filter(d=>d<=day).at(-1);
  await page.clock.install({time:new Date(TODAY+'T12:00:00+09:00')});
  const html=fs.readFileSync('public/index.html','utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'').replace(/<link\b[^>]*>/gi,'');
  await page.route('http://window.test/**',route=>{
-  const u=new URL(route.request().url()),p=u.pathname,q=Object.fromEntries(u.searchParams),minute=q.mode==='minute';
+  const u=new URL(route.request().url()),p=u.pathname,body=route.request().method()==='POST'?route.request().postDataJSON()||{}:{},q={...Object.fromEntries(u.searchParams),...body},minute=q.mode==='minute';
   if(!p.startsWith('/api/'))return route.fulfill({contentType:'text/html',body:html});
   requests.push(p+u.search);
   // 날짜 커서(그날 포함): 그날의 분봉과 이전 거래일 커서.
@@ -30,6 +30,11 @@ const before=(day,cursor)=>DAYS.filter(d=>d<=day).at(-1);
    // 신고·신저 · ADR 분봉(2026-11-21): 날짜 커서, 한 쪽 = 한 날.
    const d=dated(),rows=minutes(d.day).map((t,i)=>({date:iso(t).slice(0,16).replace('T',' '),value:90+i}));
    data={dates:rows.map(r=>r.date),series:{highs:{points:rows},lows:{points:rows.map(r=>({...r,value:-1}))},adr:{points:rows}},cursor:d.cursor,has_more:d.has_more,candles:[]};
+  }else if(minute && (p==='/api/concentration-chart' || p==='/api/ls-concentration-chart')){
+   // 쏠림율(2026-11-21): base_dt면 그날, 서버 세션 커서('C날짜')면 그 전 거래일.
+   const day=q.cursor?DAYS[DAYS.indexOf(dashed(q.cursor.slice(1)))-1]:before(q.base_dt?dashed(q.base_dt):TODAY),prev=DAYS[DAYS.indexOf(day)-1];
+   requests.push(p+'#'+JSON.stringify({base_dt:q.base_dt,cursor:q.cursor}));
+   data={success:true,market:'K',mode:'minute',points:minutes(day).map((t,i)=>({time:iso(t).slice(0,19).replace(/[-:T]/g,''),value:10+i,stock_open:100,stock_high:110,stock_low:90,stock_price:105})),cursor:prev?'C'+compact(day):null,has_more:!!prev};
   }else if(minute && p==='/api/supply/candles'){const day=before(q.date || TODAY);data={success:true,points:minutes(day).map(bar),date:day,has_more:false};}
   else if(minute && (p==='/api/adr/candles' || p==='/api/ls-futures-test/candles')){data={success:true,points:DAYS.filter(d=>d>=dashed(q.from) && d<=dashed(q.to)).flatMap(minutes).map(bar),has_more:false};}
   else if(minute){data={success:true,market:'K',points:[],series:[],has_more:false};}
@@ -73,6 +78,9 @@ const before=(day,cursor)=>DAYS.filter(d=>d<=day).at(-1);
   assert.ok(list.includes(compact(from)),path+' 구간 시작까지 '+list);
   assert.ok(!list.some(c=>c>compact(to)),path+' 구간 뒤의 날은 받지 않는다 '+list);
  }
+ // 쏠림율은 base_dt로 구간 끝 날짜부터 받는다(오늘부터 거슬러 오지 않는다).
+ assert.ok(requests.some(r=>r.includes('concentration-chart#')&&r.includes('"base_dt":"'+compact(to)+'"')),'쏠림율 base_dt '+requests.filter(r=>r.includes('concentration-chart#')).slice(0,5));
+ for(const until=Date.now()+30000;;){const c=await page.evaluate(()=>window.getCombinedRankChartState?.()||window.getRankChartState());const days=[...new Set(c.points.filter(p=>Number.isFinite(p.value)).map(p=>p.time.slice(0,8)))].sort();if(days[0]<=compact(from)&&days.at(-1)===compact(to))break;if(Date.now()>until)throw new Error('쏠림율 구간 '+days[0]+'~'+days.at(-1));await page.waitForTimeout(200);}
  const supply=await page.evaluate(()=>window.getRankCombinedSupplyState());
  const supplyDays=[...new Set(supply.points.map(p=>new Date(p.t+9*3600000).toISOString().slice(0,10)))].sort();
  assert.equal(supplyDays.at(-1),to,'종목수급 카드의 마지막 날');assert.ok(supplyDays[0]<=from,'종목수급 카드의 첫 날 '+supplyDays[0]);
