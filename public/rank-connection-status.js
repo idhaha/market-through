@@ -8,7 +8,7 @@
         ['#rankKisSupplyChartPanel', '한투(수급)·키움(가격)'], ['#rankLsSupplyChartPanel', 'LS(수급)·키움(가격)'],
         ['#transactionTable', '키움'], ['#stockTable', '키움'],
         ['#efriendStockTable', '한투'], ['#watchlistTable', '키움'],
-        ['#concentrationChartPanel', '키움'], ['#kisConcentrationChartPanel', '한투'], ['#rankAdrChartPanel', 'jusikbot'],
+        ['#concentrationChartPanel', '키움'], ['#kisConcentrationChartPanel', '한투'],
         ['#rankTurnoverChartPanel', '키움'], ['#rankSupplyChartPanel', '키움'], ['#rankMarketSupplyChartPanel', '한투'], ['#rankLsMarketSupplyChartPanel', 'LS(수급)·키움(가격)'],
         ['#rankVolatilityChartPanel', 'jusikbot'], ['#rankBreadthChartPanel', '키움 · LS'],
         ['#rankSentimentChartPanel', 'jusikbot']

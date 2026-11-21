@@ -33,7 +33,7 @@ return route.fulfill({contentType:'text/html',body:html});});
 await page.goto('https://market-page.test/');await page.addStyleTag({content:fs.readFileSync('public/style.css','utf8')+'#loginOverlay{display:none!important}#tabContents,#tab_rank{display:block!important}'});
 // After the close (the user's case): the cache does not refresh in the background, so the cached cursor is served as is.
 await page.evaluate(()=>{const closed=Date.now()-6*3600000;window.TradingRefresh={allows:()=>false,allowsUrl:()=>false,closedAt:()=>closed,closedAtUrl:()=>closed};});
-for(const file of ['rank-chart-cache.js','rank-chart-axis.js','rank-supply-guide.js','concentration-chart.js','rank-adr-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js','rank-connection-status.js'])await page.addScriptTag({path:'public/'+file});
+for(const file of ['rank-chart-cache.js','rank-chart-axis.js','rank-supply-guide.js','concentration-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js','rank-connection-status.js'])await page.addScriptTag({path:'public/'+file});
 await page.evaluate(()=>document.dispatchEvent(new Event('DOMContentLoaded')));await page.waitForFunction(()=>document.getElementById('combinedConcentrationChartPanel'));
 const st=()=>page.evaluate(()=>{const s=getCombinedRankChartState();return {code:s.selection?.code,mode:s.mode,busy:s.busy,times:s.points.map(p=>p.time),status:s.status};});
 const idle=async code=>{await page.waitForFunction(c=>{const s=getCombinedRankChartState();return s.selection?.code===c&&s.mode==='minute'&&!s.busy&&s.points.length;},code);await page.waitForTimeout(300);};

@@ -1,4 +1,8 @@
 const { test } = require('node:test');
+// 1분봉 축은 저장된 분 파일의 하루 08:00~20:00 매분이다(2026-11-21). 수집한 분(값이 하나라도 있는 행)만 고른다.
+const seen=(r,id)=>{const keep=new Set(r.dates.filter(d=>['highs','lows','adr'].some(k=>r.series[k].points.find(p=>p.date===d)?.value!=null)));return r.series[id].points.filter(p=>keep.has(p.date));};
+// 두 날(오늘 쪽 첫 쪽 + 날짜 커서 다음 쪽)을 옛 날부터.
+const twoDays=async(service,market,id='highs',all=false)=>{const a=await service.query({mode:'minute',market});const b=a.cursor?await service.query({mode:'minute',market,cursor:a.cursor}):null;const pick=r=>all?r.series[id].points:seen(r,id);return [...(b?pick(b):[]),...pick(a)].map(p=>p.value);};
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -52,7 +56,7 @@ test('08:01 integrated snapshot counts both markets separately and deduplicates 
     assert.equal(f.calls.filter(c => c.api === 'ka10016').length, 4);
     assert.ok(f.calls.filter(c => c.api === 'ka10016').every(c => ['001','101'].includes(c.body.mrkt_tp) && c.body.stex_tp === '3' && c.body.dt === '250'));
     const minute = await f.service.query({ mode: 'minute' });
-    assert.equal(minute.series.highs.points[0].value, 1);
+    assert.equal(seen(minute,'highs')[0].value, 1);
 });
 test('failed low list leaves whole minute absent; unconfirmed market does not collect', async t => {
     const f = fixture(t); f.fail(); await f.service.tick(); assert.deepEqual(f.service.minuteRows('2026-10-21'), []);
@@ -117,8 +121,8 @@ test('market queries isolate values, sum normal zeros, reject invalid markets an
  const kospi=await f.service.query({mode:'minute',market:'kospi'});
  const kosdaq=await f.service.query({mode:'minute',market:'kosdaq'});
  const both=await f.service.query({mode:'minute',market:'all'});
- assert.equal(kospi.series.highs.points[0].value,1);assert.equal(kosdaq.series.highs.points[0].value,2);
- assert.equal(both.series.highs.points[0].value,3);assert.equal(both.series.lows.points[0].value,0);
+ assert.equal(seen(kospi,'highs')[0].value,1);assert.equal(seen(kosdaq,'highs')[0].value,2);
+ assert.equal(seen(both,'highs')[0].value,3);assert.equal(seen(both,'lows')[0].value,0);
  for(const market of ['kosdaq','all'])assert.equal((await f.service.query({market})).series.highs.points.find(p=>p.date==='2026-10-20').value,null);
  await assert.rejects(f.service.query({market:'invalid'}));
 });
@@ -143,14 +147,13 @@ test('old combined minute JSON and gzip remain queryable only as all; new data w
  let service=createBreadthService(options);
  options.http.post=async()=>({data:{stk_min_pole_chart_qry:['20261021080100','20261022080100'].map(cntr_tm=>({cntr_tm,cur_prc:'100',open_pric:'100',high_pric:'100',low_pric:'100'}))},headers:{}});
  f.at('20261023','120000');
- const all=await service.query({mode:'minute',market:'all'});
- assert.deepEqual(all.series.highs.points.map(p=>p.value),[46,57]);
- for(const market of ['kospi','kosdaq'])assert.ok((await service.query({mode:'minute',market})).series.highs.points.every(p=>p.value===null));
+ assert.deepEqual(await twoDays(service,'all'),[46,57]);
+ for(const market of ['kospi','kosdaq'])assert.ok((await twoDays(service,market,'highs',true)).every(v=>v===null));
  fs.writeFileSync(path.join(legacyKospiDirectory,'2026-10-21.json'),JSON.stringify([{t:timestamp('20261021','080100'),highs:10,lows:20}]));
  fs.writeFileSync(path.join(options.directory,'2026-10-22.json'),JSON.stringify([{t:timestamp('20261022','080100'),kospi:{highs:1,lows:2},kosdaq:{highs:3,lows:4}}]));
  service=createBreadthService(options);
- assert.deepEqual((await service.query({mode:'minute',market:'all'})).series.highs.points.map(p=>p.value),[46,4]);
- assert.deepEqual((await service.query({mode:'minute',market:'kospi'})).series.highs.points.map(p=>p.value),[10,1]);
+ assert.deepEqual(await twoDays(service,'all'),[46,4]);
+ assert.deepEqual(await twoDays(service,'kospi'),[10,1]);
  assert.equal(fs.readFileSync(path.join(legacyCombinedDirectory,'2026-10-21.json'),'utf8'),old21);
  assert.ok(fs.readFileSync(path.join(legacyCombinedDirectory,'2026-10-22.json.gz')).equals(compressed));
 });
@@ -190,4 +193,24 @@ test('minuteFrom hides minutes saved on the old ETF-including basis without touc
  f.at('20261108','120000');
  const day=await createBreadthService(f.options).query({market:'kospi'});
  assert.match(day.notice,/보통주 · KRX\+NXT 통합 · 2026-11-06까지 일봉 계산, 이후 키움 집계/);
+});
+test('1분봉 축은 키움 없이 저장된 분 파일: 하루 08:00~20:00 매분(놓친 분은 빈칸), 커서는 날짜(그날 포함)',async t=>{
+ const f=fixture(t);fs.mkdirSync(f.options.directory,{recursive:true});
+ const save=(day,clocks)=>fs.writeFileSync(path.join(f.options.directory,day+'.json'),JSON.stringify(clocks.map((c,i)=>({t:timestamp(day.replaceAll('-',''),c),kospi:{highs:i+1,lows:1}}))));
+ save('2026-10-19',['090000']);save('2026-10-20',['080000','080200','200000']);
+ f.at('20261021','120000');const before=f.calls.length;
+ const today=await f.service.query({mode:'minute',market:'kospi'});
+ // 10/21은 분 파일이 없다 → 가장 최근 10/20.
+ assert.equal(today.dates[0],'2026-10-20 08:00');assert.equal(today.dates.at(-1),'2026-10-20 20:00');assert.equal(today.dates.length,721);
+ assert.deepEqual(today.series.highs.points.slice(0,3).map(p=>p.value),[1,null,2],'08:01은 수집을 놓쳐 빈칸');
+ assert.equal(today.cursor,'20261019');assert.equal(today.has_more,true);
+ assert.equal(f.calls.slice(before).filter(c=>c.api==='ka10080').length,0,'키움 분봉을 부르지 않는다');
+ const past=await f.service.query({mode:'minute',market:'kospi',cursor:'20261019'});
+ assert.equal(past.dates[0],'2026-10-19 08:00');assert.equal(seen(past,'highs')[0].date,'2026-10-19 09:00');assert.equal(past.has_more,false);assert.equal(past.cursor,null);
+ // 커서 날에 분 파일이 없으면 그 이전 날.
+ assert.equal((await f.service.query({mode:'minute',market:'kospi',cursor:'20261020'})).dates[0],'2026-10-20 08:00');
+ // 오늘은 지금 시각까지만.
+ save('2026-10-21',['080000']);f.at('20261021','080500');
+ const live=await f.service.query({mode:'minute',market:'kospi',cursor:'20261021'});
+ assert.equal(live.dates.at(-1),'2026-10-21 08:05');
 });

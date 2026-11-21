@@ -50,7 +50,7 @@ test('all daily cards advance twice with the real futures provider and opaque re
    }catch(error){return route.fulfill({status:error.status||500,json:{error:error.message}});}
   });
   await page.goto('http://all-history.test/');await page.addStyleTag({content:fs.readFileSync('public/style.css','utf8')+'#loginOverlay{display:none!important}#tabContents,#tab_rank{display:block!important}'});
-  for(const file of ['rank-chart-axis.js','concentration-chart.js','rank-adr-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js'])await page.addScriptTag({path:'public/'+file});
+  for(const file of ['rank-chart-axis.js','concentration-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js'])await page.addScriptTag({path:'public/'+file});
   await page.evaluate(()=>document.dispatchEvent(new Event('DOMContentLoaded')));
   await page.evaluate(async()=>{
    window.rankMainCandleOpen=true;
@@ -58,7 +58,6 @@ test('all daily cards advance twice with the real futures provider and opaque re
    applyRankCombinedSupplySettings({selected:'005930',mode:'day',showCandles:true});
    for(const name of ['TestMarketSupply','TestMarketSupplySecondary']){window['applyRank'+name+'DisplaySettings']({selected:'futures',mode:'day'});window['applyRank'+name+'CandleOpen'](true);}
    applyRankBreadthDisplaySettings({mode:'day',candleOpen:true});applyRankSentimentDisplaySettings({candleOpen:true});applyRankVolatilityDisplaySettings({candleOpen:true});applyRankCombinedTurnoverCandleOpen(true);
-   applyRankAdrCandleOpen(true);
    window.rankChartRefreshStarted=true;await RankChartAxis.refreshCharts();
   });
   for(const first of ['2021-12-02','2019-07-01']){

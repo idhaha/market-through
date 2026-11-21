@@ -21,7 +21,7 @@ if(url.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:
 if(url.pathname.startsWith('/api/'))return route.fulfill({json:{success:true,points:[],markets:{kospi:[p],kosdaq:[p]},dates:[],series:{highs:{points:[]},lows:{points:[]},vix:{points:[]},vkospi:{points:[]},'fear-greed':{points:[]},'high-yield-spread':{points:[]}},warnings:[],has_more:false}});
 return route.fulfill({contentType:'text/html',body:html});});
 await page.goto('http://market-page.test/');await page.addStyleTag({content:fs.readFileSync('public/style.css','utf8')+'#loginOverlay{display:none!important}#tabContents,#tab_rank{display:block!important}'});
-for(const file of ['rank-chart-cache.js','rank-chart-axis.js','rank-supply-guide.js','concentration-chart.js','rank-adr-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js','rank-connection-status.js'])await page.addScriptTag({path:'public/'+file});
+for(const file of ['rank-chart-cache.js','rank-chart-axis.js','rank-supply-guide.js','concentration-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js','rank-connection-status.js'])await page.addScriptTag({path:'public/'+file});
 await page.evaluate(()=>document.dispatchEvent(new Event('DOMContentLoaded')));
 const stockCard=page.locator('#rankCombinedSupplyChartPanel'),futCard=page.locator('#rankFuturesSupplyChartPanel');
 const box=card=>card.locator('.supply-y-sync input'),label=card=>card.locator('.supply-y-sync');

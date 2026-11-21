@@ -421,7 +421,7 @@
             try {
                 const requestedDays=new Set(minuteDays);
                 if(target && mode==='minute'){const domain=window.RankChartAxis.minuteDomain();for(const day of domain.days || [])if(day>=target.slice(0,10))requestedDays.add(day);requestedDays.add(target.slice(0,10));}
-                const days = dailyRange?['']:[...requestedDays].sort(); if (!days.length) days.push('');
+                const days = dailyRange?['']:[...requestedDays].sort(); if (!days.length) days.push(mode==='minute' && window.RankChartAxis.minuteWindow?.()?.to || ''); // 과거 구간 보기 중에는 오늘 캔들을 받지 않는다
                 const merged = new Map(candles.map(point => [point.t, point])); let partial = false;
                 for (const day of days) {
                     const key = `${selected}:${mode}:${dailyRange?(dailyRange.from || '600bars')+':'+dailyRange.to:day || dayKey(Date.now())}`;
@@ -460,6 +460,13 @@
         });
         let todayOnly = true;
         window.RankChartAxis.todayButton(panel,'[data-mode="minute"]',()=>mode,()=>{todayOnly=true;draw();void load();});
+        // 과거 분봉 구간 보기(2026-11-21, RankChartAxis.showWindow): 받은 분봉을 비우고 day(YYYYMMDD) 이전부터 다시 받게 한다.
+        // 이어지는 과거 조회(load(true))가 그 날짜부터 하루씩 거슬러 간다.
+        function seek(day) {
+            if (!selected) return;
+            ++revision; controller?.abort(); loading = false; flowLoading = false;
+            clearView(); todayOnly = false; cursor = day; hasMore = true;
+        }
         async function load(append = false, restoreWindow = null) {
             if(window.rankManagedChartRefresh && !window.rankChartRefreshStarted)return;
             const nextCursor = append ? [hasMore ? cursor : null, mode === 'minute' ? nextPriceCursor() : null].filter(Boolean).sort().at(-1) : null;
@@ -568,7 +575,7 @@
             panel.querySelectorAll('[data-mode]').forEach(b => { b.classList.toggle('active', b === button); b.setAttribute('aria-pressed', String(b === button)); });
             load();
         }));
-        window.RankChartAxis.registerHistoryLoader(axisId,()=>load(true),()=>loading || mode==='minute' && candleLoading,()=>({identity:selected,coverageFirst:flowCoverageFirst,ensureRange:async target=>{await loadCandles(target);if(candleError)throw new Error(candleError);},hasMore:!!selected && (hasMore || mode==='minute' && !!nextPriceCursor()),cursor:[cursor,nextPriceCursor()].join(':')}));
+        window.RankChartAxis.registerHistoryLoader(axisId,()=>load(true),()=>loading || mode==='minute' && candleLoading,()=>({identity:selected,coverageFirst:flowCoverageFirst,ensureRange:async target=>{await loadCandles(target);if(candleError)throw new Error(candleError);},seek:mode==='minute'?seek:undefined,leaveWindow:mode==='minute'?()=>{if(selected){++revision;controller?.abort();loading=false;flowLoading=false;clearView();void load();}}:undefined,hasMore:!!selected && (hasMore || mode==='minute' && !!nextPriceCursor()),cursor:[cursor,nextPriceCursor()].join(':')}));
         more.addEventListener('click', () => window.RankChartAxis.requestHistory(mode));
         panel.querySelectorAll('[data-series]').forEach(button => button.addEventListener('click', () => {
             const field = button.dataset.series;

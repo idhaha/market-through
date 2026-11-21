@@ -34,7 +34,7 @@ const fs=require('fs'),assert=require('node:assert/strict'),{chromium}=require('
  else if(u.pathname.startsWith('/api/'))data={success:true,series:[],points:[],has_more:false};
  if(data)return route.fulfill({json:data});return route.fulfill({contentType:'text/html',body:html});});
  await page.goto('http://minute.test/');await page.addStyleTag({content:fs.readFileSync('public/style.css','utf8')+'#loginOverlay{display:none!important}#tabContents,#tab_rank{display:block!important}'});
- for(const f of ['rank-chart-axis.js','concentration-chart.js','rank-adr-chart.js','rank-turnover-chart.js','rank-volatility-chart.js',process.env.SUPPLY_SCRIPT||'rank-supply-chart.js','rank-market-supply-chart.js'])await page.addScriptTag({path:f.includes('/')?f:'public/'+f});
+ for(const f of ['rank-chart-axis.js','concentration-chart.js','rank-turnover-chart.js','rank-volatility-chart.js',process.env.SUPPLY_SCRIPT||'rank-supply-chart.js','rank-market-supply-chart.js'])await page.addScriptTag({path:f.includes('/')?f:'public/'+f});
  await page.evaluate(()=>document.dispatchEvent(new Event('DOMContentLoaded')));
  // The market supply card opens on KOSPI200 futures; these checks start from spot KOSPI.
  await page.locator('#rankTestMarketSupplyChartPanel .rank-market-choice input[value="kospi"]').check();

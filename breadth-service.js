@@ -284,6 +284,28 @@ function createBreadthService({ directory, legacyFile, legacyKospiDirectory, leg
         for(const p of loadFrom(directory))rows.set(p.t,{...rows.get(p.t),...p});
         return [...rows.values()].sort((a,b)=>a.t-b.t);
     }
+    // 분 파일이 있는 날짜(보통주 기준 minuteFrom 이후). 옛 폴더도 함께 본다.
+    function minuteDates() {
+        const minuteFrom = read('daily.json', {}).minuteFrom || '', dates = new Set();
+        for (const folder of [directory, legacyKospiDirectory, legacyCombinedDirectory]) {
+            if (!folder) continue;
+            let names = []; try { names = fs.readdirSync(folder); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+            for (const name of names) { const m = /^(\d{4}-\d{2}-\d{2})\.json(\.gz)?$/.exec(name); if (m && m[1] >= minuteFrom) dates.add(m[1]); }
+        }
+        return [...dates].sort();
+    }
+    // 1분봉 축: cursor(YYYYMMDD) 이하에서 분 파일이 있는 가장 최근 날의 08:00~20:00 매분(수집을 놓친 분은 값 없이 행만 둬 선이 끊기게).
+    // 다음 커서는 그 전에 분 파일이 있는 날. 키움을 부르지 않으므로 조회 실패로 축이 비지 않는다.
+    function storedMinuteAxis(cursor) {
+        const today = dayKey(now()), limit = /^\d{8}$/.test(cursor) ? `${cursor.slice(0, 4)}-${cursor.slice(4, 6)}-${cursor.slice(6)}` : today;
+        const dates = minuteDates().filter(day => day <= limit && day <= today), date = dates.at(-1), previous = dates.at(-2);
+        const headers = previous ? { 'cont-yn': 'Y', 'next-key': previous.replaceAll('-', '') } : {};
+        if (!date) return { rows: [], response: { headers } };
+        const compactDate = date.replaceAll('-', ''), times = new Set(minuteRows(date).map(p => Math.floor(p.t / 60000) * 60000));
+        for (let minute = 480; minute <= 1200; minute++) times.add(timestamp(compactDate, String(Math.floor(minute / 60)).padStart(2, '0') + String(minute % 60).padStart(2, '0') + '00'));
+        const rows = [...times].filter(t => t <= now()).sort((a, b) => a - b).map(t => ({ cntr_tm: compactDate + new Date(t + 9 * 3600000).toISOString().slice(11, 19).replaceAll(':', '') }));
+        return { rows, response: { headers } };
+    }
     function archive() {
         const today = dayKey(now()), clock = new Date(now() + 9 * 3600000), closed = clock.getUTCHours() * 60 + clock.getUTCMinutes() >= 1202;
         for (const name of fs.readdirSync(directory)) {
@@ -365,14 +387,15 @@ function createBreadthService({ directory, legacyFile, legacyKospiDirectory, leg
                     const page = await indexCandles.referencePage({ market: index, mode: 'day', cursor: cursor ? (index === 'kosdaq' ? '101' : '001') + cursor : '' });
                     rows = (page.points || []).map(p => ({ dt: String(p.date).replaceAll('-', ''), open_pric: p.open, high_pric: p.high, low_pric: p.low, cur_prc: p.close }));
                     response = { headers: page.has_more ? { 'cont-yn': 'Y' } : {} };
+                } else if (mode === 'minute') {
+                    // 1분봉 축(2026-11-21): 키움 삼성전자 분봉 대신 저장된 분 파일의 날짜 하나. 커서는 날짜(YYYYMMDD, 그날 포함).
+                    ({ rows, response } = storedMinuteAxis(cursor));
                 } else {
-                    response = await post(mode === 'day' ? 'ka10081' : 'ka10080', { stk_cd: '005930_AL', upd_stkpc_tp: '0',
-                        ...(mode === 'day' ? { base_dt: cursor || dayKey(now()).replaceAll('-', '') } : { tic_scope: '1' }) }, mode === 'minute' && cursor ? cursor : '');
-                    rows = response.data[mode === 'day' ? 'stk_dt_pole_chart_qry' : 'stk_min_pole_chart_qry'];
+                    response = await post('ka10081', { stk_cd: '005930_AL', upd_stkpc_tp: '0', base_dt: cursor || dayKey(now()).replaceAll('-', '') });
+                    rows = response.data.stk_dt_pole_chart_qry;
                 }
                 if (!Array.isArray(rows)) throw new Error('신고저가 기준 봉 응답 형식 오류');
             } catch (cause) {
-                if (mode === 'minute' && cursor) throw cause;
                 referenceError = (mode === 'day' && indexCandles ? '지수 일봉' : '키움 기준 봉') + ' 조회 실패(' + cause.message + ') · 저장된 날짜로 표시';
                 response = { headers: {} };
                 if (mode === 'day') {

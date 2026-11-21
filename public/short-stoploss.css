@@ -14,6 +14,7 @@ h2{font-size:14px;margin:0}
 .ss-sub{font-size:12px;color:#C9D3E3;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .ss-top .i{background:transparent;color:#FFFFFF;border-color:#C9D3E3}
 .ss-pill{padding:3px 10px;border-radius:10px;font-size:12px;font-weight:500}
+.ss-rt{display:inline-flex;gap:6px}
 .ss-pill.seg{background:#2F6FD6}
 .ss-pill.on{background:#1B6B3A}
 .ss-pill.off{background:#6B7484}
@@ -62,6 +63,7 @@ body.form-closed .fold-btn svg{transform:rotate(180deg)}
 .namecell .nm{display:flex;flex-direction:column;min-width:0;line-height:1.25}
 .namecell .name,.namecell .code{overflow:hidden;text-overflow:ellipsis}
 .namecell .code{font-size:11px}
+.acct-tag{margin-left:4px;padding:0 3px;border:1px solid #C9D2E0;border-radius:3px;font-size:10px;color:#3C4657;background:#F3F6FA}
 .tbl .r{text-align:right}
 .tbl tbody tr.pick{cursor:pointer}
 .tbl tbody tr.pick:hover{background:#F5F8FD}

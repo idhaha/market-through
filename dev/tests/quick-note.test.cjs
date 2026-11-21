@@ -50,6 +50,8 @@ test('native credential is scoped to note and stops working with the issuing log
     const authEnd = source.indexOf('\n});', authStart) + 4;
     vm.runInNewContext(source.slice(authStart, authEnd), {
         app: { use: (path, fn) => middleware = fn }, quickNoteGrants: grants, viWindowAccess: { handles: () => false },
+        // 대주 StopLoss 독립창 토큰(2026-11-20)도 인증 미들웨어 앞부분에서 따로 처리한다. 이 시험의 요청은 해당하지 않는다.
+        shortStopLossWindow: { handles: () => false },
         getSessionFromRequest: req => sessionValid && req.headers.cookie === 'session-cookie' ? { email: 'test' } : null
     });
     const invoke = path => {

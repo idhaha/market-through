@@ -11,7 +11,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=requ
   return route.fulfill({contentType:'text/html',body:html});});
  await page.goto('http://breadth-note.test/');await page.addStyleTag({content:fs.readFileSync('public/style.css','utf8')+'#loginOverlay{display:none!important}#tabContents,#tab_rank{display:block!important}'});
  await page.evaluate(()=>{window.saveAppData=()=>{};});
- for(const f of ['rank-chart-cache.js','rank-chart-axis.js','rank-supply-guide.js','concentration-chart.js','rank-adr-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js','rank-connection-status.js'])await page.addScriptTag({path:'public/'+f});
+ for(const f of ['rank-chart-cache.js','rank-chart-axis.js','rank-supply-guide.js','concentration-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js','rank-connection-status.js'])await page.addScriptTag({path:'public/'+f});
  await page.evaluate(()=>document.dispatchEvent(new Event('DOMContentLoaded')));
  const panel=page.locator('#rankBreadthChartPanel');await panel.waitFor();
  await page.waitForFunction(()=>/현재 조회 기준/.test(document.querySelector('#rankBreadthChartPanelGuide [data-loading-notes="day"]')?.textContent||''));

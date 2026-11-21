@@ -32,7 +32,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=requ
   });
   await page.goto('http://independent.test/');
   await page.addStyleTag({content:fs.readFileSync('public/style.css','utf8')+'#loginOverlay{display:none!important}#tabContents,#tab_rank{display:block!important}'});
-  for(const file of ['rank-chart-axis.js','concentration-chart.js','rank-adr-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js'])await page.addScriptTag({path:'public/'+file});
+  for(const file of ['rank-chart-axis.js','concentration-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js'])await page.addScriptTag({path:'public/'+file});
   await page.evaluate(()=>document.dispatchEvent(new Event('DOMContentLoaded')));
   await page.evaluate(mode=>{
    window.rankMainCandleOpen=true;
@@ -44,12 +44,11 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=requ
    applyRankTestMarketSupplySecondaryDisplaySettings({selected:'futures',mode});applyRankTestMarketSupplySecondaryCandleOpen(true);
    applyRankBreadthDisplaySettings({mode,candleOpen:true});
    applyRankSentimentDisplaySettings({candleOpen:true});applyRankVolatilityDisplaySettings({candleOpen:true});
-   document.querySelector(`#rankAdrChartPanel [data-adr-mode="${mode}"]`).click();
    document.querySelector(`#rankCombinedTurnoverChartPanel [data-mode="${mode}"]`).click();applyRankCombinedTurnoverCandleOpen(true);
    window.rankChartRefreshStarted=true;void RankChartAxis.refreshCharts();
   },mode);
   if(blocked==='topic'){
-   for(const id of ['combinedConcentrationChartPanel','rankCombinedSupplyChartPanel','rankTestMarketSupplyChartPanel','rankTestMarketSupplySecondaryChartPanel','rankCombinedTurnoverChartPanel','rankAdrChartPanel','rankBreadthChartPanel','rankSentimentChartPanel','rankVolatilityChartPanel']){
+   for(const id of ['combinedConcentrationChartPanel','rankCombinedSupplyChartPanel','rankTestMarketSupplyChartPanel','rankTestMarketSupplySecondaryChartPanel','rankCombinedTurnoverChartPanel','rankBreadthChartPanel','rankSentimentChartPanel','rankVolatilityChartPanel']){
     await page.waitForFunction(id=>window.candleRects[id]?.length>0,id,{timeout:10000}).catch(error=>{throw Error(`${mode}: price must draw while topic is blocked: ${id}: ${error.message}`);});
    }
   }else{

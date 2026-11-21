@@ -1,6 +1,14 @@
 require('dotenv').config();
+// 증권사 호출 스위치(2026-11-21): 로컬 PC는 기본으로 증권사 호출을 막는다(오라클과 같은 앱키라 오라클 한도를 깎지 않게). broker-calls.js 참고.
+// axios · ws가 쓰는 http(s).request와 fetch를 감싸므로, 증권사 모듈을 불러오기 전에 둔다.
+const brokerCalls = require('./broker-calls').createBrokerCalls({ log: message => fileLog(message) }).install();
 const express = require('express');
 const axios = require('axios');
+// 키움 호출 관문(2026-11-21): 앱키마다 하나. 키움 REST(axios 기본 인스턴스)는 모두 자기 앱키 관문을 지난다. kiwoom-gate.js 참고.
+const kiwoomGates = require('./kiwoom-gate').createKiwoomGates({ log: message => fileLog(message) }).install(axios);
+setInterval(() => {
+    for (const g of kiwoomGates.stats()) if (g.waited || g.limited) fileLog(`[키움 관문] ${g.key} 앱키 · 보냄 ${g.sent} · 기다림 ${g.waited}(평균 ${Math.round(g.waitMs / Math.max(1, g.waited))}ms) · 한도 초과 ${g.limited} · ` + Object.entries(g.byApi).filter(([, v]) => v.waited || v.limited).map(([id, v]) => `${id} 기다림 ${v.waited} 초과 ${v.limited}`).join(', '));
+}, 10 * 60000).unref();
 const kisHttp = require('./kis-http').createKisHttp({ http: axios });
 const indexHttp = require('./shared-index-http').createSharedIndexHttp({ http: axios });
 const path = require('path');
@@ -15,13 +23,11 @@ const { createConcentrationChartService, dailyTurnover } = require('./concentrat
 const { createRankIndependentRelay } = require('./rank-independent');
 const { createRetainedLogs } = require('./retained-logs');
 const { migrateSettingsNames } = require('./settings-filenames');
-const { createAdrMinuteStore } = require('./adr-minute-store');
 const { createVolatilityService } = require('./risk-volatility');
 const { createLendableService, createLendableViewCache } = require('./lendable-stocks');
 const { fillLendablePrices } = require('./lendable-prices');
 const getLendableView = createLendableViewCache({ log: message => fileLog(message) });
 const lendableService = createLendableService({ http: kisHttp, log: message => fileLog(message) });
-const adrMinuteStore = createAdrMinuteStore({ directory: path.join(__dirname, 'data', 'adr-minutes') });
 const volatilityService = createVolatilityService();
 const { createBreadthService } = require('./breadth-service');
 const sentimentService = createVolatilityService({ kind: 'sentiment' });
@@ -126,7 +132,7 @@ require('./trading-session').install(tradingSession);
     };
     remind(); setInterval(remind, 3600000).unref?.();
 }
-app.get('/api/trading-session',(req,res)=>{const snapshot=tradingSession.snapshot();res.set('Cache-Control','no-store').json({...snapshot,examReminder:require('./market-open-delay').examReminder(snapshot.date)});});
+app.get('/api/trading-session',(req,res)=>{const snapshot=tradingSession.snapshot(),delay=require('./market-open-delay');res.set('Cache-Control','no-store').json({...snapshot,examReminder:delay.examReminder(snapshot.date),openDelays:delay.openDelayMap(Object.keys(snapshot.days || {}))});});
 app.get('/api/trading-session/calendar',async(req,res)=>{
     try{res.set('Cache-Control','no-store').json(await tradingSession.calendarRange(req.query.from,req.query.to));}
     catch(error){res.status(error.status || 502).json({error:'Market calendar unavailable'});}
@@ -418,9 +424,28 @@ const shortStopLoss = require('./short-stoploss-service').createShortStopLoss({
     realtime: viMonitorService.sharedRealtime,
     testCodes: () => String(process.env.SHORT_STOPLOSS_WS_TEST || '').split(',').map(s => s.trim()).filter(Boolean)
 });
+// 추가 계좌(2026-11-21): KIWOOM_APPKEY_28 · KIWOOM_SECRETKEY_28이 있으면 그 계좌의 대주도 같은 창에서 감시한다.
+// 잔고 · 주문 · 미체결 조회는 그 계좌 앱키로 하고, 실시간도 그 계좌 앱키로 자기 웹소켓을 열어
+// 감시 종목 체결(0B)과 그 계좌의 주문체결 · 잔고(00 · 04)를 받는다(앱키당 웹소켓 하나 → 기본 앱키의 VI 연결과 겹치지 않음).
+// 웹소켓은 자동 주문을 내는 서버(SHORT_STOPLOSS=on)에서만 연다. 다른 서버가 열면 그 서버의 연결을 끊기 때문이다.
+const shortStopLossAccounts = [{ id: 'main', svc: shortStopLoss }];
+const shortStopLossOn = () => /^(on|true|1)$/i.test(String(process.env.SHORT_STOPLOSS || '').trim());
+for (const suffix of ['28']) {
+    const appKey = (process.env['KIWOOM_APPKEY_' + suffix] || '').trim(), secretKey = (process.env['KIWOOM_SECRETKEY_' + suffix] || '').trim();
+    if (!appKey || !secretKey) continue;
+    const token = require('./kiwoom-key-token').createKiwoomKeyToken({ appKey, secretKey, file: path.join(__dirname, 'data', 'kiwoom-token', `token-${suffix}.json`), http: axios, log: fileLog, onToken: t => kiwoomGates.register(suffix, t) });
+    const realtime = require('./kiwoom-realtime').createKiwoomRealtime({ getToken: token.get, rejectToken: token.reject, active: shortStopLossOn, log: fileLog, label: `대주 StopLoss ${suffix} 계좌 실시간` });
+    realtime.start();
+    shortStopLossAccounts.push({ id: suffix, svc: require('./short-stoploss-service').createShortStopLoss({
+        directory: path.join(__dirname, 'data', 'short-stoploss-' + suffix), http: axios, getToken: token.get, rejectToken: token.reject,
+        enabled: shortStopLossOn, openDate: date => tradingSession.openDate(date), log: fileLog,
+        realtime, rtGroups: { quote: '1', account: '2' }
+    }) });
+}
+const shortStopLossAll = require('./short-stoploss-accounts').createShortStopLossAccounts(shortStopLossAccounts);
 shortStopLossWindow.mount(app);
-shortStopLoss.mount(app, { allowed: req => req.authUser?.email === AUTH_ADMIN_EMAIL });
-shortStopLoss.start();
+shortStopLossAll.mount(app, { allowed: req => req.authUser?.email === AUTH_ADMIN_EMAIL });
+shortStopLossAll.start();
 app.get('/api/market-alerts', (req, res) => res.set('Cache-Control', 'no-store').json(marketAlertService.snapshot(req.authUser.email)));
 app.post('/api/market-alerts/acknowledge', (req, res) => {
     try { res.set('Cache-Control', 'no-store').json(marketAlertService.acknowledge(req.authUser.email, req.body.ids)); }
@@ -2057,14 +2082,6 @@ app.get('/api/risk/sentiment', async (req, res) => {
     catch (error) { res.status(error.status || 502).json({ error: error.message }); }
 });
 
-app.get('/api/adr/history', async (req, res) => {
-    const market = req.query.market || 'kospi', range = req.query.range || '1y';
-    if (!['kospi', 'kosdaq'].includes(market) || !['6m', '1y', '3y', '5y'].includes(range)) return res.status(400).json({ error: 'Invalid market or range' });
-    try {
-        const response = await axios.get('https://jusikbot.com/api/adr/history', { params: { market, range }, timeout: 10000 });
-        res.set('Cache-Control', 'no-store').json(response.data);
-    } catch (_) { res.status(502).json({ error: 'ADR 일별 데이터를 가져오지 못했습니다.' }); }
-});
 
 // Each chart receives a slice of the shared index series (indexCandleStore, defined above).
 app.get('/api/adr/candles', async (req, res) => {
@@ -2078,46 +2095,7 @@ app.get('/api/adr/candles', async (req, res) => {
     }
 });
 
-const adrClosedFallbackCache = new Map();
-app.get('/api/adr/today', async (req, res) => {
-    const market = req.query.market || 'kospi';
-    if (!['kospi', 'kosdaq'].includes(market)) return res.status(400).json({ error: 'Invalid market' });
-    try {
-        const response = await axios.get('https://jusikbot.com/api/adr/today', {
-            params: { market, _: Date.now() }, timeout: 10000
-        });
-        const data = { ...response.data };
-        // The upstream clears intraday/lastClosed over weekends. A fresh browser
-        // has no prior-session local cache, so recover the dated daily close.
-        if (!data.intraday?.length && !(data.adr != null && data.asOf != null) && !data.lastClosed) {
-            try {
-                const today = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
-                let cached = adrClosedFallbackCache.get(market);
-                if (!cached || cached.day !== today || Date.now() - cached.at > 5 * 60000) {
-                    const history = await axios.get('https://jusikbot.com/api/adr/history', { params: { market, range: '6m' }, timeout: 10000 });
-                    const last = (Array.isArray(history.data.series) ? history.data.series : [])
-                        .filter(point => /^\d{4}-\d{2}-\d{2}$/.test(point.date) && point.date <= today && point.adr != null && Number.isFinite(Number(point.adr)))
-                        .sort((a, b) => a.date.localeCompare(b.date)).at(-1);
-                    cached = { day: today, at: Date.now(), last };
-                    adrClosedFallbackCache.set(market, cached);
-                }
-                if (cached.last) data.lastClosed = { date: cached.last.date.replaceAll('-', ''), adr: Number(cached.last.adr) };
-            } catch (error) {
-                console.warn('[ADR] Previous close fallback failed:', error.message);
-            }
-        }
-        const archive = adrMinuteStore.merge(market, data);
-        data.intraday = archive.points;
-        data.intradayDate = archive.day;
-        res.set('Cache-Control', 'no-store').json(data);
-    } catch (error) {
-        const archive = adrMinuteStore.read(market);
-        if (archive.points.length) {
-            return res.set('Cache-Control', 'no-store').json({ market, adr: null, asOf: null, intraday: archive.points, intradayDate: archive.day, sourceError: '원본 조회 실패 · 서버에 저장된 기록 표시 중' });
-        }
-        res.status(502).json({ error: 'ADR 실시간 데이터를 가져오지 못했습니다.' });
-    }
-});
+// 단독 ADR 카드는 2026-11-21에 지웠다(ADR은 ADR 및 52주 신고/신저 카드). /api/adr/history · /api/adr/today와 data/adr-minutes 저장도 함께 뺐다.
 
 function readAuthorizedEmails() {
     try {
@@ -3205,9 +3183,13 @@ async function requestEfriendAccessToken(domain, appKey, secretKey) {
 }
 
 app.listen(PORT, async () => {
+    fileLog(brokerCalls.startupLine());
     tradingSession.start();await tradingSession.refresh();
     // VI 모니터 · 장운영 알림: 켜진 서버(기본 오라클)만 연결한다. 시작할 때 어느 쪽인지 server_debug에 남긴다.
     for (const line of viAlertsStartupLines()) fileLog(line);
+    // 정기 수집(주기 조회 · 상시 웹소켓)은 증권사 호출이 모두 허용된 서버(BROKER_CALLS=on, 오라클 기본값)에서만 시작한다.
+    const collects = brokerCalls.collects();
+    if (collects) {
     if (alertsRealtime()) marketAlertService.start();
     if (viRealtime()) { viMonitorService.start(); lsFuturesEvents.start(); }
     // Alternative sources that no card shows are not collected since 2026-11-07: Kiwoom stock minute (ka10060·ka90008),
@@ -3229,11 +3211,12 @@ app.listen(PORT, async () => {
     if (altCollection) kisConcentrationChartService.start();
     breadthService.start();
     backgroundRefreshService.start();
+    concentrationChartService.startStockDirectorySchedule();
+    }
     // Keep the daily archive current even when no chart is open.
     const refreshVolatilityArchive = () => Promise.allSettled([volatilityService.query('all'), sentimentService.query('all')]).then(results => results.forEach(result => { if (result.status === 'rejected') console.warn('[Risk] Archive refresh failed:', result.reason.message); }));
     refreshVolatilityArchive();
     setInterval(refreshVolatilityArchive, 60 * 60 * 1000).unref();
-    concentrationChartService.startStockDirectorySchedule();
     console.log("\n" + "=".repeat(50));
     console.log(`🚀 서버 구동 완료! (VERSION: SET EXTREMES)`);
     console.log(`링크: http://localhost:${PORT}`);

@@ -73,11 +73,11 @@ test('history click waits for every minute chart and never advances the start in
 
 test('daily more loads every daily chart and aligns their start, end, ticks and price coordinates',async()=>{
  const sandbox={window:{},Date:context.Date,queueMicrotask:()=>{},setTimeout};vm.runInNewContext(fs.readFileSync('public/rank-chart-axis.js','utf8'),sandbox);const shared=sandbox.window.RankChartAxis;
- const ids=['concentration','supply','breadth','turnover','adr','sentiment','volatility'],data=new Map(),called=[];
+ const ids=['concentration','supply','breadth','turnover','sentiment','volatility'] /* 단독 ADR 카드 삭제(2026-11-21) */,data=new Map(),called=[];
  for(const [i,id] of ids.entries()){
   const values=['2026-10-20','2026-10-21','2026-10-22','2026-10-23'];data.set(id,values);
   shared.sharedRange(id,values,v=>v,'day',0,null,()=>{});
-  shared.registerHistoryLoader(id,async()=>{called.push(id);const old=i===6?'2026-10-19':'2026-10-16';const next=[old,...data.get(id)];data.set(id,next);shared.sharedRange(id,next,v=>v,'day',0,null,()=>{});});
+  shared.registerHistoryLoader(id,async()=>{called.push(id);const old=i===5?'2026-10-19':'2026-10-16';const next=[old,...data.get(id)];data.set(id,next);shared.sharedRange(id,next,v=>v,'day',0,null,()=>{});});
  }
  await shared.requestHistory('day');assert.deepEqual(called,ids);
  assert.equal(shared.dailyDomain().first,'2026-10-19');assert.equal(shared.dailyDomain().last,'2026-10-23');

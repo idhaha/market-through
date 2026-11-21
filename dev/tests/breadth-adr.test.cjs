@@ -1,6 +1,10 @@
 // ADR in the 52-week card (2026-11-09): official advancing/declining counts (LS t1514) saved in daily.json,
 // intraday counts (Kiwoom ka20001) saved in the minute file, ADR = 20-day sum of rises ÷ falls × 100.
 const { test } = require('node:test');
+// 1분봉 축은 저장된 분 파일의 하루 08:00~20:00 매분이다(2026-11-21). 수집한 분(값이 하나라도 있는 행)만 고른다.
+const seen=(r,id)=>{const keep=new Set(r.dates.filter(d=>['highs','lows','adr'].some(k=>r.series[k].points.find(p=>p.date===d)?.value!=null)));return r.series[id].points.filter(p=>keep.has(p.date));};
+// 두 날(오늘 쪽 첫 쪽 + 날짜 커서 다음 쪽)을 옛 날부터.
+const twoDays=async(service,market,id='highs',all=false)=>{const a=await service.query({mode:'minute',market});const b=a.cursor?await service.query({mode:'minute',market,cursor:a.cursor}):null;const pick=r=>all?r.series[id].points:seen(r,id);return [...(b?pick(b):[]),...pick(a)].map(p=>p.value);};
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -86,7 +90,7 @@ test('minute chart: each collected minute carries the intraday counts and its AD
     assert.deepEqual(row.kospi, { highs: 1, lows: 1, rise: 305, fall: 100, flat: 20 });
     assert.deepEqual(row.kosdaq, { highs: 1, lows: 1, rise: 400, fall: 201, flat: 30 });
     const minute = await f.service.query({ mode: 'minute', market: 'kosdaq' });
-    assert.equal(minute.series.adr.points[0].value, expected(24, '301', 400, 201));
+    assert.equal(seen(minute,'adr')[0].value, expected(24, '301', 400, 201));
 });
 
 test('a failing intraday count keeps the minute (highs/lows) and reports the ADR problem', async t => {
@@ -94,7 +98,7 @@ test('a failing intraday count keeps the minute (highs/lows) and reports the ADR
     const row = f.service.minuteRows('2026-11-02')[0];
     assert.deepEqual(row.kospi, { highs: 1, lows: 1 });
     const minute = await f.service.query({ mode: 'minute' });
-    assert.equal(minute.series.adr.points[0].value, null);
+    assert.equal(seen(minute,'adr')[0].value, null);
     assert.match(minute.warning, /ADR 장중/);
 });
 
@@ -164,8 +168,8 @@ test('Kiwoom time axis failing: the stored dates still carry the counts and ADR'
     assert.equal(day.candles.length, 0);
     assert.match(day.warning, /키움 기준 봉 조회 실패/);
     const minute = await f.service.query({ mode: 'minute', market: 'kospi' });
-    assert.equal(minute.dates.length, 1);
-    assert.equal(minute.series.adr.points[0].value, expected(24, '001', 305, 100));
+    assert.equal(seen(minute,'adr').length, 1);
+    assert.equal(seen(minute,'adr')[0].value, expected(24, '001', 305, 100));
 });
 
 test('day axis from the shared index daily page: no Samsung call; KOSDAQ uses the KOSDAQ index; cursor passes through', async t => {

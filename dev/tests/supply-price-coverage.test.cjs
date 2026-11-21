@@ -21,7 +21,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=requ
   await page.addStyleTag({content:fs.readFileSync('public/style.css','utf8')});
   await page.addScriptTag({path:'public/rank-chart-axis.js'});
   await page.evaluate(()=>{window.loaders={};const register=RankChartAxis.registerHistoryLoader;RankChartAxis.registerHistoryLoader=(id,load,busy,state)=>{loaders[id]={load,busy,state};register(id,load,busy,state);};});
-  for(const file of ['rank-adr-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js'])await page.addScriptTag({path:'public/'+file});
+  for(const file of ['rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js'])await page.addScriptTag({path:'public/'+file});
   await page.waitForFunction(()=>window.getRankCombinedSupplyState?.().selected==='005930');
   await page.evaluate(async()=>{
    applyRankCombinedSupplySettings({selected:'005930',mode:'minute',showCandles:true});
@@ -47,11 +47,10 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=requ
   marketFailure=false;
   await page.evaluate(()=>loaders.testMarketSupply.state().ensureRange('2026-10-20 09:00'));
   assert.ok(calls.filter(u=>u.startsWith('/api/adr/candles')&&u.includes('20261020')).length>failedCalls);
-  // Explicit ADR/breadth price requests must survive automatic redraw requests.
-  await page.evaluate(()=>document.querySelector('#rankAdrChartPanel [data-adr-mode=minute]').click());
+  // Explicit breadth price requests must survive automatic redraw requests (단독 ADR 카드는 2026-11-21에 지웠다).
   await page.waitForFunction(()=>Object.values(loaders).every(l=>!l.busy()));
-  for(const id of ['adr','breadth']){
-   await page.evaluate(id=>{if(id==='adr')applyRankAdrCandleOpen(true);else applyRankBreadthDisplaySettings({mode:'minute',market:'kospi',candleOpen:true});},id);
+  for(const id of ['breadth']){
+   await page.evaluate(()=>applyRankBreadthDisplaySettings({mode:'minute',market:'kospi',candleOpen:true}));
    await page.waitForFunction(id=>!loaders[id].busy(),id);
    marketFailure=true;
    assert.equal(await page.evaluate(id=>loaders[id].state().ensureRange('2026-10-19 09:00').then(()=>false,()=>true),id),true);

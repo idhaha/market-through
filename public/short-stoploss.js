@@ -57,22 +57,46 @@
         $('autoState').className = 'ss-pill ' + (state.enabled ? 'on' : 'off');
         $('autoState').title = state.enabled ? '' : '이 서버는 주문을 내지 않습니다. 서버 설정 SHORT_STOPLOSS=on으로 켭니다.';
         $('segment').textContent = state.segment ? state.segment.label : '장 시간 아님';
-        const rt = state.realtime; $('rtState').hidden = !rt;
-        if (rt) { $('rtState').textContent = rt.connected ? '실시간 연결' : '실시간 끊김 · 조회로 감시'; $('rtState').className = 'ss-pill ' + (rt.connected ? 'on' : 'off'); $('rtState').title = '키움 웹소켓(VI 모니터와 공용): ' + (rt.state || ''); }
+        // 실시간 연결은 계좌마다 따로 보인다(2026-11-21): 기본 계좌는 VI 모니터와 공용 연결, 추가 계좌는 그 계좌 앱키의 연결
+        const rts = (state.accounts?.length ? state.accounts : [{ account: state.account, realtime: state.realtime }]).filter(a => a.realtime), box = $('rtStates');
+        const pills = rts.map(a => { const r = a.realtime, name = multi() ? acctShort(a) + ' ' : ''; return el('span', { class: 'ss-pill ' + (r.connected ? 'on' : 'off'), title: `계좌 ${a.account || ''} 키움 웹소켓: ${r.state || ''}${r.connected ? '' : ' · 끊긴 동안은 1초 조회로 감시'}` }, name + (r.connected ? '실시간 연결' : '실시간 끊김')); });
+        const sig = pills.map(p => p.className + p.textContent + p.title).join('|'); if (box.dataset.sig !== sig) { box.textContent = ''; box.append(...pills); box.dataset.sig = sig; }
         // 정규장(09:00~15:20)은 NXT 거래 종목이면 SOR, 아니면 KRX(2026-11-20). 고른 종목이 없으면 둘 다 보여 준다
         const seg = state.segment, pick = currentLot();
         $('exNow').textContent = '지금: ' + (seg?.id === 'KRX' ? (pick ? (pick.nxt ? 'SOR' : 'KRX(NXT 비대상)') : 'SOR · NXT 비대상은 KRX') : seg?.ex || (seg ? '보류' : '주문 안 함'));
         $('haltBanner').hidden = !state.halted;
         $('haltText').textContent = state.halted ? '전체 감시 중지: ' + state.haltedReason : '';
-        const acct = $('acct'); acct.textContent = ''; acct.append(el('option', {}, state.account || '계좌 확인 중'));
+        renderAccounts();
         $('lotsAt').textContent = state.lotsError ? '잔고 조회 실패: ' + state.lotsError : state.lotsAt ? new Date(state.lotsAt + 9 * 3600000).toISOString().slice(11, 19) + ' 조회' : '';
     }
+    // 계좌(2026-11-21): 잔고 · 감시 건은 저마다 자기 계좌로 조회 · 주문한다. 계좌가 둘 이상이면 종목 코드 옆에 계좌번호 뒤 4자리를 붙이고,
+    // 계좌 고르기로 한 계좌만 볼 수 있다(전체가 기본, 이 PC에 기억). 고르기는 보기만 바꾸고 감시 · 주문에는 영향이 없다.
+    let acctFilter = ''; try { acctFilter = localStorage.getItem('short-stoploss-acct') || ''; } catch {}
+    const accounts = () => state?.accounts || [];
+    const multi = () => accounts().length > 1;
+    const acctShort = x => { const a = String(x?.account || x?.acct || ''); const m = a.match(/^\d{4}-(\d{4})/); return m ? m[1] : a; }; // 계좌번호 뒤 4자리(3699-5772-11 → 5772)
+    const acctTag = x => multi() ? el('span', { class: 'acct-tag', title: '계좌 ' + (x.account || x.acct) }, acctShort(x)) : '';
+    const shown = list => list.filter(x => !acctFilter || x.acct === acctFilter);
+    function renderAccounts() {
+        const sel = $('acct'), list = accounts();
+        if (acctFilter && !list.some(a => a.id === acctFilter)) acctFilter = '';
+        const opts = list.length > 1 ? [['', '전체 계좌'], ...list.map(a => [a.id, a.account])] : [[list[0]?.id ?? '', list[0]?.account || state.account || '계좌 확인 중']];
+        const sig = JSON.stringify(opts);
+        if (sel.dataset.sig !== sig) { sel.textContent = ''; for (const [v, t] of opts) sel.append(el('option', { value: v }, t)); sel.dataset.sig = sig; }
+        sel.value = list.length > 1 ? acctFilter : opts[0][0]; sel.disabled = list.length < 2;
+    }
+    $('acct').addEventListener('change', () => {
+        acctFilter = $('acct').value; try { localStorage.setItem('short-stoploss-acct', acctFilter); } catch {}
+        const lot = currentLot(); if (acctFilter && lot && lot.acct && lot.acct !== acctFilter) { selectedLot = ''; selectedWatch = ''; fillLotInfo(null); $('formMode').textContent = '잔고에서 행을 고르세요'; }
+        renderAll(); updateForm();
+    });
     function renderLots() {
         const body = $('lotsTable').tBodies[0]; body.textContent = '';
-        if (!state.lots.length) { body.append(el('tr', {}, el('td', { colspan: 8, class: 'empty' }, '대주 잔고가 없습니다'))); return; }
-        for (const l of state.lots) {
+        const lots = shown(state.lots);
+        if (!lots.length) { body.append(el('tr', {}, el('td', { colspan: 8, class: 'empty' }, '대주 잔고가 없습니다'))); return; }
+        for (const l of lots) {
             const tr = el('tr', { class: 'pick' + (l.key === selectedLot ? ' sel' : ''), tabindex: 0, onclick: () => pickLot(l.key), onkeydown: e => { if (e.key === 'Enter') pickLot(l.key); } },
-                el('td', { title: l.loanDt }, short(l.loanDt)), el('td', { title: `${l.name} ${l.code}` }, el('span', { class: 'namecell strong' }, el('span', { class: 'nm' }, el('span', { class: 'name' }, l.name), el('span', { class: 'code' }, l.code)), badges(l.nxt))),
+                el('td', { title: l.loanDt }, short(l.loanDt)), el('td', { title: `${l.name} ${l.code}` }, el('span', { class: 'namecell strong' }, el('span', { class: 'nm' }, el('span', { class: 'name' }, l.name), el('span', { class: 'code' }, l.code, acctTag(l))), badges(l.nxt))),
                 el('td', { class: 'r' }, fmt(l.qty)), el('td', { class: 'r' + (l.able < l.qty ? ' warn' : '') }, fmt(l.able) + (l.able < l.qty ? ` (미체결 ${fmt(l.qty - l.able)})` : '')),
                 el('td', { class: 'r' }, fmt(l.sellPrice)), el('td', { class: 'r' }, fmt(l.price)),
                 el('td', { class: 'r ' + (l.pl > 0 ? 'gain' : l.pl < 0 ? 'loss' : '') }, `${l.pl > 0 ? '+' : ''}${fmt(l.pl)} (${l.rate > 0 ? '+' : ''}${l.rate.toFixed(2)}%)`),
@@ -101,7 +125,7 @@
     window.__ssLastText = w => lastText(w); // 화면 시험용(판정 · 결과 문구 확인)
     function renderWatches() {
         const body = $('watchTable').tBodies[0]; body.textContent = '';
-        const ws = state.watches;
+        const ws = shown(state.watches);
         $('watchSummary').textContent = `감시중 ${ws.filter(w => w.status === '감시중').length}건 · 처리 중 ${ws.filter(w => ACTIVE.includes(w.status)).length}건 · 체결 ${ws.filter(w => w.status === '체결완료').length}건`;
         const toggles = ws.filter(w => ['감시중', '중지'].includes(w.status));
         const all = $('watchAll'); all.disabled = !toggles.length || state.halted;
@@ -120,7 +144,7 @@
             buttons.append(el('button', { type: 'button', class: 'btn small link', onclick: e => { e.stopPropagation(); showLog(w.id); } }, '기록'));
             body.append(el('tr', { class: 'pick' + (w.id === selectedWatch ? ' sel' : ''), onclick: () => pickWatch(w.id) },
                 el('td', {}, box), el('td', {}, el('span', { class: 'st ' + statusClass(w.status) }, w.status)),
-                el('td', { title: `${w.name} ${w.code}` }, el('span', { class: 'namecell' }, el('span', { class: 'nm' }, el('span', { class: 'name' }, w.name), el('span', { class: 'code' }, w.code)), badges(w.nxt))),
+                el('td', { title: `${w.name} ${w.code}` }, el('span', { class: 'namecell' }, el('span', { class: 'nm' }, el('span', { class: 'name' }, w.name), el('span', { class: 'code' }, w.code, acctTag(w))), badges(w.nxt))),
                 el('td', { title: w.loanDt }, short(w.loanDt)), el('td', { class: 'r' }, w.qtyMode === 'pct' ? w.qtyValue + '%' : w.qtyValue + '주'),
                 el('td', { class: 'r' }, fmt(w.trigger)), el('td', { class: 'wrap', title: methodText(w) }, methodText(w)), el('td', { title: '~' + w.until }, '~' + short(w.until)),
                 el('td', { class: 'wrap ' + (['실패', '확인 필요', '부분체결'].includes(w.status) ? 'loss' : 'muted') }, lastText(w)), el('td', {}, buttons)));
@@ -128,20 +152,27 @@
     }
 
     // ---- 설정란 ----
-    function currentLot() { const w = state?.watches.find(x => x.id === selectedWatch); return state?.lots.find(l => l.key === (w ? w.lotKey : selectedLot)) || (w ? { key: w.lotKey, code: w.code, name: w.name, loanDt: w.loanDt, maturity: w.maturity, nxt: w.nxt, able: 0 } : null); }
+    function currentLot() { const w = state?.watches.find(x => x.id === selectedWatch); return state?.lots.find(l => l.key === (w ? w.lotKey : selectedLot)) || (w ? { key: w.lotKey, code: w.code, name: w.name, loanDt: w.loanDt, maturity: w.maturity, nxt: w.nxt, acct: w.acct, account: w.account, able: 0 } : null); }
     function fillLotInfo(lot) {
         const name = $('fName'); name.textContent = '';
         if (!lot) { name.textContent = '-'; $('fLot').textContent = '-'; return; }
         name.append(lot.name, ' ', el('span', { class: 'code' }, lot.code), badges(lot.nxt), el('span', { class: 'dae' }, '대주'));
-        $('fLot').textContent = `${lot.loanDt} · 가능수량 ${fmt(lot.able)}주 · 만기 ${lot.maturity || '-'}`;
+        $('fLot').textContent = `${multi() && lot.account ? '계좌 ' + lot.account + ' · ' : ''}${lot.loanDt} · 가능수량 ${fmt(lot.able)}주 · 만기 ${lot.maturity || '-'}`;
     }
     function defaultUntil(lot) { const d = new Date(kstDay(serverNow()) + 'T00:00:00Z'); d.setUTCMonth(d.getUTCMonth() + 1); return adjust(d.toISOString().slice(0, 10), lot).value; }
+    // 유효기간 칸은 비워 두지 않고 처음부터 기본값(오늘 + 1개월)을 넣는다(2026-11-21). 사용자가 직접 고르기 전까지(untilAuto)는
+    // 서버 시각 · 휴장일 달력 · 고른 잔고의 만기일을 받은 뒤와 날짜가 바뀐 뒤에도 기본값을 다시 맞춘다. 칸을 지우면 기본값으로 돌아간다.
+    let untilAuto = true;
+    function autoUntil() {
+        if (!untilAuto || selectedWatch || document.activeElement === $('until')) return;
+        const v = defaultUntil(currentLot()); if ($('until').value !== v) $('until').value = v;
+    }
     function pickLot(key) {
         selectedLot = key; selectedWatch = '';
         const lot = currentLot();
         fillLotInfo(lot);
         $('trigger').value = ''; $('trigger').placeholder = lot ? fmt(lot.price) : '';
-        $('until').value = defaultUntil(lot); $('calNote').hidden = true;
+        $('until').value = defaultUntil(lot); untilAuto = true; $('calNote').hidden = true;
         $('formMode').textContent = '새 조건';
         renderAll(); updateForm();
         $('trigger').focus();
@@ -217,7 +248,7 @@
         act(async () => { const w = await api('POST', '/watches', { lotKey: lot.key, ...v }); selectedWatch = w.id; if (w.untilNote) say(w.untilNote); });
     });
     $('editBtn').addEventListener('click', () => act(async () => { const w = await api('PUT', `/watches/${selectedWatch}`, formValue()); if (w.untilNote) say(w.untilNote); }));
-    $('watchAll').addEventListener('change', () => act(() => api('POST', '/watch-all', { enabled: $('watchAll').checked })));
+    $('watchAll').addEventListener('change', () => act(() => api('POST', '/watch-all', { enabled: $('watchAll').checked, acct: acctFilter || undefined })));
     $('refreshBtn').addEventListener('click', () => act(() => api('POST', '/refresh')));
     $('resumeBtn').addEventListener('click', () => { if (confirm('영웅문에서 주문을 확인했나요? 다시 쓰면 감시를 켤 수 있습니다(꺼진 건은 직접 켜야 합니다).')) act(() => api('POST', '/resume')); });
 
@@ -232,7 +263,10 @@
         return { value: s, note: notes.join(' · ') };
     }
     let noteTimer;
-    function setUntil(s) { const a = adjust(s, currentLot()); $('until').value = a.value; $('calNote').textContent = a.note; $('calNote').hidden = !a.note; clearTimeout(noteTimer); if (a.note) noteTimer = setTimeout(() => { $('calNote').hidden = true; }, 6000); }
+    function setUntil(s) {
+        if (!String(s || '').trim()) { untilAuto = !selectedWatch; $('until').value = defaultUntil(currentLot()); $('calNote').hidden = true; return; }
+        untilAuto = false;
+        const a = adjust(String(s).trim(), currentLot()); $('until').value = a.value; $('calNote').textContent = a.note; $('calNote').hidden = !a.note; clearTimeout(noteTimer); if (a.note) noteTimer = setTimeout(() => { $('calNote').hidden = true; }, 6000); }
     function renderCal() {
         const y = calView.getUTCFullYear(), m = calView.getUTCMonth(), first = new Date(Date.UTC(y, m, 1)).getUTCDay(), days = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
         const today = kstDay(serverNow()), maturity = currentLot()?.maturity || '9999-12-31';
@@ -260,6 +294,7 @@
             const r = await fetch(`/api/trading-session/calendar?from=${from}&to=${to}`, { credentials: 'same-origin', headers: auth() });
             if (r.ok) calendar = (await r.json()).days || {};
         } catch {}
+        autoUntil();
     }
 
     // ---- 기록 창 ----
@@ -290,6 +325,7 @@
              ['실시간 체결(0B) · 5초 조회(실시간이 끊기면 1초)', '발동 판정용 현재가 확인. 0B는 그 종목에서 누가 사고팔든 체결이 날 때마다 오고, 5초 조회는 실시간을 놓쳤을 때의 보조', '감시중일 때'],
              ['내 주문체결(00) · 3초 조회', '주문 뒤 접수 · 체결 확인. 00은 내 주문이 접수 · 체결 · 정정 · 취소될 때만 오고 바로 반영, 3초 조회는 보조. 덜 체결됐으면 3초마다 미체결 정정(최대 3회)을 결정', '주문을 낸 뒤'],
              ['30초 기록', '확인용 기록 파일 남기기(감시 건의 마지막 판정 · 실시간 수신 건수). 판정 · 주문과는 무관. 파일은 당일 것만 두고 지난 날짜는 지웁니다', '감시 건이 있을 때만']]],
+        ['계좌 (2026-11-21)', ['키움 계좌마다 앱키를 따로 둡니다(기본 앱키 계좌 · 끝자리 28 계좌). 두 계좌의 대주 잔고 · 감시 건을 한 화면에 함께 보여 주고, 계좌가 둘 이상이면 종목 코드 옆에 계좌번호 뒤 4자리(예: 0328)를 붙입니다', '잔고 조회 · 대주상환 주문 · 정정 · 취소 · 미체결 확인은 그 잔고 행(감시 건)의 계좌 앱키로 합니다. 다른 계좌로 주문이 나가지 않습니다', '실시간도 계좌마다 그 계좌 앱키의 웹소켓으로 받습니다(웹소켓은 앱키당 하나). 기본 계좌는 VI 모니터와 공용 연결, 끝자리 28 계좌는 자기 연결로 감시 종목 체결(0B)과 그 계좌의 주문체결(00)을 받아 바로 판정 · 확인합니다. 위쪽 "실시간 연결"은 두 계좌가 모두 붙어 있을 때 켜집니다', '잔고 칸의 계좌 고르기는 보기만 바꿉니다. 전체 감시 체크는 지금 보고 있는 계좌(전체 계좌면 모두)에 적용됩니다', '안전장치로 감시가 멈추면 그 계좌만 멈춥니다']],
         ['감시 단위', ['잔고에서 고른 한 행(종목 + 대출일)만 감시합니다', '"다른 대출일 묶음도 함께 상환"(기본 꺼짐)을 켜면 같은 종목의 모든 대출일을 대출일별로, 만기가 가까운 것부터 상환합니다']],
         ['발동 조건', ['현재가 ≥ 감시가 하나입니다', '09:00~15:20: KRX · NXT 체결 중 어느 쪽이든(주문은 SOR, NXT 비대상은 KRX) · 08:00~08:50 · 15:30~20:00: NXT 체결 · 15:20~15:30: KRX 예상체결가', '오늘 체결이 없는 값으로는 판정하지 않습니다. 등록할 때 이미 조건을 만족하면 확인을 받습니다']],
         ['주문 거래소 (시간대별 자동)', ['08:00~08:50 NXT(NXT 종목만) · 08:50~09:00 보류 · 09:00~15:20 SOR(NXT 비대상은 KRX) · 15:20~15:30 KRX 단일가 · 15:30~20:00 NXT(NXT 종목만)', 'SOR: 키움이 KRX · NXT 중 유리한 곳으로 보냅니다. 2026-11-20 실계좌로 대주상환 접수 · 취소 · 체결을 확인했습니다(SOR 정정은 아직 실제로 해 보지 않음)', '정규장 마감 뒤 남은 수량은 NXT 종목이면 NXT로 다시 냅니다', '수능일 같은 특수 시간표는 아직 반영하지 않습니다']],
@@ -349,6 +385,7 @@
         if (selectedWatch && !s.watches.some(w => w.id === selectedWatch)) selectedWatch = '';
         renderAll(); updateForm();
         if (selectedLot) fillLotInfo(currentLot());
+        autoUntil();
         followScale();
     }
     // 독립창 앱: 메인 화면의 확대 · 축소 배율을 따라간다(VI 창과 같음). 메인 화면이 바꾼 배율을 5초마다 확인한다
@@ -400,5 +437,5 @@
         new ResizeObserver(autoFit).observe(wrap); autoFit();
     }
     resizable($('lotsTable'), 'short-stoploss-cols-lots'); resizable($('watchTable'), 'short-stoploss-cols-watch');
-    loadCalendar(); loop();
+    autoUntil(); loadCalendar(); loop();
 })();

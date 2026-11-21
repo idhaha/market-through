@@ -25,5 +25,7 @@ test('both restoration paths normalize retired settings and Rank APIs remain', (
  assert.ok(!source.includes('updateAdrFromSource'));
  const server=fs.readFileSync('server.js','utf8');
  assert.ok(!server.includes("app.get('/api/adr',"));
- for (const path of ['today','history','candles']) assert.ok(server.includes("app.get('/api/adr/"+path+"',"));
+ // 단독 ADR 카드 삭제(2026-11-21): jusikbot 전달 경로(today · history)는 없고, 다른 카드가 쓰는 지수 캔들만 남는다.
+ for (const path of ['today','history']) assert.ok(!server.includes("app.get('/api/adr/"+path+"',"));
+ assert.ok(server.includes("app.get('/api/adr/candles',"));
 });

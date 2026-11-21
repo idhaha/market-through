@@ -80,3 +80,7 @@ test('설정 창에서 입력한 수능일은 calendar.json openDelays에 저장
  assert.equal((await data.amounts('kospi','minute',['20271119'],true)).values.get(timestamp('20271119','100000')),10000000);
  reloaded.removeExamDay('2027-11-19');assert.equal(D.openDelay('2027-11-19'),0);assert.throws(()=>reloaded.removeExamDay('2026-11-19'),/등록된 수능일이 아닙니다/);
 });
+test('화면용 openDelayMap은 표의 수능일과 달력으로 찾은 새해 첫 거래일을 늦춘 분으로 준다',()=>{
+ const open=calendar({'2027-01-01':false,'2027-01-04':true,'2027-01-05':true,'2026-11-19':true});
+ assert.deepEqual(D.openDelayMap(['2027-01-01','2027-01-04','2027-01-05'],open),{'2026-11-19':60,'2027-01-04':60});
+});

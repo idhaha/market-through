@@ -108,3 +108,32 @@ test('shared hover normalizes timestamps, preserves modes, clears peers and neve
  assert.equal(api.matchesHover('20261023091300',received[0][1],'minute'),false);
  api.synchronizeHover('source',true);assert.deepEqual(received.slice(-2),[['minute',null],['day',null]]);
 });
+test('09:00 open lines sit 60 minutes after each 08:00 separator, skip closed days and stay inside the viewport',()=>{
+ const api=context.window.RankChartAxis;
+ const origin=Date.parse('2026-10-26T08:30:00+09:00');
+ const domain={days:['2026-10-26','2026-10-27','2026-10-28'],span:2*1440+60,openDate:day=>day!=='2026-10-27',position:value=>(Date.parse(value.replace(' ','T')+':00+09:00')-origin)/60000};
+ const open=api.openPositions(0,2940,domain),day=api.dayBoundaryPositions(0,2940,domain);
+ assert.deepEqual(Array.from(open,p=>p.date),['2026-10-26','2026-10-28']); // 휴장일 27일 없음, 26일 08:00은 화면 밖이라 경계선만 빠짐
+ assert.deepEqual(Array.from(day,p=>p.date),['2026-10-28']);
+ assert.ok(Math.abs(open[0].x-30)<1e-9);assert.ok(Math.abs(open[1].x-day[0].x-60)<1e-9);
+});
+test('drawDayBoundaries draws the 08:00 separator solid and the 09:00 open dashed',()=>{
+ const window={queueMicrotask:()=>{}};vm.runInNewContext(fs.readFileSync('public/rank-chart-axis.js','utf8'),{window,queueMicrotask:()=>{}});
+ const api=window.RankChartAxis;
+ api.sharedRange('concentration',['2026-10-26 08:00','2026-10-26 15:30','2026-10-27 08:00','2026-10-27 10:00'],v=>v,'minute',0,null,()=>{});
+ const lines=[];let dash=[];
+ const ctx={save(){},restore(){},beginPath(){},stroke(){},lineTo(){},setLineDash(d){dash=Array.from(d);},moveTo(x){lines.push({x,dash});}};
+ api.drawDayBoundaries(ctx,0,1000,0,100);
+ const solid=lines.filter(l=>!l.dash.length).length,dashed=lines.filter(l=>l.dash.length).map(l=>l.x);
+ // 당일 보기(10/27 08:00~10:00): 08:00 실선은 왼쪽 끝, 09:00 점선은 가운데.
+ assert.equal(solid,1);assert.deepEqual(dashed,[500]);
+});
+test('개장이 늦은 날(openDelays)은 정규장 시작 점선을 그만큼 늦춰 긋는다(수능일 10:00)',()=>{
+ const window={TradingRefresh:{state:{days:{},openDelays:{'2026-10-27':60}}}};vm.runInNewContext(fs.readFileSync('public/rank-chart-axis.js','utf8'),{window,queueMicrotask:()=>{}});
+ const api=window.RankChartAxis;
+ api.sharedRange('concentration',['2026-10-27 08:00','2026-10-27 12:00'],v=>v,'minute',0,null,()=>{});
+ const domain=api.minuteDomain(),open=api.openPositions(0,240,domain);
+ assert.deepEqual(Array.from(open,p=>[p.date,p.x]),[['2026-10-27',120]]); // 08:00~12:00 중 10:00
+ window.TradingRefresh.state.openDelays={};
+ assert.deepEqual(Array.from(api.openPositions(0,240,domain),p=>p.x),[60]); // 평일은 09:00
+});

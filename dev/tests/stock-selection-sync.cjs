@@ -19,7 +19,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=requ
    return route.fulfill({json:{success:true,points:[{...p,foreign:100,individual:-100,institution:0}],candles:[p],warnings:[],has_more:false,date:'2026-10-30'}});
   });
   await page.goto('http://sync.test/');await page.addStyleTag({content:fs.readFileSync('public/style.css','utf8')+'#loginOverlay{display:none!important}#tabContents,#tab_rank{display:block!important}'});
-  for(const f of ['rank-chart-axis.js','concentration-chart.js','rank-adr-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js'])await page.addScriptTag({path:'public/'+f});
+  for(const f of ['rank-chart-axis.js','concentration-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js'])await page.addScriptTag({path:'public/'+f});
   await page.evaluate(()=>document.dispatchEvent(new Event('DOMContentLoaded')));
   await page.waitForFunction(()=>getRankCombinedSupplyState().config.stocks.length===2);
   await page.evaluate(()=>{window.selectionEvents=0;for(const name of ['rank-stock-supply-selection','rank-concentration-selection'])document.addEventListener(name,()=>window.selectionEvents++);});

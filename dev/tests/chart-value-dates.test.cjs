@@ -28,18 +28,17 @@ const { chromium } = require('playwright');
         await page.evaluate(() => { Date.now = () => Date.parse('2026-10-21T22:00:00+09:00'); });
         await page.addScriptTag({ content: fs.readFileSync('public/rank-chart-axis.js', 'utf8') });
         await page.addScriptTag({ content: fs.readFileSync('public/concentration-chart.js', 'utf8') });
-        await page.addScriptTag({ content: fs.readFileSync('public/rank-adr-chart.js', 'utf8') });
         for (const script of ['rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js']) await page.addScriptTag({ content: fs.readFileSync(`public/${script}`, 'utf8') });
         await page.evaluate(() => {
             document.dispatchEvent(new Event('DOMContentLoaded'));
             window.selectRankChartStock({ code: '005930', name: '삼성전자', market: 'K' });
         });
-        await page.waitForFunction(() => document.querySelector('#combinedConcentrationCurrentRate').textContent === '12.0%'
-            && document.querySelector('#rankAdrChartPanel output').textContent === '95.0%');
+        // 단독 ADR 카드는 2026-11-21에 지웠다: 날짜 표시는 쏠림율 카드만 본다.
+        await page.waitForFunction(() => document.querySelector('#combinedConcentrationCurrentRate').textContent === '12.0%');
         await page.waitForFunction(() => [...document.querySelectorAll('.chart-value-date')].every(el => el.textContent === '2026-10-21'));
         assert.equal(await page.locator('.concentration-value-date').evaluate(el => el.closest('.concentration-timeframe-row')), null, 'Concentration date stays outside the clipping scroll container');
         const measurements = await page.evaluate(() => {
-            return ['#combinedConcentrationChartPanel', '#rankAdrChartPanel'].map(selector => {
+            return ['#combinedConcentrationChartPanel'].map(selector => {
                 const panel = document.querySelector(selector), date = panel.querySelector('.chart-value-date');
                 const output = panel.querySelector('.chart-value-with-date output');
                 const canvas = panel.querySelector(selector === '#combinedConcentrationChartPanel' ? '#combinedConcentrationCanvas' : '.rank-adr-area canvas');
@@ -64,7 +63,7 @@ const { chromium } = require('playwright');
         }));
         console.log(JSON.stringify({ layout }));
         const reference = layout.find(item => item.id === 'combinedConcentrationChartPanel');
-        assert.equal(layout.length, 8);
+        assert.equal(layout.length, 7);
         for (const item of layout) {
             assert.equal(item.height, reference.height, `${item.id}: same canvas height`);
             assert.ok(Math.abs(item.top - reference.top) <= 1, `${item.id}: same graph start (${item.top} vs ${reference.top})`);

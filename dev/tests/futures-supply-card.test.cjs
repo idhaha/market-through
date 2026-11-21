@@ -23,7 +23,7 @@ if(url.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:
 if(url.pathname.startsWith('/api/'))return route.fulfill({json:{success:true,points:[],markets:{kospi:[p],kosdaq:[p]},dates:[],series:{highs:{points:[]},lows:{points:[]},vix:{points:[]},vkospi:{points:[]},'fear-greed':{points:[]},'high-yield-spread':{points:[]}},warnings:[],has_more:false}});
 return route.fulfill({contentType:'text/html',body:html});});
 await page.goto('http://market-page.test/');await page.addStyleTag({content:fs.readFileSync('public/style.css','utf8')+'#loginOverlay{display:none!important}#tabContents,#tab_rank{display:block!important}'});
-for(const file of ['rank-chart-cache.js','rank-chart-axis.js','rank-supply-guide.js','concentration-chart.js','rank-adr-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js','rank-connection-status.js'])await page.addScriptTag({path:'public/'+file});
+for(const file of ['rank-chart-cache.js','rank-chart-axis.js','rank-supply-guide.js','concentration-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js','rank-connection-status.js'])await page.addScriptTag({path:'public/'+file});
 await page.evaluate(()=>{window.__texts=[];const fill=CanvasRenderingContext2D.prototype.fillText;CanvasRenderingContext2D.prototype.fillText=function(text,...rest){window.__texts.push(String(text));return fill.call(this,text,...rest);};document.dispatchEvent(new Event('DOMContentLoaded'));});
 await page.waitForFunction(()=>window.getRankFuturesSupplyState?.().points[0]?.foreign===54320);
 const card=page.locator('#rankFuturesSupplyChartPanel');
@@ -89,7 +89,7 @@ const box=id=>page.evaluate(id=>{const r=document.getElementById(id).getBounding
 const supply=await box('rankCombinedSupplyChartPanel'),fut=await box('rankFuturesSupplyChartPanel'),turn=await box('rankCombinedTurnoverChartPanel'),vol=await box('rankVolatilityChartPanel');
 assert.deepEqual([supply.col,fut.col,turn.col,vol.col],['2','2','2','2']);assert.deepEqual([supply.row,fut.row,turn.row,vol.row],['1','2','3','4']);
 assert.ok(fut.top>=supply.bottom&&turn.top>=fut.bottom&&vol.top>=turn.bottom,JSON.stringify({supply,fut,turn,vol}));
-assert.equal(await page.locator('.rank-chart-row>.panel').count(),10);
+assert.equal(await page.locator('.rank-chart-row>.panel').count(),9); // 단독 ADR 카드 삭제(2026-11-21)
 assert.deepEqual(errors,[]);await card.screenshot({path:require('node:path').join(require('node:os').tmpdir(),'futures-supply-card.png')});
 console.log('Futures supply card: contracts x multiplier (shares) with program as 미제공 (empty day lane), 연결선물 day and minute candles, guide, two-way selection, no-futures notice and column-2 layout passed');
 }finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

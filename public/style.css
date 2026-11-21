@@ -2909,11 +2909,10 @@ body.modal-open {
 .rank-turnover-panel { grid-column:3; grid-row:2; }
 .rank-breadth-panel .concentration-chart-header h2 { flex-shrink:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .rank-supply-panel { grid-column:2; grid-row:1; }
-#rankAdrChartPanel { grid-column:2; grid-row:2; }
 .rank-volatility-panel:not(.rank-breadth-panel):not(.rank-sentiment-panel) { grid-column:1; grid-row:3; }
 .rank-sentiment-panel { grid-column:2; grid-row:3; }
 @media (max-width:700px) {
-    #rankAdrChartPanel, .rank-breadth-panel, .rank-turnover-panel, .rank-sentiment-panel, .rank-supply-panel,
+    .rank-breadth-panel, .rank-turnover-panel, .rank-sentiment-panel, .rank-supply-panel,
     .rank-volatility-panel:not(.rank-breadth-panel):not(.rank-sentiment-panel) { grid-column:1; grid-row:auto; }
 }
 .volatility-help-trigger { cursor:help; }
@@ -2964,8 +2963,6 @@ body { height:100dvh; min-height:0; overflow:hidden; display:flex; flex-directio
 .us-links-container > header.header-single-line { display:flex; }
 .us-links-container > header > .us-info-row { flex-basis:100%; }
 #tab_memo .panel-header { position:sticky; top:0; z-index:5; background:var(--bg-secondary); }
-#rankAdrChartPanel { position:relative; }
-#rankAdrChartPanel .concentration-chart-header { padding-right:30px; }
 .adr-guide p { margin:10px 0; }
 .adr-formula { display:flex; align-items:center; justify-content:center; gap:10px; padding:14px 8px; margin-top:14px; background:#f1f5f9; border-radius:6px; white-space:nowrap; }
 .adr-fraction { display:inline-flex; flex-direction:column; text-align:center; }
@@ -3119,7 +3116,6 @@ body { height:100dvh; min-height:0; overflow:hidden; display:flex; flex-directio
 .rank-chart-row > #rankKiwoomMarketSupplyChartPanel { grid-column:1; grid-row:4; order:30; }
 .rank-chart-row > #rankMarketSupplyChartPanel { grid-column:2; grid-row:4; order:31; }
 .rank-chart-row > #rankLsMarketSupplyChartPanel { grid-column:3; grid-row:4; order:32; }
-.rank-chart-row > #rankAdrChartPanel { grid-column:2; grid-row:5; order:41; }
 .rank-chart-row > #rankBreadthChartPanel { grid-column:1; grid-row:5; order:40; }
 .rank-chart-row > #rankVolatilityChartPanel { grid-column:3; grid-row:5; order:42; }
 .rank-chart-row > #rankSentimentChartPanel { grid-column:1; grid-row:6; order:43; }
@@ -3166,13 +3162,13 @@ body { height:100dvh; min-height:0; overflow:hidden; display:flex; flex-directio
 /* Column 3 rows 1-2: two day+night market supply (test) cards titled 시장 수급, replacing the combined cards; row 3 is left empty. */
 .rank-chart-row > #rankTestMarketSupplyChartPanel { grid-column:3; grid-row:1; order:2; }
 .rank-chart-row > #rankBreadthChartPanel { grid-column:1; grid-row:2; order:3; }
-.rank-chart-row > #rankAdrChartPanel { grid-column:1; grid-row:3; order:6; }
 .rank-chart-row > #rankFuturesSupplyChartPanel { grid-column:2; grid-row:2; order:4; }
 /* 2026-11-07: 종목 선물 수급 takes column 2 row 2; 시장 거래대금 and 변동성 move one row down. */
 .rank-chart-row > #rankCombinedTurnoverChartPanel { grid-column:2; grid-row:3; order:7; }
 .rank-chart-row > #rankTestMarketSupplySecondaryChartPanel { grid-column:3; grid-row:2; order:5; }
+/* 2026-11-21: 단독 ADR 카드를 지워 비은 1열 3행에 심리(CNN) 카드를 올린다. 2열(종목 수급 · 종목 선물 수급 · 시장 거래대금 · 변동성)은 그대로. */
+.rank-chart-row > #rankSentimentChartPanel { grid-column:1; grid-row:3; order:6; }
 .rank-chart-row > #rankVolatilityChartPanel { grid-column:2; grid-row:4; order:10; }
-.rank-chart-row > #rankSentimentChartPanel { grid-column:1; grid-row:4; order:9; }
 .market-test-session { font-size:12px; white-space:nowrap; }
 @media(max-width:700px) {
     .rank-chart-row > :is(#rankTestMarketSupplyChartPanel,#rankTestMarketSupplySecondaryChartPanel) { grid-column:1 / -1!important; grid-row:auto!important; }

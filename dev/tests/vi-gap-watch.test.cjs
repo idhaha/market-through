@@ -225,6 +225,9 @@ test('futures row 매수10호가 평균 in KRW: LS t8403 10 levels × 승수 (t8
         await m.onFuturesEvent({tr:'JX0',futcode:'A116B000',body:{futcode:'A116B000',upstep:'02',dnstep:'01',uplmtprice:'1200',dnlmtprice:'900'},receivedAt:clock});
         for(let i=0;i<600&&(m.snapshot().rows.find(x=>x.exchange==='FUT').active||m.snapshot().rows.find(x=>x.exchange==='FUT').releasePending);i++)await pause(20);
         fut=m.snapshot().rows.find(x=>x.exchange==='FUT');assert.equal(fut.atRelease.bidAverage,960*50);
-        await pause(1200);const n=asked.length;await pause(1500);assert.equal(asked.length,n,'no t8403 once no futures row is on (a call already queued may still finish)');
+        // A call already queued may still finish; on a loaded machine (parallel test run, 2026-11-21) it can land after 1.2 s.
+        // Wait until the count settles, then polling must stay stopped for another 1.5 s (a live poll would keep adding).
+        let n=asked.length;for(let i=0;i<6;i++){await pause(1500);if(asked.length===n)break;n=asked.length;}
+        await pause(1500);assert.equal(asked.length,n,'no t8403 once no futures row is on (a call already queued may still finish)');
     }finally{m.stop();fs.rmSync(directory,{recursive:true,force:true});}
 });

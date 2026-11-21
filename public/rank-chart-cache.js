@@ -164,7 +164,7 @@
         '/api/supply/chart':'refreshRankSupplyChart','/api/kis-supply/chart':'refreshRankKisSupplyChart','/api/ls-supply/chart':'refreshRankLsSupplyChart','/api/ls-stock-futures/chart':'refreshRankFuturesSupplyChart',
         '/api/market-supply/chart':'refreshRankMarketSupplyChart','/api/kiwoom-market-supply/chart':'refreshRankKiwoomMarketSupplyChart','/api/ls-market-supply/chart':'refreshRankLsMarketSupplyChart',
         '/api/adr/candles':'__allCharts','/api/chart-reference':'__allCharts',
-        '/api/adr/today':'refreshRankAdrChart','/api/adr/history':'refreshRankAdrChart','/api/risk/breadth':'refreshRankBreadthChart','/api/risk/sentiment':'refreshRankSentimentChart','/api/risk/volatility':'refreshRankVolatilityChart'
+        '/api/risk/breadth':'refreshRankBreadthChart','/api/risk/sentiment':'refreshRankSentimentChart','/api/risk/volatility':'refreshRankVolatilityChart'
     };
     const timers=new Map();document.addEventListener('rank-chart-cache-updated',event=>{
         const name=(window.rankIndependentClient || !window.refreshLsConcentrationChart) && event.detail.path==='/api/ls-concentration-chart'?'refreshConcentrationChart':window.rankIndependentClient && event.detail.path==='/api/kis-supply/chart'?'refreshRankSupplyChart':refreshers[event.detail.path];

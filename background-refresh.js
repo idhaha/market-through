@@ -69,7 +69,6 @@ function buildJobs(settings={},now=Date.now()){
  add('신고 신저','/api/risk/breadth',{market:breadth.market==='kospi'?'kospi':'kosdaq',mode:breadth.mode==='day'?'day':breadth.mode==='minute'?'minute':mode});
  for(const market of ['kospi','kosdaq']){
   add('시장 가격','/api/chart-reference',{market,mode});
-  add('ADR',mode==='minute'?'/api/adr/today':'/api/adr/history',{market,...(mode==='day'?{range:'6m'}:{})});
  }
  add('변동성','/api/risk/volatility',{range:'all'},'external');
  add('심리','/api/risk/sentiment',{range:'all'},'external');

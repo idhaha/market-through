@@ -20,10 +20,9 @@ const assert = require('node:assert/strict');
     context.indexHttp = context.axios; // server.js routes index charts through a shared index client
     // server.js creates the shared index store near the turnover service; the route slice only uses it.
     context.indexCandleStore = require('../../index-candle-store').createIndexCandleStore({ http: context.axios, getToken: () => context.getAccessToken('key','secret'), pause: async () => {}, log: () => {} });
-    vm.runInNewContext(source.slice(source.indexOf("app.get('/api/adr/history'"),source.indexOf("app.get('/api/adr/today'")),context);
+    vm.runInNewContext(source.slice(source.indexOf("app.get('/api/adr/candles'"),source.indexOf("// 단독 ADR 카드는")),context); // /api/adr/history는 단독 ADR 카드와 함께 지웠다(2026-11-21).
     const res = { status(n) {this.code=n;return this;}, set(){return this;}, json(data){this.data=data;return this;} };
-    await routes.get('/api/adr/history')({query:{market:'kosdaq',range:'5y'}},res);
-    assert.equal(calls[0].options.params.range,'5y'); assert.equal(calls[0].options.params.market,'kosdaq');
+    assert.equal(routes.has('/api/adr/history'),false);
     await routes.get('/api/adr/candles')({query:{market:'kosdaq',mode:'day',from:'20260102',to:'20260302'}},res);
     assert.equal(res.data.points.length,2); assert.equal(res.data.points[0].open,3000); assert.equal(res.data.points[0].low,2950);
     assert.equal(res.data.points[1].market_turnover,10e12); assert.equal(res.data.points[0].market_turnover,null);
@@ -31,7 +30,7 @@ const assert = require('node:assert/strict');
     const row = {dt:'20260302',cur_prc:'302000',open_pric:'300000',high_pric:'305000',low_pric:'295000',trde_qty:'100',trde_prica:'10,000,000'};
     const concentration = calculatePoints(new Map([[row.dt,row]]),new Map([[row.dt,row]]),'day',1);
     assert.equal(res.data.points[1].market_turnover,concentration[0].market_turnover,'Both charts use identical reported market turnover');
-    assert.equal(calls[1].body.inds_cd,'101'); assert.equal(calls[2].options.headers['next-key'],'second'); assert.equal(res.data.partial,false);
+    assert.equal(calls[0].body.inds_cd,'101'); assert.equal(calls[1].options.headers['next-key'],'second'); assert.equal(res.data.partial,false);
     // Regression: reaching the oldest requested day must not stop paging before that day's morning.
     await routes.get('/api/adr/candles')({query:{market:'kosdaq',mode:'minute',from:'20261029',to:'20261030'}},res);
     const minuteTimes = res.data.points.map(p => new Date(p.t + 9*3600000).toISOString().slice(0,16));
@@ -39,5 +38,5 @@ const assert = require('node:assert/strict');
     assert.equal(res.data.partial,false);
     await routes.get('/api/adr/candles')({query:{market:'bad',mode:'day',from:'20260102',to:'20260302'}},res);
     assert.equal(res.code,400);
-    console.log('PASS ADR history forwarding, candle pagination, price scale and query validation');
+    console.log('PASS candle pagination, price scale and query validation');
 })().catch(e => {console.error(e);process.exitCode=1;});

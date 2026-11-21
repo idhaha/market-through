@@ -440,6 +440,12 @@
             if(first && (!flowCoverageFirst || first<flowCoverageFirst))flowCoverageFirst=first;
         }
         window.RankChartAxis.todayButton(panel,'[data-mode="minute"]',()=>mode,()=>{todayOnly=true;draw();void load();});
+        // 과거 분봉 구간 보기(2026-11-21, RankChartAxis.showWindow): 분봉 커서는 날짜(YYYYMMDD)라 그 날짜부터 다시 받는다.
+        function seek(day) {
+            if (!selected) return;
+            ++revision; controller?.abort(); loading = false; flowLoading = false;
+            clearView(); todayOnly = false; cursor = day; hasMore = true;
+        }
         async function load(append = false, restoreRange = null) {
             if(window.rankManagedChartRefresh && !window.rankChartRefreshStarted)return;
             const nextCursor = append && hasMore ? cursor : null;
@@ -544,7 +550,7 @@
             panel.querySelectorAll('[data-mode]').forEach(b => { b.classList.toggle('active', b === button); b.setAttribute('aria-pressed', String(b === button)); });
             load();
         }));
-        window.RankChartAxis.registerHistoryLoader(axisId,()=>load(true),()=>loading,()=>({identity:selected,coverageFirst:flowCoverageFirst,hasMore:hasMore,cursor,ensureRange:async target=>{candleEnsureActive=true;try{await loadCandles({first:target});if(candleRangeError)throw new Error(candleRangeError);}finally{candleEnsureActive=false;}}}));
+        window.RankChartAxis.registerHistoryLoader(axisId,()=>load(true),()=>loading,()=>({identity:selected,coverageFirst:flowCoverageFirst,hasMore:hasMore,cursor,seek:mode==='minute'?seek:undefined,leaveWindow:mode==='minute'?()=>{if(selected){++revision;controller?.abort();loading=false;flowLoading=false;clearView();void load();}}:undefined,ensureRange:async target=>{candleEnsureActive=true;try{await loadCandles({first:target});if(candleRangeError)throw new Error(candleRangeError);}finally{candleEnsureActive=false;}}}));
         more.addEventListener('click', () => window.RankChartAxis.requestHistory(mode));
         panel.querySelectorAll('[data-series]').forEach(button => button.addEventListener('click', () => {
             const field = button.dataset.series;

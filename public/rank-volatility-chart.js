@@ -459,7 +459,11 @@ tip.hidden=false;}
                 }
             }
         }
-        if(breadth)window.RankChartAxis.registerHistoryLoader('breadth',()=>refreshBreadth(true),()=>breadthLoading || !!breadthPricePending,()=>({identity:breadthMarket,coverageFirst:[...breadthPages.values()].flatMap(p=>p.dates || []).sort()[0],error:breadthPriceError,hasMore:!!breadthCursor,cursor:breadthCursor,ensureRange:async target=>{candleEnsureActive=true;try{await loadCandles(target);if(breadthPriceError)throw new Error(breadthPriceError);}finally{candleEnsureActive=false;}}}));
+        // 과거 분봉 구간 보기(2026-11-21, RankChartAxis.showWindow): 분봉 커서가 날짜(YYYYMMDD, 그날 포함)가 되어 그 날짜부터 다시 받는다.
+        function clearBreadth(){breadthPages.clear();breadthCursor=null;candleController?.abort();candleRequest++;candleKey='';breadthPricePending='';breadthPriceError='';start=0;count=null;hover=null;tip.hidden=true;data=Object.fromEntries(ids.map(id=>[id,[]]));dates=[];candles=[];}
+        const seekBreadth=day=>{clearBreadth();todayOnly=false;breadthCursor=day;draw();};
+        const leaveBreadthWindow=()=>{clearBreadth();todayOnly=true;void refreshBreadth();};
+        if(breadth)window.RankChartAxis.registerHistoryLoader('breadth',()=>refreshBreadth(true),()=>breadthLoading || !!breadthPricePending,()=>({identity:breadthMarket,seek:breadthMode==='minute'?seekBreadth:undefined,leaveWindow:breadthMode==='minute'?leaveBreadthWindow:undefined,coverageFirst:[...breadthPages.values()].flatMap(p=>p.dates || []).sort()[0],error:breadthPriceError,hasMore:!!breadthCursor,cursor:breadthCursor,ensureRange:async target=>{candleEnsureActive=true;try{await loadCandles(target);if(breadthPriceError)throw new Error(breadthPriceError);}finally{candleEnsureActive=false;}}}));
         panel.querySelector('[data-breadth-more]')?.addEventListener('click', () => window.RankChartAxis.requestHistory(breadthMode));
         panel.querySelectorAll('[data-breadth-mode]').forEach(button => button.addEventListener('click', () => {
             if (breadthLoading) { pendingBreadthMode = button.dataset.breadthMode; return; }

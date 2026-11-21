@@ -6,7 +6,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=requ
  await page.route('http://market-guide.test/**',route=>{const u=new URL(route.request().url());if(u.pathname.startsWith('/api/'))return route.fulfill({json:{success:true,points:[],series:{},dates:[],markets:{kospi:[],kosdaq:[]},stocks:[],archive:[],candles:[],warnings:[]}});return route.fulfill({contentType:'text/html',body:html});});
  await page.goto('http://market-guide.test/');await page.addStyleTag({content:fs.readFileSync('public/style.css','utf8')+'#loginOverlay{display:none!important}#tabContents,#tab_rank{display:block!important}'});
  await page.evaluate(()=>{window.saveAppData=()=>{};});
- for(const f of ['rank-chart-cache.js','rank-chart-axis.js','rank-supply-guide.js','concentration-chart.js','rank-adr-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js','rank-connection-status.js'])await page.addScriptTag({path:'public/'+f});
+ for(const f of ['rank-chart-cache.js','rank-chart-axis.js','rank-supply-guide.js','concentration-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js','rank-connection-status.js'])await page.addScriptTag({path:'public/'+f});
  await page.evaluate(()=>document.dispatchEvent(new Event('DOMContentLoaded')));
  for(const id of ['rankTestMarketSupplyChartPanel','rankTestMarketSupplySecondaryChartPanel']){
   await page.waitForSelector('#'+id);

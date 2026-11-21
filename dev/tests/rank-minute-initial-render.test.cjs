@@ -11,7 +11,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=requ
  if(url.pathname==='/api/supply/watchlist')result={success:true,stocks:[{code:'000660',name:'SK하이닉스'}],archive:[{code:'000660',name:'SK하이닉스'}],revision:0,statuses:{}};
  if(['/api/supply/chart','/api/kis-supply/chart'].includes(url.pathname))result={success:true,points,candles:points,warnings:[],date:'2026-10-23',cursor:null};
  if(url.pathname==='/api/supply/candles')result={success:true,points,cursor:null};
- if(url.pathname==='/api/risk/breadth')result={dates:points.map(p=>p.date),series:{highs:{points:points.map((p,i)=>({date:p.date,value:10+i}))},lows:{points:points.map((p,i)=>({date:p.date,value:-10-i}))}}};
+ if(url.pathname==='/api/risk/breadth')result={dates:points.map(p=>p.date),series:{highs:{points:points.map((p,i)=>({date:p.date,value:10+i}))},lows:{points:points.map((p,i)=>({date:p.date,value:-10-i}))},adr:{points:points.map(p=>({date:p.date,value:p.adr}))}}};
  await route.fulfill({json:result});});
  await page.goto('http://minute.test/');await page.addStyleTag({path:'public/style.css'});
  await page.evaluate(()=>{window.rankManagedChartRefresh=true;Date.now=()=>Date.parse('2026-10-23T09:22:00+09:00');document.querySelector('#tabContents').style.display='block';document.querySelector('#loginOverlay').style.display='none';
@@ -19,10 +19,10 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=requ
  proto.clearRect=function(...args){this.canvas.dataMarks=0;return clear.apply(this,args)};
  proto.lineTo=function(...args){if(colors.includes(this.strokeStyle))this.canvas.dataMarks=(this.canvas.dataMarks||0)+1;return line.apply(this,args)};
  proto.fillRect=function(...args){if(colors.includes(this.fillStyle))this.canvas.dataMarks=(this.canvas.dataMarks||0)+1;return rect.apply(this,args)};});
- for(const script of ['rank-chart-axis','rank-adr-chart','rank-volatility-chart','rank-supply-chart'])await page.addScriptTag({path:`public/${script}.js`});
+ for(const script of ['rank-chart-axis','rank-volatility-chart','rank-supply-chart'])await page.addScriptTag({path:`public/${script}.js`});
  assert.equal(requests.length,0,'Managed initial mount must not start independent chart requests');
  await page.evaluate(()=>window.RankChartAxis.refreshCharts());
- for(const [id,selector] of [['rankCombinedSupplyChartPanel','[data-mode="minute"]'],['rankBreadthChartPanel','[data-breadth-mode="minute"]'],['rankAdrChartPanel','[data-adr-mode="minute"]']]){
+ for(const [id,selector] of [['rankCombinedSupplyChartPanel','[data-mode="minute"]'],['rankBreadthChartPanel','[data-breadth-mode="minute"]']]){
  await page.locator(`#${id} ${selector}`).click();
  try { await page.waitForFunction(id=>document.querySelector(`#${id} .rank-adr-area canvas`).dataMarks>0,id,{timeout:8000}); } catch(error) { console.log(id,await page.locator('#'+id+' .rank-adr-status').textContent(),errors);throw error; }
  }

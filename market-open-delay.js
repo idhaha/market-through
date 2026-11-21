@@ -47,4 +47,11 @@ function examReminder(today, rows = table()) {
     if (md < '10-20' || Object.entries(rows).some(([d, v]) => d.startsWith(year + '-') && v?.reason === '수능')) return null;
     return `${year}년 수능일이 등록되지 않았습니다. 한국거래소의 수능일 개장 시각 공지를 확인해 설정(⚙)의 올해 수능일 칸에 입력하세요. 빠뜨리면 그날 쏠림율 누적 · LS 거래대금 분봉이 그려지지 않습니다.`;
 }
-module.exports = { OPEN_DELAY, table, openDelay, closeDelay, firstTradingDay, shiftClock, examReminder };
+// 화면용(2026-11-21): 개장이 늦은 날 → 늦춘 분. 달력에 있는 날(새해 첫 거래일 판정)과 표의 날을 함께 본다.
+// 분봉 차트가 정규장 시작 점선을 09:00 대신 그 시각(수능일 10:00)에 긋는 데 쓴다.
+function openDelayMap(days = [], openDate) {
+    const result = {};
+    for (const day of new Set([...days, ...Object.keys(table())])) { const minutes = openDelay(day, openDate); if (minutes) result[day] = minutes; }
+    return result;
+}
+module.exports = { OPEN_DELAY, table, openDelay, closeDelay, firstTradingDay, shiftClock, examReminder, openDelayMap };

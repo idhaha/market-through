@@ -419,6 +419,9 @@ test('Rank table selection, timeframe controls, history, zoom, retries and stale
         await tick();
         const concurrentBefore = requests.length;
         await page.evaluate(() => { void Promise.all([window.refreshConcentrationChart(), window.refreshConcentrationChart(), window.refreshConcentrationChart()]); });
+        // The kept refresh starts only after the first one ends; under a loaded machine idle() can see the gap between them
+        // (2026-11-21: 59 of 60 requests in a parallel run). Wait for the second refresh's requests, then check that no third came.
+        for (const until = Date.now() + 10000; requests.length < concurrentBefore + 2 * perRefresh && Date.now() < until;) { await idle(); await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 50))); }
         await idle(); await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 300))); await idle();
         assert.equal(requests.length, concurrentBefore + 2 * perRefresh, 'overlapping refreshes are coalesced into one more');
         fail = true;

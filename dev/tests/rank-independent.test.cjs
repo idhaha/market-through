@@ -87,7 +87,7 @@ const { promisify } = require('node:util');
         assert.equal(await child.locator('#independentStatusText').textContent(), '완료');
         assert.notEqual(await child.locator('#independentLastUpdate').textContent(), '2026/10/12 11:54:53');
         await main.evaluate(() => loadTransactionRank());
-        assert.equal(await main.evaluate(() => window.marketRefreshes), 2, 'Main refresh must keep ADR and turnover chart refreshes');
+        assert.equal(await main.evaluate(() => window.marketRefreshes), 1, 'Main refresh must keep the turnover chart refresh (단독 ADR 카드는 2026-11-21에 지웠다)');
         await main.waitForFunction(() => !getRankChartState().busy);
     }
     app.use(express.static('public'));

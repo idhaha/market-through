@@ -31,6 +31,9 @@ const assert = require('node:assert/strict');
                     && this.testPath?.length === 2 && this.testPath[0][0] === this.testPath[1][0]) {
                     window.verticalDateLines.push(this.canvas.id);
                 }
+                // 09:00 정규장 시작 점선(2026-11-20)
+                if (['concentrationCanvas', 'concentrationCandleCanvas'].includes(this.canvas.id) && this.strokeStyle === '#94a3b8' && this.getLineDash().join(',') === '3,3'
+                    && this.testPath?.length === 2 && this.testPath[0][0] === this.testPath[1][0]) (window.openLines ||= []).push(this.canvas.id);
                 return stroke.apply(this, args);
             };
             window.fetch = async (_url, options = {}) => new Response(JSON.stringify({
@@ -54,13 +57,15 @@ const assert = require('node:assert/strict');
         await page.evaluate(() => applyConcentrationDisplaySettings({ ...getConcentrationDisplaySettings(), mode: 'minute' }));
         await page.waitForFunction(() => getRankChartState().mode === 'minute' && !getRankChartState().busy);
         await page.evaluate(() => {
-            window.verticalDateLines = [];
+            window.verticalDateLines = [];window.openLines = [];
             window.RankChartAxis.showHistory();
             applyRankChartState(getRankChartState());
         });
         await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
         assert.deepEqual(await page.evaluate(() => [...new Set(window.verticalDateLines)].sort()),
             ['concentrationCandleCanvas', 'concentrationCanvas'], 'Minute charts retain date boundaries');
+        assert.deepEqual(await page.evaluate(() => [...new Set(window.openLines || [])].sort()),
+            ['concentrationCandleCanvas', 'concentrationCanvas'], '분봉 본체와 캔들 차트에 09:00 점선이 있다');
         const positions = () => page.evaluate(() => {
             const canvas = document.getElementById('concentrationCanvas').getBoundingClientRect();
             const value = document.getElementById('concentrationCurrentRate').getBoundingClientRect();

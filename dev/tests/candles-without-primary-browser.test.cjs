@@ -31,7 +31,7 @@ const fs=require('fs'),assert=require('node:assert/strict'),{chromium}=require('
   else if(u.pathname.startsWith('/api/'))data={success:true,series:[],points:[],has_more:false};
   if(data)return route.fulfill({json:data});return route.fulfill({contentType:'text/html',body:html});});
  await page.goto('http://empty.test/');await page.addStyleTag({content:fs.readFileSync('public/style.css','utf8')+'#loginOverlay{display:none!important}#tabContents,#tab_rank{display:block!important}'});
- for(const f of ['rank-chart-axis.js','rank-supply-guide.js','concentration-chart.js','rank-adr-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js'])await page.addScriptTag({path:'public/'+f});
+ for(const f of ['rank-chart-axis.js','rank-supply-guide.js','concentration-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js'])await page.addScriptTag({path:'public/'+f});
  await page.evaluate(()=>document.dispatchEvent(new Event('DOMContentLoaded')));
  await page.locator('#rankTestMarketSupplyChartPanel .rank-market-choice input[value="kospi"]').check();
  await page.evaluate(()=>window.selectRankChartStock({code:'005930',name:'삼성전자'}));
@@ -39,7 +39,7 @@ const fs=require('fs'),assert=require('node:assert/strict'),{chromium}=require('
  for(const id of ['rankTestMarketSupplyChartPanel','rankFuturesSupplyChartPanel'])await page.locator('#'+id+' .concentration-candle-toggle').click().catch(()=>{});
  await page.locator('#rankFuturesSupplyChartPanel [data-mode="minute"]').click();
  await page.waitForTimeout(1500);
- const ids=['combinedConcentrationChartPanel','rankTestMarketSupplyChartPanel','rankAdrChartPanel','rankCombinedSupplyChartPanel','rankFuturesSupplyChartPanel','rankCombinedTurnoverChartPanel','rankBreadthChartPanel'];
+ const ids=['combinedConcentrationChartPanel','rankTestMarketSupplyChartPanel','rankCombinedSupplyChartPanel','rankFuturesSupplyChartPanel','rankCombinedTurnoverChartPanel','rankBreadthChartPanel'];
  const drawn=await page.evaluate(ids=>Object.fromEntries(ids.map(id=>[id,(window.candleRects[id]||[]).length])),ids);
  console.log(JSON.stringify(drawn));
  for(const id of ids)assert.ok(drawn[id]>=30,`${id}: candles must draw without its main data (${drawn[id]} rects)`);

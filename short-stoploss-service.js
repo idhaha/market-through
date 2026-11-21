@@ -57,7 +57,7 @@ function adjustUntil(value, { today, maturity, openDate }) {
 function addMonth(day) { const d = new Date(day + 'T00:00:00Z'); const m = d.getUTCMonth(); d.setUTCMonth(m + 1); if (d.getUTCMonth() !== (m + 1) % 12) d.setUTCDate(0); return d.toISOString().slice(0, 10); }
 
 // realtime: VI 모니터의 공용 키움 웹소켓(vi-monitor-service sharedRealtime). 있으면 0B(체결)로 바로 판정하고 조회는 5초 간격 보조로 줄인다.
-function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}, enabled = () => false, openDate = () => null, now = Date.now, log = () => {}, wait = ms => new Promise(r => setTimeout(r, ms)), tickMs = 1000, balanceMs = 30000, realtime = null, testCodes = () => [], realtimeLogMs = 30000 }) {
+function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}, enabled = () => false, openDate = () => null, now = Date.now, log = () => {}, wait = ms => new Promise(r => setTimeout(r, ms)), tickMs = 1000, balanceMs = 30000, realtime = null, testCodes = () => [], realtimeLogMs = 30000, rtGroups = { quote: '3', account: '4' } }) {
     fs.mkdirSync(directory, { recursive: true });
     const file = path.join(directory, 'state.json');
     let state = { watches: [], halted: false, haltedReason: '', haltedAt: 0 };
@@ -72,11 +72,13 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
         for (const w of state.watches) if (w.status === '감시중' && w.enabled) { items.push(w.code); if (w.nxt) items.push(w.code + '_NX'); }
         for (const c of testCodes()) if (/^[0-9A-Z]{6}$/.test(c)) items.push(c, c + '_NX');
         const key = [...new Set(items)].sort().join(',');
-        if (key !== rtItems) { rtItems = key; try { realtime.set('3', key ? key.split(',') : [], ['0B']); } catch (e) { log('대주 StopLoss 실시간 등록 오류: ' + e.message); } }
-        if (!rtAccount && enabled()) { rtAccount = true; try { realtime.set('4', [''], ['00', '04']); } catch (e) { log('대주 StopLoss 실시간 등록 오류: ' + e.message); } }
+        if (key !== rtItems) { rtItems = key; try { realtime.set(rtGroups.quote, key ? key.split(',') : [], ['0B']); } catch (e) { log('대주 StopLoss 실시간 등록 오류: ' + e.message); } }
+        if (!rtAccount && rtGroups.account && enabled()) { rtAccount = true; try { realtime.set(rtGroups.account, [''], ['00', '04']); } catch (e) { log('대주 StopLoss 실시간 등록 오류: ' + e.message); } }
     }
     function onReal(d) {
         const type = String(d.type || ''), item = String(d.item || ''), v = d.values || {};
+        // 공용 웹소켓은 VI 모니터 앱키(첫 계좌)의 연결이라 00 · 04는 그 계좌 것만 온다. 다른 계좌(rtGroups.account 없음)는 무시하고 조회로 확인한다.
+        if ((type === '00' || type === '04') && !rtGroups.account) return;
         (rtCounts[type] = rtCounts[type] || {})[item || '-'] = (rtCounts[type][item || '-'] || 0) + 1;
         if (type === '00') {
             rtOrders.push({ at: now(), 주문번호: v['9203'], 종목: v['9001'], 상태: v['913'], 구분: v['905'], 신용: v['922'], 대출일: v['923'], 수량: v['900'], 가격: v['901'], 미체결: v['902'], 체결가: v['910'], 체결량: v['911'], 거래소: v['2135'] }); if (rtOrders.length > 200) rtOrders.shift();
@@ -158,7 +160,8 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
     async function loadAccount() {
         if (account) return account;
         const r = await call('acnt', 'ka00001', {});
-        if (r.acctNo) account = String(r.acctNo).slice(0, 4) + '-' + String(r.acctNo).slice(4, 8);
+        // 계좌 표시: 앞 8자리 + 상품코드 2자리(3699-5772-11). 같은 계좌번호의 다른 상품(…-28)을 구분한다(2026-11-21)
+        if (r.acctNo) { const a = String(r.acctNo).trim(); account = a.slice(0, 4) + '-' + a.slice(4, 8) + (a.length > 8 ? '-' + a.slice(8) : ''); }
         return account;
     }
     async function nxtEligible(code) {
@@ -457,7 +460,8 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
         app.post(base + '/resume', guard, (req, res) => send(res, () => resume()));
         app.post(base + '/adjust-until', guard, (req, res) => send(res, () => adjustUntil(String(req.body?.until || ''), { today: today(), maturity: String(req.body?.maturity || ''), openDate })));
     }
-    return { start, stop, step, mount, snapshot, create, update, setEnabled, setAll, remove, history, resume, loadLots, _state: () => state };
+    async function ensure() { await loadAccount().catch(() => {}); if (!lotsAt) await loadLots(); }
+    return { start, stop, step, mount, ensure, snapshot, create, update, setEnabled, setAll, remove, history, resume, loadLots, _state: () => state };
 }
 
 module.exports = { createShortStopLoss, tick, addTicks, floorTick, chaseCap, repriceFor, segmentAt, adjustUntil, addMonth };

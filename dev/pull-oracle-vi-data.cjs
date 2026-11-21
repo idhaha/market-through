@@ -33,11 +33,13 @@ function classify(rel) {
     if ((m = /^vi-monitor\/amount-check-(\d{4}-\d{2}-\d{2})\.jsonl$/.exec(rel))) return { day: m[1], local: path.join(root, 'data', rel), remove: true };
     if ((m = /^vi-monitor\/days\/(\d{4}-\d{2}-\d{2})\.json$/.exec(rel))) return { day: m[1], local: path.join(root, 'data', rel), remove: false };
     if ((m = /^short-stoploss\/realtime-(\d{4}-\d{2}-\d{2})\.jsonl$/.exec(rel))) return { day: m[1], local: path.join(root, 'outputs', 'oracle-short-stoploss', path.basename(rel)), remove: false };
+    // 끝자리 28 계좌(2026-11-21)의 30초 기록은 outputs/oracle-short-stoploss-28/로
+    if ((m = /^short-stoploss-28\/realtime-(\d{4}-\d{2}-\d{2})\.jsonl$/.exec(rel))) return { day: m[1], local: path.join(root, 'outputs', 'oracle-short-stoploss-28', path.basename(rel)), remove: false };
     return null;
 }
 try {
     // 1) 오라클 목록: 상대경로 · 크기 · sha256
-    const listing = ssh(`cd ${REMOTE} && { find vi-monitor/charts vi-monitor/gap-records vi-monitor/futures-events vi-monitor/days -type f 2>/dev/null; ls vi-monitor/amount-check-*.jsonl short-stoploss/realtime-*.jsonl 2>/dev/null; } | while read f; do echo "$(sha256sum "$f" | cut -d' ' -f1) $(stat -c %s "$f") $f"; done; true`);
+    const listing = ssh(`cd ${REMOTE} && { find vi-monitor/charts vi-monitor/gap-records vi-monitor/futures-events vi-monitor/days -type f 2>/dev/null; ls vi-monitor/amount-check-*.jsonl short-stoploss/realtime-*.jsonl short-stoploss-28/realtime-*.jsonl 2>/dev/null; } | while read f; do echo "$(sha256sum "$f" | cut -d' ' -f1) $(stat -c %s "$f") $f"; done; true`);
     const remote = listing.split('\n').map(l => l.trim().split(' ')).filter(p => p.length === 3 && /^[a-f0-9]{64}$/.test(p[0]))
         .map(([hash, size, rel]) => ({ hash, size: Number(size), rel, ...classify(rel) })).filter(f => f.local);
     const want = remote.filter(f => {
@@ -68,7 +70,7 @@ try {
         ssh(`cd ${REMOTE} && while IFS= read -r f; do case "$f" in vi-monitor/charts/*|vi-monitor/gap-records/*|vi-monitor/futures-events/*|vi-monitor/amount-check-*) rm -f -- "$f";; esac; done; find vi-monitor/charts -mindepth 1 -type d -empty -delete 2>/dev/null; true`, removable.map(f => f.rel).join('\n') + '\n');
         removed = removable.length;
     }
-    const usage = ssh(`cd ${REMOTE} && du -sh vi-monitor short-stoploss 2>/dev/null | tr '\\n' ' '; df -h / | tail -1 | awk '{print "여유 " $4}'`).trim();
+    const usage = ssh(`cd ${REMOTE} && du -sh vi-monitor short-stoploss short-stoploss-28 2>/dev/null | tr '\\n' ' '; df -h / | tail -1 | awk '{print "여유 " $4}'`).trim();
     log(`완료 · 새로 받음 ${copied} · 오라클에서 지움 ${removed}${dry ? `(지울 대상 ${removable.length})` : ''} · 오라클 ${usage}`);
 } catch (error) {
     log('실패 · ' + String(error.message || error).split('\n')[0].slice(0, 200));

@@ -47,7 +47,7 @@
     // The day+night market supply (test) cards show connected day+night futures: their minute axis spans the night session.
     const testCards=['testMarketSupply','testMarketSupplySecondary'];
     const overnightChart=()=>testCards.map(id=>minuteCharts.get(id)).filter(c=>c?.mode==='minute' && c.first).sort((a,b)=>a.first.localeCompare(b.first))[0];
-    const viewportPanels={testMarketSupply:'rankTestMarketSupplyChartPanel',testMarketSupplySecondary:'rankTestMarketSupplySecondaryChartPanel',combinedMarketSupplySecondary:'rankCombinedMarketSupplySecondaryChartPanel',combinedMarketSupply:'rankCombinedMarketSupplyChartPanel',combinedSupply:'rankCombinedSupplyChartPanel',futuresSupply:'rankFuturesSupplyChartPanel',combinedTurnover:'rankCombinedTurnoverChartPanel',combinedConcentration:'combinedConcentrationChartPanel',lsConcentration:'lsConcentrationChartPanel',kisTurnover:'rankKisTurnoverChartPanel',lsTurnover:'rankLsTurnoverChartPanel',kiwoomMarketSupply:'rankKiwoomMarketSupplyChartPanel',kisSupply:'rankKisSupplyChartPanel',lsSupply:'rankLsSupplyChartPanel',lsMarketSupply:'rankLsMarketSupplyChartPanel',concentration:'concentrationChartPanel',kisConcentration:'kisConcentrationChartPanel',supply:'rankSupplyChartPanel',marketSupply:'rankMarketSupplyChartPanel',breadth:'rankBreadthChartPanel',turnover:'rankTurnoverChartPanel',adr:'rankAdrChartPanel',volatility:'rankVolatilityChartPanel',sentiment:'rankSentimentChartPanel'};
+    const viewportPanels={testMarketSupply:'rankTestMarketSupplyChartPanel',testMarketSupplySecondary:'rankTestMarketSupplySecondaryChartPanel',combinedMarketSupplySecondary:'rankCombinedMarketSupplySecondaryChartPanel',combinedMarketSupply:'rankCombinedMarketSupplyChartPanel',combinedSupply:'rankCombinedSupplyChartPanel',futuresSupply:'rankFuturesSupplyChartPanel',combinedTurnover:'rankCombinedTurnoverChartPanel',combinedConcentration:'combinedConcentrationChartPanel',lsConcentration:'lsConcentrationChartPanel',kisTurnover:'rankKisTurnoverChartPanel',lsTurnover:'rankLsTurnoverChartPanel',kiwoomMarketSupply:'rankKiwoomMarketSupplyChartPanel',kisSupply:'rankKisSupplyChartPanel',lsSupply:'rankLsSupplyChartPanel',lsMarketSupply:'rankLsMarketSupplyChartPanel',concentration:'concentrationChartPanel',kisConcentration:'kisConcentrationChartPanel',supply:'rankSupplyChartPanel',marketSupply:'rankMarketSupplyChartPanel',breadth:'rankBreadthChartPanel',turnover:'rankTurnoverChartPanel',volatility:'rankVolatilityChartPanel',sentiment:'rankSentimentChartPanel'};
     const hoverCharts=new Map();
     function hoverKey(value,mode) { return value==null?null:dateParts(value).slice(0,mode==='minute'?16:10); }
     function registerHover(id,getMode,getValue,apply) { hoverCharts.set(id,{getMode,getValue,apply}); }
@@ -75,6 +75,8 @@
         return {start,count};
     }
     let historyMode=false, sharedCutoff='',redrawQueued=false,historyBusy=false,historyEpoch=0;
+    let windowEnd='',windowFirstDay=''; // 과거 분봉 구간 보기(아래 showWindow)
+    const seekedWindows=new Map();
     let dailyHistory=false,dailyCutoff='',rangeRevision=0;
     const historyLoaders=new Map();
     let historyButtonsQueued=false;
@@ -145,9 +147,9 @@
         const day=sessionDay(),night=previousOpenDay(day)+' 18:00',first=(chart.dates || []).find(date=>date>=night);
         return first && first<day+' 08:00' ? first : day+' 08:00';
     }
-    function showToday(){resetHistoryWork();viewports.delete('minute');historyMode=false;todayPinned=true;sharedCutoff=sessionDay()+' 08:00';rangeRevision++;for(const chart of minuteCharts.values())chart.applied=undefined;notifyCharts();}
-    const refreshOrder=['concentration','combinedConcentration','supply','marketSupply','breadth','turnover','adr','sentiment','volatility','kisConcentration','lsMarketSupply','kisSupply','lsSupply','kiwoomMarketSupply','lsConcentration','kisTurnover','lsTurnover','combinedTurnover','combinedSupply','futuresSupply','combinedMarketSupply','combinedMarketSupplySecondary','testMarketSupply','testMarketSupplySecondary'];
-    const refreshMethods={testMarketSupply:'refreshRankTestMarketSupplyChart',testMarketSupplySecondary:'refreshRankTestMarketSupplySecondaryChart',combinedMarketSupplySecondary:'refreshRankCombinedMarketSupplySecondaryChart',combinedMarketSupply:'refreshRankCombinedMarketSupplyChart',combinedSupply:'refreshRankCombinedSupplyChart',futuresSupply:'refreshRankFuturesSupplyChart',combinedTurnover:'refreshRankCombinedTurnoverChart',combinedConcentration:'refreshConcentrationChart',lsConcentration:'refreshLsConcentrationChart',kisTurnover:'refreshRankKisTurnoverChart',lsTurnover:'refreshRankLsTurnoverChart',kiwoomMarketSupply:'refreshRankKiwoomMarketSupplyChart',kisSupply:'refreshRankKisSupplyChart',lsSupply:'refreshRankLsSupplyChart',lsMarketSupply:'refreshRankLsMarketSupplyChart',concentration:'refreshConcentrationChart',kisConcentration:'refreshKisConcentrationChart',supply:'refreshRankSupplyChart',marketSupply:'refreshRankMarketSupplyChart',breadth:'refreshRankBreadthChart',turnover:'refreshRankTurnoverChart',adr:'refreshRankAdrChart',sentiment:'refreshRankSentimentChart',volatility:'refreshRankVolatilityChart'};
+    function showToday(){resetHistoryWork();windowEnd='';windowFirstDay='';leaveWindow();viewports.delete('minute');historyMode=false;todayPinned=true;sharedCutoff=sessionDay()+' 08:00';rangeRevision++;for(const chart of minuteCharts.values())chart.applied=undefined;notifyCharts();}
+    const refreshOrder=['concentration','combinedConcentration','supply','marketSupply','breadth','turnover','sentiment','volatility','kisConcentration','lsMarketSupply','kisSupply','lsSupply','kiwoomMarketSupply','lsConcentration','kisTurnover','lsTurnover','combinedTurnover','combinedSupply','futuresSupply','combinedMarketSupply','combinedMarketSupplySecondary','testMarketSupply','testMarketSupplySecondary'];
+    const refreshMethods={testMarketSupply:'refreshRankTestMarketSupplyChart',testMarketSupplySecondary:'refreshRankTestMarketSupplySecondaryChart',combinedMarketSupplySecondary:'refreshRankCombinedMarketSupplySecondaryChart',combinedMarketSupply:'refreshRankCombinedMarketSupplyChart',combinedSupply:'refreshRankCombinedSupplyChart',futuresSupply:'refreshRankFuturesSupplyChart',combinedTurnover:'refreshRankCombinedTurnoverChart',combinedConcentration:'refreshConcentrationChart',lsConcentration:'refreshLsConcentrationChart',kisTurnover:'refreshRankKisTurnoverChart',lsTurnover:'refreshRankLsTurnoverChart',kiwoomMarketSupply:'refreshRankKiwoomMarketSupplyChart',kisSupply:'refreshRankKisSupplyChart',lsSupply:'refreshRankLsSupplyChart',lsMarketSupply:'refreshRankLsMarketSupplyChart',concentration:'refreshConcentrationChart',kisConcentration:'refreshKisConcentrationChart',supply:'refreshRankSupplyChart',marketSupply:'refreshRankMarketSupplyChart',breadth:'refreshRankBreadthChart',turnover:'refreshRankTurnoverChart',sentiment:'refreshRankSentimentChart',volatility:'refreshRankVolatilityChart'};
     const closeReads=new Map();
     function refreshCharts({skipConcentration=false,mode=null,automatic=false}={}) {
         window.rankChartRefreshStarted=true;
@@ -162,6 +164,8 @@
             }
             if(id==='concentration' && minuteCharts.has('combinedConcentration') || id==='combinedConcentration' && !minuteCharts.has('combinedConcentration'))continue;
             if(mode && minuteCharts.get(id)?.mode!==mode)continue;
+            // 과거 분봉 구간을 보는 동안에는 분봉 카드를 자동 갱신하지 않는다(구간 밖의 오늘 자료라 화면이 바뀌지 않고 조회만 늘어난다).
+            if(automatic && windowEnd && minuteCharts.get(id)?.mode==='minute')continue;
             if(skipConcentration && id==='concentration')continue;
             try {const result=window[refreshMethods[id]]?.();pending.push(Promise.resolve(result));}
             catch(error){pending.push(Promise.reject(error));}
@@ -185,6 +189,12 @@
         const ready=async()=>{const until=Date.now()+20000;while(loader.busy() && current() && Date.now()<until)await new Promise(r=>setTimeout(r,50));if(!current())throw new Error('cancelled');if(loader.busy())throw new Error('조회 대기 시간 초과');};
         try{
             await ready();let pages=0;
+            // 날짜 커서 카드: 오늘부터 하루씩 거슬러 오지 않고 구간 끝 날짜로 바로 간다.
+            // seek는 그 카드의 분봉을 비우고 구간 끝 날짜부터 다시 받게 한다(구간마다 한 번).
+            const seekDay=windowEnd && windowEnd.slice(0,10),state0=loader.state();
+            if(seekDay && state0.seek && seekedWindows.get(id)!==windowEnd){
+                seekedWindows.set(id,windowEnd);await state0.seek(seekDay.replaceAll('-',''));await ready();
+            }
             while(current()){
                 const state=loader.state(),first=state.coverageFirst ?? minuteCharts.get(id)?.first;
                 if(state.error)throw new Error(state.error);
@@ -380,7 +390,7 @@
         const overnight=overnightChart();
         const today=overnight?.mode==='minute' && overnight.first ? overnightStart(overnight) : sessionDay()+' 08:00';
         const candidate=historyMode && starts.length?starts.sort().at(-1):today;
-        const cutoff=historyBusy ? (sharedCutoff || today) : historyMode && sharedCutoff && candidate>sharedCutoff ? sharedCutoff : candidate;
+        const cutoff=historyBusy || windowEnd && sharedCutoff ? (sharedCutoff || today) : historyMode && sharedCutoff && candidate>sharedCutoff ? sharedCutoff : candidate;
         if(atLatest){
             const domain=sliderDomain(mode),viewport=viewports.get(mode);
             if(domain && domain.last>viewport.last){
@@ -450,6 +460,33 @@
         for(const chart of minuteCharts.values())chart.applied=undefined;
         notifyCharts();
     });
+    // 과거 분봉 구간 보기(2026-11-21): 일봉을 과거로 확대한 채 분봉을 고르면 일봉 화면 가운데 봉을 기준으로
+    // 좌우 10거래일(일봉 화면 안쪽만)의 분봉을 보여 준다. windowEnd가 있는 동안 분봉 공통 축의 오른쪽 끝을 그 날로 묶고,
+    // 카드는 기존 과거 조회(restoreHistoryRange)로 구간을 채운다. 날짜 커서 카드는 seek로 구간 끝 날짜부터 받는다.
+    // 더 불러오기는 구간 왼쪽(더 과거)으로 잇고, 당일은 구간 보기를 끝낸다.
+    const WINDOW_SIDE=10;
+    // 구간 보기를 끝낼 때 seek로 비운 카드는 오늘 분봉을 다시 받는다(다른 카드의 당일 버튼으로 끝나도).
+    function leaveWindow(){
+        for(const id of seekedWindows.keys())try{historyLoaders.get(id)?.state?.().leaveWindow?.();}catch{}
+        seekedWindows.clear();
+    }
+    const clampWindow=last=>windowEnd && last>windowEnd?windowEnd:last;
+    function dailyWindow(){
+        const viewport=viewports.get('day'),daily=dailyDomain(),all=sliderDomain('day');
+        if(!viewport || !daily || !all || daily.last>=all.last)return null; // 확대하지 않았거나 최신 봉이 보이면 평소대로 당일
+        const days=daily.days,center=Math.floor((days.length-1)/2);
+        return {center:days[center],from:days[Math.max(0,center-WINDOW_SIDE)],to:days[Math.min(days.length-1,center+WINDOW_SIDE)]};
+    }
+    function showWindow(from,to){
+        resetHistoryWork();viewports.delete('minute');historyMode=true;todayPinned=false;
+        windowFirstDay=from;windowEnd=to+' 20:00';
+        const overnight=overnightChart();
+        sharedCutoff=overnight?.mode==='minute'?previousOpenDay(from)+' 18:00':from+' 08:00';
+        rangeRevision++;visibleHistoryAttempts.clear();
+        for(const chart of minuteCharts.values())chart.applied=undefined;
+        notifyCharts();scheduleVisibleHistory();
+    }
+    const minuteWindow=()=>windowEnd?{from:windowFirstDay,to:windowEnd.slice(0,10)}:null;
     function minuteDomain(values=[],getDate=v=>v,useViewport=true) {
         const active=[...minuteCharts.values()].filter(c=>c.mode==='minute');
         const dates=values.map(v=>dateParts(getDate(v)).slice(0,16));
@@ -459,7 +496,7 @@
         const overnight=overnightChart();
         if(overnight?.mode==='minute' && overnight.first){
             const first=viewport?.first || sharedCutoff || overnightStart(overnight);
-            const last=viewport?.last || active.map(c=>c.last).filter(v=>v && v>=first).sort().at(-1) || first;
+            const last=clampWindow(viewport?.last || active.map(c=>c.last).filter(v=>v && v>=first).sort().at(-1) || first);
             const calendar=window.TradingRefresh?.state?.days || {};
             const open=date=>![0,6].includes(new Date(date+'T00:00:00Z').getUTCDay()) && calendar[date]!==false;
             const epoch=s=>Date.parse(s.replace(' ','T')+':00+09:00')/60000;
@@ -498,7 +535,7 @@
         const first=viewport?.first || (active.length ? (sharedCutoff || today+' 08:00') : localFirst+' 08:00');
         const latest=active.length ? active.map(c=>c.last).filter(v=>v && v>=first).sort().at(-1) : dates.at(-1);
         const now=new Date(Date.now()+9*3600000).toISOString().slice(0,16).replace('T',' ');
-        const last=viewport?.last || latest || (now>=first?now:first);
+        const last=clampWindow(viewport?.last || latest || (now>=first?now:first));
         const days=[...new Set([first.slice(0,10),last.slice(0,10),...(active.length?active.flatMap(c=>c.days || []):dates.map(d=>d.slice(0,10)))])].filter(d=>d>=first.slice(0,10)&&d<=last.slice(0,10)).sort();
         const clock=date=>Number(date.slice(11,13))*60+Number(date.slice(14,16));
         const offset=clock(first)-480;
@@ -624,14 +661,21 @@
         const domain=minuteDomain(values,getDate);
         return (domain.days.length>1?domain.first.slice(5,10).replace('-','/')+' ':'')+domain.first.slice(11,16);
     }
-    function dayBoundaryPositions(left,right,domain=minuteDomain()) {
+    function dayBoundaryPositions(left,right,domain=minuteDomain(),clock='08:00') {
         return domain.days.filter(day=>domain.openDate?domain.openDate(day):!domain.continuous || ![0,6].includes(new Date(day+'T00:00:00Z').getUTCDay()))
-            .map(day=>({date:day,x:left+domain.position(day+' 08:00')/domain.span*(right-left)}))
+            .map(day=>({date:day,x:left+domain.position(day+' '+(typeof clock==='function'?clock(day):clock))/domain.span*(right-left)}))
             .filter(p=>Number.isFinite(p.x)&&p.x>=left&&p.x<=right);
     }
+    // Regular-session open (2026-11-20): dashed, same colour as the 08:00 day separator. 09:00, or later on a
+    // delayed-open day (수능일 10:00, 새해 첫 거래일) from the server's openDelays in /api/trading-session.
+    const openClock=day=>{const minutes=540+(Number(window.TradingRefresh?.state?.openDelays?.[day]) || 0);return String(Math.floor(minutes/60)).padStart(2,'0')+':'+String(minutes%60).padStart(2,'0');};
+    const openPositions=(left,right,domain=minuteDomain())=>dayBoundaryPositions(left,right,domain,openClock);
     function drawDayBoundaries(context,left,right,top,bottom) {
+        const domain=minuteDomain();
         context.save();context.strokeStyle='#94a3b8';context.lineWidth=1;context.setLineDash([]);
-        for(const {x} of dayBoundaryPositions(left,right)){context.beginPath();context.moveTo(x,top);context.lineTo(x,bottom);context.stroke();}
+        for(const {x} of dayBoundaryPositions(left,right,domain)){context.beginPath();context.moveTo(x,top);context.lineTo(x,bottom);context.stroke();}
+        context.setLineDash([3,3]);
+        for(const {x} of openPositions(left,right,domain)){context.beginPath();context.moveTo(x,top);context.lineTo(x,bottom);context.stroke();}
         context.restore();
     }
     const shortMarketName=text=>String(text).replace(/KOSPI/g,'KSP').replace(/KOSDAQ/g,'KDQ');
@@ -767,10 +811,11 @@
         const buttonMode=button=>button.dataset.chartMode || button.dataset.mode || button.dataset.adrMode || button.dataset.breadthMode || button.dataset.rankMode;
         let modeRevision=0,dispatchingMode=false;
         function synchronizeMode(mode) {
+            const window_=mode==='minute' && [...minuteCharts.values()].some(c=>c.mode==='day')?dailyWindow():null;
             resetHistoryWork();viewports.delete(mode);pendingHistoryTargets.delete(mode);
             const revision=++modeRevision;
             if(mode==='day' && [...minuteCharts.values()].some(c=>c.mode==='minute')){dailyHistory=false;dailyCutoff='';}
-            if(mode==='minute')showToday();
+            if(mode==='minute'){if(window_)showWindow(window_.from,window_.to);else showToday();}
             function apply() {
                 if(revision!==modeRevision)return;
                 let pending=false;dispatchingMode=true;
@@ -825,5 +870,5 @@
         }
         return result;
     }
-    window.RankChartAxis={dayBoundaryPositions,drawDayBoundaries,concentrationCumulative,loadingBar,intradayGap,restoreHistoryRange,marketChoice,validCandle,candleLabel,selectViewport,plotBounds,registerHover,synchronizeHover,matchesHover,updateSlider,scrollViewport,synchronizeViewport,refreshOrder,refreshCharts,registerHistoryLoader,requestHistory,showHistory,showToday,sessionDay,sharedRange,dailyDomain,minuteDomain,ticks,todayRange,limitToday,sessionRange,limitSessions,sessionX,eightTick,sessionStartLabel,candleLayout,todayButton};
+    window.RankChartAxis={dayBoundaryPositions,showWindow,minuteWindow,dailyWindow,openPositions,drawDayBoundaries,concentrationCumulative,loadingBar,intradayGap,restoreHistoryRange,marketChoice,validCandle,candleLabel,selectViewport,plotBounds,registerHover,synchronizeHover,matchesHover,updateSlider,scrollViewport,synchronizeViewport,refreshOrder,refreshCharts,registerHistoryLoader,requestHistory,showHistory,showToday,sessionDay,sharedRange,dailyDomain,minuteDomain,ticks,todayRange,limitToday,sessionRange,limitSessions,sessionX,eightTick,sessionStartLabel,candleLayout,todayButton};
 })();

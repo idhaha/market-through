@@ -29,7 +29,7 @@ const ROUTES = {
     '/api/kis-concentration-chart': ['kis-concentration'],
     '/api/risk/volatility': ['volatility'],
     '/api/risk/sentiment': ['volatility']
-    // /api/adr/today keeps only the latest day (no past pages); broker-only routes have no stored past.
+    // Broker-only routes have no stored past.
 };
 // Files in those folders that are not chart data.
 const IGNORED = /^(?:state|master|watchlist|market-day|validation|universe|jusikbot-backup|token)\.json$|^daily\.before|\.tmp$|\.bak$/;

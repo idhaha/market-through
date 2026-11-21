@@ -4,6 +4,7 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), os = require('node:os'), path = require('node:path');
 const express = require('express'), { chromium } = require('playwright');
 const { createShortStopLoss } = require('../../short-stoploss-service');
+const { createShortStopLossAccounts } = require('../../short-stoploss-accounts');
 
 (async () => {
     const k = { price: 7000, orders: [], book: new Map(), seq: 500 };
@@ -31,7 +32,8 @@ const { createShortStopLoss } = require('../../short-stoploss-service');
     const usedLaunch = new Set();
     app.post('/api/short-stoploss/window-exchange', (req, res) => { const l = req.headers['x-ss-launch']; if (usedLaunch.has(l)) return res.status(401).json({ error: '이미 쓴 연결입니다. 메인 화면에서 대주StopLoss 버튼을 다시 누르세요.' }); usedLaunch.add(l); res.json({ token: 'S' + l.slice(0, 8) }); });
     app.get('/api/trading-session/calendar', (req, res) => res.json({ days: { '2026-12-25': false } }));
-    svc.mount(app, { allowed: () => true });
+    // 서버와 같이 계좌 묶음으로 붙인다(계좌 하나, 2026-11-21)
+    createShortStopLossAccounts([{ id: 'main', svc }]).mount(app, { allowed: () => true });
     app.use(express.static(path.join(__dirname, '..', '..', 'public')));
     const server = app.listen(0); const port = server.address().port;
     const browser = await chromium.launch({ headless: true, channel: 'msedge' }); const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } });
@@ -40,12 +42,15 @@ const { createShortStopLoss } = require('../../short-stoploss-service');
         await page.goto(`http://127.0.0.1:${port}/short-stoploss.html`);
         await page.waitForSelector('#lotsTable tbody tr.pick');
         assert.equal(await page.locator('#lotsTable tbody tr.pick').count(), 2);
-        assert.equal(await page.textContent('#acct'), '3699-5772', '계좌 문구에 앱키 등록 없음');
+        assert.equal(await page.textContent('#acct'), '3699-5772-11', '계좌 문구에 앱키 등록 없음 · 상품코드까지');
+        assert.equal(await page.locator('.acct-tag').count(), 0, '계좌가 하나면 계좌 끝자리 표시 없음');
         assert.equal(await page.locator('#lotsTable tbody tr').nth(1).locator('.pill.none').count(), 1, '흥아해운 NXT 비대상 표시');
         assert.deepEqual(await page.$$eval('#ticks option', o => [o[0].textContent, o.at(-1).textContent]), ['+10틱', '+1틱']);
         assert.deepEqual(await page.$$eval('#qtyPct option', o => [o[0].textContent, o.at(-1).textContent]), ['100%', '10%']);
         assert.deepEqual(await page.$$eval('#chasePct option', o => [o[0].textContent, o.at(-1).textContent]), ['10%', '1%']);
         assert.equal(await page.inputValue('#ticks'), '10');
+        // 회귀(2026-11-21): 유효기간은 잔고 행을 고르기 전에도 비어 있지 않고 기본 1개월(서버 날짜 기준, 휴장일 → 직전 거래일)
+        await page.waitForFunction(() => document.querySelector('#until').value === '2026-12-18');
         // 왼쪽 두 칸(대주 잔고 · 감시 목록)의 합 = 오른쪽 청산 조건 설정 높이, 두 칸은 같은 높이, 표는 칸 안에서 세로 스크롤
         const g = await page.evaluate(() => { const [a, b] = [...document.querySelectorAll('.ss-left .card.half')].map(e => e.getBoundingClientRect()); const f = document.querySelector('.ss-form').getBoundingClientRect();
             return { a: a.height, b: b.height, top: a.top - f.top, bottom: b.bottom - f.bottom, scroll: getComputedStyle(document.querySelector('.card.half .tbl-wrap')).overflowY }; });
@@ -61,6 +66,11 @@ const { createShortStopLoss } = require('../../short-stoploss-service');
         await page.click('#cal .hd button[aria-label="다음 달"]').catch(() => {});
         await page.fill('#until', '2026-12-25'); await page.dispatchEvent('#until', 'change');
         assert.equal(await page.inputValue('#until'), '2026-12-24');
+        await page.fill('#until', ''); await page.dispatchEvent('#until', 'change');
+        assert.equal(await page.inputValue('#until'), '2026-12-18', '칸을 비우면 기본 1개월로 돌아감');
+        // 직접 고른 날짜는 2초마다 오는 상태 갱신에 덮어쓰이지 않는다
+        await page.fill('#until', '2026-12-24'); await page.dispatchEvent('#until', 'change'); await page.locator('#trigger').focus(); await page.waitForTimeout(2600);
+        assert.equal(await page.inputValue('#until'), '2026-12-24', '직접 고른 날짜 유지');
         await page.fill('#until', '2027-05-01'); await page.dispatchEvent('#until', 'change');
         assert.equal(await page.inputValue('#until'), '2027-02-22', '만기일 이후 → 만기일');
         page.on('dialog', d => d.dismiss());

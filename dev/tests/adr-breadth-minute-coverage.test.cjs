@@ -22,13 +22,13 @@ const fs=require('fs'),assert=require('node:assert/strict'),{chromium}=require('
  else if(u.pathname.startsWith('/api/'))data={success:true,series:[],points:[],has_more:false};
  if(data)return route.fulfill({json:data});return route.fulfill({contentType:'text/html',body:html});});
  await page.goto('http://minute.test/');await page.addStyleTag({content:fs.readFileSync('public/style.css','utf8')+'#loginOverlay{display:none!important}#tabContents,#tab_rank{display:block!important}'});
- for(const f of ['rank-chart-axis.js','concentration-chart.js','rank-adr-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js'])await page.addScriptTag({path:'public/'+f});
+ for(const f of ['rank-chart-axis.js','concentration-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js'])await page.addScriptTag({path:'public/'+f});
  await page.evaluate(()=>document.dispatchEvent(new Event('DOMContentLoaded')));
  // The market supply card opens on KOSPI200 futures; these checks start from spot KOSPI.
  await page.locator('#rankTestMarketSupplyChartPanel .rank-market-choice input[value="kospi"]').check();
  await page.evaluate(()=>window.selectRankChartStock({code:'005930',name:'삼성전자'}));await page.locator('#rankTestMarketSupplyChartPanel [data-mode="minute"]').click();
  await page.locator('#rankTestMarketSupplyChartPanel .concentration-candle-toggle').click();await page.waitForTimeout(500);
- const ids=['combinedConcentrationChartPanel','rankTestMarketSupplyChartPanel','rankAdrChartPanel','rankCombinedSupplyChartPanel','rankCombinedTurnoverChartPanel','rankBreadthChartPanel'];
+ const ids=['combinedConcentrationChartPanel','rankTestMarketSupplyChartPanel','rankCombinedSupplyChartPanel','rankCombinedTurnoverChartPanel','rankBreadthChartPanel'];
  const assertDrawn=async()=>{for(const id of ids)assert.ok(await page.evaluate(id=>window.candleRects[id]?.length>0 && window.candleRects[id].every(a=>a.every(Number.isFinite)),id),id);};
  if(!weekend)await assertDrawn();
  await page.evaluate(()=>window.RankChartAxis.requestHistory('minute'));
@@ -36,17 +36,15 @@ const fs=require('fs'),assert=require('node:assert/strict'),{chromium}=require('
  assert.ok(await page.evaluate(()=>window.getTestMarketSupplyCandleDiagnostics().visibleCandles>=99));
  const history=await page.evaluate(()=>window.getTestMarketSupplyCandleDiagnostics());
 
- for(const id of ['rankAdrChartPanel','rankBreadthChartPanel'])assert.ok(await page.evaluate(id=>window.candleRects[id]?.length>=99,id),id+' must cover 5 days despite empty indicators and latest-only reference');
- assert.ok(await page.evaluate(()=>window.getAdrCandleDiagnostics().visibleCandles>=99));
+ for(const id of ['rankBreadthChartPanel'])assert.ok(await page.evaluate(id=>window.candleRects[id]?.length>=99,id),id+' must cover 5 days despite empty indicators and latest-only reference');
  assert.equal(history.candleFirst,times[0]);
  assert.ok(requests.some(u=>u.includes('mode=minute&from=20261019&to=20261023')),'full common history must be requested even when market response contains only latest 5 candles');
- await page.locator('#rankAdrChartPanel input[value="kosdaq"]').check();
  await page.locator('#rankCombinedTurnoverChartPanel input[value="kosdaq"]').check();
  await page.locator('#rankBreadthChartPanel .rank-market-choice input[value="kosdaq"]').check();
  await page.locator('#rankTestMarketSupplyChartPanel .rank-market-choice input[value="kosdaq"]').check();
  await page.waitForTimeout(500);await assertDrawn();
- for(const id of ['rankAdrChartPanel','rankCombinedTurnoverChartPanel','rankBreadthChartPanel','rankTestMarketSupplyChartPanel'])assert.equal(await page.locator('#'+id+' .rank-candle-label').textContent(),'KOSDAQ',id);
- assert.ok(requests.some(u=>u.includes('/api/chart-reference?mode=minute&market=kosdaq')));
+ for(const id of ['rankCombinedTurnoverChartPanel','rankBreadthChartPanel','rankTestMarketSupplyChartPanel'])assert.equal(await page.locator('#'+id+' .rank-candle-label').textContent(),'KOSDAQ',id);
+ assert.ok(requests.some(u=>u.includes('/api/risk/breadth?market=kosdaq&mode=minute')),'ADR 분봉은 신고·신저 응답의 ADR(2026-11-21)');
  assert.ok(requests.some(u=>u.includes('/api/adr/candles?market=kosdaq&mode=minute')));
  assert.ok(requests.some(u=>u.includes('/api/kiwoom-market-supply/chart?code=kosdaq&mode=minute')));
  await page.locator('#rankTestMarketSupplyChartPanel .rank-market-choice input[value="futures"]').check();await page.waitForTimeout(200);await assertDrawn();

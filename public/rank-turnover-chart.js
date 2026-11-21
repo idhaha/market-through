@@ -7,12 +7,13 @@
         const panelId = `rank${suffix}ChartPanel`,axisId = broker ? `${broker}Turnover` : 'turnover';
         const api = name => name.replace('Turnover',suffix);
         const endpoint = broker ? `/api/${broker}-turnover/chart` : '/api/turnover/chart';
-        const adr = document.getElementById('rankAdrChartPanel');
-        if (!adr || document.getElementById(panelId)) return;
+        // 쏠림율 카드 줄에 붙인다(단독 ADR 카드는 2026-11-21에 지웠다).
+        const anchor = document.getElementById('combinedConcentrationChartPanel') || document.getElementById('concentrationChartPanel');
+        if (!anchor?.closest('.rank-chart-row') || document.getElementById(panelId)) return;
         const panel = document.createElement('section');
         panel.id = panelId; panel.className = 'panel rank-adr-panel rank-turnover-panel';
         panel.innerHTML = `<div class="concentration-chart-header"><h2>시장 거래대금${combined ? '' : '(' + (broker === 'kis' ? '한투' : broker === 'ls' ? 'LS' : '키움') + ')'}</h2><div class="rank-market-choice" role="radiogroup" aria-label="거래대금 시장 선택"><label title="KOSPI"><input type="radio" name="rank-${axisId}-market" value="kospi" checked aria-label="KOSPI">KSP</label><label title="KOSDAQ"><input type="radio" name="rank-${axisId}-market" value="kosdaq" aria-label="KOSDAQ">KDQ</label></div><div class="turnover-legend"><span data-market="kospi"><span>● KOSPI</span><output data-latest="kospi">—</output></span><span data-market="kosdaq"><span>● KOSDAQ</span><output data-latest="kosdaq">—</output></span></div></div><div class="rank-adr-controls"><button type="button" data-mode="day" class="active">일</button><button type="button" data-mode="minute">1분봉</button><button type="button" data-more class="concentration-icon-button" aria-label="거래대금 과거 추가조회" title="과거 데이터 더 불러오기" disabled>▥+</button><button type="button" class="concentration-candle-toggle" aria-expanded="false">캔들차트</button></div><div class="turnover-hover-info" aria-live="off"></div><div class="rank-adr-area"><canvas role="img" aria-label="코스피 코스닥 거래대금 차트"></canvas><div class="concentration-tooltip" hidden></div></div><div class="rank-adr-candle-area" hidden><canvas role="img" aria-label="선택 시장 지수 캔들차트"></canvas></div><div class="concentration-chart-footer rank-adr-zoom"><input type="range" min="0" max="0" value="0" aria-label="거래대금 과거 구간 이동" disabled><div class="concentration-controls"><button type="button" aria-label="거래대금 차트 축소">−</button><button type="button" aria-label="거래대금 차트 확대">+</button></div></div><p role="status" class="rank-adr-status"></p>`;
-        adr.closest('.rank-chart-row').append(panel);
+        anchor.closest('.rank-chart-row').append(panel);
         window.RankSupplyGuide?.attach(panel, 'turnover', broker || 'kiwoom');
         panel.querySelector('.rank-adr-controls').append(panel.querySelector('.turnover-legend'));
         const latestDate = document.createElement('span');
@@ -278,7 +279,10 @@
         }
         window[api('refreshRankTurnoverChart')] = () => load();
         window[api('getRankTurnoverState')] = () => ({mode,selectedMarket,markets:data,cursor,loading});
-        window.RankChartAxis.registerHistoryLoader(axisId,()=>load(true),()=>loading,()=>({hasMore:!!cursor,cursor}));
+        // 과거 분봉 구간 보기(2026-11-21, RankChartAxis.showWindow): 분봉 커서는 날짜(YYYYMMDD, 그날 포함)라 그 날짜부터 다시 받는다.
+        function clearData(){controller?.abort();priceController?.abort();loading=false;data={kospi:[],kosdaq:[]};dates=[];loadedPages.clear();priceKey='';pricePending='';start=0;count=null;hover=null;tip.hidden=true;}
+        function seek(day){clearData();todayOnly=false;cursor=day;draw();}
+        window.RankChartAxis.registerHistoryLoader(axisId,()=>load(true),()=>loading,()=>({hasMore:!!cursor,cursor,seek:mode==='minute'?seek:undefined,leaveWindow:mode==='minute'?()=>{clearData();cursor=null;todayOnly=true;void load();}:undefined}));
         moreButton.addEventListener('click',()=>window.RankChartAxis.requestHistory(mode));
         panel.querySelectorAll('[data-mode]').forEach(button=>button.addEventListener('click',()=>{
             if(loading || mode===button.dataset.mode)return;
@@ -331,13 +335,14 @@
         });
         [canvas,candle].forEach(c=>{
             c.addEventListener('mousemove',event=>{if(drag || !geometry?.visible.length)return;candlePointerY=c===candle?event.clientY-candle.getBoundingClientRect().top:null;const px=event.clientX-c.getBoundingClientRect().left;if(px<geometry.left||px>geometry.right)return;hover=geometry.visible.reduce((a,b)=>Math.abs(geometry.x(a)-px)<Math.abs(geometry.x(b)-px)?a:b);draw();});c.addEventListener('mouseleave',()=>{hover=null;candlePointerY=null;tip.hidden=true;draw();});});
-        function resize(){const base=Number.parseFloat(adr.style.getPropertyValue('--rank-adr-base-height')) || 450;panel.style.height=`${base+(candleArea.hidden?0:280)}px`;draw();}
+        // 높이: 쏠림율 카드에서 캔들 영역을 뺀 높이(예전에는 단독 ADR 카드가 계산해 둔 값을 읽었다, 2026-11-21).
+        function resize(){const referenceCandles=anchor.querySelector('.concentration-candle-area');const size=anchor.getBoundingClientRect().height-(referenceCandles && !referenceCandles.hidden?referenceCandles.getBoundingClientRect().height:0);const base=size>0?size:450;panel.style.height=`${base+(candleArea.hidden?0:280)}px`;draw();}
         let resizeFrame = 0;
         function scheduleResize() {
             if (resizeFrame) return;
             resizeFrame = requestAnimationFrame(() => { resizeFrame = 0; resize(); });
         }
-        new ResizeObserver(scheduleResize).observe(adr);new ResizeObserver(scheduleResize).observe(canvas.parentElement);resize();if(!window.rankManagedChartRefresh)window[api('refreshRankTurnoverChart')]();
+        new ResizeObserver(scheduleResize).observe(anchor);new ResizeObserver(scheduleResize).observe(canvas.parentElement);resize();if(!window.rankManagedChartRefresh)window[api('refreshRankTurnoverChart')]();
     }
     const mount = () => { if(window.rankIndependentClient)initialize();else initialize('combined'); };
     if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount();

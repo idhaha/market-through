@@ -6,7 +6,7 @@ const assert=require('node:assert/strict');
     try {
         const page=await browser.newPage({viewport:{width:2100,height:1000}}),errors=[];
         page.on('pageerror',e=>errors.push(e.message));
-        await page.route('http://turnover.test/**',route=>route.fulfill({contentType:'text/html',body:'<div class="rank-chart-row"><section id="concentrationChartPanel" style="width:570px;height:450px"></section><section id="rankAdrChartPanel" style="width:570px;--rank-adr-base-height:450px"></section></div>'}));await page.goto('http://turnover.test/');
+        await page.route('http://turnover.test/**',route=>route.fulfill({contentType:'text/html',body:'<div class="rank-chart-row"><section id="concentrationChartPanel" style="width:570px;height:450px"></section></div>'}));await page.goto('http://turnover.test/');
         await page.addStyleTag({content:fs.readFileSync('public/style.css','utf8')});
         await page.evaluate(()=>{
             window.calls=[];window.labels=[];
@@ -52,7 +52,8 @@ const assert=require('node:assert/strict');
         await page.evaluate(() => applyRankCombinedTurnoverCandleOpen(true));
         assert.equal(await panel.locator('.concentration-candle-toggle').getAttribute('aria-expanded'), 'true');
         await page.evaluate(() => applyRankCombinedTurnoverCandleOpen(false));
-        assert.equal(await page.evaluate(()=>document.getElementById('rankAdrChartPanel').nextElementSibling.id),'rankCombinedTurnoverChartPanel');
+        assert.equal(await page.evaluate(()=>document.getElementById('concentrationChartPanel').nextElementSibling.id),'rankCombinedTurnoverChartPanel'); // 단독 ADR 카드 삭제(2026-11-21): 쏠림율 바로 뒤
+        assert.equal(await panel.evaluate(p=>p.getBoundingClientRect().height),450,'높이는 쏠림율 카드에서 캔들 영역을 뺀 높이');
         assert.ok(await page.evaluate(()=>window.calls.filter(url=>url.startsWith('/api/turnover/')).length===1&&window.calls.every(url=>url.includes('mode=day'))));
         assert.equal(await page.evaluate(()=>window.maxInFlight),1,'The combined card reads its daily data once without duplicate requests');
         assert.ok(await page.evaluate(()=>['0조','10조','20조'].every(label=>window.labels.includes(label))));
