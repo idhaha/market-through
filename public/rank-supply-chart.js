@@ -101,7 +101,7 @@
         stockSelect.addEventListener('change', () => { if (stockSelect.value) choose(stockSelect.value); });
         // 종목 선물 수급 follows the 종목 수급 watchlist and selection, so only the stock card has the add button.
         addButton?.addEventListener('click', openPicker);
-        let multiplier = 10, config = { stocks: [], archive: [], revision: 0 }, selected = '', mode = 'day', cursor = null, hasMore = false, loading = false, historyLoaded = false;
+        let multiplier = 10, config = { stocks: [], archive: [], revision: 0 }, selected = '', mode = 'day', cursor = null, hasMore = false, loading = false, historyLoaded = false, flowDates = null;
         let flowLoading=false, flowCoverageFirst='', candleError='';
         const minuteDays = new Set(), candleCache = new Map(), priceHistory = new Map();
         let priceCursor = null, candleLoading = false;
@@ -178,7 +178,7 @@
             candleController?.abort();++candleRevision;candleLoading=false;
             todayOnly=true;
             points = []; candles = []; start = 0; count = null; hover = null; info.hidden = true;
-            cursor = null; hasMore = false; historyLoaded = false; flowCoverageFirst=''; candleError='';
+            cursor = null; hasMore = false; historyLoaded = false; flowDates = null; flowCoverageFirst=''; candleError='';
             minuteDays.clear();
             priceHistory.clear(); priceCursor = null;
             dailyCandleCoverage = null; dailyCandleAttempt = '';
@@ -480,7 +480,13 @@
                 if(showCandles || mode==='minute')void loadCandles();
                 do {
                 const params = new URLSearchParams({ code: selected, mode, ...(mode === 'day' ? { progressive: '1' } : {}), ...(append ? { cursor: nextCursor } : {}) });
-                const result = await request(`${(combined || window.rankIndependentClient) && mode === 'minute' ? '/api/kis-supply/chart' : endpoint}?${params}`, { signal: current.signal });
+                // 수급 저장이 시작되기 전 날(available_dates의 첫 날보다 이른 날)은 서버에 묻지 않고 빈 날로 넘긴다(2026-11-22).
+                // 과거 구간(7~8월)에서 한투 종목수급 · 종목 선물 수급이 자료 없는 날을 하루씩 1~3초씩 22번 묻고 있었다.
+                const askedDay = append && mode === 'minute' && /^\d{8}$/.test(String(nextCursor || '')) ? `${nextCursor.slice(0,4)}-${nextCursor.slice(4,6)}-${nextCursor.slice(6,8)}` : '';
+                const result = askedDay && flowDates?.length && askedDay < flowDates[0]
+                    ? { success: true, mode: 'minute', date: askedDay, points: [], available_dates: flowDates, has_more: false, cursor: null, warnings: [] }
+                    : await request(`${(combined || window.rankIndependentClient) && mode === 'minute' ? '/api/kis-supply/chart' : endpoint}?${params}`, { signal: current.signal });
+                if (mode === 'minute' && Array.isArray(result.available_dates) && result.available_dates.length) flowDates = [...result.available_dates].sort();
                 if (id !== revision) return;
                 const followLatest = start + Math.min(points.length, count ?? points.length) >= points.length, oldAnchor = points[start]?.t;
                 const coverageDate=result.date || (append && nextCursor ? `${nextCursor.slice(0,4)}-${nextCursor.slice(4,6)}-${nextCursor.slice(6,8)}` : '');
@@ -501,6 +507,7 @@
                     for(const day of days){
                         minuteDays.add(day);
                         if(day===result.date)continue;
+                        if(flowDates?.length && day<flowDates[0]){const first=day+' 00:00';if(!flowCoverageFirst || first<flowCoverageFirst)flowCoverageFirst=first;continue;}
                         const params=new URLSearchParams({code:selected,mode:'minute',date:day});
                         const past=await request(`${(combined || window.rankIndependentClient) && mode === 'minute' ? '/api/kis-supply/chart' : endpoint}?${params}`,{signal:current.signal});
                         if(id!==revision)return;
