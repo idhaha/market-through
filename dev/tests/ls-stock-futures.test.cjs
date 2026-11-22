@@ -185,3 +185,22 @@ test('the day after an expiry a t2522 list that still names the expired month is
   assert.equal(calls.slice(before).filter(t=>t==='t2522').length,1);
  }finally{fs.rmSync(directory,{recursive:true,force:true});}
 });
+test('지난날 선물 분봉은 한 번 받아 파일로 두고(candles 폴더) 재시작 뒤에도 한투를 다시 부르지 않는다(2026-11-22)',async()=>{
+ const saturday=Date.parse('2026-11-07T21:00:00+09:00'),kis=[],directory=fs.mkdtempSync(path.join(os.tmpdir(),'lsf-test-'));
+ const kisMinute=async({code,date,hour})=>{kis.push({code,date,hour});const d=date.slice(0,4)+'-'+date.slice(4,6)+'-'+date.slice(6),end=Math.min(Date.parse(d+'T'+hour.slice(0,2)+':'+hour.slice(2,4)+':00+09:00'),Date.parse(d+'T15:45:00+09:00')),rows=[];
+  for(let i=0;i<102;i++){const t=end-i*60000,k=new Date(t+9*3600000),hh=k.toISOString().slice(11,16).replace(':','');
+   rows.push(hh<'0845'?{stck_bsop_date:'20000101',stck_cntg_hour:'150000',futs_oprc:1,futs_hgpr:1,futs_lwpr:1,futs_prpr:1}:{stck_bsop_date:date,stck_cntg_hour:hh+'00',futs_oprc:200000,futs_hgpr:200500,futs_lwpr:199500,futs_prpr:200100});}
+  return rows;};
+ const make=()=>createLsStockFutures({http:fakeLs([],{previous:'20261106'}),getToken:async()=>'t',directory,supply:{summary:()=>({stocks:[]})},now:()=>saturday,policy:()=>({openDate:()=>null}),pause:async()=>{},kisMinute});
+ const first=await make().candles({code:'005930',mode:'minute',date:'2026-11-04'});
+ assert.ok(fs.existsSync(path.join(directory,'candles','005930','2026-11-04.json.gz')));
+ const pages=kis.length;
+ const again=await make().candles({code:'005930',mode:'minute',date:'2026-11-04'});
+ assert.equal(kis.length,pages,'새 서버도 파일에서 읽는다');assert.deepEqual(again.points,first.points);assert.equal(again.contract,first.contract);
+ // 한투가 그날 일부만 준 날(오후만)은 저장하지 않는다.
+ const partialDir=fs.mkdtempSync(path.join(os.tmpdir(),'lsf-test-'));
+ const half=createLsStockFutures({http:fakeLs([],{previous:'20261106'}),getToken:async()=>'t',directory:partialDir,supply:{summary:()=>({stocks:[]})},now:()=>saturday,policy:()=>({openDate:()=>null}),pause:async()=>{},
+  kisMinute:async(o)=>(await kisMinute(o)).filter(r=>r.stck_cntg_hour>='130000')});
+ await half.candles({code:'005930',mode:'minute',date:'2026-11-04'});
+ assert.ok(!fs.existsSync(path.join(partialDir,'candles','005930','2026-11-04.json.gz')));
+});

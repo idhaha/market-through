@@ -4,6 +4,7 @@
 // series, so every card shows the same candles. Card selection and pins stay on the client.
 // Futures candles use a different source and are not handled here.
 const { dailyTurnover } = require('./concentration-chart');
+const { completeDay } = require('./kiwoom-minute-store');
 
 const PAGE_LIMIT = 80;
 const FRESH_MS = { minute: 20000, day: 60000 };
@@ -11,7 +12,9 @@ const FRESH_MS = { minute: 20000, day: 60000 };
 const PAGE_SIZE = { minute: 900, day: 600 };
 const CODES = { kospi: '001', kosdaq: '101' };
 
-function createIndexCandleStore({ http, getToken, now = Date.now, pause = ms => new Promise(r => setTimeout(r, ms)), log = console.warn }) {
+// minuteStore: kiwoom-minute-store(지난날 1분봉 파일, 쏠림율 · 종목 캔들과 함께 씀). 지난 구간 1분봉은 오늘부터 거슬러 오지 않고
+// 그날 파일을 읽거나 키움 base_dt로 그날만 받아 저장한다(2026-11-22: 8월 구간 캔들 첫 조회 16초 · 서버 메모리에 몇 달 치 누적).
+function createIndexCandleStore({ http, getToken, now = Date.now, pause = ms => new Promise(r => setTimeout(r, ms)), log = console.warn, minuteStore = null }) {
     const series = new Map();
     const dayKey = t => new Date(t + 9 * 3600000).toISOString().slice(0, 10).replaceAll('-', '');
     const stamp = (t, daily) => { const s = new Date(t + 9 * 3600000).toISOString(); return daily ? s.slice(0, 10).replaceAll('-', '') : s.slice(0, 19).replace(/[-T:]/g, ''); };
@@ -102,8 +105,34 @@ function createIndexCandleStore({ http, getToken, now = Date.now, pause = ms => 
     const copy = p => ({ ...p });
     const sorted = s => [...s.points.values()].sort((a, b) => a.t - b.t);
 
+    // 지난날 1분봉 하루치(행 + 그 지수의 바로 전 거래일). 저장 파일이 있으면 그것을, 없으면 키움에서 그날만 받아 저장한다.
+    // day가 휴장일이면 그날 행은 비고 prev가 그 전 거래일이다.
+    async function storedDay(market, day) {
+        const symbol = CODES[market], stored = minuteStore.read(symbol, day);
+        if (stored) return stored;
+        const response = await http.post('https://api.kiwoom.com/api/dostk/chart', { inds_cd: symbol, tic_scope: '1', base_dt: day },
+            { headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await getToken()}`, 'api-id': 'ka20005', 'cont-yn': 'N', 'next-key': '' }, timeout: 10000 });
+        if (Number(response.data?.return_code || 0) !== 0) throw new Error('시장 지수 조회 실패');
+        const rows = response.data?.inds_min_pole_qry;
+        if (!Array.isArray(rows)) throw new Error('시장 지수 응답 형식 오류');
+        const result = completeDay(rows, day, dayKey(now()), response.headers?.['cont-yn'] === 'Y');
+        if (result.storable) try { minuteStore.save(symbol, day, result.rows, result.prev); } catch (error) { log(`[KiwoomMinute] ${symbol} ${day} 저장 안 함: ${error.message}`); }
+        await pause(220);
+        return result;
+    }
+    async function pastMinutes(market, from, to) {
+        const points = new Map(); let day = to, guard = 0;
+        while (day && day >= from && guard++ < 400) {
+            const result = await storedDay(market, day);
+            for (const row of result.rows) { const r = parse(row, false); if (r?.point) points.set(r.t, r.point); }
+            day = result.prev;
+        }
+        return { points: [...points.values()].sort((a, b) => a.t - b.t), partial: false, previousDay: day || null };
+    }
+
     // Candles whose trading day is within [from, to]; the oldest day is complete (paged past it).
     async function range({ market, mode, from, to }) {
+        if (mode === 'minute' && minuteStore && to < dayKey(now())) return run(market, mode, () => pastMinutes(market, from, to));
         const s = state(market, mode);
         return run(market, mode, () => serialize(s, async () => {
             let ok = await prepare(s, market, mode, s.fetchedAt === 0 || to >= dayKey(s.fetchedAt));

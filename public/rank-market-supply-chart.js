@@ -32,7 +32,9 @@
         const latest = urlFor(anchor);
         const stale = !entry.at || !anchor && Date.now() - entry.at >= PEER_FRESH && window.TradingRefresh?.allowsUrl?.(new URL(latest, location.href)) !== false;
         const earliest = () => { const p = entry.points.find(p => series.some(f => Number.isFinite(p[f]))); return p ? dayKey(p.t) : ''; };
-        const needsHistory = () => entry.hasMore && entry.cursor && fromDay && (!earliest() || earliest() > fromDay);
+        // 커서(다음에 받을 날)가 화면 첫날보다 이르면 멈춘다(2026-11-22 오라클 재측정: 10/26 이전은 수급 값이 없는 날이라
+        // earliest()가 비어 구간 시작을 지나 2월까지 하루씩 받았다).
+        const needsHistory = () => entry.hasMore && entry.cursor && fromDay && entry.cursor >= fromDay.replaceAll('-', '') && (!earliest() || earliest() > fromDay);
         if (!stale && !needsHistory()) return;
         const merge = data => { entry.points = mergeFlow(entry.points, (data.points || []).filter(p => Number.isFinite(p.t))); };
         entry.job = (async () => {
@@ -185,7 +187,9 @@
             const windowEnd = mode === 'minute' ? (window.RankChartAxis.minuteWindow?.()?.to || '').replaceAll('-', '') : '';
             return marketCodes().filter(code => code !== selected).flatMap(code => {
                 const path = flowEndpoint(code), key = `${path}|${code}|${mode}|${windowEnd}`;
-                const urlFor = page => `${path}?${new URLSearchParams({ code, mode, ...(mode === 'minute' && (path === '/api/market-supply/chart' || path === '/api/ls-futures-test/chart') ? { prices: '0' } : {}), ...(page ? { cursor: page } : {}) })}`;
+                // 다른 시장은 y축용 수급만 쓰므로 가격을 받지 않는다(2026-11-22). 키움 시장 수급도 가격을 붙이면 서버가 지난날마다
+                // 지수 분봉을 오늘부터 거슬러 찾아(한 번에 2~10초) 수급이 없는 10/26 이전 날까지 이어 갔다.
+                const urlFor = page => `${path}?${new URLSearchParams({ code, mode, ...(mode === 'minute' ? { prices: '0' } : {}), ...(page ? { cursor: page } : {}) })}`;
                 if (canFetch) ensurePeer(key, urlFor, fromDay, windowEnd);
                 return (peerStore.get(key)?.points || []).filter(inWindow);
             });

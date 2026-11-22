@@ -1,4 +1,5 @@
 const fs = require('fs');
+const zlib = require('zlib');
 const path = require('path');
 const { timestamp, quantity } = require('./supply-service');
 const { dayKey, failure } = require('./supply-store');
@@ -362,6 +363,59 @@ function createLsFuturesTest({ http, getToken, directory, daytimeStore, dailyPro
         pending.set(key, task); return task;
     }
     const priceRanges=new Map();
+    // ---- 지난 구간 선물 분봉 파일(2026-11-22): data/ls-futures-test/candles/<종목코드>/<YYYY-MM-DD>.json.gz + covered.json(다 받은 범위).
+    // 한 (월물, 날짜)는 파일 하나이고 다시 쓰지 않는다. 다 받은 범위 안에서 파일이 없는 날은 휴장일이다.
+    const candleDir=shcode=>path.join(directory,'candles',String(shcode).replace(/[^0-9A-Za-z]/g,''));
+    const dayBefore=d=>previous(d),dayAfter=d=>compact(timestamp(d)+86400000);
+    function coveredOf(shcode){try{const v=JSON.parse(fs.readFileSync(path.join(candleDir(shcode),'covered.json'),'utf8'));return Array.isArray(v)?v:[];}catch{return [];}}
+    function addCovered(shcode,from,to){
+        const list=[...coveredOf(shcode),[from,to]].sort((x,y)=>x[0].localeCompare(y[0])),merged=[];
+        for(const [a,b] of list){const last=merged.at(-1);if(last&&a<=dayAfter(last[1])){if(b>last[1])last[1]=b;}else merged.push([a,b]);}
+        const dir=candleDir(shcode),file=path.join(dir,'covered.json');fs.mkdirSync(dir,{recursive:true});
+        fs.writeFileSync(file+'.tmp',JSON.stringify(merged));fs.renameSync(file+'.tmp',file);
+    }
+    function uncovered(covered,from,to){
+        const gaps=[];let start=from;
+        for(const [a,b] of [...covered].sort((x,y)=>x[0].localeCompare(y[0]))){
+            if(b<start||a>to)continue;
+            if(a>start)gaps.push([start,dayBefore(a)]);
+            if(b>=start)start=dayAfter(b);
+            if(start>to)break;
+        }
+        if(start<=to)gaps.push([start,to]);
+        return gaps;
+    }
+    function saveDays(shcode,rows,from,to){
+        const byDay=new Map();for(const p of rows.values()){const d=compact(p.t);if(d<from||d>to)continue;if(!byDay.has(d))byDay.set(d,[]);byDay.get(d).push(p);}
+        const dir=candleDir(shcode);fs.mkdirSync(dir,{recursive:true});
+        for(const [d,list] of byDay){
+            const file=path.join(dir,`${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}.json.gz`);if(fs.existsSync(file))continue;
+            const json=JSON.stringify(list.sort((a,b)=>a.t-b.t)),packed=zlib.gzipSync(json);if(zlib.gunzipSync(packed).toString()!==json)continue;
+            fs.writeFileSync(file+'.tmp',packed);fs.renameSync(file+'.tmp',file);
+        }
+    }
+    function readDays(shcode,from,to){
+        const dir=candleDir(shcode);let names=[];try{names=fs.readdirSync(dir);}catch{return [];}
+        return names.filter(n=>/^\d{4}-\d{2}-\d{2}\.json\.gz$/.test(n)&&n.slice(0,10).replaceAll('-','')>=from&&n.slice(0,10).replaceAll('-','')<=to)
+            .flatMap(n=>{try{return JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(dir,n))));}catch{return [];}});
+    }
+    async function minuteRange(contract,from,to){
+        const rows=new Map(),seen=new Set();
+        let cts_date='',cts_time='',partial=false,continuation;
+        for(let page=0;page<400;page++){
+            const response=await rest('t8465','chart',{shcode:contract.shcode,ncnt:1,qrycnt:500,nday:'0',sdate:from,stime:'',edate:to,etime:'',cts_date,cts_time,comp_yn:'N'},continuation);
+            const batch=response.t8465OutBlock1;
+            if(!Array.isArray(batch))throw failure('LS 선물 가격 응답 오류',502);
+            for(const row of batch){const p=candle(row,investorTime(row));if(p && compact(p.t)>=from && compact(p.t)<=to && p.t<Math.floor(now()/60000)*60000)rows.set(p.t,p);}
+            const header=response.t8465OutBlock||{},nextDate=String(header.cts_date||'').trim(),nextTime=String(header.cts_time||'').trim();
+            if(!batch.length || response._continuation?.more===false || !nextDate || nextDate==='00000000' || nextDate<from)break;
+            const next=nextDate+':'+nextTime;
+            if(seen.has(next)){partial=true;break;}
+            seen.add(next);cts_date=nextDate;cts_time=nextTime;continuation={key:response._continuation?.key || ''};
+            if(page===399)partial=true;
+        }
+        return {rows,partial};
+    }
     async function priceRange({code='futures',mode='minute',from,to}={}) {
         if(!Object.hasOwn(assets,code)||!['day','minute'].includes(mode)||!validDate(from)||!validDate(to)||from>to||timestamp(to)-timestamp(from)>(mode==='day'?36600:366)*86400000)throw failure('잘못된 선물 가격 조회 범위');
         const key=`${code}:${mode}:${from}:${to}`,old=priceRanges.get(key);
@@ -376,21 +430,21 @@ function createLsFuturesTest({ http, getToken, directory, daytimeStore, dailyPro
                 const merged = mergeCombined({mode:'day'}, parts);
                 return {success:true,points:merged.candles,partial:warnings.length>0,warnings,source:'LS t2214/t8459 연결선물'};
             }
-            const contract=await master(code,'D'), rows=new Map(),seen=new Set();
-            let cts_date='',cts_time='',partial=false,continuation;
-            for(let page=0;page<400;page++){
-                const response=await rest('t8465','chart',{shcode:contract.shcode,ncnt:1,qrycnt:500,nday:'0',sdate:from,stime:'',edate:to,etime:'',cts_date,cts_time,comp_yn:'N'},continuation);
-                const batch=response.t8465OutBlock1;
-                if(!Array.isArray(batch))throw failure('LS 선물 가격 응답 오류',502);
-                for(const row of batch){const p=candle(row,investorTime(row));if(p && compact(p.t)>=from && compact(p.t)<=to && p.t<Math.floor(now()/60000)*60000)rows.set(p.t,p);}
-                const header=response.t8465OutBlock||{},nextDate=String(header.cts_date||'').trim(),nextTime=String(header.cts_time||'').trim();
-                if(!batch.length || response._continuation?.more===false || !nextDate || nextDate==='00000000' || nextDate<from)break;
-                const next=nextDate+':'+nextTime;
-                if(seen.has(next)){partial=true;break;}
-                seen.add(next);cts_date=nextDate;cts_time=nextTime;continuation={key:response._continuation?.key || ''};
-                if(page===399)partial=true;
+            const contract=await master(code,'D');
+            // 지난 구간(오늘 전)은 받은 날을 파일로 두고 아직 받지 않은 날만 LS에서 받는다(2026-11-22: 8월 구간 24~60초, 504).
+            if(directory && to<compact(now())){
+                const shcode=contract.shcode,gaps=uncovered(coveredOf(shcode),from,to),rows=new Map();let partial=false;
+                for(const [a,b] of gaps){
+                    const got=await minuteRange(contract,a,b);
+                    for(const [t,p] of got.rows)rows.set(t,p);
+                    if(got.partial){partial=true;continue;}
+                    saveDays(shcode,got.rows,a,b);addCovered(shcode,a,b);
+                }
+                for(const p of readDays(shcode,from,to))if(!rows.has(p.t))rows.set(p.t,p);
+                return {success:true,points:[...rows.values()].sort((a,b)=>a.t-b.t),partial,source:'LS t8465'};
             }
-            return {success:true,points:[...rows.values()].sort((a,b)=>a.t-b.t),partial,source:'LS t8465'};
+            const got=await minuteRange(contract,from,to);
+            return {success:true,points:[...got.rows.values()].sort((a,b)=>a.t-b.t),partial:got.partial,source:'LS t8465'};
         })().then(result => {
             if (mode === 'day' && result.partial && priceRanges.get(key)?.promise === promise) priceRanges.delete(key);
             return result;

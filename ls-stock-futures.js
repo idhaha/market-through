@@ -4,9 +4,10 @@
 //    minute during the futures day session and kept per day; t8462 (daily net) for the day chart.
 //    bsc_asts_id and the nearest contract come from t2522 (e.g. 005930 → S11, A116B000).
 //  - Price candles: 1-minute bars from KIS FHKIF03020200 (the day's nearest contract, back to 2025-10-29), asked when
-//    shown and kept only in memory; t8405 daily bars with futcheck 1 (nearest months joined = 연결선물) for the day chart.
+//    shown; finished days are saved once under candles/<code>/ (2026-11-22); t8405 daily bars with futcheck 1 (nearest months joined = 연결선물) for the day chart.
 // Fields: ind/for/sys msvol = 개인/외국인/기관계 net contracts; t8462 sv_08/sv_17/sv_18 the same per day.
 const fs = require('node:fs');
+const zlib = require('node:zlib');
 const path = require('node:path');
 const dayKey = t => new Date(t + 9 * 3600000).toISOString().slice(0, 10);
 const compact = day => day.replaceAll('-', '');
@@ -299,12 +300,29 @@ function createLsStockFutures({ http, getToken, directory, supply, now = Date.no
         if (!rows.length || !next.date || next.date === entry.next?.date) entry.exhausted = true; else entry.next = next;
     }
     const oldestDay = entry => [...entry.rows.keys()].sort()[0] || null;
-    // Minute bars, memory only: a finished day once; today's open session every 20 s, topping up the newest page.
+    // 지난날 분봉 파일(2026-11-22): <directory>/candles/<code>/<YYYY-MM-DD>.json.gz. 한투 FHKIF03020200은 하루에 여러 쪽(한 쪽 102봉)이라
+    // 지난날 하나에 7~20초 걸리고 끊기기도 해(socket hang up) 끝난 날은 한 번 받아 둔다. 다시 쓰지 않는다(한 벌).
+    // 저장 조건: 오늘보다 이전, 08:45~09:00 사이에 시작해 15:19 이후까지 이어진 날(한투가 그날을 다 준 날).
+    const candleFile = (code, date) => path.join(directory, 'candles', code, `${date}.json.gz`);
+    function readCandleDay(code, date) {
+        try { const v = JSON.parse(zlib.gunzipSync(fs.readFileSync(candleFile(code, date)))); return v?.v === 1 && Array.isArray(v.candles) ? v : null; }
+        catch (error) { if (error.code !== 'ENOENT') log(`[종목 선물 분봉] ${code} ${date} 파일 읽기 실패: ${error.message}`); return null; }
+    }
+    function saveCandleDay(code, date, value) {
+        const file = candleFile(code, date), bars = value.candles, clock = t => new Date(t + 9 * 3600000).toISOString().slice(11, 16);
+        if (fs.existsSync(file) || !bars.length || clock(bars[0].t) > '09:00' || clock(bars.at(-1).t) < '15:19') return;
+        const json = JSON.stringify({ v: 1, contract: value.contract, next: value.next || null, candles: bars }), packed = zlib.gzipSync(json);
+        if (zlib.gunzipSync(packed).toString() !== json) return;
+        try { fs.mkdirSync(path.dirname(file), { recursive: true }); const temp = `${file}.${process.pid}.tmp`; fs.writeFileSync(temp, packed); if (fs.existsSync(file)) fs.rmSync(temp, { force: true }); else fs.renameSync(temp, file); }
+        catch (error) { log(`[종목 선물 분봉] ${code} ${date} 저장 실패: ${error.message}`); }
+    }
+    // Minute bars: a finished day from its file (or KIS once, then saved); today's open session every 20 s, topping up the newest page.
     async function minuteCandlesOf(code, item, date) {
         const contract = kisContract(item, date), key = code + ':' + date, cached = minuteBars.get(key), session = sessions();
         const live = date === session.today && session.started && collectingAt(now());
         if (!kisMinute || date < KIS_MINUTE_FIRST || !isOpen(date) || date > session.today) return { contract, candles: [] };
         if (cached && (!live && cached.final || live && now() - cached.at < 20000)) return cached;
+        if (date < dayKey(now())) { const stored = readCandleDay(code, date); if (stored) return { contract: stored.contract, next: stored.next, candles: stored.candles, at: now(), final: true }; }
         let top;
         try { top = live && cached?.candles.length ? await fetchKisDay(item, date, { hour: '154600', pages: 1 }) : await fetchKisDay(item, date); }
         catch (error) {
@@ -316,6 +334,7 @@ function createLsStockFutures({ http, getToken, directory, supply, now = Date.no
         const merged = new Map((live && cached ? cached.candles : []).map(c => [c.t, c]));
         for (const c of top.candles) merged.set(c.t, c);
         const value = { contract, next: top.next, candles: [...merged.values()].sort((a, b) => a.t - b.t), at: now(), final: !live };
+        if (date < dayKey(now())) saveCandleDay(code, date, value);
         minuteBars.delete(key); minuteBars.set(key, value); if (minuteBars.size > 120) minuteBars.delete(minuteBars.keys().next().value);
         return value;
     }

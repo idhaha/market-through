@@ -19,7 +19,7 @@ const ROUTES = {
     '/api/supply/chart': ['supply'],
     '/api/ls-stock-futures/chart': ['ls-stock-futures'],
     '/api/market-supply/chart': ['market-supply'],
-    '/api/kiwoom-market-supply/chart': ['kiwoom-market-supply'],
+    '/api/kiwoom-market-supply/chart': ['kiwoom-market-supply', 'kiwoom-minute'],
     '/api/ls-market-supply/chart': ['ls-market-supply'],
     // 시장 선물 수급 cards: LS night/day lookups saved in ls-futures-test, daytime KIS values from market-supply.
     '/api/ls-futures-test/chart': ['ls-futures-test', 'market-supply'],
@@ -31,11 +31,16 @@ const ROUTES = {
     '/api/supply/candles': ['kiwoom-minute'],
     '/api/risk/volatility': ['volatility'],
     '/api/risk/sentiment': ['volatility'],
-    '/api/concentration-chart': ['kiwoom-minute']
+    '/api/concentration-chart': ['kiwoom-minute'],
+    // 지난 구간 가격 분봉 파일(2026-11-22): 지수(kiwoom-minute 001/101), 종목 선물(ls-stock-futures/candles), 지수 선물(ls-futures-test/candles).
+    '/api/adr/candles': ['kiwoom-minute'],
+    '/api/ls-stock-futures/candles': ['ls-stock-futures'],
+    '/api/ls-futures-test/candles': ['ls-futures-test']
 };
 // Folders that only ever gain files equal to what the broker already returned (a finished day saved on first
 // view). A new file there, even older than the newest day, is not a change; a rewritten or removed file is.
-const APPEND_ONLY = new Set(['kiwoom-minute']);
+// ls-turnover · ls-stock-futures · ls-futures-test: 지난날을 처음 볼 때 받아 저장한다(2026-11-22). 고쳐지거나 지워진 파일만 바뀐 것으로 본다.
+const APPEND_ONLY = new Set(['kiwoom-minute', 'ls-turnover', 'ls-stock-futures', 'ls-futures-test']);
 // A route's basis changes when the server starts asking the broker for different values (not stored data),
 // so browsers drop that route's saved pages once.
 //  - adjusted-20261121: daily stock prices are 수정주가 (upd_stkpc_tp 1) from 2026-11-21.

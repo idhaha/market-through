@@ -23,7 +23,8 @@ const before=(day,cursor)=>DAYS.filter(d=>d<=day).at(-1);
   let data;
   if(p==='/api/supply/watchlist')data={success:true,stocks:[{code:'005930',name:'삼성전자'}],archive:[{code:'005930',name:'삼성전자'}],revision:1};
   else if(minute && (p==='/api/kis-supply/chart' || p.endsWith('market-supply/chart') || p==='/api/ls-futures-test/chart')){
-   const d=dated();data={success:true,date:d.day,points:minutes(d.day).map((t,i)=>({t,foreign:i,institution:-i,individual:i,program:i})),candles:minutes(d.day).map(bar),cursor:d.cursor,has_more:d.has_more,available_dates:DAYS,warnings:[]};
+   // 시장 수급은 9월 전 수급 값이 없다(오라클: 키움 시장 수급 저장은 10/26부터, 그 전은 가격만).
+   const d=dated(),noFlow=p.includes('market-supply')&&d.day<'2026-09-01';data={success:true,date:d.day,points:noFlow?[]:minutes(d.day).map((t,i)=>({t,foreign:i,institution:-i,individual:i,program:i})),candles:minutes(d.day).map(bar),cursor:d.cursor,has_more:d.has_more,available_dates:DAYS,warnings:[]};
   }else if(minute && (p==='/api/ls-turnover/chart' || p==='/api/turnover/chart')){
    const d=dated();data={success:true,markets:{kospi:minutes(d.day).map(bar),kosdaq:minutes(d.day).map(bar)},cursor:d.cursor,has_more:d.has_more,warnings:[]};
   }else if(minute && p==='/api/risk/breadth'){
@@ -82,6 +83,11 @@ const before=(day,cursor)=>DAYS.filter(d=>d<=day).at(-1);
  for(const path of ['/api/kiwoom-market-supply/chart','/api/ls-futures-test/chart']){
   const list=cursors(path);
   assert.ok(list.length && !list.some(c=>c>compact(to)),path+' 구간 뒤의 날은 받지 않는다 '+list);
+  assert.ok(!list.some(c=>c<compact(DAYS[DAYS.indexOf(from)-1])),path+' 구간 앞(수급 값이 없는 날)을 지나 받지 않는다 '+list);
+ }
+ {// 다른 시장(코스닥)은 가격 없이 수급만 받는다(가격을 붙이면 서버가 지난날마다 지수 분봉을 오늘부터 찾는다).
+  const peer=requests.filter(r=>r.startsWith('/api/kiwoom-market-supply/chart?code=kosdaq')&&r.includes('mode=minute'));
+  assert.ok(peer.length && peer.every(r=>r.includes('prices=0')),'코스닥 다른 시장 요청 '+peer.slice(0,3));
  }
  // 쏠림율은 base_dt로 구간 끝 날짜부터 받는다(오늘부터 거슬러 오지 않는다).
  assert.ok(requests.some(r=>r.includes('concentration-chart#')&&r.includes('"base_dt":"'+compact(to)+'"')),'쏠림율 base_dt '+requests.filter(r=>r.includes('concentration-chart#')).slice(0,5));

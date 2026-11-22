@@ -53,7 +53,7 @@ function fixture(t,broker='ls',bars=[]){
   transport:{setStreams:(owner,items)=>{streams.splice(0,streams.length,...items);},streamStatus:()=>({subscribed:true})},
   getToken:async()=>'private',http:{post:async(url,body)=>{calls.push({url,body});const tr=Object.keys(body)[0].replace('InBlock','');return {data:{rsp_cd:'00000',[tr+'OutBlock1']:bars,[tr+'OutBlock']:{cts_date:'',cts_time:''}}};}},
   kisMarketAmounts:async()=>bars});
- t.after(()=>data.stop());return {data,calls,streams,setTime:x=>current=x};
+ t.after(()=>data.stop());return {data,calls,streams,directory,setTime:x=>current=x};
 }
 test('money conversion and LS closing timestamps preserve zero, missing and auction semantics',()=>{
  assert.equal(million(0),0);assert.equal(million(' '),null);assert.equal(million('123.5'),123500000);assert.equal(million('-1'),null);
@@ -140,4 +140,39 @@ test('expanding LS minute history fetches only new dates and reuses already requ
  await f.data.amounts('kospi','minute',['20261023','20261026']);assert.equal(f.calls.length,2);
  assert.deepEqual(f.calls.map(c=>c.body.t8409InBlock.sdate),['20261026','20261023']);
  await f.data.amounts('kospi','minute',['20261023','20261026']);assert.equal(f.calls.length,2);
+});
+test('지난날 LS 1분 거래대금은 REST로 받은 뒤 그날 누적으로 저장해 다음부터 LS를 부르지 않는다(2026-11-22)',async t=>{
+ // 09:00~15:19 매분 1(백만원, 10:00은 거래 없음), 15:20~15:29 동시호가로 봉 없음, 15:30 종가 10.
+ const bars=[];for(let m=9*60+1;m<=15*60+20;m++)bars.push({date:'20261026',time:String(Math.floor(m/60)).padStart(2,'0')+String(m%60).padStart(2,'0')+'00',value:1});
+ bars.splice(bars.findIndex(b=>b.time==='100100'),1);// 10:00 봉 없음(거래 없던 분)
+ bars.push({date:'20261026',time:'153000',value:10});
+ const f=fixture(t,'ls',bars);f.setTime(timestamp('20261028','100000'));
+ const first=await f.data.amounts('kospi','minute',['20261026']),firstTotal=await f.data.amounts('kospi','minute',['20261026'],true);
+ assert.equal(f.calls.length,1);
+ const saved=f.data.store.points('KOSPI0','2026-10-26');
+ assert.equal(saved[0].t,at('090000'));assert.equal(saved.at(-1).t,at('153000'));assert.equal(saved.at(-1).amount,(379+10)*1000000);
+ // 같은 폴더를 읽는 새 서버(재시작): LS를 부르지 않고 같은 값.
+ const calls=[];const again=createBrokerTurnoverData({broker:'ls',directory:f.directory,now:()=>timestamp('20261028','100000'),pause:async()=>{},
+  transport:{setStreams(){},streamStatus:()=>({})},getToken:async()=>'x',http:{post:async()=>{calls.push(1);throw new Error('호출하면 안 됨');}}});
+ t.after(()=>again.stop());
+ const bars2=await again.amounts('kospi','minute',['20261026']),total2=await again.amounts('kospi','minute',['20261026'],true);
+ assert.equal(calls.length,0);
+ assert.equal(total2.values.get(at('153000')),firstTotal.values.get(at('153000')));
+ assert.equal(bars2.values.get(at('153000')),10000000,'종가 봉');assert.equal(bars2.values.get(at('103000')),first.values.get(at('103000')));
+ assert.equal(bars2.values.get(at('100000')),0,'공식 무거래가 아닌 분에 거래가 없으면 0');
+ assert.equal(bars2.values.has(at('152500')),false,'장 마감 동시호가(15:20~15:29)는 0이 아니라 빈칸');
+ assert.ok(!saved.some(p=>p.t>=at('152000')&&p.t<at('153000')),'동시호가 분은 저장하지 않는다');
+ // 장 마감까지 받지 못한 날(15:00에 끝남)은 저장하지 않는다.
+ const cut=fixture(t,'ls',bars.filter(b=>b.time<='150000'));cut.setTime(timestamp('20261028','100000'));
+ await cut.data.amounts('kospi','minute',['20261026']);assert.deepEqual(cut.data.store.points('KOSPI0','2026-10-26'),[]);
+});
+test('실시간 저장일도 장 마감 동시호가(15:20~15:29) 빈칸을 건너 15:30 종가 봉을 계산한다(2026-11-22)',async t=>{
+ const f=fixture(t);f.setTime(timestamp('20261028','100000'));
+ const pts=[];for(let m=9*60;m<=15*60+19;m++)pts.push({t:at(String(Math.floor(m/60)).padStart(2,'0')+String(m%60).padStart(2,'0')+'00'),amount:(m-539)*1000000});
+ pts.push({t:at('153000'),amount:(15*60+19-539+50)*1000000});
+ f.data.store.mergeMany('KOSPI0',pts);
+ const bars=await f.data.amounts('kospi','minute',['20261026']);
+ assert.equal(f.calls.length,0);
+ assert.equal(bars.values.get(at('153000')),50000000,'15:19 → 15:30 종가 50');
+ assert.equal(bars.values.has(at('152500')),false);
 });

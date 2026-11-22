@@ -9,6 +9,15 @@ const million = raw => { const text=String(raw ?? '').replaceAll(',', '').trim()
 // The 15:30 closing auction is a distinct execution, not a 15:29 bar.
 // On a delayed-open day the close moves too (2026-11-19 수능: 16:30 closing auction).
 const lsMinuteTime = (date, clock) => timestamp(date,clock) - (clock === shiftClock('153000', closeDelay(`${date.slice(0,4)}-${date.slice(4,6)}-${date.slice(6,8)}`)) ? 0 : 60000);
+// 공식적으로 거래가 없는 분(2026-11-22): 장 마감 동시호가 15:20~15:29(마감 지연일은 늦춤), 종목은 NXT 프리마켓 뒤 08:50~08:59
+// (개장 지연일은 늦춤). 이 분들은 0으로 채우지 않고 빈칸으로 두며, 그 앞뒤 분은 이어진 것으로 본다(15:30 종가 봉이 빠지지 않게).
+function noTradeMinute(t, stock) {
+    const date = dayKey(t), clock = new Date(t + 9 * 3600000).toISOString().slice(11, 19).replaceAll(':', '');
+    const close = closeDelay(date), open = openDelay(date);
+    if (clock >= shiftClock('152000', close) && clock < shiftClock('153000', close)) return true;
+    return Boolean(stock) && clock >= shiftClock('085000', open) && clock < shiftClock('090000', open);
+}
+const bridged = (from, to, stock) => { for (let t = from + 60000; t < to; t += 60000) if (!noTradeMinute(t, stock)) return false; return to > from; };
 function createBrokerTurnoverData({ broker, directory, transport, http, getToken, kisMarketAmounts, supply, now = Date.now, log = message => console.warn(message),
     pause = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
     const store = createSupplyStore({ directory, now, fields: ['amount'] });
@@ -133,6 +142,24 @@ function createBrokerTurnoverData({ broker, directory, transport, http, getToken
         const parts=await Promise.all([...new Set(dates)].sort().map(date=>seriesRange(instrument,mode,[date])));
         return {rows:parts.flatMap(p=>p.rows).sort((a,b)=>a.t-b.t),warnings:[...new Set(parts.flatMap(p=>p.warnings))]};
     }
+    // 지난날 LS 1분 거래대금을 REST로 받았으면 실시간 저장과 같은 모양(그날 누적 거래대금)으로 저장한다(2026-11-22, 소스는 한 곳:
+    // ls-turnover). 다음부터는 저장한 날로 읽어 LS를 다시 부르지 않는다. 그날 첫 봉이 개장 시각이고 마감까지 다 받은 날만 저장한다.
+    // 거래가 없던 분은 직전 누적을 그대로 채운다(그 분의 거래대금 0). 공식적으로 거래가 없는 분(noTradeMinute)은 채우지 않고 빈칸으로 둔다.
+    function saveFinishedDays(code,instrument,dates,rows){
+        const stock=!Object.hasOwn(marketCodes,instrument),opening=stock?'080000':'090000';
+        const clock=t=>new Date(t+9*3600000).toISOString().slice(11,19).replaceAll(':','');
+        for(const date of dates){
+            const day=rows.filter(p=>compact(dayKey(p.t))===date).sort((a,b)=>a.t-b.t);
+            if(!day.length)continue;
+            const dashed=`${date.slice(0,4)}-${date.slice(4,6)}-${date.slice(6,8)}`;
+            const first=clock(day[0].t),last=clock(day.at(-1).t);
+            const opened=first===opening||stock&&first==='090000'||first===shiftClock('090000',openDelay(dashed));
+            if(!opened||last<shiftClock('153000',closeDelay(dashed)))continue;
+            const byTime=new Map(day.map(p=>[p.t,p.amount])),points=[];let total=0;
+            for(let t=day[0].t;t<=day.at(-1).t;t+=60000){total+=byTime.get(t)||0;if(byTime.has(t)||!noTradeMinute(t,stock))points.push({t,amount:total,amount_at:t});}
+            try{store.mergeMany(code,points);}catch(error){log(`[LS 거래대금] ${code} ${date} 저장 안 함: ${error.message}`);}
+        }
+    }
     async function amounts(instrument,mode,dates,cumulative=false) {
         flush();
         const code=marketCodes[instrument] || instrument;
@@ -151,6 +178,7 @@ function createBrokerTurnoverData({ broker, directory, transport, http, getToken
         };
         const restDates=mode==='minute'?dates.filter(date=>date>=today || !savedDays.has(date) || !covered(date)):dates;
         const data=await series(instrument,mode,restDates), result=new Map();
+        if(broker==='ls'&&mode==='minute'&&!data.warnings.length)saveFinishedDays(code,instrument,restDates.filter(date=>date<today),data.rows);
         // REST history can remain cached while new completed websocket minutes arrive.
         const ws=mode==='minute'?dates.flatMap(date=>store.points(code,`${date.slice(0,4)}-${date.slice(4,6)}-${date.slice(6,8)}`)).filter(p=>p.t<Math.floor(now()/60000)*60000):[];
         const stock=!Object.hasOwn(marketCodes,instrument),opening=stock?'080000':'090000';
@@ -176,7 +204,7 @@ function createBrokerTurnoverData({ broker, directory, transport, http, getToken
         }
         let previous;
         for(const p of ws) {
-            const contiguous=previous&&p.t-previous.t===60000;
+            const contiguous=previous&&(p.t-previous.t===60000||bridged(previous.t,p.t,stock));
             const value=cumulative?p.amount:contiguous&&p.amount>=previous.amount?p.amount-previous.amount:null;
             if(value!==null)result.set(p.t,value);previous=p;
         }

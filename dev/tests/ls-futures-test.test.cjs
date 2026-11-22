@@ -277,3 +277,27 @@ test('existing KIS daytime storage fills missing LS day flow with original amoun
     assert.equal(older.points[0].t,timestamp('20261026','150000'));assert.equal(older.points[0].individual,12345);
     assert.equal(older.has_more,false);
 });
+test('지난 구간 선물 분봉은 날마다 파일로 두고, 넓힌 구간은 아직 받지 않은 날만 LS에 묻는다(재시작 뒤에도, 2026-11-22)',async t=>{
+    const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+    const directory=fs.mkdtempSync(path.join(os.tmpdir(),'lsft-candles-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+    const days=['20261020','20261021','20261022','20261023','20261026','20261027'],asked=[];
+    const make=()=>createLsFuturesTest({directory,now:()=>fixedNow,pause:async()=>{},getToken:async()=>'',http:{post:async(url,body,{headers})=>{
+        const tr=headers.tr_cd,p=body[tr+'InBlock'];
+        if(tr==='t8467')return {data:{rsp_cd:'00000',t8467OutBlock:[{hname:'F 2612',shcode:'A016C000'}]}};
+        asked.push([p.sdate,p.edate]);
+        const rows=days.filter(d=>d>=p.sdate&&d<=p.edate).reverse().map(d=>({date:d,time:'090000',open:900,high:902,low:898,close:901}));
+        return {headers:{tr_cont:'N'},data:{rsp_cd:'00000',t8465OutBlock:{},t8465OutBlock1:rows}};
+    }}});
+    const first=await make().priceRange({code:'futures',from:'20261022',to:'20261027'});
+    assert.equal(first.points.length,4);assert.deepEqual(asked,[['20261022','20261027']]);
+    assert.ok(fs.existsSync(path.join(directory,'candles','A016C000','2026-10-26.json.gz')));
+    // 새 서버(재시작) · 같은 구간: LS를 부르지 않는다.
+    const again=await make().priceRange({code:'futures',from:'20261022',to:'20261027'});
+    assert.deepEqual(again.points,first.points);assert.equal(asked.length,1);
+    // 왼쪽으로 넓힌 구간(더 불러오기): 새 날만.
+    const wider=await make().priceRange({code:'futures',from:'20261020',to:'20261027'});
+    assert.deepEqual(asked[1],['20261020','20261021']);assert.equal(wider.points.length,6);
+    // 오늘이 든 범위는 예전처럼 매번 받는다(저장 안 함).
+    await make().priceRange({code:'futures',from:'20261027',to:'20261031'});
+    assert.deepEqual(asked[2],['20261027','20261031']);
+});

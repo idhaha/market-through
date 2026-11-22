@@ -189,3 +189,17 @@ test('현물 분봉 수급 소스는 키움 한 곳: collectSpot false인 한투
     assert.equal((await service.query({code:'kospi',mode:'minute',prices:'0'})).points.length,0);
     assert.ok((await service.query({code:'futures',mode:'minute',prices:'0'})).points.length>0);
 });
+test('지난날 분봉 가격은 지수 캔들 범위(그날 파일)에서 바로 읽고 오늘부터 거슬러 찾지 않는다(2026-11-22)',async t=>{
+    const directory=fs.mkdtempSync(path.join(os.tmpdir(),'market-supply-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+    const queries=[],ranges=[];
+    const service=createMarketSupplyService({directory,now:()=>timestamp(day,'101500'),pause:async()=>{},
+        credentials:()=>({domain:'https://kis.test',appKey:'test',secretKey:'test'}),getToken:async()=>'test',
+        supply:{confirmMarket:async()=>true,futuresAllowed:()=>true},
+        reference:{query:async input=>{queries.push(input);return {points:[],has_more:false};},
+            range:async input=>{ranges.push(input);return {points:[{t:timestamp('20261021','090000'),open:1,high:2,low:1,close:2}],previousDay:'20261020'};}},
+        http:{get:async()=>({data:{rt_cd:'0',output:[]}})}});
+    const result=await service.query({code:'kospi',mode:'minute',cursor:'20261021'});
+    assert.deepEqual(ranges,[{market:'kospi',mode:'minute',from:'20261021',to:'20261021'}]);
+    assert.equal(queries.length,0,'오늘부터 기준 캔들을 거슬러 찾지 않는다');
+    assert.equal(result.candles.length,1);assert.equal(result.cursor,'20261020');
+});

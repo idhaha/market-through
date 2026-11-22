@@ -175,7 +175,14 @@ function createMarketSupplyService({ directory, http, credentials, getToken, ref
             const earlierDate = dates.filter(day => day < date).at(-1);
             const previous = earlierDate ? compact(earlierDate) : null;
             const price = { points: [], error: '', previous: null };
-            if (date && prices !== '0') try {
+            // 지난날 가격은 그날 1분봉 파일(지수 캔들 저장소 range)에서 바로 읽는다(2026-11-22). 예전에는 오늘부터 지수 분봉을
+            // 거슬러 찾아 날마다 2~10초 걸렸다.
+            if (date && prices !== '0' && reference.range && compact(date) < compact(today)) try {
+                const result = await reference.range({ market: config.priceMarket || code, mode: 'minute', from: compact(date), to: compact(date) });
+                price.points.push(...result.points.filter(p => dayKey(p.t) === date));
+                price.previous = result.previousDay || null;
+            } catch (error) { price.error = error.message; }
+            else if (date && prices !== '0') try {
                 let next = '';
                 for (let page = 0; page < 80; page++) {
                     const result = await reference.query({ market: config.priceMarket || code, mode: 'minute', cursor: next });

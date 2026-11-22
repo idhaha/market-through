@@ -305,6 +305,7 @@ const breadthService = createBreadthService({
 // One shared Kiwoom index series per market/mode: candle API, chart reference pages and
 // turnover all read it, so every card shows the same index candles.
 const indexCandleStore = require('./index-candle-store').createIndexCandleStore({
+    minuteStore: kiwoomMinuteStore, // 지난 구간 1분봉은 저장 파일(2026-11-22)
     http: indexHttp,
     getToken: () => {
         const appKey = (process.env.KIWOOM_APPKEY || '').trim(), secretKey = (process.env.KIWOOM_SECRETKEY || '').trim();

@@ -6,6 +6,8 @@ function createChartReferenceService({ store }) {
   const { points, count, cursor: next, has_more } = await store.referencePage({ market, mode, cursor });
   return { points, count, cursor: next, has_more };
  }
- return { query };
+ // 지난 구간 1분봉(날짜 범위). 지수 캔들 저장소의 range를 그대로 쓴다(2026-11-22).
+ const range = options => store.range(options);
+ return { query, range };
 }
 module.exports = { createChartReferenceService };
