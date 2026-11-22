@@ -14,7 +14,7 @@ const before = day => DAYS.filter(d => d <= day).at(-1);
 test('과거 구간을 채운 뒤 쏠림율 자동 갱신이 더 불러오기 커서를 구간 끝으로 되돌리지 않는다', async () => {
     const browser = await chromium.launch({ headless: true, channel: 'chrome' });
     try {
-        const page = await browser.newPage({ viewport: { width: 1900, height: 1100 } }), errors = [], conc = [];
+        const page = await browser.newPage({ viewport: { width: 1900, height: 1100 } }), errors = [], conc = [], prices = [];
         page.on('pageerror', e => errors.push(e.message));
         await page.clock.install({ time: new Date(TODAY + 'T12:00:00+09:00') });
         const html = fs.readFileSync('public/index.html', 'utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<link\b[^>]*>/gi, '');
@@ -29,6 +29,7 @@ test('과거 구간을 채운 뒤 쏠림율 자동 갱신이 더 불러오기 �
                 const asked = typeof q.cursor === 'string' && q.cursor.startsWith('day:') ? dashed(q.cursor.slice(4)) : q.base_dt ? dashed(q.base_dt) : TODAY;
                 const day = before(asked), prev = DAYS[DAYS.indexOf(day) - 1];
                 if (p === '/api/ls-concentration-chart') conc.push(q.cursor || (q.base_dt ? 'base:' + q.base_dt : 'first'));
+                if (p === '/api/concentration-chart' && q.prices_only) prices.push(q.cursor || (q.base_dt ? 'base:' + q.base_dt : 'first'));
                 data = { success: true, market: 'K', mode: 'minute', points: minutes(day).map((t, i) => ({ time: iso(t).slice(0, 19).replace(/[-:T]/g, ''), value: 10 + i / 100, stock_open: 100, stock_high: 110, stock_low: 90, stock_price: 105 })), cursor: prev ? 'day:' + compact(prev) : null, has_more: !!prev };
             }
             else if (minute) { const day = before(q.date || (q.cursor ? dashed(q.cursor) : TODAY)), prev = DAYS[DAYS.indexOf(day) - 1]; data = { success: true, date: day, points: [], candles: [], markets: { kospi: [], kosdaq: [] }, cursor: prev ? compact(prev) : null, has_more: !!prev, available_dates: DAYS, warnings: [] }; }
@@ -45,6 +46,9 @@ test('과거 구간을 채운 뒤 쏠림율 자동 갱신이 더 불러오기 �
         await page.evaluate(() => document.dispatchEvent(new Event('DOMContentLoaded')));
         await page.evaluate(() => window.selectRankChartStock({ code: '005930', name: '삼성전자' }));
         await page.waitForTimeout(800);
+        // 캔들 영역을 연다: 쏠림율 카드는 KIS 가격(prices_only)을 따로 받는다(그 커서도 확인한다).
+        await page.locator('#rankCombinedSupplyChartPanel .concentration-candle-toggle').click();
+        await page.waitForTimeout(800);
         const zoom = { first: '2026-08-17', last: '2026-09-25' };
         await page.evaluate(({ first, last }) => { const d = window.RankChartAxis.dailyDomain(), n = d.days.length - 1; window.RankChartAxis.selectViewport('combinedSupply', d.days.indexOf(first) / n, d.days.indexOf(last) / n); }, zoom);
         await page.locator('#rankCombinedSupplyChartPanel [data-mode="minute"]').click();
@@ -55,10 +59,15 @@ test('과거 구간을 채운 뒤 쏠림율 자동 갱신이 더 불러오기 �
         await page.waitForTimeout(1500);
         const after = await page.evaluate(() => window.getRankChartState().cursor);
         assert.equal(after, filled.cursor, `갱신 뒤에도 다음 쪽 커서가 구간 첫날 앞이어야 한다(갱신 전 ${filled.cursor}, 받은 쪽 ${conc.join(',')})`);
-        conc.length = 0;
+        conc.length = 0; prices.length = 0;
         await page.evaluate(() => window.RankChartAxis.requestHistory('minute'));
         await page.waitForTimeout(3000);
         assert.ok(conc.length <= 2, `더 불러오기는 한두 쪽만 받는다: ${conc.join(',')}`);
+        // KIS 가격도 구간 첫날 앞부터 받는다(갱신이 가격 커서를 구간 끝 날짜로 되돌리면 이미 받은 날부터 다시 받는다).
+        const from = compact(filled.window.from);
+        const repeated = prices.filter(c => c.startsWith('day:') && c.slice(4) >= from);
+        assert.deepEqual(repeated, [], `가격 더 불러오기가 이미 받은 날을 다시 받았다: ${prices.join(',')}`);
+        assert.ok(prices.length >= 1, `가격도 더 과거 쪽을 받는다: ${prices.join(',')}`);
         assert.deepEqual(errors, []);
     } finally { await browser.close(); }
 });

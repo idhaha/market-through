@@ -526,6 +526,14 @@ const lsStockFuturesService = require('./ls-stock-futures').createLsStockFutures
     // Past 1-minute futures bars (days LS t8406 no longer serves): KIS FHKIF03020200, stock futures market JF.
     kisMinute: kisFuturesMinute
 });
+// 지난 분봉 미리 받기(2026-11-23): 매일 22:00 최근 60거래일의 LS 1분 거래대금(시장 · 관심 종목)과 종목 선물 1분 가격을 저장해 둔다.
+// 과거 분봉 구간을 처음 열 때 서버가 증권사에서 받느라 요청마다 3~9초씩 걸리던 것을 없앤다. ls-history-prefetch.js 참고.
+const lsHistoryPrefetch = require('./ls-history-prefetch').createLsHistoryPrefetch({
+    turnover: (instrument, mode, dates) => lsTurnoverData.amounts(instrument, mode, dates),
+    futuresCandles: input => lsStockFuturesService.candles(input),
+    stocks: () => (supplyService.summary().stocks || []).map(stock => stock.code),
+    openDate: date => tradingSession.openDate(date), log: message => fileLog(message)
+});
 app.get('/api/ls-stock-futures/chart', async (req, res) => {
     try { res.set('Cache-Control', 'no-store').json(await lsStockFuturesService.query(req.query)); }
     catch (error) { res.status(error.status || 502).json({ success: false, error: error.message }); }
@@ -3141,6 +3149,7 @@ app.listen(PORT, async () => {
     breadthService.start();
     backgroundRefreshService.start();
     concentrationChartService.startStockDirectorySchedule();
+    lsHistoryPrefetch.start();
     }
     // Keep the daily archive current even when no chart is open.
     const refreshVolatilityArchive = () => Promise.allSettled([volatilityService.query('all'), sentimentService.query('all')]).then(results => results.forEach(result => { if (result.status === 'rejected') console.warn('[Risk] Archive refresh failed:', result.reason.message); }));

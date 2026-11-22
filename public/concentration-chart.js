@@ -472,7 +472,10 @@
                 const result=await response.json();
                 if(current!==priceController || identity!==`${state.selection?.code}:${state.mode}:${state.interval}`)return;
                 if(!response.ok || !result.success)throw new Error(result.error || '캔들 조회 실패');
-                priceCursor=result.has_more?result.cursor:null;
+                // 자동 갱신(append 아님)은 첫 쪽만 다시 받는다. 이미 더 과거 가격까지 받아 두었으면 다음 쪽 커서를 되돌리지 않는다
+                // (2026-11-23 오라클 측정: 갱신 뒤 더 불러오기가 이미 받은 9/3부터 가격을 다시 받았다. 쏠림율 본 조회와 같은 원인).
+                const firstFresh=result.points?.[0]?.time,olderPrice=!append && firstFresh && state.points.some(p=>Number.isFinite(p.stock_price) && p.time<firstFresh);
+                if(!olderPrice)priceCursor=result.has_more?result.cursor:null;
                 const merged=new Map(state.points.map(p=>[p.time,p]));
                 for(const p of result.points || []){
                     const old=merged.get(p.time);
