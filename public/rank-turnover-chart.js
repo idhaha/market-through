@@ -90,7 +90,16 @@
             const ratio=Number.isFinite(average)&&Number.isFinite(amount) ? `(5일평균대비 ${(amount/average*100).toFixed(1)}%)` : '';
             tip.append(' · ',label,Number.isFinite(amount)?` ${(amount/1e12).toFixed(1)}조원${ratio}`:' —');
         });tip.hidden=false;}
+        // 조회 중 그리기는 다음 화면 프레임에 한 번으로 묶는다(2026-11-22, 종목 수급 카드와 같은 방식). 과거 구간에서 하루씩 받는 쪽마다
+        // 바로 2~3번씩 그려 오라클에서 이 카드의 응답 처리만 1~2초가 걸렸다. 사용자 조작에 따른 그리기는 그대로 바로 한다.
+        let drawPending = null;
+        function requestDraw() {
+            if (drawPending) return;
+            const run = () => { drawPending = null; draw(); };
+            drawPending = typeof requestAnimationFrame === 'function' && !document.hidden ? { frame: requestAnimationFrame(run) } : { timer: setTimeout(run, 16) };
+        }
         function draw() {
+            if (drawPending) { if (drawPending.frame) cancelAnimationFrame(drawPending.frame); else clearTimeout(drawPending.timer); drawPending = null; }
             renderHoverInfo();
             window.RankChartAxis.loadingBar(canvas.parentElement,loading,'거래대금');
             window.RankChartAxis.loadingBar(candleArea,priceBusy,'캔들');
@@ -246,7 +255,7 @@
             if (mode === 'minute') void loadDailyTurnover();
             const current = controller = new AbortController();
             const anchor = dates[start], followLatest = start + (count ?? dates.length) >= dates.length;
-            status.textContent = '거래대금 조회 중';draw();
+            status.textContent = '거래대금 조회 중';requestDraw();
             try {
                 const keys = more ? [cursor] : [...new Set(['', ...loadedPages.keys()])];
                 for (const key of keys) {
@@ -259,10 +268,17 @@
                     loadedPages.set(key || '', result);
                 }
                 const pages = [...loadedPages.values()];
+                // 더 불러오기는 새로 받은 쪽만 합친다(2026-11-22). 예전엔 쪽마다 받아 둔 모든 쪽을 다시 합치고 정렬해, 과거 구간(22쪽)에서
+                // 이 카드의 응답 처리가 오라클에서 2초 넘게 걸렸다. 새 쪽이 모두 더 과거면 앞에 붙이고, 겹치면 예전처럼 합친다.
+                const incoming = more ? [loadedPages.get(keys[0] || '')].filter(Boolean) : pages;
+                let prepended = more;
                 for (const market of ['kospi','kosdaq']) {
-                    data[market] = [...new Map([...data[market],...pages.flatMap(p => p.markets[market] || [])].map(p => [p.t,p])).values()].sort((a,b)=>a.t-b.t);
+                    const fresh = incoming.flatMap(p => p.markets[market] || []).sort((a,b)=>a.t-b.t), old = data[market];
+                    if (more && (!fresh.length || !old.length || fresh.at(-1).t < old[0].t) && fresh.every((p,i)=>!i || fresh[i-1].t < p.t)) data[market] = [...fresh, ...old];
+                    else { prepended = false; data[market] = [...new Map([...old, ...fresh].map(p => [p.t,p])).values()].sort((a,b)=>a.t-b.t); }
                 }
-                dates = [...new Set(Object.values(data).flat().map(p=>p.t))].sort((a,b)=>a-b);
+                if (prepended) { const older = [...new Set([...data.kospi, ...data.kosdaq].filter(p => !dates.length || p.t < dates[0]).map(p => p.t))].sort((a,b)=>a-b); dates = [...older, ...dates]; }
+                else dates = [...new Set(Object.values(data).flat().map(p=>p.t))].sort((a,b)=>a-b);
                 cursor = pages.at(-1)?.cursor || null;
                 if (more) { start = 0; count = null; }
                 else if (count != null) start = followLatest ? Math.max(0,dates.length-count) : Math.max(0,dates.findIndex(t=>t>=anchor));
@@ -274,7 +290,7 @@
             } catch(error) {
                 if (error.name !== 'AbortError') { status.textContent = `${error.message}${dates.length ? ' · 이전 데이터 표시' : ''} · 다음 갱신 때 재시도`; window.setRankCardConnection?.(panel,false); }
             } finally {
-                loading = false; moreButton.disabled = !cursor; draw();
+                loading = false; moreButton.disabled = !cursor; requestDraw();
                 if (refreshPending) { refreshPending = false; void load(); }
             }
         }

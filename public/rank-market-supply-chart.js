@@ -6,7 +6,16 @@
     const dayKey = t => window.RankChartAxis?.kstDay ? window.RankChartAxis.kstDay(t) : new Date(t + 9 * 3600000).toISOString().slice(0, 10);
     const clock = t => window.RankChartAxis?.kstMinute ? window.RankChartAxis.kstMinute(t).slice(11, 16) : new Date(t + 9 * 3600000).toISOString().slice(11, 16);
     const formatAmount = (n, signed = true) => Number.isFinite(n) ? `${signed && n > 0 ? '+' : ''}${n.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}` : '미제공';
+    // 더 과거 쪽을 앞에 붙일 때(겹치는 시각이 없을 때)는 전체를 다시 합치고 정렬하지 않는다(2026-11-22).
+    const prependOlder = (previous, incoming) => {
+        if (!incoming.length) return previous.slice();
+        const sorted = incoming.every((p, i) => !i || incoming[i - 1].t < p.t) ? incoming : [...incoming].sort((a, b) => a.t - b.t);
+        return !previous.length || sorted.at(-1).t < previous[0].t ? [...sorted, ...previous] : null;
+    };
+    const mergeByTime = (previous, incoming) => prependOlder(previous, incoming) || [...new Map([...previous, ...incoming].map(p => [p.t, p])).values()].sort((a, b) => a.t - b.t);
     function mergeFlow(previous, incoming) {
+        const fast = prependOlder(previous, incoming);
+        if (fast) return fast;
         const points = new Map(previous.map(point => [point.t, point]));
         for (const point of incoming) {
             const old = points.get(point.t), merged = { ...old, ...point };
@@ -216,7 +225,16 @@
             context.setTransform(dpr, 0, 0, dpr, 0, 0); context.clearRect(0, 0, w, h);
             context.font = '12px Inter, sans-serif'; return { w, h };
         }
+        // 조회 중 그리기는 다음 화면 프레임에 한 번으로 묶는다(2026-11-22, 종목 수급 카드와 같은 방식). 과거 구간에서 하루씩 받는 쪽마다
+        // 바로 2~3번씩 그려 오라클에서 이 카드의 응답 처리만 1~2초가 걸렸다. 사용자 조작에 따른 그리기는 그대로 바로 한다.
+        let drawPending = null;
+        function requestDraw() {
+            if (drawPending) return;
+            const run = () => { drawPending = null; draw(); };
+            drawPending = typeof requestAnimationFrame === 'function' && !document.hidden ? { frame: requestAnimationFrame(run) } : { timer: setTimeout(run, 16) };
+        }
         function draw() {
+            if (drawPending) { if (drawPending.frame) cancelAnimationFrame(drawPending.frame); else clearTimeout(drawPending.timer); drawPending = null; }
             const received=mode==='day' && points.length ? `수급 · 투자자 ${points.filter(p=>['individual','foreign','institution'].some(s=>Number.isFinite(p[s]))).length}/${points.length}일 · 프로그램 ${points.filter(p=>Number.isFinite(p.program)).length}/${points.length}일` : '수급';
             window.RankChartAxis.loadingBar(canvas.parentElement,flowLoading,received);
             window.RankChartAxis.loadingBar(candleArea,candleLoading,'캔들');
@@ -424,7 +442,7 @@
             if(requestedRange && candleRangeError)candleRangeKey='';
             if(key===candleRangeKey || key===candleRangePending)return;
             candleController?.abort();const current=candleController=new AbortController(),id=++candleRevision;
-            candleRangePending=key;candleRangeError='';candleLoading=true;draw();
+            candleRangePending=key;candleRangeError='';candleLoading=true;requestDraw();
             try{
                 const url=futuresTest?`/api/ls-futures-test/candles?code=${selected}&mode=${mode}&from=${from}&to=${to}`:`/api/adr/candles?market=${market}&mode=${mode}&from=${from}&to=${to}`;
                 const response=await (window.RankChartCache?.fetch || fetch)(url,{signal:current.signal});
@@ -445,7 +463,7 @@
             }catch(error){
                 if(error.name!=='AbortError' && id===candleRevision){candleRangeError=error.message;candleMessage=error.message;candleRangeKey=key;}
             }finally{
-                if(id===candleRevision){candleRangePending='';candleLoading=false;setStatus();draw();}
+                if(id===candleRevision){candleRangePending='';candleLoading=false;setStatus();requestDraw();}
             }
         }
         window.RankChartAxis.registerHover(axisId,()=>mode,()=>hover,key=>{
@@ -480,7 +498,7 @@
             if (!selected) { loading = false; clearView(); chartMessage = '시장을 선택하세요.'; setStatus(); return; }
             const queryEndpoint = flowEndpoint(selected);
             if(append){window.RankChartAxis.showHistory();todayOnly=false;}
-            loading = true; flowLoading=true; chartMessage = append ? '과거 수급 조회 중…' : '수급 조회 중…'; setStatus(); draw();
+            loading = true; flowLoading=true; chartMessage = append ? '과거 수급 조회 중…' : '수급 조회 중…'; setStatus(); requestDraw();
             try {
                 let firstResponse=true;
                 const updateHistory=append || !historyLoaded;
@@ -494,7 +512,7 @@
                 const fresh = (result.points || []).filter(p => Number.isFinite(p.t));
                 points = mergeFlow(points, fresh);
                 {
-                    candles = [...new Map([...candles, ...(result.candles || [])].map(p => [p.t, p])).values()].sort((a,b) => a.t - b.t);
+                    candles = mergeByTime(candles, result.candles || []);
                 }
                 if (updateHistory) { cursor = result.cursor; hasMore = result.has_more === true; historyLoaded = true; }
                 if(firstResponse && restoreRange && mode==='minute'){
@@ -506,7 +524,7 @@
                         if(id!==revision)return;
                         recordCoverage(past,day.replaceAll('-',''));
                         points=mergeFlow(points,(past.points || []).filter(p=>Number.isFinite(p.t)));
-                        candles=[...new Map([...candles,...(past.candles || [])].map(p=>[p.t,p])).values()].sort((a,b)=>a.t-b.t);
+                        candles=mergeByTime(candles,past.candles || []);
                         if(past.cursor && past.cursor<restoreRange.first.slice(0,10).replaceAll('-',''))older.push(past.cursor);
                     }
                     cursor=older.sort().at(-1) || null;hasMore=!!cursor;historyLoaded=true;
@@ -527,8 +545,8 @@
                 chartMessage = `${hasFlow ? message : '수급 기록 없음'}${warnings.length ? ` · ${warnings.join(' · ')}` : ''}${result.status?.error && result.date === dayKey(Date.now()) ? ` · ${result.status.error}` : ''}`;
                 if(result.pending)chartMessage=hasFlow?`${chartMessage} · 추가 조회 중…`:'가격 수신 · 수급 조회 중…';
                 window.setRankCardConnection?.(panel, !result.partial && !result.warnings?.some(text => /실패|오류/.test(text)));
-                hover = null; info.hidden = true; setStatus(); draw();
-                flowLoading=!!result.pending;draw();
+                hover = null; info.hidden = true; setStatus();
+                flowLoading=!!result.pending;requestDraw();
                 if (showCandles || mode === 'minute') void loadCandles();
                 publish();
                 firstResponse=false;
@@ -543,7 +561,7 @@
             }
             finally {
                 if (id === revision) {
-                    loading = false; flowLoading=false; draw(); publish();
+                    loading = false; flowLoading=false; requestDraw(); publish();
                     if (refreshPending && !refreshing && !drag) { refreshPending = false; void window[api('refreshRankMarketSupplyChart')](); }
                 }
             }
