@@ -323,7 +323,7 @@ function createConcentrationChartService({ axios, getAccessToken, marketCache, n
         session.nextDay = next;
         session.expires = Date.now() + TTL;
         return {
-            success: true, market: session.market, mode: 'minute', interval: 1, cursor,
+            success: true, market: session.market, mode: 'minute', interval: 1, cursor: next ? `day:${next}` : null,
             points: calculatePoints(stockRows, indexRows, 'minute', 1),
             debug_five_bars: null,
             has_more: Boolean(next), history_pending: false,
@@ -361,7 +361,13 @@ function createConcentrationChartService({ axios, getAccessToken, marketCache, n
         }
         let session;
         let cursor = input.cursor;
-        if (cursor) {
+        // 1분봉 날짜 단위 조회의 커서는 "day:<다음 날>"이다(2026-11-22). 예전에는 서버 세션 번호(UUID)를 주고 세션이 쪽마다
+        // 다음 날로 넘어가, 브라우저가 저장해 둔 첫 쪽(예전 세션 번호)으로 다시 더 불러오면 이미 넘어간 세션이 11/17~18을
+        // 건너뛰고 11/13 · 11/16을 주었다(오라클 측정: 쏠림율 11/18 빈칸). 날짜 커서는 같은 요청에 늘 같은 쪽을 준다.
+        const dayCursor = /^day:(\d{8})$/.exec(String(cursor || ''));
+        if (dayCursor && minuteStore && mode === 'minute' && interval === 1) {
+            session = { owner, code, mode, interval, market: await marketFor(code, token), pricesOnly: !!input.prices_only, dayBased: true, nextDay: dayCursor[1] };
+        } else if (cursor) {
             session = sessions.get(cursor);
             if (!session || session.owner !== owner || session.code !== code || session.mode !== mode || session.interval !== interval || !!session.pricesOnly !== !!input.prices_only) {
                 throw Object.assign(new Error('과거 조회가 만료되었습니다. 일/분 버튼을 눌러 다시 조회해 주세요.'), { status: 410 });
@@ -390,8 +396,7 @@ function createConcentrationChartService({ axios, getAccessToken, marketCache, n
             };
             // 1분봉은 날짜 단위로 넘긴다(2026-11-21): 끝난 날은 저장 파일에서, 없는 날만 키움에서 base_dt로 그날을 받는다.
             if (minuteStore && mode === 'minute' && interval === 1) Object.assign(session, { dayBased: true, nextDay: minuteBase || baseDate });
-            cursor = crypto.randomUUID();
-            sessions.set(cursor, session);
+            else { cursor = crypto.randomUUID(); sessions.set(cursor, session); }
         }
         session.busy = true;
         if (session.dayBased) {

@@ -156,3 +156,25 @@ test('쏠림율 1분봉 이어 보기는 이번에 받은 날만 보낸다(쌓�
     const byTime = new Map(whole.points.map(p => [p.time, p.value]));
     for (const p of [...first.points, ...second.points]) if (byTime.has(p.time)) assert.equal(p.value, byTime.get(p.time), p.time);
 });
+
+test('쏠림율 1분봉 이어 보기 커서는 날짜라, 같은 커서로 다시 물어도(브라우저 저장 첫 쪽 · 서버 재시작) 같은 쪽을 준다(2026-11-22 11/18 빈칸)', async t => {
+    const dir = tempDir(t), store = createKiwoomMinuteStore({ directory: dir });
+    const many = DAYS.flatMap((day, i) => Array.from({ length: 500 }, (_, m) => stockRow(day, String(800 + Math.floor(m / 60) * 100 + m % 60).padStart(4, '0'), 100 + i)));
+    const idx = DAYS.flatMap((day, i) => Array.from({ length: 500 }, (_, m) => indexRow(day, String(800 + Math.floor(m / 60) * 100 + m % 60).padStart(4, '0'), 300000 + i)));
+    const post = async (url, body, options) => {
+        const id = options.headers['api-id'], source = id === 'ka10080' ? many : idx, field = id === 'ka10080' ? 'stk_min_pole_chart_qry' : 'inds_min_pole_qry';
+        const base = body.base_dt || '20261007', days = [...new Set(source.map(r => r.cntr_tm.slice(0, 8)).filter(d => d <= base))].sort().reverse();
+        const page = days.slice(0, 2), list = source.filter(r => page.includes(r.cntr_tm.slice(0, 8))).sort((a, b) => b.cntr_tm.localeCompare(a.cntr_tm));
+        return { data: { return_code: 0, [field]: list }, headers: { 'cont-yn': days.length > 2 ? 'Y' : 'N', 'next-key': days.length > 2 ? 'k' : '' } };
+    };
+    const make = () => createConcentrationChartService({ axios: { post }, marketCache: { '005930': { type: 'K', code: '0' } }, getAccessToken: async () => 'token',
+        now: () => NOW, pause: async () => {}, minuteStore: store, keepStock: () => true });
+    const days = r => [...new Set(r.points.map(p => p.time.slice(0, 8)))].sort();
+    const api = make(), first = await api.query({ code: '005930', mode: 'minute', interval: 1 }, 'owner');
+    const second = await api.query({ code: '005930', mode: 'minute', interval: 1, cursor: first.cursor }, 'owner');
+    // 예전에는 같은 세션 커서를 다시 쓰면 이미 넘어간 다음 쪽(더 옛날 날)을 주었다.
+    const again = await api.query({ code: '005930', mode: 'minute', interval: 1, cursor: first.cursor }, 'owner');
+    assert.deepEqual(days(again), days(second), '같은 커서 → 같은 쪽');
+    const restarted = await make().query({ code: '005930', mode: 'minute', interval: 1, cursor: first.cursor }, 'other-owner');
+    assert.deepEqual(days(restarted), days(second), '서버를 다시 켜도 같은 쪽(만료 410 없음)');
+});
