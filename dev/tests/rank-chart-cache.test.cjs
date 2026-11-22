@@ -3,11 +3,11 @@ test('closed-market reload preserves pagination across concentration variants an
  const browser=await chromium.launch({headless:true,channel:'msedge'});
  try{
   const page=await browser.newPage(),counts=new Map();
-  const gets=['/api/supply/chart','/api/kis-supply/chart','/api/ls-supply/chart','/api/market-supply/chart','/api/kiwoom-market-supply/chart','/api/ls-market-supply/chart','/api/turnover/chart','/api/kis-turnover/chart','/api/ls-turnover/chart','/api/chart-reference','/api/adr/candles','/api/risk/breadth','/api/risk/sentiment','/api/risk/volatility'];
+  const gets=['/api/supply/chart','/api/kis-supply/chart','/api/market-supply/chart','/api/kiwoom-market-supply/chart','/api/ls-market-supply/chart','/api/turnover/chart','/api/ls-turnover/chart','/api/chart-reference','/api/adr/candles','/api/risk/breadth','/api/risk/sentiment','/api/risk/volatility'];
   const specs=[];
   for(const mode of ['day','minute']){
    for(const url of gets)specs.push({url:url+'?mode='+mode,method:'GET',cursor:'20261022'});
-   for(const url of ['/api/concentration-chart','/api/kis-concentration-chart','/api/ls-concentration-chart'])for(const prices of [false,true])specs.push({url,method:'POST',body:JSON.stringify({code:'000660',mode,interval:1,...(prices?{prices_only:true}:{})})});
+   for(const url of ['/api/concentration-chart','/api/ls-concentration-chart'])for(const prices of [false,true])specs.push({url,method:'POST',body:JSON.stringify({code:'000660',mode,interval:1,...(prices?{prices_only:true}:{})})});
   }
   await page.route('https://card-history.test/**',route=>{
    const request=route.request(),url=new URL(request.url());
@@ -23,9 +23,10 @@ test('closed-market reload preserves pagination across concentration variants an
    const s=specs[i];assert.equal(restored[i].has_more,true,s.url);
    assert.equal(restored[i].cursor,s.method==='POST'?'session-2':'20261022',s.url+' '+(s.body||''));
   }
-  assert.equal(specs.length,40);
-  assert.equal([...counts.values()].filter(n=>n===2).length,12,'All session-bound source and candle variants restore sessions');
-  assert.equal([...counts.values()].filter(n=>n===1).length,28,'Date-based cards retain stored pagination without unnecessary closed-market requests');
+  // 비교 경로(ls-supply · kis-turnover · kis-concentration-chart)는 2026-11-22에 없앴다.
+  assert.equal(specs.length,32);
+  assert.equal([...counts.values()].filter(n=>n===2).length,8,'All session-bound source and candle variants restore sessions');
+  assert.equal([...counts.values()].filter(n=>n===1).length,24,'Date-based cards retain stored pagination without unnecessary closed-market requests');
  }finally{await browser.close();}
 });
 test('closed-market reload obtains a fresh concentration cursor instead of disabling saved history',async()=>{

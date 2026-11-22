@@ -15,7 +15,6 @@ const fs = require('node:fs'), path = require('node:path'), crypto = require('no
 const ROUTES = {
     '/api/risk/breadth': ['breadth/markets'],
     '/api/kis-supply/chart': ['kis-supply'],
-    '/api/ls-supply/chart': ['ls-supply'],
     '/api/supply/chart': ['supply'],
     '/api/ls-stock-futures/chart': ['ls-stock-futures'],
     '/api/market-supply/chart': ['market-supply'],
@@ -24,16 +23,16 @@ const ROUTES = {
     // 시장 선물 수급 cards: LS night/day lookups saved in ls-futures-test, daytime KIS values from market-supply.
     '/api/ls-futures-test/chart': ['ls-futures-test', 'market-supply'],
     '/api/ls-turnover/chart': ['ls-turnover'],
-    '/api/kis-turnover/chart': ['kis-turnover'],
-    // 쏠림율 · 비교 카드의 기준 1분봉과 종목수급 캔들은 kiwoom-minute 한 벌을 함께 읽는다(2026-11-21).
-    '/api/ls-concentration-chart': ['ls-turnover', 'kiwoom-minute'],
-    '/api/kis-concentration-chart': ['kis-concentration', 'kiwoom-minute'],
-    '/api/supply/candles': ['kiwoom-minute'],
+    // 쏠림율 · LS 비교 카드의 기준 1분봉과 종목수급 캔들은 kiwoom-minute 한 벌을 함께 읽는다(2026-11-21).
+    '/api/ls-concentration-chart': ['ls-turnover', 'kiwoom-minute', 'kiwoom-daily'],
+    // kiwoom-daily: 지난날 키움 일봉 저장(2026-11-22). 평소엔 지난날 파일이 추가만 되고(.json.gz라 세지 않음), 수정주가로
+    // 저장본을 버릴 때만 resets.json이 바뀌어 이 경로들의 브라우저 저장분이 한 번 버려진다.
+    '/api/supply/candles': ['kiwoom-minute', 'kiwoom-daily'],
     '/api/risk/volatility': ['volatility'],
     '/api/risk/sentiment': ['volatility'],
-    '/api/concentration-chart': ['kiwoom-minute'],
+    '/api/concentration-chart': ['kiwoom-minute', 'kiwoom-daily'],
     // 지난 구간 가격 분봉 파일(2026-11-22): 지수(kiwoom-minute 001/101), 종목 선물(ls-stock-futures/candles), 지수 선물(ls-futures-test/candles).
-    '/api/adr/candles': ['kiwoom-minute'],
+    '/api/adr/candles': ['kiwoom-minute', 'kiwoom-daily'],
     '/api/ls-stock-futures/candles': ['ls-stock-futures'],
     '/api/ls-futures-test/candles': ['ls-futures-test']
 };
@@ -106,6 +105,8 @@ function createChartRevisions({ dataDirectory, directory, now = Date.now, routes
             seen.add(rel);
             const sig = `${stat.size}:${Math.round(stat.mtimeMs)}`, before = record.singles[rel];
             if (before?.sig === sig) continue;
+            // resets.json: 저장소가 지난 자료를 버리고 새로 쌓았다는 기록(kiwoom-daily-store, 수정주가). 생기거나 바뀌면 바뀐 것으로 본다.
+            if (path.basename(rel) === 'resets.json') { record.singles[rel] = { sig }; changed = true; continue; }
             let value; try { value = JSON.parse(fs.readFileSync(full, 'utf8')); } catch { continue; }
             const entries = Array.isArray(value) ? value : Array.isArray(value?.points) ? value.points : null;
             if (!entries) { record.singles[rel] = { sig }; continue; }

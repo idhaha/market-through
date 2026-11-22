@@ -75,6 +75,19 @@
 - 시장 수급 카드의 다른 시장(같은 y축용) 요청은 가격 없이 수급만 받고, 화면 첫날보다 이른 날은 받지 않는다.
 - 브라우저 캐시: `ls-turnover` · `ls-stock-futures` · `ls-futures-test`도 `APPEND_ONLY`(처음 저장되는 지난날은 바뀐 것으로 치지 않음).
 
+## 지난날 일봉 저장 (적용됨, 2026-11-22)
+
+| 자료 | 파일 | 방식 |
+|---|---|---|
+| 종목 일봉 가격(키움 ka10081, 수정주가) · 업종 지수 일봉(ka20006) | `data/kiwoom-daily/<api>/<종목>_<수정여부>.json.gz` | `kiwoom-daily-store.js`가 키움 호출을 감싼다. 기준일(base_dt) 600봉 · 연속조회를 날짜 기준("store:<다음 기준일>")으로 바꾸고, 다 받은 구간이면 파일에서 같은 모양으로 답한다. 오늘 봉은 늘 키움. 겹치는 날 종가가 바뀌면(수정주가) 그 종목 저장본을 버리고 새로 쌓는다. 쓰는 곳: 종목수급 일봉 · 캔들, 쏠림율 일봉, 지수 일봉 캔들(시장 거래대금 일봉 포함) |
+| 종목 일별 투자자 · 프로그램 수급(키움 ka10060 · ka90013) | `data/daily-history/kiwoom-stock-flow/<종목>_<api>.json.gz` | `daily-query-cache.js` 이력 캐시가 끝난 날(3일 이상 전)의 행과 다 받은 범위를 파일로 둔다. 최근 이틀은 예전처럼 다시 받는다 |
+| 시장 일별 수급(LS, 현물 · 지수 선물) | `data/daily-history/ls-market-flow/` | 같은 방식 |
+| 종목 선물 연결선물 일봉 가격(LS t8405) | `data/ls-stock-futures/daily/<종목>-candles.json.gz` | t8405는 최신 쪽부터만 이어 받을 수 있어, 새로 받은 쪽이 저장된 마지막 날에 닿으면 저장본을 붙이고 그보다 옛날은 묻지 않는다. 겹치는 날 종가가 다르면 저장본을 버린다 |
+| 종목 선물 일별 수급(LS t8462) | `data/ls-stock-futures/daily/<종목>-flow.json.gz` | 사흘 전까지(확정치)를 두고, 저장된 마지막 날 다음 날부터만 묻는다(`from_date`) |
+| 지수 선물 연결 일봉 가격(LS t2214 주간 · t8459 야간) | `data/ls-futures-test/daily/<futures\|futuresKosdaq>-<D\|N>.json.gz` | 사흘 전까지의 봉과 다 받은 범위를 둔다. 최근 날은 늘 LS, 저장 범위가 며칠 전에 끝났으면 그 사이만 받아 잇는다 |
+
+- 브라우저 캐시: 위 파일은 날짜 이름이 아니라 chart-revisions가 세지 않는다(날이 쌓여도 버전 그대로). 저장본을 버리고 새로 쌓을 때만 `resets.json`(`data/kiwoom-daily/resets.json`, `data/ls-stock-futures/daily/resets.json`)을 고쳐 그 일봉을 쓰는 경로(종목수급 캔들 · 쏠림율 · 지수 캔들 · 종목 선물 수급)의 버전을 올린다.
+
 ## 언제 저장하나
 
 - 장이 끝난 지난 거래일만 저장한다. 오늘 자료는 지금처럼 실시간으로 받는다.

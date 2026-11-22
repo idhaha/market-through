@@ -68,13 +68,6 @@ test('LS websocket cumulative values finalize per minute and never spread a miss
  const intervals=await f.data.amounts('005930','minute',['20261026']);assert.equal(intervals.values.has(at('100500')),false);assert.equal(intervals.values.has(at('100700')),false);assert.equal(intervals.values.get(at('100800')),10000000);
  const totals=await f.data.amounts('005930','minute',['20261026'],true);assert.equal(totals.values.get(at('100500')),100000000);
 });
-test('KIS market websocket parses exact 30-column records and separates the two markets',t=>{
- const f=fixture(t,'kis');f.data.start();assert.equal(f.streams.length,2);assert.ok(f.streams.every(s=>s.tr==='H0UPCNT0'));
- const fields=new Array(30).fill('0');fields[0]='0001';fields[1]='100549';fields[6]='123';
- assert.equal(f.streams[1].onData('0|H0UPCNT0|1|'+fields.join('^')),false);
- assert.equal(f.streams[0].onData('0|H0UPCNT0|1|'+fields.join('^')),true);
- f.setTime(at('100600'));f.data.flush();assert.equal(f.data.store.points('KOSPI0','2026-10-26')[0].amount,123000000);assert.equal(f.data.store.points('KOSDAQ','2026-10-26').length,0);
-});
 test('new websocket minutes appear even while the REST history cache remains valid',async t=>{
  const f=fixture(t);f.data.watchStock('005930','owner');
  await f.data.amounts('005930','minute',['20261026'],true);
@@ -107,10 +100,6 @@ test('LS market cumulative starts at the delayed open on 2026-11-19 (수능) but
   const result=await f.data.amounts(instrument,'minute',[date],true),stamp=date==='20261119'?exam:at;
   assert.equal(result.values.get(stamp('100100')),available?30000000:null,date+' '+instrument);
  }
- const {differences}=require('../../kis-concentration-chart');
- const rows=day=>new Map([[day+'100000',{acml_tr_pbmn:'5'}],[day+'100100',{acml_tr_pbmn:'8'}]]);
- assert.equal(differences(rows('20261119'),'090000',1,true).get('20261119100000'),5);
- assert.equal(differences(rows('20261026'),'090000',1,true).get('20261026100000'),null);
 });
 test('comparison service retains shared candles but replaces only the broker amounts',async()=>{
  const seen=[];const service=createBrokerComparisonService({broker:'ls',data:{watchStock:(...args)=>seen.push(args),amounts:async(instrument,mode,dates,cumulative)=>({values:new Map([[at('090000'),cumulative?(instrument==='005930'?5000:10000):(instrument==='005930'?500:2000)]]),warnings:[]})},

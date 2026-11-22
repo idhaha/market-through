@@ -277,15 +277,12 @@ createRankIndependentRelay({
 // 종목은 종목수급 등록 · 보관 종목만 저장하고, 업종 지수(001/101)는 늘 저장한다.
 const kiwoomMinuteStore = require('./kiwoom-minute-store').createKiwoomMinuteStore({ directory: path.join(__dirname, 'data', 'kiwoom-minute') });
 const minuteStoreOptions = { minuteStore: kiwoomMinuteStore, keepStock: code => { try { return supplyService.store.config().archive.some(stock => stock.code === code); } catch { return false; } } };
-const concentrationChartService = createConcentrationChartService({ axios: indexHttp, getAccessToken, marketCache, ...minuteStoreOptions });
-const kisConcentrationChartService = require('./kis-concentration-chart').createKisConcentrationChartService({
-    reference: createConcentrationChartService({ axios: indexHttp, getAccessToken, marketCache, ...minuteStoreOptions }), http: kisHttp,
-    directory: path.join(__dirname, 'data', 'kis-concentration'),
-    credentials: () => ({ domain: (process.env.EFRIEND_DOMAIN || '').trim(), appKey: (process.env.EFRIEND_APPKEY || '').trim(), secretKey: (process.env.EFRIEND_SECRETKEY || '').trim() }),
-    getToken: () => getEfriendAccessToken((process.env.EFRIEND_DOMAIN || '').trim(), (process.env.EFRIEND_APPKEY || '').trim(), (process.env.EFRIEND_SECRETKEY || '').trim())
-});
+// 지난날 키움 일봉(ka10081 종목 · ka20006 지수) 저장(2026-11-22, kiwoom-daily-store.js): 다 받은 구간은 파일에서 답한다.
+const kiwoomDailyHttp = require('./kiwoom-daily-store').createKiwoomDailyStore({ directory: path.join(__dirname, 'data', 'kiwoom-daily'), log: fileLog }).wrap(indexHttp);
+const concentrationChartService = createConcentrationChartService({ axios: kiwoomDailyHttp, getAccessToken, marketCache, ...minuteStoreOptions });
 const supplyService = createSupplyService({
-    directory: path.join(__dirname, 'data', 'supply'), http: axios, minuteStore: kiwoomMinuteStore,
+    directory: path.join(__dirname, 'data', 'supply'), http: kiwoomDailyHttp, minuteStore: kiwoomMinuteStore,
+    historyDirectory: path.join(__dirname, 'data', 'daily-history', 'kiwoom-stock-flow'), // 끝난 날 일별 수급(2026-11-22)
     getToken: () => getAccessToken(process.env.KIWOOM_APPKEY, process.env.KIWOOM_SECRETKEY),
     resolveStock: code => concentrationChartService.resolveStock(code)
 });
@@ -306,7 +303,8 @@ const breadthService = createBreadthService({
 // turnover all read it, so every card shows the same index candles.
 const indexCandleStore = require('./index-candle-store').createIndexCandleStore({
     minuteStore: kiwoomMinuteStore, // 지난 구간 1분봉은 저장 파일(2026-11-22)
-    http: indexHttp,
+    http: kiwoomDailyHttp, // 지난날 일봉도 저장 파일
+
     getToken: () => {
         const appKey = (process.env.KIWOOM_APPKEY || '').trim(), secretKey = (process.env.KIWOOM_SECRETKEY || '').trim();
         if (!appKey || !secretKey) throw new Error('API 키 설정 필요');
@@ -461,7 +459,8 @@ app.post('/api/market-alerts/acknowledge', (req, res) => {
     catch (error) { res.status(error.status || 500).json({ error: '경보 확인 요청을 처리하지 못했습니다.' }); }
 });
 app.get('/api/market-alerts/diagnostics', (req, res) => res.set('Cache-Control', 'no-store').json(marketAlertService.diagnostics()));
-const lsMarketDailyProvider = require('./ls-market-daily').createLsMarketDaily({http:axios,getToken:()=>lsMarketSupplyProvider.accessToken(),reference:chartReferenceService});
+const lsMarketDailyProvider = require('./ls-market-daily').createLsMarketDaily({http:axios,getToken:()=>lsMarketSupplyProvider.accessToken(),reference:chartReferenceService,
+    historyDirectory: path.join(__dirname, 'data', 'daily-history', 'ls-market-flow')}); // 끝난 날 일별 수급(2026-11-22)
 const lsMarketSupplyService = require('./market-supply-service').createMarketSupplyService({
     directory: path.join(__dirname, 'data', 'ls-market-supply'), minuteProvider: lsMarketSupplyProvider,
     dailyProvider: lsMarketDailyProvider,
@@ -500,40 +499,26 @@ const kisStockSupplyService = createBrokerStockSupply({
     credentials: () => ({ domain: (process.env.EFRIEND_DOMAIN || '').trim(), appKey: (process.env.EFRIEND_APPKEY || '').trim(), secretKey: (process.env.EFRIEND_SECRETKEY || '').trim() }),
     getToken: () => getEfriendAccessToken((process.env.EFRIEND_DOMAIN || '').trim(), (process.env.EFRIEND_APPKEY || '').trim(), (process.env.EFRIEND_SECRETKEY || '').trim())
 });
-const lsStockSupplyService = createBrokerStockSupply({
-    broker: 'ls', directory: path.join(__dirname, 'data', 'ls-supply'), http: axios, supply: supplyService, log: message => fileLog(message),
-    credentials: () => ({}), getToken: () => lsMarketSupplyProvider.accessToken(),
-    // t1637 polling by default, which frees an LS websocket session (LS turnover IJ_/US3 then comes from REST only).
-    // LS_STOCK_PROGRAM_MODE=websocket restores the UPH socket.
-    programMode: () => (process.env.LS_STOCK_PROGRAM_MODE || 'rest').trim(),
-    // Empty means every registered stock.
-    programRestCodes: () => { const codes = (process.env.LS_STOCK_PROGRAM_REST_CODES || '').split(',').map(s => s.trim()).filter(Boolean); return codes.length ? codes : null; }
-});
 const { createBrokerTurnoverData } = require('./broker-turnover-data');
-const kisTurnoverData = createBrokerTurnoverData({ broker: 'kis', directory: path.join(__dirname,'data','kis-turnover'),
-    transport: kisStockSupplyService, kisMarketAmounts: input => kisConcentrationChartService.marketAmounts(input) });
+// LS 거래대금: 지난날은 LS REST로 받아 ls-turnover에 저장한다. 비교 수집(LS 종목 수급 · 한투 거래대금 · 한투 업종 분봉)은
+// 2026-11-22에 코드에서 없앴고, LS 실시간 구독(IJ_ · US3)을 열던 LS 종목 수급 소켓도 없어 실시간 전송로는 비워 둔다.
 const lsTurnoverData = createBrokerTurnoverData({ broker: 'ls', directory: path.join(__dirname,'data','ls-turnover'),
-    transport: lsStockSupplyService, http: axios, getToken: () => lsMarketSupplyProvider.accessToken() });
+    transport: { setStreams: () => {}, streamStatus: () => ({ subscribed: false, error: '', last_data_at: null }) }, http: axios, getToken: () => lsMarketSupplyProvider.accessToken() });
 const { createBrokerComparisonService } = require('./broker-comparison-service');
-const kisComparisonService = createBrokerComparisonService({ broker:'kis', data:kisTurnoverData, turnoverReference:turnoverService });
 const lsComparisonService = createBrokerComparisonService({ broker:'ls', data:lsTurnoverData, turnoverReference:turnoverService,
-    concentrationReference:createConcentrationChartService({ axios:indexHttp, getAccessToken, marketCache, ...minuteStoreOptions }) });
-for (const [broker,service] of [['kis',kisComparisonService],['ls',lsComparisonService]]) {
-    app.get(`/api/${broker}-turnover/chart`, async (req,res) => {
-        try { res.set('Cache-Control','no-store').json(await service.turnover(req.query)); }
-        catch(error) { res.status(error.status || 502).json({success:false,error:error.message}); }
-    });
-}
+    concentrationReference:createConcentrationChartService({ axios:kiwoomDailyHttp, getAccessToken, marketCache, ...minuteStoreOptions }) });
+app.get('/api/ls-turnover/chart', async (req,res) => {
+    try { res.set('Cache-Control','no-store').json(await lsComparisonService.turnover(req.query)); }
+    catch(error) { res.status(error.status || 502).json({success:false,error:error.message}); }
+});
 app.post('/api/ls-concentration-chart',async(req,res)=>{
     try { res.set('Cache-Control','no-store').json(await lsComparisonService.concentration(req.body,req.authUser.email)); }
     catch(error) { res.status(error.status || 502).json({success:false,error:error.message}); }
 });
-for (const [broker, service] of [['kis', kisStockSupplyService], ['ls', lsStockSupplyService]]) {
-    app.get(`/api/${broker}-supply/chart`, async (req, res) => {
-        try { res.set('Cache-Control', 'no-store').json(await service.query(req.query)); }
-        catch (error) { res.status(error.status || 502).json({ success: false, error: error.message }); }
-    });
-}
+app.get('/api/kis-supply/chart', async (req, res) => {
+    try { res.set('Cache-Control', 'no-store').json(await kisStockSupplyService.query(req.query)); }
+    catch (error) { res.status(error.status || 502).json({ success: false, error: error.message }); }
+});
 // 종목 선물 수급 card: LS t8463/t8462 investor contracts, t8406/t8405 futures candles (registered stocks).
 const lsStockFuturesService = require('./ls-stock-futures').createLsStockFutures({
     http: axios, getToken: () => lsMarketSupplyProvider.accessToken(), directory: path.join(__dirname, 'data', 'ls-stock-futures'),
@@ -594,10 +579,6 @@ app.post('/api/concentration-chart', async (req, res) => {
         console.warn('[ConcentrationChart]', error.message);
         res.status(error.status || 502).json({ success: false, error: error.message });
     }
-});
-app.post('/api/kis-concentration-chart', async (req, res) => {
-    try { res.set('Cache-Control', 'no-store').json(await kisConcentrationChartService.query(req.body, req.authUser.email)); }
-    catch (error) { res.status(error.status || 502).json({ success: false, error: error.message }); }
 });
 
 // 1. API 경로를 static 보다 먼저 정의 (우선순위 확보)
@@ -3149,7 +3130,8 @@ app.listen(PORT, async () => {
     if (viRealtime()) { viMonitorService.start(); lsFuturesEvents.start(); }
     // 소스는 한 곳(2026-11-22): 화면이 읽지 않는 비교 수집(키움 종목 분봉 ka10060·ka90008, LS 종목 t1717·t1637 → ls-supply,
     // LS 시장 분봉 → ls-market-supply/raw, 한투 거래대금 H0UPCNT0 → kis-turnover, 한투 업종 분봉 → kis-concentration)은 없앴다.
-    // ALT_SUPPLY_COLLECTION 스위치도 없앴다. lsStockSupplyService는 LS 거래대금(ls-turnover)의 전송로로만 쓰고 수집은 시작하지 않는다.
+    // ALT_SUPPLY_COLLECTION 스위치와 그 서비스 코드(LS 종목 수급 · 한투 거래대금 · 한투 업종 분봉 · /api/ls-supply · /api/kis-turnover ·
+    // /api/kis-concentration-chart)도 없앴다(2026-11-22).
     kisStockSupplyService.start();
     lsTurnoverData.start();
     marketSupplyService.start();

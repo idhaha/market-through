@@ -6,7 +6,7 @@
     const TTL=16*3600000,HISTORY_TTL=7*24*3600000,FRESH=60000,MAX_BYTES=24*1024*1024,MAX_ENTRIES=180;
     const nativeFetch=window.fetch.bind(window),memory=new Map(),pending=new Map(),blocked=new Set(),handoff=new Map(),closedRefresh=new Map(),CLOSE_GRACE=2*60000,CURSOR_TTL=20*60000;
     let database,identity,identityAt=0,identityJob,revision=0;
-    const routes=/^\/api\/(?:concentration-chart|kis-concentration-chart|ls-concentration-chart|chart-reference|(?:kis-|ls-)?turnover\/chart|(?:kis-|ls-)?supply\/chart|ls-stock-futures\/chart|(?:kiwoom-|ls-)?market-supply\/chart|adr\/(?:candles|history|today)|risk\/(?:breadth|sentiment|volatility))$/;
+    const routes=/^\/api\/(?:concentration-chart|ls-concentration-chart|chart-reference|(?:ls-)?turnover\/chart|(?:kis-)?supply\/chart|ls-stock-futures\/chart|(?:kiwoom-|ls-)?market-supply\/chart|adr\/(?:candles|history|today)|risk\/(?:breadth|sentiment|volatility))$/;
     const day=()=>new Date(Date.now()+32400000).toISOString().slice(0,10);
     async function hash(value){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))].map(n=>n.toString(16).padStart(2,'0')).join('');}
     function db(){
@@ -159,9 +159,9 @@
     function invalidateIdentity(){identityAt=0;identity=null;revision++;memory.clear();blocked.clear();handoff.clear();closedRefresh.clear();syncJobs.clear();}
     window.RankChartCache={fetch:request,invalidateIdentity,ttl:TTL};
     const refreshers={
-        '/api/concentration-chart':'refreshConcentrationChart','/api/kis-concentration-chart':'refreshKisConcentrationChart','/api/ls-concentration-chart':'refreshLsConcentrationChart',
-        '/api/turnover/chart':'refreshRankTurnoverChart','/api/kis-turnover/chart':'refreshRankKisTurnoverChart','/api/ls-turnover/chart':'refreshRankLsTurnoverChart',
-        '/api/supply/chart':'refreshRankSupplyChart','/api/kis-supply/chart':'refreshRankKisSupplyChart','/api/ls-supply/chart':'refreshRankLsSupplyChart','/api/ls-stock-futures/chart':'refreshRankFuturesSupplyChart',
+        '/api/concentration-chart':'refreshConcentrationChart','/api/ls-concentration-chart':'refreshLsConcentrationChart',
+        '/api/turnover/chart':'refreshRankTurnoverChart','/api/ls-turnover/chart':'refreshRankLsTurnoverChart',
+        '/api/supply/chart':'refreshRankSupplyChart','/api/kis-supply/chart':'refreshRankKisSupplyChart','/api/ls-stock-futures/chart':'refreshRankFuturesSupplyChart',
         '/api/market-supply/chart':'refreshRankMarketSupplyChart','/api/kiwoom-market-supply/chart':'refreshRankKiwoomMarketSupplyChart','/api/ls-market-supply/chart':'refreshRankLsMarketSupplyChart',
         '/api/adr/candles':'__allCharts','/api/chart-reference':'__allCharts',
         '/api/risk/breadth':'refreshRankBreadthChart','/api/risk/sentiment':'refreshRankSentimentChart','/api/risk/volatility':'refreshRankVolatilityChart'

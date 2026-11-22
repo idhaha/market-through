@@ -3,7 +3,7 @@ const { quantity, timestamp, collectingAt } = require('./supply-service');
 const { openDelay, closeDelay, shiftClock } = require('./market-open-delay');
 const compact = day => day.replaceAll('-', '');
 const marketCodes = { kospi: 'KOSPI0', kosdaq: 'KOSDAQ' };
-const lsIndices = { kospi: '001', kosdaq: '301' }, kisIndices = { kospi: '0001', kosdaq: '1001' };
+const lsIndices = { kospi: '001', kosdaq: '301' };
 const million = raw => { const text=String(raw ?? '').replaceAll(',', '').trim(),value=Number(text);return /^\d+(\.\d+)?$/.test(text)&&Number.isSafeInteger(value*1000000)?value*1000000:null; };
 // LS minute charts label the end of an interval (09:01 -> 09:00).
 // The 15:30 closing auction is a distinct execution, not a 15:29 bar.
@@ -18,7 +18,7 @@ function noTradeMinute(t, stock) {
     return Boolean(stock) && clock >= shiftClock('085000', open) && clock < shiftClock('090000', open);
 }
 const bridged = (from, to, stock) => { for (let t = from + 60000; t < to; t += 60000) if (!noTradeMinute(t, stock)) return false; return to > from; };
-function createBrokerTurnoverData({ broker, directory, transport, http, getToken, kisMarketAmounts, supply, now = Date.now, log = message => console.warn(message),
+function createBrokerTurnoverData({ broker, directory, transport, http, getToken, supply, now = Date.now, log = message => console.warn(message),
     pause = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
     const store = createSupplyStore({ directory, now, fields: ['amount'] });
     const pending = new Map(), owners = new Map(), cache = new Map(), latest = new Map();
@@ -36,18 +36,6 @@ function createBrokerTurnoverData({ broker, directory, transport, http, getToken
     }
     function receive(raw, expectedKey) {
         const today = compact(dayKey(now()));
-        if (broker === 'kis') {
-            const parts = String(raw).split('|');
-            if (parts[0] !== '0' || parts[1] !== 'H0UPCNT0') return false;
-            const count = Number(parts[2]), values = (parts[3] || '').split('^');
-            if (!Number.isInteger(count) || count < 1 || count > 100 || values.length !== count * 30) return false;
-            let accepted = false;
-            for (let i=0;i<count;i++) {
-                const market = Object.keys(kisIndices).find(key => kisIndices[key] === values[i*30]);
-                if (market && (!expectedKey || values[i*30]===expectedKey) && /^(?:[01]\d|2[0-3])[0-5]\d[0-5]\d$/.test(values[i*30+1])) accepted = record(marketCodes[market],timestamp(today,values[i*30+1]),million(values[i*30+6])) || accepted;
-            }
-            return accepted;
-        }
         let message; try { message=JSON.parse(String(raw)); } catch { return false; }
         const body=message.body || {}, tr=message.header?.tr_cd;
         if (tr === 'IJ_') {
@@ -64,7 +52,7 @@ function createBrokerTurnoverData({ broker, directory, transport, http, getToken
         return [...new Set([...backgroundStocks,...[...owners.values()].sort((a,b)=>b.at-a.at).map(v=>v.code)])].slice(0,10);
     }
     function syncStreams() {
-        const streams = Object.entries(broker==='ls'?lsIndices:kisIndices).map(([,key])=>({tr:broker==='ls'?'IJ_':'H0UPCNT0',key,onData:raw=>receive(raw,key)}));
+        const streams = Object.entries(lsIndices).map(([,key])=>({tr:'IJ_',key,onData:raw=>receive(raw,key)}));
         if (broker==='ls') for (const code of watchedCodes()) streams.push({tr:'US3',key:`U${code}   `,onData:raw=>receive(raw,`U${code}`)});
         transport.setStreams('turnover', streams);
     }
@@ -123,12 +111,7 @@ function createBrokerTurnoverData({ broker, directory, transport, http, getToken
         const entry={pending:true};entry.promise=(async()=>{
             const warnings=[]; let rows=[];
             try {
-                if(broker==='ls')rows=await lsBars(instrument,mode,dates[0],dates.at(-1));
-                else rows=(await kisMarketAmounts({market:instrument,mode,dates})).flatMap(row=>{
-                    const t=timestamp(String(row.stck_bsop_date || ''),mode==='day'?'000000':String(row.stck_cntg_hour || ''));
-                    const amount=million(row.acml_tr_pbmn);
-                    return Number.isFinite(t)&&amount!==null&&dates.includes(compact(dayKey(t)))?[{t,amount}]:[];
-                });
+                rows=await lsBars(instrument,mode,dates[0],dates.at(-1));
             } catch(e){warnings.push(e.message);}
             if (mode === 'minute') rows = rows.filter(p=>p.t<Math.floor(now()/60000)*60000);
             entry.failed = warnings.length > 0;
@@ -178,12 +161,12 @@ function createBrokerTurnoverData({ broker, directory, transport, http, getToken
         };
         const restDates=mode==='minute'?dates.filter(date=>date>=today || !savedDays.has(date) || !covered(date)):dates;
         const data=await series(instrument,mode,restDates), result=new Map();
-        if(broker==='ls'&&mode==='minute'&&!data.warnings.length)saveFinishedDays(code,instrument,restDates.filter(date=>date<today),data.rows);
+        if(mode==='minute'&&!data.warnings.length)saveFinishedDays(code,instrument,restDates.filter(date=>date<today),data.rows);
         // REST history can remain cached while new completed websocket minutes arrive.
         const ws=mode==='minute'?dates.flatMap(date=>store.points(code,`${date.slice(0,4)}-${date.slice(4,6)}-${date.slice(6,8)}`)).filter(p=>p.t<Math.floor(now()/60000)*60000):[];
         const stock=!Object.hasOwn(marketCodes,instrument),opening=stock?'080000':'090000';
         if(mode==='day')for(const p of data.rows)result.set(p.t,p.amount);
-        else if(broker==='ls') {
+        else {
             let total=0,lastDay,complete=false;
             for(const p of data.rows){
                 // A fully requested LS day may start at the regular 09:00
@@ -194,12 +177,6 @@ function createBrokerTurnoverData({ broker, directory, transport, http, getToken
                     // A late index start on a day the table does not know: likely an unlisted delayed open (warn once a day).
                     if(!stock&&first>delayed&&date===dayKey(now())&&warnedLate!==date){warnedLate=date;log(`[개장 지연] 오늘 ${instrument} 업종지수 첫 분봉이 ${first.slice(0,2)}:${first.slice(2,4)}입니다. 수능일이면 설정(⚙)의 올해 수능일 칸에 오늘을 입력하고, 다른 이유의 지연이면 market-open-delay.js 표에 더하고 배포해야 시장 누적 거래대금(쏠림율 누적 · LS 거래대금 분봉)이 그려집니다.`);}}
                 total+=p.amount;result.set(p.t,cumulative?(complete?total:null):p.amount);
-            }
-        } else {
-            let previous;
-            for(const p of data.rows.sort((a,b)=>a.t-b.t)){
-                const contiguous=previous&&p.t-previous.t===60000;
-                result.set(p.t,cumulative?p.amount:contiguous&&p.amount>=previous.amount?p.amount-previous.amount:null);previous=p;
             }
         }
         let previous;

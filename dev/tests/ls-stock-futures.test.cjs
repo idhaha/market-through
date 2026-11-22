@@ -204,3 +204,13 @@ test('지난날 선물 분봉은 한 번 받아 파일로 두고(candles 폴더)
  await half.candles({code:'005930',mode:'minute',date:'2026-11-04'});
  assert.ok(!fs.existsSync(path.join(partialDir,'candles','005930','2026-11-04.json.gz')));
 });
+test('한투 분봉을 새로 받을 때 연결이 잠깐 끊기면 다시 묻고, 계속 끊기거나 다른 오류면 바로 알린다(2026-11-22)',async()=>{
+ const saturday=Date.parse('2026-11-07T21:00:00+09:00'),directory=fs.mkdtempSync(path.join(os.tmpdir(),'lsf-test-'));let calls=0,fails=1;
+ const bar=(date,hh)=>({stck_bsop_date:date,stck_cntg_hour:hh+'00',futs_oprc:200000,futs_hgpr:200500,futs_lwpr:199500,futs_prpr:200100});
+ const kisMinute=async({date})=>{calls++;if(fails-->0)throw Object.assign(new Error('socket hang up'),{code:'ECONNRESET'});return [bar(date,'1545'),bar(date,'0845'),{stck_bsop_date:'20000101',stck_cntg_hour:'150000',futs_oprc:1,futs_hgpr:1,futs_lwpr:1,futs_prpr:1}];};
+ const make=k=>createLsStockFutures({http:fakeLs([],{previous:'20261106'}),getToken:async()=>'t',directory,supply:{summary:()=>({stocks:[]})},now:()=>saturday,policy:()=>({openDate:()=>null}),pause:async()=>{},kisMinute:k});
+ const r=await make(kisMinute).candles({code:'005930',mode:'minute',date:'2026-11-04'});
+ assert.equal(calls,2,'한 번 끊긴 뒤 다시 물었다');assert.equal(r.points.length,2);
+ calls=0;fails=9;await assert.rejects(make(kisMinute).candles({code:'005930',mode:'minute',date:'2026-11-03'}),/socket hang up/);assert.equal(calls,3,'세 번까지');
+ calls=0;await assert.rejects(make(async()=>{calls++;throw new Error('FHKIF03020200 OPSQ0002 잘못된 종목');}).candles({code:'005930',mode:'minute',date:'2026-11-02'}));assert.equal(calls,1,'다른 오류는 다시 묻지 않는다');
+});

@@ -21,12 +21,13 @@
         window.getCombinedRankChartState=window.getRankChartState;
     });
     function initialize(broker = '') {
-        const combined = broker === 'combined', kis = !!broker && !combined, prefix = combined ? 'combinedConcentration' : broker === 'ls' ? 'lsConcentration' : 'kisConcentration';
+        // 화면에 만드는 카드는 독립창 기본 카드(broker '')와 메인 통합 카드('combined') 둘뿐이다(증권사별 비교 카드는 2026-11-22 정리).
+        const combined = broker === 'combined', prefix = 'combinedConcentration';
         const state = { selection: null, mode: 'day', interval: 1, points: [], cursor: null,
             hasMore: false, busy: false, visible: 0, start: 0, request: 0, controller: null, hover: null, drag: null };
         const chartKey = broker ? prefix : 'concentration';
         const get = id => document.getElementById(broker ? id.replace(/^concentration/, prefix) : id);
-        const api = name => kis ? name.replace('Concentration', combined ? 'CombinedConcentration' : broker === 'ls' ? 'LsConcentration' : 'KisConcentration').replace('RankChart', combined ? 'CombinedRankChart' : broker === 'ls' ? 'LsRankChart' : 'KisRankChart') : name;
+        const api = name => name;
         let refreshPending = false, refreshTimer = null;
         // A new stock or 일/분 load clears state.points (prices load into it separately), but the canvases keep the
         // previous graphs under the loading blur until the answer arrives, as the automatic refresh does (2026-11-13).
@@ -37,9 +38,9 @@
         }
         const panel = get('concentrationChartPanel');
         if (!panel) return;
-        if (!kis && !window.rankIndependentClient) panel.querySelector('h2').textContent = combined ? '쏠림율' : '쏠림율(키움)';
+        if (!window.rankIndependentClient) panel.querySelector('h2').textContent = combined ? '쏠림율' : '쏠림율(키움)';
         window.RankSupplyGuide?.attach(panel, 'concentration', window.rankIndependentClient ? 'combined' : broker || 'kiwoom');
-        if (!kis) document.addEventListener('click', event => {
+        document.addEventListener('click', event => {
             if (window.rankCandleSyncing) return;
             const selector = window.rankIndependentClient
                 ? '#concentrationChartPanel .concentration-candle-toggle, #rankSupplyChartPanel .concentration-candle-toggle'
@@ -116,7 +117,7 @@
             chartGuideEdits: window.RankSupplyGuide?.getEdits() || {},
             candleOpen: !candleArea.hidden, mode: state.mode, interval: state.interval,
             selection:state.selection && {...state.selection},
-            ...(!kis && window.getRankCombinedTurnoverCandleOpen ? { combinedTurnoverCandleOpen: window.getRankCombinedTurnoverCandleOpen() } : {}),
+            ...(window.getRankCombinedTurnoverCandleOpen ? { combinedTurnoverCandleOpen: window.getRankCombinedTurnoverCandleOpen() } : {}),
             ...(window.getRankTurnoverCandleOpen ? { turnoverCandleOpen: window.getRankTurnoverCandleOpen() } : {}),
             ...(window.getRankVolatilityDisplaySettings ? { volatility: window.getRankVolatilityDisplaySettings() } : {}),
             ...(window.getRankBreadthDisplaySettings ? { breadth: window.getRankBreadthDisplaySettings() } : {}),
@@ -127,18 +128,16 @@
             ...(window.getRankKiwoomMarketSupplyDisplaySettings ? { kiwoomMarketSupply: window.getRankKiwoomMarketSupplyDisplaySettings() } : {}),
             ...(window.getRankLsMarketSupplyDisplaySettings ? { lsMarketSupply: window.getRankLsMarketSupplyDisplaySettings() } : {}),
             ...(window.getRankCombinedSupplyDisplaySettings ? { combinedSupply: window.getRankCombinedSupplyDisplaySettings() } : {}),
-            ...(window.getRankKisSupplyDisplaySettings ? { kisSupply: window.getRankKisSupplyDisplaySettings() } : {}),
-            ...(window.getRankLsSupplyDisplaySettings ? { lsSupply: window.getRankLsSupplyDisplaySettings() } : {}),
             ...(window.getRankMarketSupplyDisplaySettings ? { marketSupply: window.getRankMarketSupplyDisplaySettings() } : {}),
             ...(window.getRankSentimentDisplaySettings ? { sentiment: window.getRankSentimentDisplaySettings() } : {})
         });
         window[api('applyConcentrationDisplaySettings')] = settings => {
             if(combined && settings?.combinedConcentration)settings={...settings,...settings.combinedConcentration};
-            if(!kis && settings && Object.hasOwn(settings,'marketPins'))window.applyRankMarketPins?.(settings.marketPins);
-            if (!kis && settings && Object.hasOwn(settings, 'chartGuideEdits')) window.RankSupplyGuide?.applyEdits(settings.chartGuideEdits);
+            if(settings && Object.hasOwn(settings,'marketPins'))window.applyRankMarketPins?.(settings.marketPins);
+            if (settings && Object.hasOwn(settings, 'chartGuideEdits')) window.RankSupplyGuide?.applyEdits(settings.chartGuideEdits);
             const nextCandleOpen = settings?.candleOpen === true;
-            if(!kis && !window.rankIndependentClient)window.rankMainCandleOpen=nextCandleOpen;
-            if (!kis && nextCandleOpen !== !candleArea.hidden) document.dispatchEvent(new CustomEvent('rank-candle-display', { detail: { open: nextCandleOpen } }));
+            if(!window.rankIndependentClient)window.rankMainCandleOpen=nextCandleOpen;
+            if (nextCandleOpen !== !candleArea.hidden) document.dispatchEvent(new CustomEvent('rank-candle-display', { detail: { open: nextCandleOpen } }));
             const mode = settings?.mode === 'minute' ? 'minute' : 'day';
             const interval = scopes.includes(Number(settings?.interval)) ? Number(settings.interval) : 1;
             const selectionChanged=validSelection(settings?.selection) && state.selection?.code!==settings.selection.code;
@@ -150,7 +149,7 @@
             candleToggle.setAttribute('aria-expanded', String(!candleArea.hidden));
             candleToggle.textContent = '캔들차트';
             candleToggle.setAttribute('aria-label', candleArea.hidden ? '캔들차트 펼치기' : '캔들차트 접기');
-            if (!kis) {
+            {
                 if (!window.rankIndependentClient || settings && 'turnoverCandleOpen' in settings) window.applyRankTurnoverCandleOpen?.(window.rankIndependentClient ? settings.turnoverCandleOpen === true : nextCandleOpen);
                 if (settings && 'volatility' in settings) window.applyRankVolatilityDisplaySettings?.(window.rankIndependentClient ? settings.volatility : {...settings.volatility,candleOpen:nextCandleOpen});
                 if (settings && 'breadth' in settings) window.applyRankBreadthDisplaySettings?.(window.rankIndependentClient ? settings.breadth : {...settings.breadth,candleOpen:nextCandleOpen});
@@ -161,8 +160,6 @@
                 if (settings && 'kiwoomMarketSupply' in settings) window.applyRankKiwoomMarketSupplyDisplaySettings?.(settings.kiwoomMarketSupply);
                 if (settings && 'lsMarketSupply' in settings) window.applyRankLsMarketSupplyDisplaySettings?.(settings.lsMarketSupply);
                 if (settings && 'combinedSupply' in settings) window.applyRankCombinedSupplySettings?.(settings.combinedSupply);
-                if (settings && 'kisSupply' in settings) window.applyRankKisSupplySettings?.(settings.kisSupply);
-                if (settings && 'lsSupply' in settings) window.applyRankLsSupplySettings?.(settings.lsSupply);
                 if (settings && 'marketSupply' in settings) window.applyRankMarketSupplyDisplaySettings?.(settings.marketSupply);
                 if (settings && 'sentiment' in settings) window.applyRankSentimentDisplaySettings?.(window.rankIndependentClient ? settings.sentiment : {...settings.sentiment,candleOpen:nextCandleOpen});
                 if(!window.rankIndependentClient){ window.applyRankTestMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankTestMarketSupplySecondaryCandleOpen?.(nextCandleOpen); window.applyRankKiwoomMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankCombinedMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankCombinedMarketSupplySecondaryCandleOpen?.(nextCandleOpen); window.applyRankLsMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankSupplyCandleOpen?.(nextCandleOpen); window.applyRankKisSupplyCandleOpen?.(nextCandleOpen); window.applyRankCombinedSupplyCandleOpen?.(nextCandleOpen); window.applyRankFuturesSupplyCandleOpen?.(nextCandleOpen); window.applyRankLsSupplyCandleOpen?.(nextCandleOpen); window.applyRankMarketSupplyCandleOpen?.(nextCandleOpen); }
@@ -205,7 +202,6 @@
             window.RankChartAxis.updateSlider(chartKey,slider,state.busy);
         }
         function selectedRows() {
-            if (kis) return;
             document.querySelectorAll('#tab_rank tr[data-chart-code]').forEach(row => {
                 const selected = row.dataset.chartCode === state.selection?.code;
                 row.classList.toggle('concentration-selected', selected);
@@ -301,7 +297,7 @@
         function draw() {
             if(window.rankIndependentClient)panel.querySelector('h2').textContent='쏠림율';
             window.RankChartAxis.candleLabel(candleArea,state.selection?.name || state.selection?.code || '');
-            if (!kis && !window.rankIndependentClient) document.dispatchEvent(new Event('rank-chart-state'));
+            if (!window.rankIndependentClient) document.dispatchEvent(new Event('rank-chart-state'));
             if (heldView && state.busy) { updateControls(); return; }
             const width = chartArea.clientWidth;
             if (!width) return;
@@ -528,7 +524,7 @@
             draw();
             try {
                 void loadIndependentPrices(append);
-                const response = await (window.RankChartCache?.fetch || fetch)(combined ? state.mode === 'minute' ? '/api/ls-concentration-chart' : '/api/concentration-chart' : kis ? `/api/${broker}-concentration-chart` : window.rankIndependentClient && state.mode === 'minute' ? '/api/ls-concentration-chart' : '/api/concentration-chart', {
+                const response = await (window.RankChartCache?.fetch || fetch)(combined ? state.mode === 'minute' ? '/api/ls-concentration-chart' : '/api/concentration-chart' : window.rankIndependentClient && state.mode === 'minute' ? '/api/ls-concentration-chart' : '/api/concentration-chart', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ code: state.selection.code, mode: state.mode, interval: state.interval, cursor: append ? state.cursor : null, ...(!append && windowBase && state.mode === 'minute' ? { base_dt: windowBase } : {}) }),
                     signal: controller.signal
@@ -713,11 +709,11 @@
         function selectRow(row) {
             chooseStock({ code: row.dataset.chartCode, name: decodeURIComponent(row.dataset.chartName), market: row.dataset.chartMarket });
         }
-        if (!kis) document.getElementById('tab_rank').addEventListener('click', event => {
+        document.getElementById('tab_rank').addEventListener('click', event => {
             const row = event.target.closest('tr[data-chart-code]');
             if (row) selectRow(row);
         });
-        if (!kis) document.getElementById('tab_rank').addEventListener('keydown', event => {
+        document.getElementById('tab_rank').addEventListener('keydown', event => {
             const row = event.target.closest('tr[data-chart-code]');
             if (row && ['Enter', ' '].includes(event.key)) { event.preventDefault(); selectRow(row); }
         });
@@ -841,10 +837,6 @@
             if(event.detail?.code===state.selection?.code)return;
             const stock=event.detail?.stock || (window.getRankCombinedSupplyState || window.getRankSupplyState)?.()?.config?.archive?.find(stock=>stock.code===event.detail?.code);
             if(validSelection(stock))chooseStock(stock);
-        });
-        if (kis) document.addEventListener('rank-chart-state', () => {
-            const selection = window.getRankChartState?.()?.selection;
-            if (selection && selection.code !== state.selection?.code) chooseStock(selection);
         });
         restoreSelection();selectedRows(); draw();
     }

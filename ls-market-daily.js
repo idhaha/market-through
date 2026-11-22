@@ -5,8 +5,9 @@ const compact=t=>dayKey(t).replaceAll('-','');
 const before=d=>compact(timestamp(d)-86400000);
 const configs={kospi:{market:'1',upcode:'001',program:'0'},kosdaq:{market:'3',upcode:'301',program:'1'},futures:{asset:'K2I',priceMarket:'kospi'},futuresKosdaq:{asset:'KQI',priceMarket:'kosdaq'}};
 function investorValues(row){const money=v=>{const n=quantity(v);return n===null||!Number.isSafeInteger(n*100)?null:n*100;};return {individual:money(row.sa_08),foreign:money(row.sa_17),institution:money(row.sa_18)};}
-function createLsMarketDaily({http,getToken,reference,now=Date.now,pause=ms=>new Promise(r=>setTimeout(r,ms))}){
- const history=createHistoryCache({now});let queue=Promise.resolve();
+// historyDirectory(2026-11-22): 끝난 날 일별 수급을 파일로 둔다(daily-query-cache.js).
+function createLsMarketDaily({http,getToken,reference,now=Date.now,pause=ms=>new Promise(r=>setTimeout(r,ms)),historyDirectory=null}){
+ const history=createHistoryCache({now,directory:historyDirectory,log:m=>console.warn(m)});let queue=Promise.resolve();
  async function rest(tr,endpoint,params,continuation={}){
   const task=queue.then(async()=>{try{
    const response=await http.post('https://openapi.ls-sec.co.kr:8080/'+(tr==='t8462'?'futureoption/':'stock/')+endpoint,{[tr+'InBlock']:params},{headers:{authorization:'Bearer '+await getToken(),'Content-Type':'application/json; charset=UTF-8',tr_cd:tr,tr_cont:continuation.tr_cont||'N',tr_cont_key:continuation.tr_cont_key||''},timeout:10000});

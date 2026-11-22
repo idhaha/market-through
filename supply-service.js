@@ -29,11 +29,12 @@ function futuresObservationAt(t, confirmedDay) {
 }
 
 // minuteStore: kiwoom-minute-store(지난날 1분봉 저장 파일, 쏠림율과 함께 씀). 없으면 예전처럼 매번 키움에서 받는다.
-function createSupplyService({ directory, http, getToken, resolveStock, now = Date.now, minuteStore = null,
+// historyDirectory(2026-11-22): 끝난 날 일별 투자자 · 프로그램 수급을 파일로 둔다(daily-query-cache.js).
+function createSupplyService({ directory, http, getToken, resolveStock, now = Date.now, minuteStore = null, historyDirectory = null,
     pause = ms => new Promise(resolve => setTimeout(resolve, ms)), log = console.warn }) {
     const store = createSupplyStore({ directory, now });
     const { createHistoryCache, createDailyQueryCache } = require('./daily-query-cache');
-    const cache = createDailyQueryCache({ now }), historyCache = createHistoryCache({ now });
+    const cache = createDailyQueryCache({ now }), historyCache = createHistoryCache({ now, directory: historyDirectory, log });
     let queue = Promise.resolve();
     let market = store.marketDay(), lastMarketAttempt = null, marketRequest = null;
     function marketConfirmed() { return market?.day === dayKey(now()); }

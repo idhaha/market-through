@@ -118,3 +118,25 @@ test('추가만 되는 kiwoom-minute: 처음 본 옛날 파일이 저장돼도 �
     fs.rmSync(path.join(data, 'kiwoom-minute/001/2026-11-10.json.gz'));
     assert.notEqual(service.check()['/api/concentration-chart'], third['/api/concentration-chart']);
 });
+
+test('지난날 키움 일봉 저장(kiwoom-daily): 지난날이 쌓이기만 하면 그대로, 수정주가로 저장본을 버리면 쓰는 경로의 버전이 오른다', async t => {
+    const { createKiwoomDailyStore } = require('../../kiwoom-daily-store');
+    const { ROUTES } = require('../../chart-revisions');
+    const output = path.resolve(__dirname, '../output'); fs.mkdirSync(output, { recursive: true });
+    const root = fs.mkdtempSync(path.join(output, 'revisions-daily-'));
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const data = path.join(root, 'data'), NOW = Date.parse('2026-11-20T06:00:00Z');
+    const service = createChartRevisions({ dataDirectory: data, directory: path.join(data, 'chart-revisions'), routes: ROUTES, now: () => NOW, minInterval: 0 });
+    const days = ['20261120', '20261119', '20261118', '20261117'];
+    const kiwoom = price => ({ post: async (url, body) => ({ data: { return_code: 0, stk_dt_pole_chart_qry: days.filter(d => d <= body.base_dt).map(dt => ({ dt, cur_prc: price(dt) })) }, headers: { 'cont-yn': 'N' } }) });
+    const ask = http => http.post('https://api.kiwoom.com/api/dostk/chart', { stk_cd: '005930_AL', upd_stkpc_tp: '1', base_dt: '20261120' }, { headers: { 'api-id': 'ka10081' } });
+    const store = () => createKiwoomDailyStore({ directory: path.join(data, 'kiwoom-daily'), now: () => NOW, log: () => {} });
+    await ask(store().wrap(kiwoom(() => '100')));
+    const first = service.check();
+    await ask(store().wrap(kiwoom(() => '100'))); // 같은 값 다시 저장
+    assert.equal(service.check()['/api/supply/candles'], first['/api/supply/candles'], '평소 저장은 그대로');
+    await ask(store().wrap(kiwoom(dt => dt < '20261119' ? '50' : '100'))); // 액면분할 등으로 지난 종가가 바뀜
+    const after = service.check();
+    for (const route of ['/api/supply/candles', '/api/concentration-chart', '/api/ls-concentration-chart']) assert.notEqual(after[route], first[route], route);
+    assert.equal(after['/api/risk/volatility'], first['/api/risk/volatility'], '관계없는 경로는 그대로');
+});

@@ -87,7 +87,59 @@ function createLsFuturesTest({ http, getToken, directory, daytimeStore, dailyPro
         try { const rows = JSON.parse(fs.readFileSync(path.join(directory, `${code}-${session}.json`), 'utf8')); return Array.isArray(rows) ? rows : []; }
         catch (e) { if (e.code === 'ENOENT') return []; throw failure('테스트 수급 저장 자료 읽기 실패', 500); }
     }
+    // 지난날 연결선물 일봉 저장(2026-11-22, docs/CHART_DATA_STORAGE.md "지난날 일봉 저장"): <directory>/daily/<code>-<D|N>.json.gz
+    // = { v, rows: [봉], ranges: [[처음, 끝]] }. 이틀 전까지(야간은 새벽까지 이어지므로 하루 더 둔다)의 끝난 날만 두고,
+    // 다 받은 범위 안은 LS에 묻지 않는다. 최근 날은 늘 LS에서 받는다(t2214/t8459는 date부터 과거로 이어 받는다).
+    const connectedFile = (code, session) => path.join(directory, 'daily', `${code}-${session}.json.gz`);
+    function readConnected(code, session) {
+        try { const v = JSON.parse(zlib.gunzipSync(fs.readFileSync(connectedFile(code, session)))); if (v?.v === 1 && Array.isArray(v.rows)) return { rows: new Map(v.rows.map(r => [compact(r.t), r])), ranges: v.ranges || [] }; }
+        catch (error) { if (error.code !== 'ENOENT') console.warn(`[지수 선물 일봉] ${code} ${session} 파일 읽기 실패: ${error.message}`); }
+        return { rows: new Map(), ranges: [] };
+    }
+    function writeConnected(code, session, value) {
+        const file = connectedFile(code, session), json = JSON.stringify({ v: 1, rows: [...value.rows.values()].sort((a, b) => a.t - b.t), ranges: value.ranges }), packed = zlib.gzipSync(json);
+        if (zlib.gunzipSync(packed).toString() !== json) return;
+        try { fs.mkdirSync(path.dirname(file), { recursive: true }); const temp = `${file}.${process.pid}.tmp`; fs.writeFileSync(temp, packed); fs.renameSync(temp, file); }
+        catch (error) { console.warn(`[지수 선물 일봉] ${code} ${session} 저장 실패: ${error.message}`); }
+    }
+    function addConnectedRange(ranges, from, to) {
+        const merged = [];
+        for (const [a, b] of [...ranges, [from, to]].sort((x, y) => x[0].localeCompare(y[0]))) { const last = merged.at(-1); if (last && a <= compact(timestamp(last[1]) + 86400000)) { if (b > last[1]) last[1] = b; } else merged.push([a, b]); }
+        return merged;
+    }
     async function connectedDaily(code, session, to, from) {
+        if (!directory) return connectedDailyLs(code, session, to, from);
+        const lastFinal = compact(now() - 3 * 86400000), store = readConnected(code, session);
+        const pastTo = to <= lastFinal ? to : lastFinal, recent = [];
+        let contract = null, tr = session === 'N' ? 't8459' : 't2214';
+        // 최근 날(저장하지 않는 날): 한 쪽이면 된다.
+        if (to > lastFinal) { const live = await connectedDailyLs(code, session, to, compact(timestamp(lastFinal) + 86400000)); contract = live.contract; recent.push(...live.candles); }
+        const covering = () => store.ranges.find(([a, b]) => a <= pastTo && pastTo <= b), inRange = a => [...store.rows.values()].filter(c => compact(c.t) >= a && compact(c.t) <= pastTo).sort((x, y) => x.t - y.t);
+        // 저장된 범위가 며칠 전에 끝났으면 그 사이만 받아 잇는다(날마다 180봉을 다시 받지 않게).
+        const behind = store.ranges.filter(([, b]) => b < pastTo).at(-1);
+        if (!covering() && behind && timestamp(pastTo) - timestamp(behind[1]) <= 60 * 86400000 && (!from || from > behind[1] || behind[0] <= from)) {
+            const gapFrom = compact(timestamp(behind[1]) + 86400000), gap = await connectedDailyLs(code, session, pastTo, gapFrom); contract = gap.contract;
+            for (const c of gap.candles) store.rows.set(compact(c.t), c);
+            store.ranges = addConnectedRange(store.ranges, gapFrom, pastTo); writeConnected(code, session, store);
+        }
+        const range = covering();
+        let past;
+        if (from && from > pastTo) past = [];
+        else if (from && range && range[0] <= from) past = inRange(from);
+        else if (!from && range && (range[0] === '19000101' || inRange(range[0]).length >= 180 - recent.length)) past = inRange(range[0]);
+        else {
+            const fetched = await connectedDailyLs(code, session, pastTo, from); contract ||= fetched.contract;
+            past = fetched.candles.filter(c => compact(c.t) <= pastTo);
+            for (const c of past) store.rows.set(compact(c.t), c);
+            // 받은 범위: from이 있으면 [from, pastTo] 전부, 없으면 받은 가장 옛날 봉부터(180봉보다 적으면 LS 처음부터 다 받은 것).
+            const start = from || (past.length < 180 ? '19000101' : compact(past[0].t));
+            if (past.length || from) { store.ranges = addConnectedRange(store.ranges, start, pastTo); writeConnected(code, session, store); }
+        }
+        contract ||= await master(code, session);
+        const candles = [...past.filter(c => !from || compact(c.t) >= from), ...recent].sort((a, b) => a.t - b.t);
+        return { contract, candles: from ? candles : candles.slice(-180), tr };
+    }
+    async function connectedDailyLs(code, session, to, from) {
         const contract = await master(code, session), tr = session === 'N' ? 't8459' : 't2214';
         const rows = new Map(), seen = new Set();
         let keys = { date: to, cts_code: '', lastdate: '' }, continuation;

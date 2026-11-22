@@ -1,3 +1,4 @@
+const fs = require('node:fs'), path = require('node:path'), zlib = require('node:zlib');
 const DAY = 86400000;
 function shift(date, days) {
     const t = Date.parse(`${date.slice(0,4)}-${date.slice(4,6)}-${date.slice(6,8)}T00:00:00Z`);
@@ -25,10 +26,38 @@ function missingRanges(from, to, ranges) {
     return missing;
 }
 
-// History is kept in memory only. Coverage includes genuine missing dates, but a
-// failed/partial request never declares a range complete. Recent dates are mutable.
-function createHistoryCache({ now = Date.now, ttl = 6*3600000, recentTtl = 60000, limit = 32 } = {}) {
+// Coverage includes genuine missing dates, but a failed/partial request never declares a range complete. Recent dates are mutable.
+// directory(2026-11-22, 지난날 일봉 저장): 주면 끝난 날(오늘보다 3일 이상 전, 투자자 확정치가 나온 뒤)의 행과 다 받은 범위를
+// <directory>/<key>.json.gz에 두고, 서버를 다시 켜도 그 범위는 증권사에 다시 묻지 않는다. 최근 이틀은 예전처럼 다시 받는다.
+// 없으면 예전처럼 메모리에만 둔다.
+const today = t => new Date(t + 9 * 3600000).toISOString().slice(0, 10).replaceAll('-', '');
+function createHistoryCache({ now = Date.now, ttl = 6*3600000, recentTtl = 60000, limit = 32, directory = null, log = () => {} } = {}) {
     const entries = new Map();
+    const fileOf = key => path.join(directory, `${String(key).replace(/[^0-9A-Za-z_-]/g, '_')}.json.gz`);
+    const finalBefore = () => shift(today(now()), -2); // 이 날짜보다 이른 날은 바뀌지 않는다
+    function restore(key, entry) {
+        if (!directory || entry.restored) return;
+        entry.restored = true;
+        try {
+            const saved = JSON.parse(zlib.gunzipSync(fs.readFileSync(fileOf(key))));
+            for (const row of saved.rows || []) if (/^\d{8}$/.test(String(row.dt)) && !entry.rows.has(row.dt)) entry.rows.set(row.dt, row);
+            for (const range of saved.ranges || []) entry.ranges.push({ from: range.from, to: range.to, until: Infinity });
+        } catch (error) { if (error.code !== 'ENOENT') log(`[일봉 저장] ${key} 읽기 실패: ${error.message}`); }
+    }
+    function persist(key, entry) {
+        if (!directory) return;
+        const cut = finalBefore();
+        const rows = [...entry.rows.values()].filter(row => row.dt < cut).sort((a, b) => a.dt.localeCompare(b.dt));
+        const ranges = mergeRanges(entry.ranges.filter(range => range.from < cut).map(range => ({ from: range.from, to: range.to < cut ? range.to : shift(cut, -1) })));
+        if (!ranges.length) return;
+        try {
+            const json = JSON.stringify({ v: 1, key, rows, ranges }), packed = zlib.gzipSync(json);
+            if (zlib.gunzipSync(packed).toString() !== json) return;
+            fs.mkdirSync(directory, { recursive: true });
+            const file = fileOf(key), temp = `${file}.${process.pid}.tmp`;
+            fs.writeFileSync(temp, packed); fs.renameSync(temp, file);
+        } catch (error) { log(`[일봉 저장] ${key} 저장 실패: ${error.message}`); }
+    }
     function entryFor(key) {
         let entry = entries.get(key);
         if (!entry) entry = {rows:new Map(),ranges:[],recent:new Map(),queue:Promise.resolve()};
@@ -39,7 +68,8 @@ function createHistoryCache({ now = Date.now, ttl = 6*3600000, recentTtl = 60000
     function read(key, { from, to, recent = false, load, onProgress = () => {} }) {
         const entry = entryFor(key);
         const task = entry.queue.then(async()=>{
-            if (entry.lastUsed && now()-entry.lastUsed >= ttl) { entry.rows.clear();entry.ranges=[];entry.recent.clear(); }
+            if (entry.lastUsed && now()-entry.lastUsed >= ttl) { entry.rows.clear();entry.ranges=[];entry.recent.clear();entry.restored=false; }
+            restore(key, entry);
             entry.lastUsed=now();
             entry.ranges=entry.ranges.filter(range=>range.until>now());
             const ranges=missingRanges(from,to,entry.ranges);
@@ -57,6 +87,7 @@ function createHistoryCache({ now = Date.now, ttl = 6*3600000, recentTtl = 60000
                 onProgress(snapshot());
             }
             if (entry.rows.size) onProgress(snapshot());
+            let loaded=false;
             for (const range of mergeRanges(ranges)) {
                 try {
                     const result=await load(range.from,range.to,merge);
@@ -64,11 +95,12 @@ function createHistoryCache({ now = Date.now, ttl = 6*3600000, recentTtl = 60000
                     if (result.partial) partial=true;
                     if (result.error) warnings.push(result.error);
                     if (!result.partial && !result.error) {
-                        entry.ranges.push({...range,until:now()+ttl});
+                        entry.ranges.push({...range,until:now()+ttl});loaded=true;
                         if (range.from<=recentFrom && range.to>=to) entry.recent.set(recentKey,now());
                     }
                 } catch(error) { partial=true;warnings.push(error.message); }
             }
+            if (loaded) persist(key, entry);
             return snapshot();
         });
         entry.queue=task.catch(()=>{});return task;

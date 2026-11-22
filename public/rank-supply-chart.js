@@ -65,11 +65,12 @@
         // The futures card keeps the program series for the same layout as 종목 수급; LS has no stock futures program
         // trading, so it shows as 미제공 (empty lane on the day chart).
         const cardSeries = series, format = formatShares;
-        const suffix = combined ? 'CombinedSupply' : futures ? 'FuturesSupply' : broker === 'kis' ? 'KisSupply' : broker === 'ls' ? 'LsSupply' : 'Supply';
+        // 만드는 카드: 독립창 기본(''), 메인 통합('combined'), 종목 선물('futures'). 증권사별 비교 카드는 2026-11-22 정리.
+        const suffix = combined ? 'CombinedSupply' : futures ? 'FuturesSupply' : 'Supply';
         const panelId = `rank${suffix}ChartPanel`, axisId = broker ? `${broker}Supply` : 'supply';
         const api = name => name.replace('Supply', suffix);
         const eventName = name => broker ? name.replace('rank-supply', `rank-${broker}-supply`) : name;
-        const endpoint = futures ? '/api/ls-stock-futures/chart' : combined ? '/api/supply/chart' : broker ? `/api/${broker}-supply/chart` : '/api/supply/chart';
+        const endpoint = futures ? '/api/ls-stock-futures/chart' : '/api/supply/chart';
         const candleEndpoint = futures ? '/api/ls-stock-futures/candles' : '/api/supply/candles';
         const selectionKey = broker ? `rank${suffix}SelectedV1` : 'rankSupplySelectedV1';
         const breadth = document.getElementById('rankBreadthChartPanel'), row = window.rankIndependentClient ? document.getElementById('tab_rank') : breadth?.closest('.rank-chart-row');
@@ -77,7 +78,7 @@
         const panel = document.createElement('section');
         panel.id = panelId; panel.className = 'panel rank-adr-panel rank-supply-panel' + (futures ? ' rank-futures-supply-panel' : broker ? ' rank-broker-supply-panel' : '');
         panel.setAttribute('aria-label', futures ? '종목 선물 수급 차트' : '종목별 수급 차트');
-        panel.innerHTML = `<div class="concentration-chart-header"><h2>${futures ? '종목 선물 수급' : '종목 수급'}${combined || futures ? '' : broker === 'kis' ? '(한투)' : broker === 'ls' ? '(LS)' : window.rankIndependentClient ? '' : '(키움)'}</h2>${futures ? '' : '<button type="button" data-action="add-stock" aria-haspopup="dialog" aria-expanded="false">+ 종목 추가</button>'}</div>
+        panel.innerHTML = `<div class="concentration-chart-header"><h2>${futures ? '종목 선물 수급' : '종목 수급'}${combined || futures || window.rankIndependentClient ? '' : '(키움)'}</h2>${futures ? '' : '<button type="button" data-action="add-stock" aria-haspopup="dialog" aria-expanded="false">+ 종목 추가</button>'}</div>
             <div class="rank-adr-controls"><select class="supply-stock-select" aria-label="수급 종목 선택"></select><button type="button" data-mode="day" class="active" aria-pressed="true">일봉</button><button type="button" data-mode="minute" aria-pressed="false">1분봉(누적)</button>
             <button type="button" class="concentration-candle-toggle" aria-expanded="false">캔들차트</button></div>
             <div class="supply-legend">${cardSeries.map(s => `<button type="button" data-series="${s}" aria-label="${names[s]} 표시" title="${names[s]} 표시 전환" aria-pressed="true" style="color:${colors[s]}"><span>${Array.from(names[s])[0]}</span><output><span class="supply-value-number">—</span><span class="supply-value-unit"></span></output></button>`).join('')}</div>

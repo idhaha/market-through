@@ -200,7 +200,30 @@ function createLsStockFutures({ http, getToken, directory, supply, now = Date.no
             warnings: [], // How the values are collected is in the card's i guide, not the status line (it overflowed the card).
             status: { error: status.get(code)?.error || '' }, collecting: collects() && collectingAt(now()) };
     }
+    // ---- 지난날 일봉 저장(2026-11-22, docs/CHART_DATA_STORAGE.md "지난날 일봉 저장"): <directory>/daily/<code>-flow.json.gz(t8462 수급),
+    // <code>-candles.json.gz(t8405 연결선물 가격). 끝난 날만 두고 오늘(수급은 최근 이틀 포함)은 늘 LS에서 받는다.
+    const dailyFile = (code, kind) => path.join(directory, 'daily', `${code}-${kind}.json.gz`);
+    function readDaily(code, kind) {
+        try { const v = JSON.parse(zlib.gunzipSync(fs.readFileSync(dailyFile(code, kind)))); return v?.v === 1 && Array.isArray(v.rows) ? v : null; }
+        catch (error) { if (error.code !== 'ENOENT') log(`[종목 선물 일봉] ${code} ${kind} 파일 읽기 실패: ${error.message}`); return null; }
+    }
+    function writeDaily(code, kind, value) {
+        const file = dailyFile(code, kind), json = JSON.stringify({ v: 1, ...value }), packed = zlib.gzipSync(json);
+        if (zlib.gunzipSync(packed).toString() !== json) return;
+        try { fs.mkdirSync(path.dirname(file), { recursive: true }); const temp = `${file}.${process.pid}.tmp`; fs.writeFileSync(temp, packed); fs.renameSync(temp, file); }
+        catch (error) { log(`[종목 선물 일봉] ${code} ${kind} 저장 실패: ${error.message}`); }
+    }
+    // 저장본을 버린 기록(chart-revisions가 보고 브라우저 저장분을 한 번 버리게 한다).
+    function markReset(code) {
+        const file = path.join(directory, 'daily', 'resets.json');
+        let value = { count: 0, recent: [] };
+        try { const saved = JSON.parse(fs.readFileSync(file, 'utf8')); if (Number.isFinite(saved?.count)) value = { count: saved.count, recent: Array.isArray(saved.recent) ? saved.recent : [] }; } catch {}
+        value.count++; value.recent = [...value.recent, { at: new Date(now()).toISOString(), code }].slice(-50);
+        try { fs.mkdirSync(path.dirname(file), { recursive: true }); const temp = `${file}.${process.pid}.tmp`; fs.writeFileSync(temp, JSON.stringify(value)); fs.renameSync(temp, file); }
+        catch (error) { log(`[종목 선물 일봉] 초기화 기록 실패: ${error.message}`); }
+    }
     // ---- day query: t8462, up to 179 days per call, newest first; the cursor is the day before the oldest row
+    // 끝난 날(사흘 전까지, 확정치)은 파일에 두고, 저장된 마지막 날 다음 날부터만 LS에 묻는다(from_date).
     async function day(code, input) {
         const item = await contractOf(code);
         const to = input.cursor && /^\d{8}$/.test(input.cursor) ? input.cursor : compact(dayKey(now()));
@@ -208,15 +231,22 @@ function createLsStockFutures({ http, getToken, directory, supply, now = Date.no
         if (cached && (input.cursor || now() - cached.at < 60000)) return cached.result;
         // Every page at once (t8462 answers fast). LS serves stock futures days only from 2026-02-11 (day, week and
         // month units alike, 2026-11-07), so a "더 불러오기" offer would only return nothing.
-        const rows = [];
-        for (let page = 0, until = to; page < 20; page++) {
-            const part = (await rest('t8462', 'investor', { tm_rng: 'D', fot_clsf_cd: 'F', bsc_asts_id: item.id, gubun2: '1', gubun3: '1', from_date: '19900101', to_date: until })).t8462OutBlock1 || [];
+        const stored = readDaily(code, 'flow'), lastFinal = compact(dayKey(now() - 3 * 86400000));
+        const rows = stored ? stored.rows.filter(r => String(r.date) <= to) : [];
+        const from = stored ? compact(dayKey(at(stored.through) + 86400000)) : '19900101';
+        let complete = false;
+        if (!stored || to > stored.through) for (let page = 0, until = to; page < 20; page++) {
+            const part = (await rest('t8462', 'investor', { tm_rng: 'D', fot_clsf_cd: 'F', bsc_asts_id: item.id, gubun2: '1', gubun3: '1', from_date: from, to_date: until })).t8462OutBlock1 || [];
             const dates = part.map(r => String(r.date)).filter(d => /^\d{8}$/.test(d)).sort();
-            const fresh = part.filter(r => !rows.some(old => String(old.date) === String(r.date)));
+            const fresh = part.filter(r => String(r.date) >= from && !rows.some(old => String(old.date) === String(r.date)));
             rows.push(...fresh);
-            if (part.length < 150 || !fresh.length || !dates.length) break;
+            if (part.length < 150 || !fresh.length || !dates.length) { complete = true; break; }
             until = compact(dayKey(at(dates[0]) - 86400000));
         }
+        // 처음부터(또는 저장된 날 다음부터) 끝까지 받았으면 끝난 날을 저장한다.
+        const through = to < lastFinal ? to : lastFinal;
+        if (complete && through > (stored?.through || '')) writeDaily(code, 'flow', { through,
+            rows: rows.filter(r => /^\d{8}$/.test(String(r.date)) && String(r.date) <= through).map(r => ({ date: String(r.date), sv_08: r.sv_08, sv_17: r.sv_17, sv_18: r.sv_18 })).sort((a, b) => a.date.localeCompare(b.date)) });
         const points = rows.filter(r => /^\d{8}$/.test(String(r.date))).map(r => ({ t: at(String(r.date)), individual: num(r.sv_08), foreign: num(r.sv_17), institution: num(r.sv_18) })).sort((a, b) => a.t - b.t);
         const oldest = points[0] ? compact(dayKey(points[0].t - 86400000)) : null;
         const result = { success: true, mode: 'day', multiplier: await multiplierOf(code, item), points, has_more: false, cursor: null, oldest: points[0] ? dayKey(points[0].t) : null,
@@ -253,11 +283,21 @@ function createLsStockFutures({ http, getToken, directory, supply, now = Date.no
     // (2026-11-12: A11611 last bar 15:19, A11612 bars to 15:45). The bars from 15:20 come from the next month.
     const ROLL_TIME = '152000';
     const isExpiryDay = day => isOpen(day) && day === expiryOf(Number(day.slice(0, 4)), Number(day.slice(5, 7)));
+    // 한투에서 새 분봉을 받을 때 잠깐 끊기면 다시 묻는다(2026-11-22: 지난날 조회 중 socket hang up · 502가 가끔 났다).
+    // 연결 끊김 · 시간 초과 · 한투 서버 오류(5xx) · 초당 건수 초과(EGW00201)만 1초, 2초 쉬고 두 번 더. 저장 파일에서 읽을 때는 해당 없음.
+    const transient = error => /socket hang up|ECONNRESET|ETIMEDOUT|ECONNABORTED|EAI_AGAIN|timeout|EGW00201/i.test(`${error?.code || ''} ${error?.message || ''}`)
+        || error?.response?.status >= 500;
+    async function askKis(args) {
+        for (let attempt = 0; ; attempt++) {
+            try { return await kisMinute(args); }
+            catch (error) { if (attempt >= 2 || !transient(error)) throw error; await pause(1000 * (attempt + 1)); }
+        }
+    }
     // Bars of one day from 'hour' back (all pages down to 08:45, or only the newest page to top up today's bars).
     async function fetchKisDay(item, day, { hour = '154600', pages = 8 } = {}) {
         const contract = kisContract(item, day), ymd = compact(day), bars = new Map();
         for (let page = 0; page < pages; page++) {
-            const rows = await kisMinute({ code: contract, date: ymd, hour });
+            const rows = await askKis({ code: contract, date: ymd, hour });
             const same = rows.filter(r => String(r.stck_bsop_date) === ymd);
             for (const r of same) {
                 const time = String(r.stck_cntg_hour || '').padStart(6, '0'), t = at(ymd, time.slice(0, 4) + '00');
@@ -275,7 +315,7 @@ function createLsStockFutures({ http, getToken, directory, supply, now = Date.no
         // Today before 15:20 there is nothing to add yet, so the next month is not asked.
         if (isExpiryDay(day) && !(day === dayKey(now()) && now() < at(ymd, ROLL_TIME))) {
             next = kisContract(item, day, 1);
-            const rows = await kisMinute({ code: next, date: ymd, hour: '154600' });
+            const rows = await askKis({ code: next, date: ymd, hour: '154600' });
             for (const r of rows) {
                 const time = String(r.stck_cntg_hour || '').padStart(6, '0'); if (String(r.stck_bsop_date) !== ymd || time < ROLL_TIME) continue;
                 const t = at(ymd, time.slice(0, 4) + '00'), bar = { t, open: Math.abs(num(r.futs_oprc)), high: Math.abs(num(r.futs_hgpr)), low: Math.abs(num(r.futs_lwpr)), close: Math.abs(num(r.futs_prpr)) };
@@ -286,10 +326,27 @@ function createLsStockFutures({ http, getToken, directory, supply, now = Date.no
     }
     // ---- candles: minute from KIS (memory only), day from t8405 연결선물 back to the oldest day served
     // t8405 pages (100 days each, newest first) are kept per code for the day; older pages load on demand.
+    // 지난날 가격은 <code>-candles.json.gz에 둔다. t8405는 최신 쪽부터만 이어 받을 수 있어, 새로 받은 쪽이 저장된 마지막 날에
+    // 닿으면(linked) 저장본을 붙이고 그보다 옛날은 다시 묻지 않는다. 겹치는 날 종가가 다르면(수정) 저장본을 버린다.
     function dailyEntry(code) {
         let entry = dailyCandles.get(code);
-        if (!entry || entry.day !== dayKey(now())) { entry = { day: dayKey(now()), rows: new Map(), next: null, exhausted: false }; dailyCandles.set(code, entry); }
+        if (!entry || entry.day !== dayKey(now())) {
+            const saved = readDaily(code, 'candles'), stored = saved?.rows.length ? { rows: new Map(saved.rows.map(r => [r.date, { t: r.t, open: r.open, high: r.high, low: r.low, close: r.close }])), exhausted: !!saved.exhausted } : null;
+            entry = { day: dayKey(now()), code, rows: new Map(), next: null, exhausted: false, stored, linked: !stored }; dailyCandles.set(code, entry);
+        }
         return entry;
+    }
+    function linkDaily(entry) {
+        if (!entry.linked) {
+            const newest = [...entry.stored.rows.keys()].sort().at(-1);
+            if (!entry.exhausted && !(oldestDay(entry) <= newest)) return; // 아직 저장된 날까지 닿지 않음
+            const changed = [...entry.rows].some(([d, v]) => entry.stored.rows.has(d) && entry.stored.rows.get(d).close !== v.close);
+            if (changed) { log(`[종목 선물 일봉] ${entry.code} 지난 가격이 바뀌어 저장본을 새로 받습니다.`); markReset(entry.code); }
+            else { for (const [d, v] of entry.stored.rows) if (!entry.rows.has(d)) entry.rows.set(d, v); if (entry.stored.exhausted) entry.exhausted = true; }
+            entry.stored = null; entry.linked = true;
+        }
+        const today = compact(dayKey(now()));
+        writeDaily(entry.code, 'candles', { exhausted: entry.exhausted, rows: [...entry.rows].filter(([d]) => d < today).sort(([a], [b]) => a.localeCompare(b)).map(([date, v]) => ({ date, ...v })) });
     }
     async function dailyPage(entry, item) {
         const input = { shcode: item.nearest, futcheck: '1', date: entry.next?.date || '', cts_code: entry.next?.cts_code || '', lastdate: entry.next?.lastdate || '', cnt: 100 };
@@ -298,6 +355,7 @@ function createLsStockFutures({ http, getToken, directory, supply, now = Date.no
         for (const r of rows) if (/^\d{8}$/.test(String(r.date))) entry.rows.set(String(r.date), { t: at(String(r.date)), open: Math.abs(num(r.open)), high: Math.abs(num(r.high)), low: Math.abs(num(r.low)), close: Math.abs(num(r.close)) });
         const next = { date: String(header.date || '').trim(), cts_code: String(header.cts_code || '').trim(), lastdate: String(header.lastdate || '').trim() };
         if (!rows.length || !next.date || next.date === entry.next?.date) entry.exhausted = true; else entry.next = next;
+        linkDaily(entry);
     }
     const oldestDay = entry => [...entry.rows.keys()].sort()[0] || null;
     // 지난날 분봉 파일(2026-11-22): <directory>/candles/<code>/<YYYY-MM-DD>.json.gz. 한투 FHKIF03020200은 하루에 여러 쪽(한 쪽 102봉)이라

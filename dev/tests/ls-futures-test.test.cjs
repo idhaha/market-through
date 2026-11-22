@@ -301,3 +301,33 @@ test('지난 구간 선물 분봉은 날마다 파일로 두고, 넓힌 구간�
     await make().priceRange({code:'futures',from:'20261027',to:'20261031'});
     assert.deepEqual(asked[2],['20261027','20261031']);
 });
+test('지수 선물 연결 일봉(t2214/t8459)은 끝난 날을 파일로 두고, 새 서버는 최근 날과 빠진 날만 LS에 묻는다(2026-11-22)',async t=>{
+    const fs=require('node:fs'),path=require('node:path');
+    const directory=fs.mkdtempSync(path.join(path.resolve(__dirname,'../output'),'lsft-daily-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+    const shift=(d,n)=>new Date(Date.parse(`${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6)}T00:00:00Z`)+n*86400000).toISOString().slice(0,10).replaceAll('-','');
+    const days=[];for(let d='20261110';d>='20250101';d=shift(d,-1)){const w=new Date(Date.parse(`${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6)}T00:00:00Z`)).getUTCDay();if(w&&w!==6)days.push(d);}
+    const asked=[];
+    const make=now=>createLsFuturesTest({directory,now:()=>now,pause:async()=>{},getToken:async()=>'',http:{post:async(url,body,{headers})=>{
+        const tr=headers.tr_cd,p=body[tr+'InBlock'];
+        if(tr==='t8467'||tr==='t8455')return {data:{rsp_cd:'00000',[tr+'OutBlock']:[{hname:'F 2612',shcode:'A016C000'}]}};
+        asked.push([tr,p.date]);
+        const today=new Date(now+9*3600000).toISOString().slice(0,10).replaceAll('-','');
+        const rows=days.filter(d=>d<=p.date&&d<=today).slice(0,100),more=rows.length===100;
+        return {headers:{tr_cont:more?'Y':'N',tr_cont_key:'k'},data:{rsp_cd:'00000',[tr+'OutBlock']:{date:more?shift(rows.at(-1),-1):'',cts_code:'',lastdate:''},[tr+'OutBlock1']:rows.map(date=>({date,open:100,high:110,low:90,close:tr==='t2214'?105:104}))}};
+    }}});
+    const first=await make(fixedNow).priceRange({code:'futures',mode:'day',from:'20260101',to:'20261030'});
+    const firstCalls=asked.length;assert.ok(firstCalls>=6);
+    assert.ok(fs.existsSync(path.join(directory,'daily','futures-D.json.gz'))&&fs.existsSync(path.join(directory,'daily','futures-N.json.gz')));
+    // 새 서버 · 같은 구간: 최근 날(사흘 안)만 세션마다 한 번.
+    asked.length=0;
+    const again=await make(fixedNow).priceRange({code:'futures',mode:'day',from:'20260101',to:'20261030'});
+    assert.deepEqual(again.points,first.points);
+    assert.deepEqual(asked.map(a=>a[0]).sort(),['t2214','t8459']);
+    // 며칠 뒤 새 서버: 빠진 날(저장 끝 다음 날부터)과 최근 날만, 세션마다 두 번.
+    asked.length=0;
+    const later=timestamp('20261110','090000');
+    const next=await make(later).priceRange({code:'futures',mode:'day',from:'20260101',to:'20261110'});
+    assert.equal(asked.length,4);
+    assert.ok(next.points.length>first.points.length);
+    assert.deepEqual(next.points.slice(0,first.points.length-1),first.points.slice(0,-1));
+});
