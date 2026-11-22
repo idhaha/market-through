@@ -23,12 +23,14 @@
         if (!response.ok || !data.success) throw new Error(data.error || '수급 조회 실패');
         return data;
     }
-    function ensurePeer(key, urlFor, fromDay) {
+    // anchor(YYYYMMDD): 과거 분봉 구간 보기의 끝 날짜. 그 날짜부터 받고(오늘부터 하루씩 거슬러 오지 않음), 지난 자료라 다시 받지 않는다(2026-11-22).
+    // 예전에는 오늘부터 구간 시작까지 하루씩 받아 7~8월 구간에서 요청 227번 · 24MB가 나갔다.
+    function ensurePeer(key, urlFor, fromDay, anchor = '') {
         let entry = peerStore.get(key);
         if (!entry) peerStore.set(key, entry = { points: [], cursor: undefined, hasMore: false, at: 0, failedAt: 0, job: null });
         if (entry.job || Date.now() - entry.failedAt < PEER_FRESH) return;
-        const latest = urlFor('');
-        const stale = !entry.at || Date.now() - entry.at >= PEER_FRESH && window.TradingRefresh?.allowsUrl?.(new URL(latest, location.href)) !== false;
+        const latest = urlFor(anchor);
+        const stale = !entry.at || !anchor && Date.now() - entry.at >= PEER_FRESH && window.TradingRefresh?.allowsUrl?.(new URL(latest, location.href)) !== false;
         const earliest = () => { const p = entry.points.find(p => series.some(f => Number.isFinite(p[f]))); return p ? dayKey(p.t) : ''; };
         const needsHistory = () => entry.hasMore && entry.cursor && fromDay && (!earliest() || earliest() > fromDay);
         if (!stale && !needsHistory()) return;
@@ -180,10 +182,11 @@
                 inWindow = p => days.has(tradingDay(p.t));
             }
             const canFetch = !(window.rankManagedChartRefresh && !window.rankChartRefreshStarted);
+            const windowEnd = mode === 'minute' ? (window.RankChartAxis.minuteWindow?.()?.to || '').replaceAll('-', '') : '';
             return marketCodes().filter(code => code !== selected).flatMap(code => {
-                const path = flowEndpoint(code), key = `${path}|${code}|${mode}`;
+                const path = flowEndpoint(code), key = `${path}|${code}|${mode}|${windowEnd}`;
                 const urlFor = page => `${path}?${new URLSearchParams({ code, mode, ...(mode === 'minute' && (path === '/api/market-supply/chart' || path === '/api/ls-futures-test/chart') ? { prices: '0' } : {}), ...(page ? { cursor: page } : {}) })}`;
-                if (canFetch) ensurePeer(key, urlFor, fromDay);
+                if (canFetch) ensurePeer(key, urlFor, fromDay, windowEnd);
                 return (peerStore.get(key)?.points || []).filter(inWindow);
             });
         }
@@ -451,7 +454,8 @@
             const nextCursor = append && hasMore ? cursor : null;
             if (append && (loading || !nextCursor)) return;
             controller?.abort(); const current = controller = new AbortController(), id = ++revision;
-            if(!candleLoading)candleRangeKey='';
+            // 오늘이 든 범위만 다시 받는다(2026-11-22). 지난 구간은 쪽마다 같은 캔들(7~8월 1분봉 940KB)을 다시 받던 것을 막는다.
+            if(!candleLoading && !(candleRangeKey.split(':')[3] < dayKey(Date.now()).replaceAll('-','')))candleRangeKey='';
             if (!selected) { loading = false; clearView(); chartMessage = '시장을 선택하세요.'; setStatus(); return; }
             const queryEndpoint = flowEndpoint(selected);
             if(append){window.RankChartAxis.showHistory();todayOnly=false;}

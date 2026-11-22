@@ -2,7 +2,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto');
-const { SETS, plan } = require('../oracle-remove-duplicate-data.cjs');
+const { SETS, plan, topOf } = require('../oracle-remove-duplicate-data.cjs');
 
 test('키움 분봉 수급 묶음은 종목 날짜 파일만 고르고, 목록 · 장날 파일과 다른 폴더는 건드리지 않는다', () => {
     const rule = SETS['supply-minute'];
@@ -13,6 +13,8 @@ test('키움 분봉 수급 묶음은 종목 날짜 파일만 고르고, 목록 �
     assert.ok(SETS['kis-concentration'].test('kis-concentration/0001/20261023.json'));
     assert.ok(!SETS['ls-market-supply-raw'].test('ls-market-supply/validation.json'));
     assert.ok(SETS['kis-spot-market-supply'].test('market-supply/KOSPI0/2026-11-20.json.gz'));
+    // 오라클에서 목록을 볼 폴더 이름(셸 명령에 들어가므로 영문 · 숫자 · '-'만).
+    assert.deepEqual(Object.keys(SETS).map(topOf), ['supply', 'ls-supply', 'ls-market-supply', 'kis-turnover', 'kis-concentration', 'market-supply']);
     for (const rel of ['market-supply/FUTURE/2026-11-20.json.gz', 'market-supply/FUTKQ0/2026-11-20.json.gz', 'kiwoom-market-supply/KOSPI0/2026-11-20.json.gz'])
         assert.ok(!SETS['kis-spot-market-supply'].test(rel), rel);
 });

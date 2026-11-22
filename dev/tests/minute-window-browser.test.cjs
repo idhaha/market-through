@@ -78,6 +78,11 @@ const before=(day,cursor)=>DAYS.filter(d=>d<=day).at(-1);
   assert.ok(list.includes(compact(from)),path+' 구간 시작까지 '+list);
   assert.ok(!list.some(c=>c>compact(to)),path+' 구간 뒤의 날은 받지 않는다 '+list);
  }
+ // 시장 수급의 다른 시장(같은 y축용)도 구간 끝 날짜부터 받는다(2026-11-22 오라클: 오늘부터 하루씩 받아 요청 227번 · 24MB).
+ for(const path of ['/api/kiwoom-market-supply/chart','/api/ls-futures-test/chart']){
+  const list=cursors(path);
+  assert.ok(list.length && !list.some(c=>c>compact(to)),path+' 구간 뒤의 날은 받지 않는다 '+list);
+ }
  // 쏠림율은 base_dt로 구간 끝 날짜부터 받는다(오늘부터 거슬러 오지 않는다).
  assert.ok(requests.some(r=>r.includes('concentration-chart#')&&r.includes('"base_dt":"'+compact(to)+'"')),'쏠림율 base_dt '+requests.filter(r=>r.includes('concentration-chart#')).slice(0,5));
  for(const until=Date.now()+30000;;){const c=await page.evaluate(()=>window.getCombinedRankChartState?.()||window.getRankChartState());const days=[...new Set(c.points.filter(p=>Number.isFinite(p.value)).map(p=>p.time.slice(0,8)))].sort();if(days[0]<=compact(from)&&days.at(-1)===compact(to))break;if(Date.now()>until)throw new Error('쏠림율 구간 '+days[0]+'~'+days.at(-1));await page.waitForTimeout(200);}
@@ -103,6 +108,14 @@ const before=(day,cursor)=>DAYS.filter(d=>d<=day).at(-1);
  assert.equal(await page.evaluate(()=>window.RankChartAxis.dailyWindow()),null);
  await page.locator('#rankCombinedSupplyChartPanel [data-mode="minute"]').click();await page.waitForTimeout(800);
  assert.equal(await page.evaluate(()=>window.RankChartAxis.minuteWindow()),null);
+ // 일봉에 갔다가 같은 구간으로 다시 들어와도 구간 끝 날짜부터 받는다(2026-11-22 오라클: 오늘부터 하루씩, 종목 수급 요청 500번).
+ const enterWindow=async()=>{
+  await page.locator('#rankCombinedSupplyChartPanel [data-mode="day"]').click();await page.waitForTimeout(800);
+  await page.evaluate(({first,last})=>{const d=window.RankChartAxis.dailyDomain(),n=d.days.length-1;window.RankChartAxis.selectViewport('combinedSupply',d.days.indexOf(first)/n,d.days.indexOf(last)/n);},zoom);
+  requests.length=0;await page.locator('#rankCombinedSupplyChartPanel [data-mode="minute"]').click();await page.waitForTimeout(3000);
+ };
+ await enterWindow();await enterWindow();
+ {const again=cursors('/api/kis-supply/chart');assert.ok(again.includes(compact(to)) && !again.some(c=>c>compact(to)),'같은 구간 다시: '+again);}
  assert.deepEqual(errors,[]);
  console.log('PASS 일봉 확대 → 분봉 구간 보기, 날짜 커서 카드 바로 이동, 자동 갱신 생략, 더 불러오기, 당일 복귀');
 }finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

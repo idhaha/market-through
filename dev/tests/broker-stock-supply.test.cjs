@@ -89,3 +89,13 @@ test('Oracle-priority setting disables local KIS socket while REST collection re
   await f.service.collect();assert.deepEqual(f.logs.filter(m=>/H0UNPGM0. 꺼짐/.test(m)).length,1,'the off state is logged once');}
  finally{if(previous===undefined)delete process.env.KIS_STOCK_REALTIME_ENABLED;else process.env.KIS_STOCK_REALTIME_ENABLED=previous;}
 });
+test('저장 자료보다 이른 날짜 커서는 그 날짜를 빈 날로 답하고 끝난다(오늘로 바꿔 답하지 않음, 2026-11-22)',async t=>{
+ const f=fixture(t);f.service.start();await f.service.collect();const s=f.sockets[0];s.open();s.ack();
+ s.emit('message',frame('005930','100518','123'));f.setTime(instant+60000);f.service.flush();
+ const latest=await f.service.query({code:'005930',mode:'minute'});assert.equal(latest.date,'2026-10-26');assert.equal(latest.points.length,1);
+ // 과거 구간 보기(8월): 한투 저장은 10/26부터라 8/31은 빈 날이고 더 이전도 없다.
+ const past=await f.service.query({code:'005930',mode:'minute',cursor:'20260831'});
+ assert.equal(past.date,'2026-08-31');assert.deepEqual(past.points,[]);assert.equal(past.has_more,false);assert.equal(past.cursor,null);
+ // 저장일이 있는 범위의 커서는 그대로(그날 포함).
+ assert.equal((await f.service.query({code:'005930',mode:'minute',cursor:'20261027'})).date,'2026-10-26');
+});

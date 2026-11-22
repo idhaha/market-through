@@ -357,7 +357,9 @@ function createBrokerStockSupply({ broker, directory, http, credentials, getToke
         if (mode === 'day') return daily(code, input);
         flush();
         const dates = store.dates(code), cursor = input.cursor?.replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3');
-        const date = input.date || (cursor ? dates.filter(day => day <= cursor).at(-1) : dates.at(-1)) || dayKey(now());
+        // 커서(그날 포함)보다 이른 저장일이 없으면 그 날짜를 빈 날로 답하고 끝낸다(2026-11-22). 예전에는 오늘로 바꿔 답해
+        // 과거 구간 보기(7~8월, 한투 자료는 10/21부터)에서 화면이 오늘부터 하루씩 다시 거슬러 왔다.
+        const date = input.date || (cursor ? dates.filter(day => day <= cursor).at(-1) || cursor : dates.at(-1) || dayKey(now()));
         const previous = dates.filter(day => day < date).at(-1);
         const currentMinute = Math.floor(now()/60000)*60000;
         return { success: true, mode, date, available_dates: dates, points: store.points(code, date).filter(p => p.t < currentMinute),

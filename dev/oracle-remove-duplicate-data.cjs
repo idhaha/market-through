@@ -41,7 +41,9 @@ function plan(remote, { sets, backup, today }) {
     }
     return { remove, skip };
 }
-module.exports = { SETS, plan };
+// 묶음이 보는 data 아래 첫 폴더(RegExp.source는 '/'를 '\/'로 적는다).
+const topOf = name => /^[a-z0-9-]+$/i.exec(SETS[name].source.slice(1).replace(/\\\//g, '/').split('/')[0])[0];
+module.exports = { SETS, plan, topOf };
 
 if (require.main === module) {
     const sets = process.argv.flatMap((a, i, all) => a === '--set' ? [all[i + 1]] : []);
@@ -53,7 +55,7 @@ if (require.main === module) {
         { encoding: 'utf8', input, timeout: 600000, maxBuffer: 2 ** 30 });
     try {
         if (!sets.length) throw new Error('--set 으로 지울 묶음을 고르세요: ' + Object.keys(SETS).join(', '));
-        const tops = [...new Set(sets.map(name => { if (!SETS[name]) throw new Error(`모르는 묶음: ${name}`); return SETS[name].source.slice(1).split('/')[0]; }))];
+        const tops = [...new Set(sets.map(name => { if (!SETS[name]) throw new Error(`모르는 묶음: ${name}`); return topOf(name); }))];
         const listing = ssh(`cd ${REMOTE} && for d in ${tops.join(' ')}; do [ -d "$d" ] && find "$d" -type f; done | while IFS= read -r f; do echo "$(sha256sum "$f" | cut -d' ' -f1) $(stat -c %s "$f") $f"; done; true`);
         const remote = listing.split('\n').map(line => /^([a-f0-9]{64}) (\d+) (.+)$/.exec(line.trim())).filter(Boolean)
             .map(([, hash, size, rel]) => ({ hash, size: Number(size), rel }));

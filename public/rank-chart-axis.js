@@ -481,7 +481,10 @@
         const days=daily.days,center=Math.floor((days.length-1)/2);
         return {center:days[center],from:days[Math.max(0,center-WINDOW_SIDE)],to:days[Math.min(days.length-1,center+WINDOW_SIDE)]};
     }
+    // 구간 보기에 들어갈 때마다 카드가 구간 끝 날짜로 다시 가게 한다(2026-11-22). 일봉에 갔다가 같은 구간으로 다시 들어오면
+    // 카드는 분봉 버튼으로 오늘을 받았는데 seek 기록이 남아 있어, 오늘부터 하루씩 거슬러 왔다(종목 수급 요청 500번).
     function showWindow(from,to){
+        seekedWindows.clear();
         resetHistoryWork();viewports.delete('minute');historyMode=true;todayPinned=false;
         windowFirstDay=from;windowEnd=to+' 20:00';
         const overnight=overnightChart();

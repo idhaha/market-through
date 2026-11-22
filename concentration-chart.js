@@ -292,8 +292,11 @@ function createConcentrationChartService({ axios, getAccessToken, marketCache, n
         return { rows: result.rows, prev: result.prev, stored: false };
     }
     // 한 번에 최소 하루, 새 종목 행이 900개(키움 한 쪽 크기)가 될 때까지 날짜를 거슬러 간다. 키움에서 받는 날은 10일까지.
+    // 응답에는 이번에 받은 날만 담는다(2026-11-22). 예전에는 세션에 쌓인 모든 날을 쪽마다 다시 보내 과거 구간에서 응답이
+    // 0.5MB → 5MB로 커지고(LS 비교는 쪽마다 모든 날의 LS 거래대금을 다시 받음) 오라클 서버가 메모리 한도로 재시작했다.
+    // 화면은 쪽을 시각 기준으로 합친다. 1분 쏠림율은 같은 분의 종목 · 지수 행만 쓰므로 날을 나눠 계산해도 값이 같다.
     async function dayQuery(session, cursor, token, input) {
-        const stockRows = new Map(session.stock.rows), indexRows = new Map(session.index.rows);
+        const stockRows = new Map(), indexRows = new Map();
         const indexCode = session.market === 'K' ? '001' : '101';
         const stockSource = { apiId: 'ka10080', field: 'stk_min_pole_chart_qry', body: { stk_cd: `${session.code}_AL`, upd_stkpc_tp: '0' },
             symbol: `${session.code}_AL`, keep: Boolean(keepStock(session.code)) };
@@ -310,17 +313,21 @@ function createConcentrationChartService({ axios, getAccessToken, marketCache, n
             added += stock.rows.length; days++;
             next = stock.prev;
         }
-        session.stock = { ...session.stock, rows: stockRows, loaded: true };
-        session.index = { ...session.index, rows: indexRows, loaded: true };
+        // 세션은 행을 쌓아 두지 않고 센 값만 둔다(지난날은 저장 파일에 있다).
+        const loaded = session.dayLoaded ||= { stock: 0, index: 0, first: '' };
+        loaded.stock += stockRows.size; loaded.index += indexRows.size;
+        const firstKey = [...stockRows.keys()].sort()[0];
+        if (firstKey && (!loaded.first || firstKey < loaded.first)) loaded.first = firstKey;
+        session.stock = { ...session.stock, rows: new Map(), loaded: true };
+        session.index = { ...session.index, rows: new Map(), loaded: true };
         session.nextDay = next;
         session.expires = Date.now() + TTL;
-        if (stockRows.size > 50000) throw new Error('한 차트의 조회 한도에 도달했습니다. 봉 간격을 늘려 주세요.');
         return {
             success: true, market: session.market, mode: 'minute', interval: 1, cursor,
             points: calculatePoints(stockRows, indexRows, 'minute', 1),
             debug_five_bars: null,
             has_more: Boolean(next), history_pending: false,
-            history_progress: `${stockRows.size}:${indexRows.size}:${earliest(session.stock, 'minute', 1)}:${earliest(session.index, 'minute', 1)}`,
+            history_progress: `${loaded.stock}:${loaded.index}:${loaded.first}`,
             calculation: 'stock: abs(int(cur_prc)) * int(trde_qty); market: (abs(int(cur_prc)) / 100) * (int(trde_qty) * 10000)',
             index_interval: 1
         };

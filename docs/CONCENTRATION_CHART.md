@@ -1,5 +1,7 @@
 # Rank 쏠림율 차트
 
+> 2026-11-22: 1분봉 이어 보기 응답에는 그 쪽에서 새로 받은 날만 담는다(예전에는 쌓인 날 전체를 매번 다시 보내 과거 구간에서 응답이 5MB까지 커지고, LS 비교는 쪽마다 모든 날의 LS 거래대금을 다시 받아 오라클 서버가 메모리 한도로 재시작했다). 화면은 쪽을 시각 기준으로 합친다.
+
 > 2026-11-22: 소스는 한 곳 기준으로 `ALT_SUPPLY_COLLECTION` 스위치와 화면이 읽지 않는 비교 수집(LS 종목 → `ls-supply`, LS 시장 분봉 → `ls-market-supply/raw`, 한투 거래대금 → `kis-turnover`, 한투 업종 분봉 → `kis-concentration`)을 없앴다. 오라클의 이 파일들은 `dev/oracle-remove-duplicate-data.cjs`로 지운다(로컬 백업 `outputs/oracle-data-backup/`에는 남음). 아래 수집 설명은 옛 기록이다.
 
 > 2026-11-07: 한투 비교 카드는 화면에서 빠졌다. 한투 지수 분 단위 정기 수집(FHKUP03500200)과 지수 거래대금 실시간 구독(H0UPCNT0)은 서버에서 시작하지 않는다(`ALT_SUPPLY_COLLECTION=on`으로 다시 켬). 필요할 때의 조회(한투 지수 거래대금 보완 등)는 그대로 동작한다.

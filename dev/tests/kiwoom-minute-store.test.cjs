@@ -130,3 +130,29 @@ test('종목수급 캔들과 쏠림율은 같은 저장 파일을 함께 쓴다(
     assert.equal(calls.length, before);
     assert.deepEqual(files(dir).filter(f => f.startsWith('005930_AL/')), ['005930_AL/2026-10-01.json.gz', '005930_AL/2026-10-02.json.gz', '005930_AL/2026-10-05.json.gz']);
 });
+
+test('쏠림율 1분봉 이어 보기는 이번에 받은 날만 보낸다(쌓인 날 전체를 다시 보내지 않음, 2026-11-22 오라클 메모리 재시작)', async t => {
+    const dir = tempDir(t), store = createKiwoomMinuteStore({ directory: dir });
+    // 하루 500봉: 첫 쪽은 900봉이 넘을 때까지(두 날), 다음 쪽은 나머지 두 날.
+    const many = DAYS.flatMap((day, i) => Array.from({ length: 500 }, (_, m) => stockRow(day, String(800 + Math.floor(m / 60) * 100 + m % 60).padStart(4, '0'), 100 + i)));
+    const idx = DAYS.flatMap((day, i) => Array.from({ length: 500 }, (_, m) => indexRow(day, String(800 + Math.floor(m / 60) * 100 + m % 60).padStart(4, '0'), 300000 + i)));
+    const post = async (url, body, options) => {
+        const id = options.headers['api-id'], source = id === 'ka10080' ? many : idx, field = id === 'ka10080' ? 'stk_min_pole_chart_qry' : 'inds_min_pole_qry';
+        const base = body.base_dt || '20261007', days = [...new Set(source.map(r => r.cntr_tm.slice(0, 8)).filter(d => d <= base))].sort().reverse();
+        const page = days.slice(0, 2), list = source.filter(r => page.includes(r.cntr_tm.slice(0, 8))).sort((a, b) => b.cntr_tm.localeCompare(a.cntr_tm));
+        return { data: { return_code: 0, [field]: list }, headers: { 'cont-yn': days.length > 2 ? 'Y' : 'N', 'next-key': days.length > 2 ? 'k' : '' } };
+    };
+    const api = createConcentrationChartService({ axios: { post }, marketCache: { '005930': { type: 'K', code: '0' } }, getAccessToken: async () => 'token',
+        now: () => NOW, pause: async () => {}, minuteStore: store, keepStock: () => true });
+    const first = await api.query({ code: '005930', mode: 'minute', interval: 1 }, 'owner');
+    const days = r => [...new Set(r.points.map(p => p.time.slice(0, 8)))].sort();
+    assert.deepEqual(days(first), ['20261005', '20261006']); assert.equal(first.has_more, true);
+    const second = await api.query({ code: '005930', mode: 'minute', interval: 1, cursor: first.cursor }, 'owner');
+    assert.deepEqual(days(second), ['20261001', '20261002'], '두 번째 쪽에는 새 날만');
+    assert.notEqual(second.history_progress, first.history_progress, '더 불러오기가 진행으로 본다');
+    // 날을 나눠 계산해도 한 번에 계산한 값과 같다.
+    const whole = await createConcentrationChartService({ axios: { post }, marketCache: { '005930': { type: 'K', code: '0' } }, getAccessToken: async () => 'token',
+        now: () => NOW, pause: async () => {} }).query({ code: '005930', mode: 'minute', interval: 1 }, 'owner');
+    const byTime = new Map(whole.points.map(p => [p.time, p.value]));
+    for (const p of [...first.points, ...second.points]) if (byTime.has(p.time)) assert.equal(p.value, byTime.get(p.time), p.time);
+});
