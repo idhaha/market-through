@@ -403,9 +403,19 @@
         const following=!historyBusy && !viewportSource && previous?.mode===mode && last>previous.last && viewports.has(mode)
             ? sliderRange(mode) : null;
         const atLatest=following && viewports.get(mode).last>=following.domain.last;
-        const days=[...new Set(values.map(v=>dateParts(getDate(v)).slice(0,10)))].sort();
+        // 봉 날짜 글자 목록은 자료가 그대로면 다시 만들지 않는다(2026-11-22). 카드는 그릴 때마다 여기를 거치는데, 과거 구간
+        // (1만 5천 봉)에서 카드마다 봉 날짜를 두 번씩 새로 만들어 공용 축 다시 그리기(0.2초마다 카드 전체)가 오라클에서 4초 가까이 걸렸다.
+        // 같은 자료인지는 봉 수와 처음 · 1/4 · 가운데 · 3/4 · 끝 봉의 시각으로 본다(카드 자료는 시각순).
+        const n=values.length,dataKey=n?`${mode}:${n}:${[0,n>>2,n>>1,(n*3)>>2,n-1].map(i=>getDate(values[i])).join('|')}`:`${mode}:0`;
+        let dates,days;
+        if(previous && previous.dataKey===dataKey && previous.mode===mode){dates=previous.dates;days=previous.days;}
+        else{
+            dates=new Array(n);days=[];const seen=new Set();
+            for(let i=0;i<n;i++){const full=dateParts(getDate(values[i])),day=full.slice(0,10);dates[i]=full.slice(0,length);if(!seen.has(day)){seen.add(day);days.push(day);}}
+            days.sort();
+        }
         const signature=`${mode}:${first}:${last}:${days.join(',')}:${initialRangeReady}`;
-        const chart={id,dates:values.map(v=>dateParts(getDate(v)).slice(0,length)),signature,mode,first,last,days,draw,initialRangeReady,applied:previous?.applied,revision:previous?.revision};minuteCharts.set(id,chart);
+        const chart={id,dataKey,dates,signature,mode,first,last,days,draw,initialRangeReady,applied:previous?.applied,revision:previous?.revision};minuteCharts.set(id,chart);
         const starts=[...minuteCharts.values()].filter(c=>c.mode==='minute' && c.first).map(c=>c.first);
         const overnight=overnightChart();
         const today=overnight?.mode==='minute' && overnight.first ? overnightStart(overnight) : sessionDay()+' 08:00';
@@ -432,7 +442,8 @@
         }
         if(mode!=='minute' && !(mode==='day' && dailyHistory && dailyCutoff))return viewportRange(chart,start,count);
         const effective=mode==='day'?dailyCutoff:cutoff;
-        const index=values.findIndex(v=>dateParts(getDate(v)).slice(0,length)>=effective);
+        // 위에서 만든 날짜 목록(시각순)에서 반으로 나눠 찾는다. 봉마다 날짜 글자를 다시 만들지 않는다(2026-11-22).
+        let index=-1;{let low=0,high=dates.length;while(low<high){const middle=(low+high)>>1;if(dates[middle]>=effective)high=middle;else low=middle+1;}if(low<dates.length)index=low;}
         const rangeStart=index<0?values.length:index,size=values.length-rangeStart;
         const changed=chart.applied!==effective || chart.revision!==rangeRevision || (size>0 && !previous?.size) || previous?.mode!==mode;chart.applied=effective;chart.size=size;chart.revision=rangeRevision;
         // A blank pre-open draw leaves count=0. In the default live view the
