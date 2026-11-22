@@ -7,6 +7,10 @@
     const kstEpochDay=new Map();
     // 'YYYY-MM-DD HH:MM'(한국 시각) → 분 단위 시각. 날짜 부분은 한 번만 계산한다.
     function kstEpochMinutes(s){const day=s.slice(0,10);let base=kstEpochDay.get(day);if(base===undefined){base=Date.parse(day+'T00:00:00+09:00')/60000;if(kstEpochDay.size>20000)kstEpochDay.clear();kstEpochDay.set(day,base);}return base+(Number(s.slice(11,13))||0)*60+(Number(s.slice(14,16))||0);}
+    // 카드가 넘기는 글자 시각('YYYYMMDDHHMMSS' 등)의 분 단위 값은 한 번만 계산한다(2026-11-23). 쏠림율 카드는 봉 위치를 잡을 때마다
+    // 1만 5천 개 글자를 날짜 글자로 바꾸고 다시 분으로 바꿔, 공용 축 다시 그리기에서 이 계산만 0.7초 넘게 걸렸다.
+    const valueMinuteCache=new Map();
+    function valueMinutes(value){let m=valueMinuteCache.get(value);if(m===undefined){m=kstEpochMinutes(dateParts(value).slice(0,16));if(valueMinuteCache.size>300000)valueMinuteCache.clear();valueMinuteCache.set(value,m);}return m;}
     function dateParts(value) {
         if (typeof value === 'number') return Number.isFinite(value) ? kstMinute(value) : new Date(value + 9 * 3600000).toISOString().slice(0,16).replace('T',' ');
         const raw=String(value);
@@ -491,11 +495,11 @@
         for(const chart of minuteCharts.values())chart.applied=undefined;
         notifyCharts();
     });
-    // 과거 분봉 구간 보기(2026-11-21): 일봉을 과거로 확대한 채 분봉을 고르면 일봉 화면 가운데 봉을 기준으로
-    // 좌우 10거래일(일봉 화면 안쪽만)의 분봉을 보여 준다. windowEnd가 있는 동안 분봉 공통 축의 오른쪽 끝을 그 날로 묶고,
+    // 과거 분봉 구간 보기(2026-11-21): 일봉을 과거로 확대한 채 분봉을 고르면 일봉 화면에 보이는 모든 날의 분봉을 보여 준다
+    // (2026-11-23 사용자 요청: 예전엔 가운데 봉 기준 좌우 10거래일만 받았다. 그리기가 가벼워져 화면의 일봉 전부로 넓힌다). windowEnd가 있는 동안 분봉 공통 축의 오른쪽 끝을 그 날로 묶고,
     // 카드는 기존 과거 조회(restoreHistoryRange)로 구간을 채운다. 날짜 커서 카드는 seek로 구간 끝 날짜부터 받는다.
     // 더 불러오기는 구간 왼쪽(더 과거)으로 잇고, 당일은 구간 보기를 끝낸다.
-    const WINDOW_SIDE=10;
+    const WINDOW_MAX=60;
     // 구간 보기를 끝낼 때 seek로 비운 카드는 오늘 분봉을 다시 받는다(다른 카드의 당일 버튼으로 끝나도).
     function leaveWindow(){
         for(const id of seekedWindows.keys())try{historyLoaders.get(id)?.state?.().leaveWindow?.();}catch{}
@@ -505,8 +509,9 @@
     function dailyWindow(){
         const viewport=viewports.get('day'),daily=dailyDomain(),all=sliderDomain('day');
         if(!viewport || !daily || !all || daily.last>=all.last)return null; // 확대하지 않았거나 최신 봉이 보이면 평소대로 당일
-        const days=daily.days,center=Math.floor((days.length-1)/2);
-        return {center:days[center],from:days[Math.max(0,center-WINDOW_SIDE)],to:days[Math.min(days.length-1,center+WINDOW_SIDE)]};
+        // 한도 60거래일(2026-11-23 사용자 결정): 일봉을 더 넓게 본 채 분봉을 누르면 화면 가운데 봉을 중심으로 60거래일만 받는다.
+        const days=daily.days,center=Math.floor((days.length-1)/2),first=days.length>WINDOW_MAX?Math.max(0,Math.min(days.length-WINDOW_MAX,center-Math.floor(WINDOW_MAX/2))):0;
+        return {center:days[center],from:days[first],to:days[Math.min(days.length,first+WINDOW_MAX)-1]};
     }
     // 구간 보기에 들어갈 때마다 카드가 구간 끝 날짜로 다시 가게 한다(2026-11-22). 일봉에 갔다가 같은 구간으로 다시 들어오면
     // 카드는 분봉 버튼으로 오늘을 받았는데 seek 기록이 남아 있어, 오늘부터 하루씩 거슬러 왔다(종목 수급 요청 500번).
@@ -561,7 +566,7 @@
                 const segment=locate(t,'start');
                 return segment?segment.offset+Math.min(segment.end-segment.start,t-segment.start):t;
             };
-            const origin=coordinate(epoch(first)),position=value=>coordinate(typeof value==='number'&&Number.isFinite(value)?Math.floor(value/60000):epoch(dateParts(value).slice(0,16)))-origin; // 숫자 시각은 글자로 바꾸지 않고 바로 분 단위로(2026-11-22)
+            const origin=coordinate(epoch(first)),position=value=>coordinate(typeof value==='number'&&Number.isFinite(value)?Math.floor(value/60000):valueMinutes(value))-origin; // 숫자 시각은 글자로 바꾸지 않고 바로 분 단위로(2026-11-22)
             const at=n=>{
                 const value=origin+n,segment=locate(value,'offset');
                 return dateParts((segment?segment.start+value-segment.offset:value)*60000);
@@ -747,8 +752,19 @@
         const canvas=area.querySelector('canvas');
         if(canvas && text && canvas.getAttribute('aria-label')!==text+' 캔들차트')canvas.setAttribute('aria-label',text+' 캔들차트');
     }
+    // OHLC 봉 그리기(2026-11-23): 같은 색 봉의 꼬리를 한 경로로 모아 색마다 한 번만 긋는다. 카드마다 봉 1만 5천 개를 하나씩
+    // stroke 하던 것이 과거 분봉 구간 그리기의 큰 몫이었다. x는 봉의 x 좌표, y는 가격의 y 좌표를 돌려준다.
+    function drawOhlc(ctx,rows,x,y,width){
+        ctx.lineWidth=1;
+        for(const [color,up] of [['#e11d48',true],['#2563eb',false]]){
+            ctx.strokeStyle=ctx.fillStyle=color;ctx.beginPath();
+            for(const p of rows){if((p.close>=p.open)!==up)continue;const px=x(p);ctx.moveTo(px,y(p.high));ctx.lineTo(px,y(p.low));}
+            ctx.stroke();
+            for(const p of rows){if((p.close>=p.open)!==up)continue;const open=y(p.open),close=y(p.close);ctx.fillRect(x(p)-width/2,Math.min(open,close),width,Math.max(1,Math.abs(open-close)));}
+        }
+    }
     function candleLayout(rows,getLow,getHigh,x,height,left,right) {
-        const low=Math.min(...rows.map(getLow)),high=Math.max(...rows.map(getHigh));
+        let low=Infinity,high=-Infinity;for(const r of rows){const l=getLow(r),h=getHigh(r);if(l<low)low=l;if(h>high)high=h;}
         const pad=Math.max(1,(high-low)*.1),top=10,bottom=height-30;
         const positions=rows.map((p,i)=>x(p,i)).sort((a,b)=>a-b);
         const spacing=positions.slice(1).map((v,i)=>v-positions[i]).filter(v=>v>0);
@@ -907,5 +923,29 @@
         }
         return result;
     }
-    window.RankChartAxis={kstDay,kstMinute,dayBoundaryPositions,showWindow,minuteWindow,dailyWindow,openPositions,drawDayBoundaries,concentrationCumulative,loadingBar,intradayGap,restoreHistoryRange,marketChoice,validCandle,candleLabel,selectViewport,plotBounds,registerHover,synchronizeHover,matchesHover,updateSlider,scrollViewport,synchronizeViewport,refreshOrder,refreshCharts,registerHistoryLoader,requestHistory,showHistory,showToday,sessionDay,sharedRange,dailyDomain,minuteDomain,ticks,todayRange,limitToday,sessionRange,limitSessions,sessionX,eightTick,sessionStartLabel,candleLayout,todayButton};
+    // 지난 구간 가격 캔들 함께 쓰기(2026-11-23). 시장 거래대금 · 신고신저 · 시장 수급 카드가 같은 지수 1분봉(과거 구간 940KB)을
+    // 따로따로, 카드마다 두 번씩 받아 해석했다(오라클 측정: 화면을 열 때마다 6~9번). 오늘이 들지 않은 범위는 1분 동안 한 번 받은 것을
+    // 같이 쓴다. 받은 값은 카드가 고치지 않고 읽기만 한다. 카드가 그만 받으면(abort) 그 카드만 그만 기다리고, 받기는 계속한다.
+    const sharedFetches=new Map();
+    function sharedFetch(url,options={}){
+        const to=new URL(url,location.href).searchParams.get('to') || '',today=kstDay(Date.now()).replaceAll('-','');
+        const fetcher=window.RankChartCache?.fetch || fetch;
+        if(!(/^\d{8}$/.test(to) && to<today))return fetcher(url,options);
+        let entry=sharedFetches.get(url);
+        if(!entry || Date.now()-entry.at>60000){
+            const task=(async()=>{const r=await fetcher(url);const data=await r.json();return {ok:r.ok,status:r.status,data};})();
+            entry={at:Date.now(),task};sharedFetches.set(url,entry);
+            task.then(v=>{if(!v.ok)sharedFetches.delete(url);},()=>sharedFetches.delete(url));
+            while(sharedFetches.size>20)sharedFetches.delete(sharedFetches.keys().next().value);
+        }
+        // 기다리던 카드들이 한 작업 안에서 한꺼번에 처리하지 않도록 카드마다 차례를 나눠 넘긴다.
+        const signal=options.signal,wrap=v=>({ok:v.ok,status:v.status,json:async()=>v.data});
+        if(signal?.aborted)return Promise.reject(new DOMException('The operation was aborted.','AbortError'));
+        return new Promise((resolve,reject)=>{
+            const abort=()=>reject(new DOMException('The operation was aborted.','AbortError'));
+            signal?.addEventListener('abort',abort,{once:true});
+            entry.task.then(v=>setTimeout(()=>{signal?.removeEventListener('abort',abort);if(!signal?.aborted)resolve(wrap(v));},0),e=>{signal?.removeEventListener('abort',abort);reject(e);});
+        });
+    }
+    window.RankChartAxis={kstDay,sharedFetch,drawOhlc,kstMinute,dayBoundaryPositions,showWindow,minuteWindow,dailyWindow,openPositions,drawDayBoundaries,concentrationCumulative,loadingBar,intradayGap,restoreHistoryRange,marketChoice,validCandle,candleLabel,selectViewport,plotBounds,registerHover,synchronizeHover,matchesHover,updateSlider,scrollViewport,synchronizeViewport,refreshOrder,refreshCharts,registerHistoryLoader,requestHistory,showHistory,showToday,sessionDay,sharedRange,dailyDomain,minuteDomain,ticks,todayRange,limitToday,sessionRange,limitSessions,sessionX,eightTick,sessionStartLabel,candleLayout,todayButton};
 })();

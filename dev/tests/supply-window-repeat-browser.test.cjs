@@ -15,7 +15,7 @@ const before = day => DAYS.filter(d => d <= day).at(-1);
 test('같은 과거 분봉 구간을 다시 열 때 종목 수급 카드가 한 작업 안에서 여러 번 그리지 않는다', async () => {
     const browser = await chromium.launch({ headless: true, channel: 'chrome' });
     try {
-        const page = await browser.newPage({ viewport: { width: 1900, height: 1100 } }), errors = [], flow = [];
+        const page = await browser.newPage({ viewport: { width: 1900, height: 1100 } }), errors = [], flow = [], candleDays = [];
         page.on('pageerror', e => errors.push(e.message));
         await page.clock.install({ time: new Date(TODAY + 'T12:00:00+09:00') });
         const html = fs.readFileSync('public/index.html', 'utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<link\b[^>]*>/gi, '');
@@ -29,9 +29,15 @@ test('같은 과거 분봉 구간을 다시 열 때 종목 수급 카드가 한 
                 // 수급은 10/1부터 저장돼 있다(그 전 날은 available_dates에 없다).
                 const d = dated(), stored = d.day >= STORED_FROM; flow.push(q.cursor || q.date || 'latest');
                 data = { success: true, date: d.day, points: stored ? minutes(d.day).map((t, i) => ({ t, foreign: i, institution: -i, individual: i, program: i })) : [], cursor: d.cursor, has_more: d.has_more, available_dates: DAYS.filter(x => x >= STORED_FROM), warnings: [] };
-            } else if (minute && p === '/api/supply/candles') { const d = dated(); data = { success: true, points: minutes(d.day).map(bar), date: d.day, cursor: d.cursor, has_more: d.has_more }; }
-            else if (minute && p.endsWith('market-supply/chart') || minute && p === '/api/ls-futures-test/chart') { const d = dated(); data = { success: true, date: d.day, points: [], candles: [], cursor: d.cursor, has_more: d.has_more, available_dates: DAYS, warnings: [] }; }
-            else if (minute && (p === '/api/ls-turnover/chart' || p === '/api/turnover/chart')) { const d = dated(); data = { success: true, markets: { kospi: [], kosdaq: [] }, cursor: d.cursor, has_more: d.has_more, warnings: [] }; }
+            } else if (minute && p === '/api/supply/candles') { if (q.date) candleDays.push(q.date); const d = dated(); data = { success: true, points: minutes(d.day).map(bar), date: d.day, cursor: d.cursor, has_more: d.has_more }; }
+            else if (minute && p.endsWith('market-supply/chart') || minute && p === '/api/ls-futures-test/chart') { const d = dated(); data = { success: true, date: d.day, points: [], candles: minutes(d.day).map(bar), cursor: d.cursor, has_more: d.has_more, available_dates: DAYS, warnings: [] }; }
+            else if (minute && (p === '/api/ls-turnover/chart' || p === '/api/turnover/chart')) { const d = dated(); data = { success: true, markets: { kospi: minutes(d.day).map(bar), kosdaq: minutes(d.day).map(bar) }, cursor: d.cursor, has_more: d.has_more, warnings: [] }; }
+            else if (minute && (p === '/api/concentration-chart' || p === '/api/ls-concentration-chart')) {
+                const body = route.request().method() === 'POST' ? route.request().postDataJSON() || {} : {};
+                const asked = typeof body.cursor === 'string' && body.cursor.startsWith('day:') ? dashed(body.cursor.slice(4)) : body.base_dt ? dashed(body.base_dt) : TODAY;
+                const day = before(asked), prev = DAYS[DAYS.indexOf(day) - 1];
+                data = { success: true, market: 'K', mode: 'minute', points: minutes(day).map((t, i) => ({ time: iso(t).slice(0, 19).replace(/[-:T]/g, ''), value: 10, stock_open: 100, stock_high: 110, stock_low: 90, stock_price: 105 })), cursor: prev ? 'day:' + compact(prev) : null, has_more: !!prev };
+            }
             else if (minute) data = { success: true, market: 'K', points: [], series: [], has_more: false };
             else if (p === '/api/chart-reference' || p === '/api/adr/candles' || p === '/api/supply/candles') data = { success: true, points: DAYS.map(d => bar(Date.parse(d + 'T00:00:00+09:00'))), has_more: false };
             else if (p.endsWith('/chart') && p.includes('supply')) data = { success: true, points: DAYS.map(d => ({ t: Date.parse(d + 'T00:00:00+09:00'), foreign: 1, institution: -1, individual: 0, program: 0 })), candles: [], has_more: false, warnings: [] };
@@ -45,6 +51,10 @@ test('같은 과거 분봉 구간을 다시 열 때 종목 수급 카드가 한 
         await page.evaluate(() => document.dispatchEvent(new Event('DOMContentLoaded')));
         await page.evaluate(() => window.selectRankChartStock({ code: '005930', name: '삼성전자' }));
         await page.waitForTimeout(800);
+        await page.locator('#rankTestMarketSupplyChartPanel .rank-market-choice input[value="kospi"]').check();
+        // 캔들 영역을 연다(오라클 화면처럼). 구간을 채울 때 가격 캔들을 날마다 받는다.
+        await page.locator('#rankCombinedSupplyChartPanel .concentration-candle-toggle').click();
+        await page.waitForTimeout(800);
         // 일봉을 과거(8/17~9/25)로 확대한 채 분봉으로: 구간 보기. 처음에는 가격 캔들을 하루씩 받는다.
         const zoom = { first: '2026-08-17', last: '2026-09-25' };
         const zoomIn = () => page.evaluate(({ first, last }) => { const d = window.RankChartAxis.dailyDomain(), n = d.days.length - 1; window.RankChartAxis.selectViewport('combinedSupply', d.days.indexOf(first) / n, d.days.indexOf(last) / n); }, zoom);
@@ -54,6 +64,9 @@ test('같은 과거 분봉 구간을 다시 열 때 종목 수급 카드가 한 
         await page.waitForTimeout(12000);
         const firstPass = await page.evaluate(() => window.getRankCombinedSupplyState().minuteDays.length);
         assert.ok(firstPass >= 15, `처음 열 때 구간의 날들을 받았다: ${firstPass}일`);
+        // 2026-11-23 오라클 측정: 구간을 채울 때 주말 · 휴장일 가격 캔들까지 하루씩 0.3~0.5초씩 물어 이 카드가 가장 늦게 끝났다.
+        const weekend = candleDays.filter(d => [0, 6].includes(new Date(d + 'T00:00:00Z').getUTCDay()));
+        assert.deepEqual(weekend, [], `주말 가격 캔들을 묻지 않는다: ${candleDays.join(',')}`);
         await page.locator('#rankCombinedSupplyChartPanel [data-mode="day"]').click();
         await page.waitForTimeout(1500);
         await zoomIn();
@@ -69,7 +82,8 @@ test('같은 과거 분봉 구간을 다시 열 때 종목 수급 카드가 한 
         await minuteButton.click();
         await page.waitForTimeout(8000);
         const result = await page.evaluate(() => { window.__run = false; const counts = [...window.__draws.values()]; return { max: Math.max(0, ...counts), total: counts.reduce((a, b) => a + b, 0), days: window.getRankCombinedSupplyState().minuteDays.length }; });
-        assert.ok(flow.some(c => /^2026091/.test(c)), `다시 열 때 구간 끝 날의 수급을 한 번 물었다: ${flow.join(',')}`);
+        assert.ok(flow.some(c => c === '20260925'), // 구간 끝 = 일봉 화면 마지막 날(2026-11-23부터 화면의 모든 날)
+             `다시 열 때 구간 끝 날의 수급을 한 번 물었다: ${flow.join(',')}`);
         assert.ok(result.days >= firstPass, `다시 열어도 구간의 날들이 그대로 채워진다: ${result.days} < ${firstPass}`);
         // 캔버스 지우기 횟수(그리기 한 번에 캔버스 여러 장). 고치기 전 한 작업 안에서 186번(오라클 1~2초 멈춤), 고친 뒤 14번.
         assert.ok(result.max <= 40, `한 작업 안에서 종목 수급 카드를 ${result.max}번 그렸다(전체 ${result.total}번)`);

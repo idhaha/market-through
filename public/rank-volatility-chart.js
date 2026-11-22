@@ -371,7 +371,7 @@ tip.hidden=false;}
             for (let i = 0; i <= 4; i++) { const value = min + (max - min) * i / 4; cc.setLineDash([3, 5]); cc.beginPath(); cc.moveTo(left, y(value)); cc.lineTo(right, y(value)); cc.stroke(); cc.fillText(Math.round(value).toLocaleString('ko-KR'), w - 4, y(value) + 4); } cc.setLineDash([]);
             boundaries(cc, top, bottom);
             const width = layout.width;cc.lineWidth=1;
-            rows.forEach(point => { cc.strokeStyle = cc.fillStyle = point.close >= point.open ? '#e11d48' : '#2563eb'; cc.beginPath(); cc.moveTo(x(point.date), y(point.high)); cc.lineTo(x(point.date), y(point.low)); cc.stroke(); cc.fillRect(x(point.date) - width / 2, Math.min(y(point.open), y(point.close)), width, Math.max(1, Math.abs(y(point.open) - y(point.close)))); });
+            window.RankChartAxis.drawOhlc(cc, rows, point => x(point.date), y, width);
             axis(cc, h); candleGeometry = { top, bottom };
             if (hover && indices.has(hover)) { cc.strokeStyle = '#000'; cc.setLineDash([3, 3]); cc.beginPath(); cc.moveTo(x(hover), top); cc.lineTo(x(hover), bottom); cc.stroke(); cc.setLineDash([]); }
             const hovered = rows.find(point => point.date === hover);
@@ -396,7 +396,7 @@ tip.hidden=false;}
             try {
                 const minute = breadth && breadthMode === 'minute';
                 const from = new Date(Date.parse(`${first}T00:00:00Z`) - (minute ? 0 : 35 * 86400000)).toISOString().slice(0, 10).replaceAll('-', '');
-                const response = await (window.RankChartCache?.fetch || fetch)(`/api/adr/candles?market=${priceMarket}&mode=${minute ? 'minute' : 'day'}&from=${from}&to=${last.replaceAll('-', '')}`, { signal: candleController.signal });
+                const response = await (window.RankChartAxis.sharedFetch || window.RankChartCache?.fetch || fetch)(`/api/adr/candles?market=${priceMarket}&mode=${minute ? 'minute' : 'day'}&from=${from}&to=${last.replaceAll('-', '')}`, { signal: candleController.signal });
                 const result = await response.json(); if (!response.ok) throw new Error(result.error || `${priceName} 캔들 조회 실패`);
                 if (request !== candleRequest) return;
                 const freshCandles = (Array.isArray(result.points) ? result.points : []).filter(point => ['t', 'open', 'high', 'low', 'close'].every(key => point[key] != null && Number.isFinite(Number(point[key])))).map(point => ({ ...point, date: minute ? new Date(Number(point.t) + 9 * 3600000).toISOString().slice(0,16).replace('T', ' ') : dateKey(Number(point.t)) })).sort((a, b) => a.t - b.t);

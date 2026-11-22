@@ -42,7 +42,7 @@
             priceController?.abort();const current=priceController=new AbortController(),market=selectedMarket;
             pricePending=key;priceBusy=true;
             try{
-                const response=await (window.RankChartCache?.fetch || fetch)(`/api/adr/candles?market=${market}&mode=${mode}&from=${from}&to=${to}`,{signal:current.signal});
+                const response=await (window.RankChartAxis.sharedFetch || window.RankChartCache?.fetch || fetch)(`/api/adr/candles?market=${market}&mode=${mode}&from=${from}&to=${to}`,{signal:current.signal});
                 const result=await response.json();
                 if(current!==priceController || identity!==`${selectedMarket}:${mode}`)return;
                 if(!response.ok)throw Error(result.error || 'Price query failed');
@@ -217,7 +217,7 @@
             cc.setLineDash([]);
             boundaries(cc,layout.top,layout.bottom);
             cc.lineWidth=1;
-            selected.forEach(p=>{cc.fillStyle=cc.strokeStyle=p.close>=p.open?'#e11d48':'#2563eb';cc.beginPath();cc.moveTo(x(p.t),cy(p.high));cc.lineTo(x(p.t),cy(p.low));cc.stroke();cc.fillRect(x(p.t)-cw/2,Math.min(cy(p.open),cy(p.close)),cw,Math.max(1,Math.abs(cy(p.open)-cy(p.close))));});
+            window.RankChartAxis.drawOhlc(cc,selected,p=>x(p.t),cy,cw);
             if(hover&&indices.has(hover)){cc.strokeStyle='#000';cc.setLineDash([3,3]);cc.beginPath();cc.moveTo(x(hover),layout.top);cc.lineTo(x(hover),layout.bottom);cc.stroke();cc.setLineDash([]);}
             const hovered=selected.find(p=>p.t===hover);
             const price=hovered?.close;

@@ -395,11 +395,7 @@
             grid(cc,size.w,layout.minimum,layout.maximum,cy,false);
             boundaries(cc,layout.top,layout.bottom);
             cc.lineWidth=1;
-            visible.forEach(p => {
-                cc.strokeStyle = cc.fillStyle = p.close >= p.open ? '#e11d48' : '#2563eb';
-                cc.beginPath(); cc.moveTo(x(p.t), cy(p.high)); cc.lineTo(x(p.t), cy(p.low)); cc.stroke();
-                cc.fillRect(x(p.t) - width / 2, Math.min(cy(p.open), cy(p.close)), width, Math.max(1, Math.abs(cy(p.open) - cy(p.close))));
-            }); cursor(cc, size.h); selection(cc, size.h);
+            window.RankChartAxis.drawOhlc(cc, visible, p => x(p.t), cy, width); cursor(cc, size.h); selection(cc, size.h);
             const hovered = visible.find(p => p.t === hover);
             if (hovered) valueBadge(cc, hovered.close, cy(hovered.close), '#000', size.h, hovered.close.toLocaleString('ko-KR'));
         }
@@ -445,7 +441,7 @@
             candleRangePending=key;candleRangeError='';candleLoading=true;requestDraw();
             try{
                 const url=futuresTest?`/api/ls-futures-test/candles?code=${selected}&mode=${mode}&from=${from}&to=${to}`:`/api/adr/candles?market=${market}&mode=${mode}&from=${from}&to=${to}`;
-                const response=await (window.RankChartCache?.fetch || fetch)(url,{signal:current.signal});
+                const response=await (window.RankChartAxis.sharedFetch || window.RankChartCache?.fetch || fetch)(url,{signal:current.signal});
                 const result=await response.json();
                 if(!response.ok)throw new Error(result.error || '시장 가격 조회 실패');
                 if(id!==candleRevision)return;

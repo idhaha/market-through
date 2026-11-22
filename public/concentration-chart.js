@@ -226,14 +226,16 @@
             candleCtx.setTransform(ratio, 0, 0, ratio, 0, 0); candleCtx.clearRect(0, 0, width, height);
 
             // 그래프 영역(plot.left~right) 밖 봉은 빼고 그린다(2026-11-21: 과거 분봉 구간 보기에서 구간 밖 오늘 봉이 오른쪽 가격축 위에 그려졌다).
-            const inside = i => { const px = x(i); return Number.isFinite(px) && px >= plot.left - 0.5 && px <= plot.right + 0.5; };
-            const candles = points.filter((p, i) => validCandle(p) && inside(i));
+            // 봉 위치는 한 번만 계산해 둔다(2026-11-23: 가격축 계산이 봉마다 points.indexOf로 위치를 찾아, 1만 5천 봉에서 그리기 한 번에 수십 ms씩 걸렸다).
+            const xs = [], shown = [];
+            points.forEach((p, i) => { if (!validCandle(p)) return; const px = x(i); if (Number.isFinite(px) && px >= plot.left - 0.5 && px <= plot.right + 0.5) { shown.push(i); xs.push(px); } });
+            const candles = shown.map(i => points[i]);
             if (!candles.length) {
                 candleCtx.font='12px Inter, sans-serif';candleCtx.textAlign='center';candleCtx.fillStyle='#64748b';labels.forEach(({label,labelX})=>candleCtx.fillText(label,labelX,height-14));
                 candleCtx.fillStyle = '#64748b'; candleCtx.font = '12px Inter, sans-serif'; candleCtx.textAlign = 'center';
                 candleCtx.fillText('캔들 데이터가 없습니다.', width / 2, height / 2); return;
             }
-            const layout=window.RankChartAxis.candleLayout(candles,p=>p.stock_low,p=>p.stock_high,p=>x(points.indexOf(p)),height,plot.left,plot.right);
+            const layout=window.RankChartAxis.candleLayout(candles,p=>p.stock_low,p=>p.stock_high,(p,i)=>xs[i],height,plot.left,plot.right);
             const {top,bottom,minimum,maximum,y}=layout,candleWidth=layout.width;
             candleGeometry = { plot: { ...plot, top, bottom }, points, x, y, candleWidth, width, height };
             candleCtx.font = '12px Inter, sans-serif'; candleCtx.textBaseline = 'middle';
@@ -253,14 +255,18 @@
             candleCtx.setLineDash([]);
             const bodyWidth = candleWidth;
             candleCtx.save(); candleCtx.beginPath(); candleCtx.rect(plot.left - bodyWidth, top - 1, plot.right - plot.left + bodyWidth * 2, bottom - top + 2); candleCtx.clip();
-            points.forEach((point, i) => {
-                if (!validCandle(point) || !inside(i)) return;
-                const color = point.stock_price >= point.stock_open ? '#e11d48' : '#2563eb';
-                candleCtx.strokeStyle = color; candleCtx.fillStyle = color; candleCtx.lineWidth = 1;
-                candleCtx.beginPath(); candleCtx.moveTo(x(i), y(point.stock_high)); candleCtx.lineTo(x(i), y(point.stock_low)); candleCtx.stroke();
-                const bodyTop = Math.min(y(point.stock_open), y(point.stock_price));
-                candleCtx.fillRect(x(i) - bodyWidth / 2, bodyTop, bodyWidth, Math.max(1, Math.abs(y(point.stock_open) - y(point.stock_price))));
-            });
+            // 같은 색 봉은 꼬리를 한 경로로 모아 한 번에 긋는다(봉마다 stroke 하던 것을 색마다 한 번으로).
+            candleCtx.lineWidth = 1;
+            for (const [color, up] of [['#e11d48', true], ['#2563eb', false]]) {
+                candleCtx.strokeStyle = color; candleCtx.fillStyle = color; candleCtx.beginPath();
+                candles.forEach((point, k) => { if ((point.stock_price >= point.stock_open) !== up) return; candleCtx.moveTo(xs[k], y(point.stock_high)); candleCtx.lineTo(xs[k], y(point.stock_low)); });
+                candleCtx.stroke();
+                candles.forEach((point, k) => {
+                    if ((point.stock_price >= point.stock_open) !== up) return;
+                    const open = y(point.stock_open), close = y(point.stock_price);
+                    candleCtx.fillRect(xs[k] - bodyWidth / 2, Math.min(open, close), bodyWidth, Math.max(1, Math.abs(open - close)));
+                });
+            }
             candleCtx.restore();
             if (state.hover != null && points[state.hover]) {
                 candleCtx.beginPath(); candleCtx.setLineDash([3,3]); candleCtx.strokeStyle = '#000';
@@ -532,7 +538,11 @@
                 } else {
                     state.points = refresh && !result.points.length ? state.points : [...new Map([...state.points,...freshPoints].map(p=>[p.time,p])).values()].sort((a,b)=>a.time.localeCompare(b.time));
                 }
-                state.cursor = result.cursor; state.hasMore = result.has_more;state.historyProgress=result.history_progress;state.historyError=result.partial ? result.notice || '거래대금 일부 조회 실패' : '';
+                // 자동 갱신(refresh)은 첫 쪽만 다시 받는다. 이미 더 과거 쪽까지 받아 두었으면 다음 쪽 커서를 첫 쪽 것으로 되돌리지 않는다
+                // (2026-11-23 오라클 측정: 과거 구간을 다 채운 뒤 갱신이 커서를 구간 끝 날짜로 되돌려, 더 불러오기가 구간 11쪽을 다시 받았다).
+                const keepCursor = refresh && previous.points.length && result.points.length && previous.points[0].time < result.points[0].time;
+                if (!keepCursor) { state.cursor = result.cursor; state.hasMore = result.has_more; }
+                state.historyProgress=result.history_progress;state.historyError=result.partial ? result.notice || '거래대금 일부 조회 실패' : '';
                 state.visible = state.points.length; state.start = 0;
                 if (refresh && previous.visible < previous.points.length) {
                     state.visible = Math.min(previous.visible, state.points.length);

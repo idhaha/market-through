@@ -1,4 +1,4 @@
-// 과거 분봉 구간 보기(2026-11-21): 일봉을 과거로 확대한 채 분봉을 누르면 일봉 화면 가운데 봉 기준 좌우 10거래일의 분봉을 보여 주고,
+// 과거 분봉 구간 보기(2026-11-21): 일봉을 과거로 확대한 채 분봉을 누르면 일봉 화면에 보이는 모든 날의 분봉을 보여 주고(2026-11-23까지는 가운데 봉 기준 좌우 10거래일),
 // 날짜 커서 카드(종목수급 · 시장수급 · 거래대금)는 오늘부터 하루씩 거슬러 오지 않고 구간 끝 날짜부터 받는다.
 // 더 불러오기는 구간 왼쪽으로 잇고, 당일은 구간 보기를 끝낸다.
 const fs=require('fs'),assert=require('node:assert/strict'),{chromium}=require('playwright');
@@ -54,11 +54,11 @@ const before=(day,cursor)=>DAYS.filter(d=>d<=day).at(-1);
  await page.waitForTimeout(800);
  // 일봉을 과거로 확대: 2026-08-17 ~ 2026-09-25(30거래일), 가운데 2026-09-04 → 구간 08-21 ~ 09-18.
  const zoom={first:'2026-08-17',last:'2026-09-25'},inView=DAYS.filter(d=>d>=zoom.first && d<=zoom.last),center=inView[Math.floor((inView.length-1)/2)];
- const from=inView[inView.indexOf(center)-10],to=inView[inView.indexOf(center)+10];
+ const from=inView[0],to=inView.at(-1); // 2026-11-23: 일봉 화면에 보이는 모든 날(예전엔 가운데 봉 좌우 10거래일)
  await page.evaluate(({first,last})=>{const d=window.RankChartAxis.dailyDomain(),n=d.days.length-1;window.RankChartAxis.selectViewport('combinedSupply',d.days.indexOf(first)/n,d.days.indexOf(last)/n);},zoom);
  assert.deepEqual(await page.evaluate(()=>{const d=window.RankChartAxis.dailyDomain();return [d.first,d.last];}),[zoom.first,zoom.last],'일봉 확대');
  const daily=await page.evaluate(()=>window.RankChartAxis.dailyWindow());
- assert.deepEqual(daily,{center,from,to},'일봉 화면 가운데 봉 기준 좌우 10거래일');
+ assert.deepEqual(daily,{center,from,to},'일봉 화면에 보이는 모든 날');
  requests.length=0;
  await page.locator('#rankCombinedSupplyChartPanel [data-mode="minute"]').click();
  await page.waitForFunction(()=>{const d=window.RankChartAxis.minuteDomain();return d.first && d.last;});

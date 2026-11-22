@@ -375,11 +375,7 @@
             grid(cc,size.w,layout.minimum,layout.maximum,cy,false);
             boundaries(cc,layout.top,layout.bottom);
             cc.lineWidth=1;
-            visible.forEach(p => {
-                cc.strokeStyle = cc.fillStyle = p.close >= p.open ? '#e11d48' : '#2563eb';
-                cc.beginPath(); cc.moveTo(x(p.t), cy(p.high)); cc.lineTo(x(p.t), cy(p.low)); cc.stroke();
-                cc.fillRect(x(p.t) - width / 2, Math.min(cy(p.open), cy(p.close)), width, Math.max(1, Math.abs(cy(p.open) - cy(p.close))));
-            }); cursor(cc, size.h); selection(cc, size.h);
+            window.RankChartAxis.drawOhlc(cc, visible, p => x(p.t), cy, width); cursor(cc, size.h); selection(cc, size.h);
             const hovered = visible.find(p => p.t === hover);
             if (hovered) valueBadge(cc, hovered.close, cy(hovered.close), '#000', size.h, hovered.close.toLocaleString('ko-KR'));
         }
@@ -432,7 +428,8 @@
             candleLoading = true; candleMessage = '캔들 조회 중…'; setStatus(); requestDraw();
             try {
                 const requestedDays=new Set(minuteDays);
-                if(target && mode==='minute'){const domain=window.RankChartAxis.minuteDomain();for(const day of domain.days || [])if(day>=target.slice(0,10))requestedDays.add(day);requestedDays.add(target.slice(0,10));}
+                // 주말 · 휴장일 캔들은 묻지 않는다(2026-11-23: 과거 구간에서 빈 날 11번을 0.3~0.5초씩 차례로 물었다).
+                if(target && mode==='minute'){const domain=window.RankChartAxis.minuteDomain();for(const day of domain.days || [])if(day>=target.slice(0,10) && (!domain.openDate || domain.openDate(day)))requestedDays.add(day);requestedDays.add(target.slice(0,10));}
                 const days = dailyRange?['']:[...requestedDays].sort(); if (!days.length) days.push(mode==='minute' && window.RankChartAxis.minuteWindow?.()?.to || ''); // 과거 구간 보기 중에는 오늘 캔들을 받지 않는다
                 const merged = new Map(candles.map(point => [point.t, point])); let partial = false;
                 for (const day of days) {
