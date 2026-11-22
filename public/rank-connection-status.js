@@ -2,13 +2,12 @@
     const states = new Map();
     const cardSources = [
         ['#rankTestMarketSupplyChartPanel','LS(선물 수급·가격)·한투(주간 보완)'], ['#rankTestMarketSupplySecondaryChartPanel','LS(선물 수급·가격)·한투(주간 보완)'],
-        ['#rankCombinedMarketSupplySecondaryChartPanel','일봉 LS·분봉 현물 키움/선물 한투·키움(가격)'], ['#rankCombinedMarketSupplyChartPanel','일봉 LS·분봉 현물 키움/선물 한투·키움(가격)'], ['#rankCombinedSupplyChartPanel','일봉 키움·분봉 한투(수급)·키움(가격)'], ['#rankCombinedTurnoverChartPanel','일봉 키움·분봉 LS(거래대금)·키움(가격)'], ['#combinedConcentrationChartPanel','일봉 키움·분봉 LS(거래대금)·키움(가격)'],
+        ['#rankCombinedSupplyChartPanel','일봉 키움·분봉 한투(수급)·키움(가격)'], ['#rankCombinedTurnoverChartPanel','일봉 키움·분봉 LS(거래대금)·키움(가격)'], ['#combinedConcentrationChartPanel','일봉 키움·분봉 LS(거래대금)·키움(가격)'],
         ['#rankFuturesSupplyChartPanel', 'LS(수급·연결선물 가격)'],
-        ['#rankKiwoomMarketSupplyChartPanel', '키움'],
         ['#transactionTable', '키움'], ['#stockTable', '키움'],
         ['#efriendStockTable', '한투'], ['#watchlistTable', '키움'],
         ['#concentrationChartPanel', '키움'],
-        ['#rankTurnoverChartPanel', '키움'], ['#rankSupplyChartPanel', '키움'], ['#rankMarketSupplyChartPanel', '한투'], ['#rankLsMarketSupplyChartPanel', 'LS(수급)·키움(가격)'],
+        ['#rankTurnoverChartPanel', '키움'], ['#rankSupplyChartPanel', '키움'],
         ['#rankVolatilityChartPanel', 'jusikbot'], ['#rankBreadthChartPanel', '키움 · LS'],
         ['#rankSentimentChartPanel', 'jusikbot']
     ];

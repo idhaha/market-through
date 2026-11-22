@@ -32,7 +32,7 @@
     }
     function allows(id){
         if(['sentiment','volatility'].includes(id))return true;
-        const panelIds={combinedMarketSupply:'rankCombinedMarketSupplyChartPanel',combinedMarketSupplySecondary:'rankCombinedMarketSupplySecondaryChartPanel',testMarketSupply:'rankTestMarketSupplyChartPanel',testMarketSupplySecondary:'rankTestMarketSupplySecondaryChartPanel',marketSupply:'rankMarketSupplyChartPanel',lsMarketSupply:'rankLsMarketSupplyChartPanel',kiwoomMarketSupply:'rankKiwoomMarketSupplyChartPanel'};
+        const panelIds={testMarketSupply:'rankTestMarketSupplyChartPanel',testMarketSupplySecondary:'rankTestMarketSupplySecondaryChartPanel'}; // 시장 수급 카드는 이 두 장뿐(2026-11-22 정리)
         const panel=document.getElementById(panelIds[id]);
         const future=panel?.querySelector('input[value^="futures"]:checked');
         return future ? state?.futures===true : state?.spot===true;
@@ -40,7 +40,7 @@
     // Latest close (ms) of the market a card or URL shows; null when unknown.
     function closedAt(id){
         if(['sentiment','volatility'].includes(id))return null;
-        const panelIds={combinedMarketSupply:'rankCombinedMarketSupplyChartPanel',combinedMarketSupplySecondary:'rankCombinedMarketSupplySecondaryChartPanel',testMarketSupply:'rankTestMarketSupplyChartPanel',testMarketSupplySecondary:'rankTestMarketSupplySecondaryChartPanel',marketSupply:'rankMarketSupplyChartPanel',lsMarketSupply:'rankLsMarketSupplyChartPanel',kiwoomMarketSupply:'rankKiwoomMarketSupplyChartPanel'};
+        const panelIds={testMarketSupply:'rankTestMarketSupplyChartPanel',testMarketSupplySecondary:'rankTestMarketSupplySecondaryChartPanel'}; // 시장 수급 카드는 이 두 장뿐(2026-11-22 정리)
         const future=document.getElementById(panelIds[id])?.querySelector('input[value^="futures"]:checked');
         const value=state?.closedAt?.[future?'futures':'spot'];return Number.isFinite(value)?value:null;
     }

@@ -55,16 +55,17 @@
         return data;
     }
     function initialize(broker = '', secondary = false) {
-        const isTest = broker === 'test';
-        const combined = broker === 'combined' || isTest;
-        const isLs = broker === 'ls', isKiwoom = broker === 'kiwoom';
+        // 화면에 만드는 시장 수급 카드는 'test' 두 장(위 · 아래)뿐이다. 증권사별 단독 카드(한투 · 키움 · LS)와 예전 통합 카드
+        // 변형은 2026-11-22에 정리했다. 아래 isTest · combined는 그 두 장의 동작(현물 키움 · 선물 한투 · 일봉 LS 섞기)을 뜻한다.
+        if (broker !== 'test') return;
+        const isTest = true, combined = true;
         const format = (n, signed = true) => Number.isFinite(n) ? `${formatAmount(n / 100, signed)}억원` : formatAmount(n, signed);
-        const axisId = isTest ? (secondary ? 'testMarketSupplySecondary' : 'testMarketSupply') : combined ? (secondary ? 'combinedMarketSupplySecondary' : 'combinedMarketSupply') : isKiwoom ? 'kiwoomMarketSupply' : isLs ? 'lsMarketSupply' : 'marketSupply';
-        const panelId = isTest ? (secondary ? 'rankTestMarketSupplySecondaryChartPanel' : 'rankTestMarketSupplyChartPanel') : combined ? (secondary ? 'rankCombinedMarketSupplySecondaryChartPanel' : 'rankCombinedMarketSupplyChartPanel') : isKiwoom ? 'rankKiwoomMarketSupplyChartPanel' : isLs ? 'rankLsMarketSupplyChartPanel' : 'rankMarketSupplyChartPanel';
-        const eventName = name => isTest ? name.replace('rank-market-supply', secondary ? 'rank-test-market-supply-secondary' : 'rank-test-market-supply') : combined ? name.replace('rank-market-supply', secondary ? 'rank-combined-market-supply-secondary' : 'rank-combined-market-supply') : isKiwoom ? name.replace('rank-market-supply', 'rank-kiwoom-market-supply') : isLs ? name.replace('rank-market-supply', 'rank-ls-market-supply') : name;
-        const api = name => isTest ? name.replace('MarketSupply', secondary ? 'TestMarketSupplySecondary' : 'TestMarketSupply') : combined ? name.replace('MarketSupply', secondary ? 'CombinedMarketSupplySecondary' : 'CombinedMarketSupply') : isKiwoom ? name.replace('MarketSupply', 'KiwoomMarketSupply') : isLs ? name.replace('MarketSupply', 'LsMarketSupply') : name;
-        const endpoint = isKiwoom ? '/api/kiwoom-market-supply/chart' : isLs ? '/api/ls-market-supply/chart' : '/api/market-supply/chart';
-        const storageKey = isTest ? (secondary ? 'rankTestMarketSupplySecondarySelectedV1' : 'rankTestMarketSupplySelectedV1') : combined ? (secondary ? 'rankCombinedMarketSupplySecondarySelectedV1' : 'rankCombinedMarketSupplySelectedV1') : isKiwoom ? 'rankKiwoomMarketSupplySelectedV1' : isLs ? 'rankLsMarketSupplySelectedV1' : 'rankMarketSupplySelectedV1';
+        const axisId = isTest ? (secondary ? 'testMarketSupplySecondary' : 'testMarketSupply') : 'marketSupply';
+        const panelId = isTest ? (secondary ? 'rankTestMarketSupplySecondaryChartPanel' : 'rankTestMarketSupplyChartPanel') : 'rankMarketSupplyChartPanel';
+        const eventName = name => isTest ? name.replace('rank-market-supply', secondary ? 'rank-test-market-supply-secondary' : 'rank-test-market-supply') : name;
+        const api = name => isTest ? name.replace('MarketSupply', secondary ? 'TestMarketSupplySecondary' : 'TestMarketSupply') : name;
+        const endpoint = '/api/market-supply/chart';
+        const storageKey = isTest ? (secondary ? 'rankTestMarketSupplySecondarySelectedV1' : 'rankTestMarketSupplySelectedV1') : 'rankMarketSupplySelectedV1';
         if (window.rankIndependentClient) return;
         const breadth = document.getElementById('rankBreadthChartPanel'), row = window.rankIndependentClient ? document.getElementById('tab_rank') : breadth?.closest('.rank-chart-row');
         if (!row || document.getElementById(panelId)) return;
@@ -80,11 +81,10 @@
             <div class="concentration-chart-footer rank-adr-zoom"><input type="range" min="0" max="0" value="0" aria-label="수급 과거 구간 이동" disabled><div class="concentration-controls"><button type="button" aria-label="시장 수급 차트 축소">−</button><button type="button" aria-label="시장 수급 차트 확대">+</button></div></div>
             <button type="button" data-action="more" class="concentration-icon-button" title="과거 데이터 더 불러오기" aria-label="과거 데이터 더 불러오기"><svg width="28" height="28" viewBox="0 0 34 34" shape-rendering="crispEdges" aria-hidden="true"><rect x="1" y="1" width="32" height="32" fill="#ededed"/><path d="M10 5v20" stroke="#737373" stroke-width="2"/><rect x="6" y="9" width="9" height="12" fill="#505050"/><path d="M22 5v20" stroke="#c0c0c0" stroke-width="2"/><rect x="18" y="9" width="9" height="12" fill="#969696"/><path d="M25 21v10M21 26h10" stroke="#444444" stroke-width="4"/></svg></button><p class="rank-adr-status" role="status"></p>`;
         row.append(panel);
-        if (isLs) panel.classList.add('rank-ls-market-supply-panel');
-        const titleSource = isTest || combined ? '' : `(${isKiwoom ? '키움' : isLs ? 'LS' : '한투'})`;
+        const titleSource = '';
         // Futures selections are titled 시장 선물 수급.
         const paintTitle = () => { panel.querySelector('h2').textContent = (selected.startsWith('futures') ? '시장 선물 수급' : '시장 수급') + titleSource; };
-        window.RankSupplyGuide?.attach(panel, isTest ? 'marketTest' : 'market', isTest ? 'test' : combined ? 'combined' : isKiwoom ? 'kiwoom' : isLs ? 'ls' : 'kis');
+        window.RankSupplyGuide?.attach(panel, isTest ? 'marketTest' : 'market', 'test');
         panel.querySelector('.rank-adr-controls').append(panel.querySelector('.supply-legend'));
         const latestDate = document.createElement('span'); latestDate.className = 'supply-latest-date'; latestDate.textContent = '—';
         panel.querySelector('.supply-legend').prepend(latestDate);
@@ -94,7 +94,7 @@
         const info = panel.querySelector('.chart-hover-info'), status = panel.querySelector('[role="status"]');
         const slider = panel.querySelector('input[type="range"]');
         const more = panel.querySelector('[data-action="more"]');
-        const stockSelect = window.RankChartAxis.marketChoice(isTest ? (secondary ? 'test-market-supply-secondary' : 'test-market-supply') : combined ? (secondary ? 'combined-market-supply-secondary' : 'combined-market-supply') : isKiwoom ? 'kiwoom-market-supply' : isLs ? 'ls-market-supply' : 'market-supply',[], 'kospi','시장 수급 시장 선택');
+        const stockSelect = window.RankChartAxis.marketChoice(isTest ? (secondary ? 'test-market-supply-secondary' : 'test-market-supply') : 'market-supply',[], 'kospi','시장 수급 시장 선택');
         panel.querySelector('.concentration-chart-header h2').after(stockSelect);
         stockSelect.addEventListener('change', () => { if (stockSelect.value) choose(stockSelect.value); });
         let flowCoverageFirst = '';
@@ -154,15 +154,24 @@
             priceCursor = null;
             candleMessage = ''; chartMessage = ''; draw();
         }
-        const marketCodes = () => mode === 'day' && !isKiwoom && !isLs && !combined ? ['kospi','kosdaq'] : ['kospi','kosdaq','futures','futuresKosdaq'];
-        const flowEndpoint = code => isTest && code.startsWith('futures') ? '/api/ls-futures-test/chart' : combined ? mode==='day'?'/api/ls-market-supply/chart':code.startsWith('futures')?'/api/market-supply/chart':'/api/kiwoom-market-supply/chart' : isKiwoom && code.startsWith('futures') ? mode==='day'?'/api/ls-market-supply/chart':'/api/market-supply/chart' : endpoint;
+        const marketCodes = () => ['kospi','kosdaq','futures','futuresKosdaq'];
+        const flowEndpoint = code => isTest && code.startsWith('futures') ? '/api/ls-futures-test/chart' : combined ? mode==='day'?'/api/ls-market-supply/chart':code.startsWith('futures')?'/api/market-supply/chart':'/api/kiwoom-market-supply/chart' : endpoint;
         // Flow of the other markets inside the visible window, for a shared y scale.
         // The window must not depend on the selected market: spot shows 08:00-20:00 while futures also
         // show the preceding night, so the full view matches trading days (night 18:00+ belongs to the
         // next open day) and a zoomed view uses the shared time axis.
         // 18시 이후(야간)는 다음 개장일. 날마다 한 번만 계산한다(2026-11-22, 그릴 때마다 봉마다 Date를 만들어 느렸다).
-        const nextOpenCache = new Map();
+        const nextOpenCache = new Map(), tradingDayByTime = new Map();
+        let tradingDayCalendar = null;
+        // 같은 봉은 그릴 때마다 다시 묻게 되므로 시각별로 기억한다(장 달력이 바뀌면 비운다).
         function tradingDay(t) {
+            const calendarNow = window.TradingRefresh?.state?.days || null;
+            if (calendarNow !== tradingDayCalendar) { tradingDayCalendar = calendarNow; tradingDayByTime.clear(); }
+            let known = tradingDayByTime.get(t);
+            if (known === undefined) { known = tradingDayOf(t); if (tradingDayByTime.size > 200000) tradingDayByTime.clear(); tradingDayByTime.set(t, known); }
+            return known;
+        }
+        function tradingDayOf(t) {
             let day = dayKey(t);
             if (Math.floor(((t + 32400000) % 86400000) / 3600000) < 18) return day;
             const calendar = window.TradingRefresh?.state?.days || {};
@@ -224,10 +233,13 @@
             panel.querySelector('[aria-label="시장 수급 차트 확대"]').disabled = n <= 10;
             panel.querySelector('[aria-label="시장 수급 차트 축소"]').disabled = n >= points.length;
             more.hidden = false; more.disabled = !selected || !(hasMore || mode === 'minute' && priceCursor) || loading || mode === 'minute' && candleLoading;
-            const values = rows.flatMap(p => [...visibleSeries].map(s => p[s])).filter(Number.isFinite);
-            const others = peerRows(rows, n < points.length);
-            const scaleValues = values.concat(others.flatMap(p => [...visibleSeries].map(s => p[s])).filter(Number.isFinite));
-            let min = 0, max = 0; for (const value of scaleValues) { min = Math.min(min, value); max = Math.max(max, value); }
+            // 최소 · 최대만 필요하니 배열을 만들지 않고 한 번 훑는다(2026-11-22: 과거 구간에서 그릴 때마다 봉 수 × 항목 수의 배열을 만들어 느렸다).
+            const seriesList = [...visibleSeries];
+            let min = 0, max = 0, valueCount = 0;
+            const scan = list => { for (const p of list) for (const s of seriesList) { const v = p[s]; if (Number.isFinite(v)) { if (v < min) min = v; if (v > max) max = v; if (list === rows) valueCount++; } } };
+            scan(rows);
+            scan(peerRows(rows, n < points.length));
+            const values = { length: valueCount };
             const span = Math.max(1, max - min), padding = span * .08; min -= padding; max += padding;
             const y = v => bottom - (v - min) / (max - min) * (bottom - top);
             geometry = { rows, left, right, top, bottom, x, y, min, max, extents: {} };
@@ -309,7 +321,7 @@
                 if(mode==='minute'){
                     ctx.save();ctx.setLineDash([3,4]);ctx.beginPath();let observed;
                     rows.forEach(p=>{if(!Number.isFinite(p[s]))return;
-                        if(observed && window.RankChartAxis.intradayGap(observed.t,p.t,isLs ? 1200 : 930)){
+                        if(observed && window.RankChartAxis.intradayGap(observed.t,p.t,930)){
                             ctx.moveTo(x(observed.t),y(observed[s]));ctx.lineTo(x(p.t),y(p[s]));
                         }observed=p;
                     });ctx.stroke();ctx.restore();
@@ -375,8 +387,7 @@
         }
         function paintStocks() {
             paintYSync();
-            if (mode === 'day' && !isKiwoom && !isLs && !combined && selected.startsWith('futures')) selected = selected === 'futuresKosdaq' ? 'kosdaq' : 'kospi';
-            stockSelect.setChoices(mode === 'day' && !isKiwoom && !isLs && !combined ? [['kospi','KOSPI'],['kosdaq','KOSDAQ']] : [['kospi','KOSPI'],['kosdaq','KOSDAQ'],['futures','KOSPI선물'],['futuresKosdaq','KOSDAQ선물']]);
+            stockSelect.setChoices([['kospi','KOSPI'],['kosdaq','KOSDAQ'],['futures','KOSPI선물'],['futuresKosdaq','KOSDAQ선물']]);
             stockSelect.value=selected;
             stockSelect.title=stockSelect.selectedOptions[0]?.textContent || '시장 선택';
             const future=selected.startsWith('futures');
@@ -510,10 +521,8 @@
                 const periodPoints=!isTest && mode==='minute' && todayOnly?points.filter(p=>dayKey(p.t)===window.RankChartAxis.sessionDay()):points;
                 const period = periodPoints.length ? `${dayKey(periodPoints[0].t)}${dayKey(periodPoints[0].t) === dayKey(periodPoints.at(-1).t) ? '' : ' ~ ' + dayKey(periodPoints.at(-1).t)}` : '당일 자료 없음';
                 const message = mode === 'minute' ? `${period}` : `일별 순매수대금 · ${points.length.toLocaleString()}봉`;
-                let warnings = (result.warnings || []).filter(text => !text.startsWith('1분마다 관측한 당일 누적 순매수대금')).map(text => isLs ? text.replace('금액: 백만원', '금액: 억원') : text);
+                let warnings = (result.warnings || []).filter(text => !text.startsWith('1분마다 관측한 당일 누적 순매수대금'));
                 if(combined && !(isTest && selected.startsWith('futures')))warnings.unshift(mode==='day'?'수급 출처: LS'+(selected.startsWith('futures')?'(주간 선물)':'(현물)'):selected.startsWith('futures')?'수급 출처: 한투(선물)':'수급 출처: 키움(현물)');
-                if (isKiwoom) warnings.unshift(selected.startsWith('futures') ? mode==='day'?'수급 출처: LS(주간 선물)':'수급 출처: 한투(선물)' : '수급 출처: 키움(현물)');
-                if (isLs && mode === 'minute') warnings.push('프로그램 추가 검증 중');
                 if (!isTest) warnings = window.RankSupplyGuide?.loadingWarnings(panel, mode, warnings) || warnings;
                 chartMessage = `${hasFlow ? message : '수급 기록 없음'}${warnings.length ? ` · ${warnings.join(' · ')}` : ''}${result.status?.error && result.date === dayKey(Date.now()) ? ` · ${result.status.error}` : ''}`;
                 if(result.pending)chartMessage=hasFlow?`${chartMessage} · 추가 조회 중…`:'가격 수신 · 수급 조회 중…';

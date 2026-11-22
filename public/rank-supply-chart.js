@@ -215,8 +215,11 @@
             panel.querySelector('[aria-label="수급 차트 확대"]').disabled = n <= 10;
             panel.querySelector('[aria-label="수급 차트 축소"]').disabled = n >= points.length;
             more.hidden = false; more.disabled = !selected || !(hasMore || mode === 'minute' && nextPriceCursor()) || loading || mode === 'minute' && candleLoading;
-            const values = rows.flatMap(p => [...visibleSeries].map(s => p[s])).filter(Number.isFinite);
-            let min = 0, max = 0; for (const value of values) { min = Math.min(min, value); max = Math.max(max, value); }
+            // 최소 · 최대만 필요하니 배열을 만들지 않고 한 번 훑는다(2026-11-22, 과거 구간 그리기 속도).
+            const seriesList = [...visibleSeries];
+            let min = 0, max = 0, valueCount = 0;
+            for (const p of rows) for (const s of seriesList) { const v = p[s]; if (Number.isFinite(v)) { valueCount++; if (v < min) min = v; if (v > max) max = v; } }
+            const values = { length: valueCount };
             if (yPeerKey && mode === 'minute' && rows.length) {
                 // Tell the other card when this card's own range changes, so both redraw on the same scale.
                 const own = [selected, rows[0].t, rows.at(-1).t, min, max, [...visibleSeries]].join('|');

@@ -162,7 +162,9 @@
         '/api/concentration-chart':'refreshConcentrationChart','/api/ls-concentration-chart':'refreshLsConcentrationChart',
         '/api/turnover/chart':'refreshRankTurnoverChart','/api/ls-turnover/chart':'refreshRankLsTurnoverChart',
         '/api/supply/chart':'refreshRankSupplyChart','/api/kis-supply/chart':'refreshRankKisSupplyChart','/api/ls-stock-futures/chart':'refreshRankFuturesSupplyChart',
-        '/api/market-supply/chart':'refreshRankMarketSupplyChart','/api/kiwoom-market-supply/chart':'refreshRankKiwoomMarketSupplyChart','/api/ls-market-supply/chart':'refreshRankLsMarketSupplyChart',
+        // 시장 수급 카드(위 · 아래 두 장)는 현물 키움 · 선물 한투/LS · 일봉 LS를 섞어 쓴다. 어느 경로가 바뀌어도 두 장을 다시 받는다(2026-11-22:
+        // 예전엔 없어진 단독 · 통합 카드 함수로 연결돼 있어, 서버 과거 자료가 바뀌어도 지금 카드가 새로 받지 않았다).
+        '/api/market-supply/chart':'__marketSupplyCards','/api/kiwoom-market-supply/chart':'__marketSupplyCards','/api/ls-market-supply/chart':'__marketSupplyCards',
         '/api/adr/candles':'__allCharts','/api/chart-reference':'__allCharts',
         '/api/risk/breadth':'refreshRankBreadthChart','/api/risk/sentiment':'refreshRankSentimentChart','/api/risk/volatility':'refreshRankVolatilityChart'
     };
@@ -176,20 +178,8 @@
             const state=window.getRankCombinedSupplyState?.(),combinedKey='combinedSupply';
             if(state && (state.mode==='minute'?'/api/kis-supply/chart':'/api/supply/chart')===event.detail.path && !timers.has(combinedKey))timers.set(combinedKey,setTimeout(()=>{timers.delete(combinedKey);void Promise.resolve(window.refreshRankCombinedSupplyChart?.()).catch(()=>{});},100));
         }
-        if(!window.rankIndependentClient && ['/api/ls-market-supply/chart','/api/kiwoom-market-supply/chart','/api/market-supply/chart'].includes(event.detail.path)){
-            {
-            const state=window.getRankCombinedMarketSupplyDisplaySettings?.(),key='combinedMarketSupply';
-            const path=state?.mode==='day'?'/api/ls-market-supply/chart':state?.selected?.startsWith('futures')?'/api/market-supply/chart':'/api/kiwoom-market-supply/chart';
-            if(state && path===event.detail.path && !timers.has(key))timers.set(key,setTimeout(()=>{timers.delete(key);void Promise.resolve(window.refreshRankCombinedMarketSupplyChart?.()).catch(()=>{});},100));
-            }
-            {
-            const state=window.getRankCombinedMarketSupplySecondaryDisplaySettings?.(),key='combinedMarketSupplySecondary';
-            const path=state?.mode==='day'?'/api/ls-market-supply/chart':state?.selected?.startsWith('futures')?'/api/market-supply/chart':'/api/kiwoom-market-supply/chart';
-            if(state && path===event.detail.path && !timers.has(key))timers.set(key,setTimeout(()=>{timers.delete(key);void Promise.resolve(window.refreshRankCombinedMarketSupplySecondaryChart?.()).catch(()=>{});},100));
-            }
-        }
         const mode=event.detail.mode==='minute'?'minute':'day',key=name==='__allCharts'?name+':'+mode:name;
         if(!name||timers.has(key))return;
-        timers.set(key,setTimeout(()=>{timers.delete(key);void Promise.resolve(name==='__allCharts'?window.RankChartAxis?.refreshCharts?.({mode}):window[name]?.()).catch(()=>{});},100));
+        timers.set(key,setTimeout(()=>{timers.delete(key);void Promise.resolve(name==='__allCharts'?window.RankChartAxis?.refreshCharts?.({mode}):name==='__marketSupplyCards'?Promise.all([window.refreshRankTestMarketSupplyChart?.(),window.refreshRankTestMarketSupplySecondaryChart?.()]):window[name]?.()).catch(()=>{});},100));
     });
 })();

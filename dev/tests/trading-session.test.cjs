@@ -57,9 +57,9 @@ test('shared collector gates honor holiday policy without changing pure legacy b
 test('automatic chart refresh skips closed broker cards, keeps nonbroker cards and preserves manual refresh',()=>{
     const calls=[],window={TradingRefresh:{allows:id=>id==='sentiment'||id==='volatility'}};
     vm.runInNewContext(fs.readFileSync('public/rank-chart-axis.js','utf8'),{window});
-    for(const method of ['refreshRankSupplyChart','refreshRankMarketSupplyChart','refreshRankSentimentChart','refreshRankVolatilityChart'])window[method]=()=>calls.push(method);
+    for(const method of ['refreshRankSupplyChart','refreshRankTestMarketSupplyChart','refreshRankSentimentChart','refreshRankVolatilityChart'])window[method]=()=>calls.push(method);
     window.RankChartAxis.refreshCharts({automatic:true});assert.deepEqual(calls,['refreshRankSentimentChart','refreshRankVolatilityChart']);
-    calls.length=0;window.RankChartAxis.refreshCharts();assert.ok(calls.includes('refreshRankMarketSupplyChart'));
+    calls.length=0;window.RankChartAxis.refreshCharts();assert.ok(calls.includes('refreshRankTestMarketSupplyChart')); // 단독 시장 수급 카드는 2026-11-22 정리, 지금 카드는 test
 });
 test('frontend session failure clears the previous open state and automatic futures remain independent from cash',async()=>{
     let at=1e6,fail=false;const window={};

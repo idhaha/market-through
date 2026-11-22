@@ -123,12 +123,7 @@
             ...(window.getRankBreadthDisplaySettings ? { breadth: window.getRankBreadthDisplaySettings() } : {}),
             ...(window.getRankTestMarketSupplyDisplaySettings ? { testMarketSupply: window.getRankTestMarketSupplyDisplaySettings() } : {}),
             ...(window.getRankTestMarketSupplySecondaryDisplaySettings ? { testMarketSupplySecondary: window.getRankTestMarketSupplySecondaryDisplaySettings() } : {}),
-            ...(window.getRankCombinedMarketSupplySecondaryDisplaySettings ? { combinedMarketSupplySecondary: window.getRankCombinedMarketSupplySecondaryDisplaySettings() } : {}),
-            ...(window.getRankCombinedMarketSupplyDisplaySettings ? { combinedMarketSupply: window.getRankCombinedMarketSupplyDisplaySettings() } : {}),
-            ...(window.getRankKiwoomMarketSupplyDisplaySettings ? { kiwoomMarketSupply: window.getRankKiwoomMarketSupplyDisplaySettings() } : {}),
-            ...(window.getRankLsMarketSupplyDisplaySettings ? { lsMarketSupply: window.getRankLsMarketSupplyDisplaySettings() } : {}),
             ...(window.getRankCombinedSupplyDisplaySettings ? { combinedSupply: window.getRankCombinedSupplyDisplaySettings() } : {}),
-            ...(window.getRankMarketSupplyDisplaySettings ? { marketSupply: window.getRankMarketSupplyDisplaySettings() } : {}),
             ...(window.getRankSentimentDisplaySettings ? { sentiment: window.getRankSentimentDisplaySettings() } : {})
         });
         window[api('applyConcentrationDisplaySettings')] = settings => {
@@ -155,14 +150,9 @@
                 if (settings && 'breadth' in settings) window.applyRankBreadthDisplaySettings?.(window.rankIndependentClient ? settings.breadth : {...settings.breadth,candleOpen:nextCandleOpen});
                 if (settings && 'testMarketSupply' in settings) window.applyRankTestMarketSupplyDisplaySettings?.(settings.testMarketSupply);
                 if (settings && 'testMarketSupplySecondary' in settings) window.applyRankTestMarketSupplySecondaryDisplaySettings?.(settings.testMarketSupplySecondary);
-                if (settings && 'combinedMarketSupplySecondary' in settings) window.applyRankCombinedMarketSupplySecondaryDisplaySettings?.(settings.combinedMarketSupplySecondary);
-                if (settings && 'combinedMarketSupply' in settings) window.applyRankCombinedMarketSupplyDisplaySettings?.(settings.combinedMarketSupply);
-                if (settings && 'kiwoomMarketSupply' in settings) window.applyRankKiwoomMarketSupplyDisplaySettings?.(settings.kiwoomMarketSupply);
-                if (settings && 'lsMarketSupply' in settings) window.applyRankLsMarketSupplyDisplaySettings?.(settings.lsMarketSupply);
                 if (settings && 'combinedSupply' in settings) window.applyRankCombinedSupplySettings?.(settings.combinedSupply);
-                if (settings && 'marketSupply' in settings) window.applyRankMarketSupplyDisplaySettings?.(settings.marketSupply);
                 if (settings && 'sentiment' in settings) window.applyRankSentimentDisplaySettings?.(window.rankIndependentClient ? settings.sentiment : {...settings.sentiment,candleOpen:nextCandleOpen});
-                if(!window.rankIndependentClient){ window.applyRankTestMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankTestMarketSupplySecondaryCandleOpen?.(nextCandleOpen); window.applyRankKiwoomMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankCombinedMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankCombinedMarketSupplySecondaryCandleOpen?.(nextCandleOpen); window.applyRankLsMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankSupplyCandleOpen?.(nextCandleOpen); window.applyRankKisSupplyCandleOpen?.(nextCandleOpen); window.applyRankCombinedSupplyCandleOpen?.(nextCandleOpen); window.applyRankFuturesSupplyCandleOpen?.(nextCandleOpen); window.applyRankLsSupplyCandleOpen?.(nextCandleOpen); window.applyRankMarketSupplyCandleOpen?.(nextCandleOpen); }
+                if(!window.rankIndependentClient){ window.applyRankTestMarketSupplyCandleOpen?.(nextCandleOpen); window.applyRankTestMarketSupplySecondaryCandleOpen?.(nextCandleOpen); window.applyRankSupplyCandleOpen?.(nextCandleOpen); window.applyRankKisSupplyCandleOpen?.(nextCandleOpen); window.applyRankCombinedSupplyCandleOpen?.(nextCandleOpen); window.applyRankFuturesSupplyCandleOpen?.(nextCandleOpen); window.applyRankLsSupplyCandleOpen?.(nextCandleOpen); window.applyRankMarketSupplyCandleOpen?.(nextCandleOpen); }
                 window.applyRankCombinedTurnoverCandleOpen?.(settings?.combinedTurnoverCandleOpen ?? nextCandleOpen);
                 window.applyKisConcentrationDisplaySettings?.(settings); window.applyLsConcentrationDisplaySettings?.(settings);
             }
