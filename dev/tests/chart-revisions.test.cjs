@@ -140,3 +140,26 @@ test('지난날 키움 일봉 저장(kiwoom-daily): 지난날이 쌓이기만 �
     for (const route of ['/api/supply/candles', '/api/concentration-chart', '/api/ls-concentration-chart']) assert.notEqual(after[route], first[route], route);
     assert.equal(after['/api/risk/volatility'], first['/api/risk/volatility'], '관계없는 경로는 그대로');
 });
+
+test('지난날을 .json으로 저장한 뒤 .json.gz로 압축해도(archiveCompleted) 버전이 오르지 않는다(2026-11-22 측정 중 ls-turnover 5회)', t => {
+    const output = path.resolve(__dirname, '../output'); fs.mkdirSync(output, { recursive: true });
+    const root = fs.mkdtempSync(path.join(output, 'revisions-archive-'));
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const data = path.join(root, 'data'), file = (rel, v) => { const full = path.join(data, rel); fs.mkdirSync(path.dirname(full), { recursive: true }); fs.writeFileSync(full, v); };
+    const service = createChartRevisions({ dataDirectory: data, directory: path.join(data, 'chart-revisions'),
+        routes: { '/api/ls-turnover/chart': ['ls-turnover'], '/api/kis-supply/chart': ['kis-supply'] }, now: () => Date.parse('2026-11-22T11:18:30Z'), minInterval: 0 });
+    file('ls-turnover/KOSPI0/2026-11-20.json.gz', 'a'); file('kis-supply/005930/2026-11-20.json.gz', 'a');
+    const first = service.check();
+    // 지난날을 처음 받아 .json으로 저장(추가만 → 그대로), 1분 뒤 압축본으로 바꾸고 .json을 지움(그대로여야 함).
+    file('ls-turnover/KOSPI0/2026-08-05.json', '[1]'); file('kis-supply/005930/2026-11-10.json', '[1]');
+    const saved = service.check();
+    assert.equal(saved['/api/ls-turnover/chart'], first['/api/ls-turnover/chart']);
+    file('ls-turnover/KOSPI0/2026-08-05.json.gz', 'gz'); fs.rmSync(path.join(data, 'ls-turnover/KOSPI0/2026-08-05.json'));
+    file('kis-supply/005930/2026-11-10.json.gz', 'gz'); fs.rmSync(path.join(data, 'kis-supply/005930/2026-11-10.json'));
+    const archived = service.check();
+    assert.equal(archived['/api/ls-turnover/chart'], saved['/api/ls-turnover/chart'], '압축은 바뀐 것이 아니다');
+    assert.equal(archived['/api/kis-supply/chart'], saved['/api/kis-supply/chart'], '보통 폴더도 압축만으로는 그대로');
+    // 압축본이 고쳐지거나 지워지면 예전처럼 오른다.
+    file('ls-turnover/KOSPI0/2026-08-05.json.gz', 'changed');
+    assert.notEqual(service.check()['/api/ls-turnover/chart'], archived['/api/ls-turnover/chart']);
+});

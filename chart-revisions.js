@@ -97,7 +97,9 @@ function createChartRevisions({ dataDirectory, directory, now = Date.now, routes
                 if (day >= liveFrom) continue;
                 seen.add(rel);
                 const sig = `${stat.size}:${Math.round(stat.mtimeMs)}`, before = record.days[rel];
-                if (before !== undefined ? before !== sig : !appendOnly && newest && day < newest) changed = true;
+                // 같은 날 파일을 압축본으로 바꾼 것(supply-store archiveCompleted: <날>.json → <날>.json.gz)은 바뀐 것이 아니다.
+                const archived = before === undefined && rel.endsWith('.gz') && record.days[rel.slice(0, -3)] !== undefined;
+                if (before !== undefined ? before !== sig : !archived && !appendOnly && newest && day < newest) changed = true;
                 record.days[rel] = sig; if (day > latest) latest = day;
                 continue;
             }
@@ -114,7 +116,9 @@ function createChartRevisions({ dataDirectory, directory, now = Date.now, routes
             const through = entries.map(entryDay).filter(d => d && d < liveFrom).sort().at(-1) || '';
             record.singles[rel] = { sig, through, hash: through ? pastHash(entries, through) : '' };
         }
-        for (const rel of Object.keys(record.days)) if (!seen.has(rel)) { delete record.days[rel]; changed = true; }
+        // 2026-11-22: LS 거래대금 지난날 저장이 먼저 .json으로 쓰고 1분 뒤 .json.gz로 바꾸자, 지워진 .json을 바뀐 것으로 세어
+        // 측정 중 버전이 5번 올라 시장 거래대금 · 쏠림율 브라우저 저장분이 버려졌다. 압축본이 있으면 삭제로 세지 않는다.
+        for (const rel of Object.keys(record.days)) if (!seen.has(rel)) { delete record.days[rel]; if (!(rel.endsWith('.json') && seen.has(`${rel}.gz`))) changed = true; }
         for (const rel of Object.keys(record.singles)) if (!seen.has(rel)) { delete record.singles[rel]; changed = true; }
         record.newest = latest;
         return changed;
