@@ -374,10 +374,8 @@
             stockSelect.replaceChildren();
             config.stocks.forEach(stock => {
                 const button = new Option(Array.from(stock.name).slice(0, 6).join(''), stock.code);
-                const state = config.statuses?.[stock.code];
-                button.title = `${stock.name} (${stock.code}) · ${config.collecting ? state?.error ? '수집 확인 필요' : state?.investor_ok && state?.program_ok ? '수집 중' : '수집 대기' : '수집 시간 외'}${state?.checked_at ? ` · 확인 ${clock(state.checked_at)}` : ''}${state?.error ? `\n${state.error}` : ''}`;
-                if (state?.investor_at) button.title += `\n투자자 마지막 관측 ${dayKey(state.investor_at)} ${clock(state.investor_at)}`;
-                if (state?.program_at) button.title += `\n프로그램 원천 시각 ${dayKey(state.program_at)} ${clock(state.program_at)}`;
+                // 수집 상태는 예전 키움 분봉 수집기의 것이라 없앴다(2026-11-22, 분봉 수급은 한투 자료 한 곳).
+                button.title = `${stock.name} (${stock.code})`;
                 stockSelect.add(button);
             });
             const stock = config.archive.find(stock => stock.code === selected);

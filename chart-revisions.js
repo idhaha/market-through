@@ -25,11 +25,23 @@ const ROUTES = {
     '/api/ls-futures-test/chart': ['ls-futures-test', 'market-supply'],
     '/api/ls-turnover/chart': ['ls-turnover'],
     '/api/kis-turnover/chart': ['kis-turnover'],
-    '/api/ls-concentration-chart': ['ls-turnover'],
-    '/api/kis-concentration-chart': ['kis-concentration'],
+    // 쏠림율 · 비교 카드의 기준 1분봉과 종목수급 캔들은 kiwoom-minute 한 벌을 함께 읽는다(2026-11-21).
+    '/api/ls-concentration-chart': ['ls-turnover', 'kiwoom-minute'],
+    '/api/kis-concentration-chart': ['kis-concentration', 'kiwoom-minute'],
+    '/api/supply/candles': ['kiwoom-minute'],
     '/api/risk/volatility': ['volatility'],
-    '/api/risk/sentiment': ['volatility']
-    // Broker-only routes have no stored past.
+    '/api/risk/sentiment': ['volatility'],
+    '/api/concentration-chart': ['kiwoom-minute']
+};
+// Folders that only ever gain files equal to what the broker already returned (a finished day saved on first
+// view). A new file there, even older than the newest day, is not a change; a rewritten or removed file is.
+const APPEND_ONLY = new Set(['kiwoom-minute']);
+// A route's basis changes when the server starts asking the broker for different values (not stored data),
+// so browsers drop that route's saved pages once.
+//  - adjusted-20261121: daily stock prices are 수정주가 (upd_stkpc_tp 1) from 2026-11-21.
+const BASIS = {
+    '/api/supply/chart': 'adjusted-20261121',
+    '/api/concentration-chart': 'adjusted-20261121'
 };
 // Files in those folders that are not chart data.
 const IGNORED = /^(?:state|master|watchlist|market-day|validation|universe|jusikbot-backup|token)\.json$|^daily\.before|\.tmp$|\.bak$/;
@@ -69,6 +81,7 @@ function createChartRevisions({ dataDirectory, directory, now = Date.now, routes
     function scan(folder, record, liveFrom) {
         const root = path.join(dataDirectory, folder), files = walk(root), seen = new Set();
         let changed = false;
+        const appendOnly = APPEND_ONLY.has(folder);
         record.days ||= {}; record.singles ||= {};
         const newest = record.newest || '';
         let latest = newest;
@@ -80,7 +93,7 @@ function createChartRevisions({ dataDirectory, directory, now = Date.now, routes
                 if (day >= liveFrom) continue;
                 seen.add(rel);
                 const sig = `${stat.size}:${Math.round(stat.mtimeMs)}`, before = record.days[rel];
-                if (before !== undefined ? before !== sig : newest && day < newest) changed = true;
+                if (before !== undefined ? before !== sig : !appendOnly && newest && day < newest) changed = true;
                 record.days[rel] = sig; if (day > latest) latest = day;
                 continue;
             }
@@ -116,7 +129,7 @@ function createChartRevisions({ dataDirectory, directory, now = Date.now, routes
             } catch (error) { log(`[ChartRevisions] ${folder}: ${error.message}`); }
         }
         try { save(); } catch (error) { log(`[ChartRevisions] save: ${error.message}`); }
-        current = Object.fromEntries(Object.entries(routes).map(([route, list]) => [route, sha(state.id + '|' + list.map(f => `${f}:${state.folders[f]?.n || 0}`).join('|'))]));
+        current = Object.fromEntries(Object.entries(routes).map(([route, list]) => [route, sha(state.id + '|' + list.map(f => `${f}:${state.folders[f]?.n || 0}`).join('|') + (BASIS[route] ? `|${BASIS[route]}` : ''))]));
         return current;
     }
     return {
@@ -125,4 +138,4 @@ function createChartRevisions({ dataDirectory, directory, now = Date.now, routes
         revisionOf: pathname => Object.hasOwn(routes, pathname) ? check()[pathname] : null
     };
 }
-module.exports = { createChartRevisions, ROUTES };
+module.exports = { createChartRevisions, ROUTES, BASIS, APPEND_ONLY };

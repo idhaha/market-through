@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { completeDay } = require('./kiwoom-minute-store');
 
 const MINUTE_SCOPES = [1, 3, 5, 10, 15, 30, 45, 60];
 const INDEX_SCOPES = [1, 3, 5, 10, 30];
@@ -129,7 +130,9 @@ function alignedFiveBarDebug(stockRows, marketRows, now) {
     };
 }
 
-function createConcentrationChartService({ axios, getAccessToken, marketCache, now = () => new Date(), pause = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+// minuteStore: kiwoom-minute-store(없으면 예전처럼 연속조회만). keepStock(code): 이 종목의 1분봉을 저장할지(종목수급 등록 종목만). 업종 지수는 늘 저장.
+function createConcentrationChartService({ axios, getAccessToken, marketCache, now = () => new Date(), pause = ms => new Promise(resolve => setTimeout(resolve, ms)),
+    minuteStore = null, keepStock = () => false }) {
     const sessions = new Map();
     let stockDirectory = null;
     let directoryPromise = null;
@@ -270,6 +273,58 @@ function createConcentrationChartService({ axios, getAccessToken, marketCache, n
         const keys = [...target.rows.values()].map(row => barKey(row, mode, interval)).filter(Boolean);
         return keys.length ? keys.reduce((a, b) => a < b ? a : b) : null;
     }
+    // ---- 1분봉 날짜 단위 조회(2026-11-21, docs/CHART_DATA_STORAGE.md) ----
+    const kstToday = () => now().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }).replace(/-/g, '');
+    // 한 종목(또는 업종)의 하루치 1분봉. 끝난 날은 저장 파일을 먼저 보고, 없으면 키움에서 그날을 받아 조건이 맞으면 저장한다.
+    async function minuteDay({ apiId, field, body, symbol, keep }, day, token) {
+        const today = kstToday();
+        if (day < today) { const stored = minuteStore.read(symbol, day); if (stored) return { rows: stored.rows, prev: stored.prev, stored: true }; }
+        const response = await post(apiId, { ...body, tic_scope: '1', ...(day === today ? {} : { base_dt: day }) }, token);
+        const rows = response.data?.[field];
+        if (!Array.isArray(rows)) throw new Error(`${apiId} 차트 응답에 ${field}가 없습니다.`);
+        const more = String(response.headers?.['cont-yn'] || '').toUpperCase() === 'Y';
+        const result = completeDay(rows, day, today, more);
+        if (result.storable && keep) {
+            try { minuteStore.save(symbol, day, result.rows, result.prev); }
+            catch (error) { console.warn(`[KiwoomMinute] ${symbol} ${day} 저장 안 함: ${error.message}`); }
+        }
+        await pause(220);
+        return { rows: result.rows, prev: result.prev, stored: false };
+    }
+    // 한 번에 최소 하루, 새 종목 행이 900개(키움 한 쪽 크기)가 될 때까지 날짜를 거슬러 간다. 키움에서 받는 날은 10일까지.
+    async function dayQuery(session, cursor, token, input) {
+        const stockRows = new Map(session.stock.rows), indexRows = new Map(session.index.rows);
+        const indexCode = session.market === 'K' ? '001' : '101';
+        const stockSource = { apiId: 'ka10080', field: 'stk_min_pole_chart_qry', body: { stk_cd: `${session.code}_AL`, upd_stkpc_tp: '0' },
+            symbol: `${session.code}_AL`, keep: Boolean(keepStock(session.code)) };
+        const indexSource = { apiId: 'ka20005', field: 'inds_min_pole_qry', body: { inds_cd: indexCode }, symbol: indexCode, keep: true };
+        let next = session.nextDay, added = 0, days = 0, fetched = 0;
+        while (next && (days === 0 || added < 900) && days < 30 && fetched < 10) {
+            const stock = await minuteDay(stockSource, next, token);
+            if (!stock.stored) fetched++;
+            for (const row of stock.rows) stockRows.set(String(row.cntr_tm), row);
+            if (!input.prices_only && stock.rows.length) {
+                const index = await minuteDay(indexSource, next, token);
+                for (const row of index.rows) indexRows.set(String(row.cntr_tm), row);
+            }
+            added += stock.rows.length; days++;
+            next = stock.prev;
+        }
+        session.stock = { ...session.stock, rows: stockRows, loaded: true };
+        session.index = { ...session.index, rows: indexRows, loaded: true };
+        session.nextDay = next;
+        session.expires = Date.now() + TTL;
+        if (stockRows.size > 50000) throw new Error('한 차트의 조회 한도에 도달했습니다. 봉 간격을 늘려 주세요.');
+        return {
+            success: true, market: session.market, mode: 'minute', interval: 1, cursor,
+            points: calculatePoints(stockRows, indexRows, 'minute', 1),
+            debug_five_bars: null,
+            has_more: Boolean(next), history_pending: false,
+            history_progress: `${stockRows.size}:${indexRows.size}:${earliest(session.stock, 'minute', 1)}:${earliest(session.index, 'minute', 1)}`,
+            calculation: 'stock: abs(int(cur_prc)) * int(trde_qty); market: (abs(int(cur_prc)) / 100) * (int(trde_qty) * 10000)',
+            index_interval: 1
+        };
+    }
     async function query(input, owner) {
         cleanSessions();
         const code = String(input.code || '').replace(/_(AL|NX)$/i, '');
@@ -316,7 +371,9 @@ function createConcentrationChartService({ axios, getAccessToken, marketCache, n
             session = {
                 owner, code, mode, interval, market, pricesOnly:!!input.prices_only, expires: Date.now() + TTL,
                 stock: stream(daily ? 'ka10081' : 'ka10080', {
-                    stk_cd: `${code}_AL`, upd_stkpc_tp: '0',
+                    // 일봉은 수정주가(2026-11-21). 일봉 쏠림율은 실제 거래대금(trde_prica)이라 수정 여부와 무관하다.
+                    // 분봉은 가격 × 거래량으로 거래대금을 계산하므로 실제 체결값(0)을 둔다(키움 분봉은 1이어도 수정하지 않음을 확인).
+                    stk_cd: `${code}_AL`, upd_stkpc_tp: daily ? '1' : '0',
                     ...(daily ? { base_dt: baseDate } : { tic_scope: String(interval), ...(minuteBase ? { base_dt: minuteBase } : {}) })
                 }, daily ? 'stk_dt_pole_chart_qry' : 'stk_min_pole_chart_qry'),
                 index: stream(daily ? 'ka20006' : 'ka20005', {
@@ -324,10 +381,16 @@ function createConcentrationChartService({ axios, getAccessToken, marketCache, n
                     ...(daily ? { base_dt: baseDate } : { tic_scope: String(indexInterval), ...(minuteBase ? { base_dt: minuteBase } : {}) })
                 }, daily ? 'inds_dt_pole_qry' : 'inds_min_pole_qry')
             };
+            // 1분봉은 날짜 단위로 넘긴다(2026-11-21): 끝난 날은 저장 파일에서, 없는 날만 키움에서 base_dt로 그날을 받는다.
+            if (minuteStore && mode === 'minute' && interval === 1) Object.assign(session, { dayBased: true, nextDay: minuteBase || baseDate });
             cursor = crypto.randomUUID();
             sessions.set(cursor, session);
         }
         session.busy = true;
+        if (session.dayBased) {
+            try { return await dayQuery(session, cursor, token, input); }
+            finally { session.busy = false; }
+        }
         // Work on copies so a failed page can be retried without losing its continuation key.
         const stock = { ...session.stock, rows: new Map(session.stock.rows) };
         const index = { ...session.index, rows: new Map(session.index.rows) };

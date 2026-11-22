@@ -64,3 +64,17 @@ test('앱키마다 관문이 따로: 토큰으로 앱키를 알아 자기 관문
     await axios.post('https://api.kiwoom.com/oauth2/token', {}); await axios.get('https://example.test/x');
     assert.equal(gates.stats().find(g => g.key === 'main').byApi['-'], undefined);
 });
+test('키움이 토큰을 거부(8005)하면 그 앱키 이름과 거부된 토큰을 알린다 (2026-11-22 오라클 장애, 실제 호출 없음)', async () => {
+    const axios = require('axios').create(), rejected = [];
+    const gates = createKiwoomGates({ options: { perApi: 100, total: 100 } }).install(axios);
+    gates.register('28', 'TOKEN28');
+    gates.onTokenRejected((key, token) => rejected.push([key, token]));
+    axios.defaults.adapter = async config => {
+        const auth = config.headers.get?.('authorization');
+        const bad = auth === 'Bearer OLD' || auth === 'Bearer TOKEN28';
+        return { data: bad ? { return_code: 3, return_msg: '인증에 실패했습니다[8005:Token이 유효하지 않습니다]' } : { return_code: 0 }, status: 200, statusText: 'OK', headers: {}, config };
+    };
+    const call = token => axios.post('https://api.kiwoom.com/api/dostk/chart', {}, { headers: { authorization: 'Bearer ' + token, 'api-id': 'ka10080' } });
+    await call('OLD'); await call('NEW'); await call('TOKEN28');
+    assert.deepEqual(rejected, [['main', 'OLD'], ['28', 'TOKEN28']]);
+});

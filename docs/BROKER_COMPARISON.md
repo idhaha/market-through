@@ -4,6 +4,8 @@
 
 기존 테이블 영역 아래에 3열 비교 행을 둔다.
 
+> 2026-11-22: 소스는 한 곳 기준으로 `ALT_SUPPLY_COLLECTION` 스위치와 화면이 읽지 않는 비교 수집(LS 종목 → `ls-supply`, LS 시장 분봉 → `ls-market-supply/raw`, 한투 거래대금 → `kis-turnover`, 한투 업종 분봉 → `kis-concentration`)을 없앴다. 오라클의 이 파일들은 `dev/oracle-remove-duplicate-data.cjs`로 지운다(로컬 백업 `outputs/oracle-data-backup/`에는 남음). 아래 수집 설명은 옛 기록이다.
+
 1. 쏠림율: 키움 / 한투 / LS
 2. 거래대금: 키움 / 한투 / LS
 3. 종목 수급: 키움 / 한투 / LS

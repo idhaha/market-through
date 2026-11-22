@@ -145,6 +145,12 @@ test('KOSDAQ daily APIs use industry 101 and Korea base date', async () => {
     assert.equal(calls[0].body.base_dt, '20261007');
     assert.equal(calls[1].body.inds_cd, '101');
     assert.deepEqual(calls.map(call => call.id), ['ka10081', 'ka20006']);
+    // 일봉 가격은 수정주가(2026-11-21). 분봉은 가격 × 거래량 거래대금 때문에 실제 체결값(0).
+    assert.equal(calls[0].body.upd_stkpc_tp, '1');
+    calls.length = 0;
+    // 이 가짜 응답은 일봉만 주므로 분봉 조회는 실패한다. 보낸 요청 본문만 본다.
+    await api.query({ code: '123456', mode: 'minute', interval: 1 }, 'owner').catch(() => {});
+    assert.equal(calls.find(call => call.id === 'ka10080').body.upd_stkpc_tp, '0');
 });
 
 test('all stock minute scopes are accepted and unsupported index scopes use smaller divisors', async () => {

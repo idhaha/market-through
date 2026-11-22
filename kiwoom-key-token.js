@@ -30,7 +30,8 @@ function createKiwoomKeyToken({ appKey, secretKey, file, http = require('axios')
         if (!pending) pending = issue().finally(() => { pending = null; });
         return pending;
     }
-    function reject() { token = null; expires = 0; }
+    // rejected를 주면 지금 토큰이 그 토큰일 때만 버린다(이미 새로 받은 토큰을 늦게 온 거부 응답이 버리지 않게).
+    function reject(rejected) { if (rejected && rejected !== token) return; token = null; expires = 0; }
     return { get, reject };
 }
 

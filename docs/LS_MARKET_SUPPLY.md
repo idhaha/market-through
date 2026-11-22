@@ -5,6 +5,8 @@
 2026-10-25. 기존 시장 수급 카드는 유지하고 트레이딩 차트의 마지막에 추가한다.
 두 카드는 `public/rank-market-supply-chart.js`의 같은 렌더러를 사용한다. 일봉·가격 캔들·0 표시·확대/드래그·과거 조회·공통 날짜축/마우스·시장 라디오·캔들 동기화 정책은 기존과 같다. 선택/표시 주체 설정은 `lsMarketSupply`로 별도 저장한다. 독립창에는 추가하지 않는다.
 
+> 2026-11-22: 소스는 한 곳 기준으로 `ALT_SUPPLY_COLLECTION` 스위치와 화면이 읽지 않는 비교 수집(LS 종목 → `ls-supply`, LS 시장 분봉 → `ls-market-supply/raw`, 한투 거래대금 → `kis-turnover`, 한투 업종 분봉 → `kis-concentration`)을 없앴다. 오라클의 이 파일들은 `dev/oracle-remove-duplicate-data.cjs`로 지운다(로컬 백업 `outputs/oracle-data-backup/`에는 남음). 아래 수집 설명은 옛 기록이다.
+
 ## 원천과 수집
 
 - 일봉: 기존 한투 서비스와 캐시를 공유. 가격: 기존 키움 지수 서비스 공유.

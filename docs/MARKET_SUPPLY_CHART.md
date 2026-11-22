@@ -1,5 +1,7 @@
 # 시장 수급
 
+> 2026-11-22: 현물(코스피 · 코스닥) 분봉 수급의 소스는 키움(`data/kiwoom-market-supply`) 한 곳이다. 한투 시장수급 서비스(`data/market-supply`)는 `collectSpot: false`로 선물(주간 한투 · 야간 LS)만 모으고, 한투 현물(FHPTJ04030000 KSP·KSQ, FHPPG04600101)은 부르지 않는다. 오라클의 `market-supply/KOSPI0·KOSDAQ` 파일은 `dev/oracle-remove-duplicate-data.cjs --set kis-spot-market-supply`로 지운다.
+
 2026-10-25: 트레이딩 마지막에 별도 [시장 수급(LS) 비교 카드](LS_MARKET_SUPPLY.md)를 추가했다. 기존 카드는 유지한다. 두 카드는 같은 렌더러를 사용하며 새 카드의 분봉 수집만 LS 원천이다. 키 갱신 후 인증·여섯 구독 ACK는 성공했고 장중 실제 원천 검증은 대기 중이다.
 
 최종 갱신: 2026-10-24, 한국 시간. 메인 Rank 카드이며 독립창의 기존 구성은 유지한다. 화면의 공통 조작·기간 정책은 [Rank 공통 차트 정책](RANK_CHART_POLICY.md), 종목별 원천과 수량 단위는 [종목 수급](SUPPLY_CHART.md)을 함께 참고한다.

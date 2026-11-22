@@ -15,7 +15,7 @@ function program(row) {
     return arbitrage == null || nonArbitrage == null ? null : arbitrage + nonArbitrage;
 }
 function createMarketSupplyService({ directory, http, credentials, getToken, reference, supply, now = Date.now,
-    minuteProvider, dailyProvider, futuresDaytimeOnly = false,
+    minuteProvider, dailyProvider, futuresDaytimeOnly = false, collectSpot = true,
     pause = ms => new Promise(resolve => setTimeout(resolve, ms)), log = console.warn }) {
     const store = createSupplyStore({ directory, now }), statuses = new Map();
     const { createHistoryCache, createDailyQueryCache } = require('./daily-query-cache');
@@ -108,7 +108,8 @@ function createMarketSupplyService({ directory, http, credentials, getToken, ref
                     if(clock<'08:00'||clock>'15:46')continue;
                 }
                 if (config.priceMarket && !supply.futuresAllowed()) continue;
-                if (!config.priceMarket && !spotAllowed) continue;
+                // 현물(코스피 · 코스닥) 분봉 수급의 소스는 키움(kiwoom-market-supply) 한 곳이다(2026-11-22). 한투 서비스는 collectSpot: false로 선물만 모은다.
+                if (!config.priceMarket && (!collectSpot || !spotAllowed)) continue;
                 const state = { checked_at: now(), investor_ok: false, program_ok: false, error: '' };
                 try {
                     const rows = await get('FHPTJ04030000', 'inquire-investor-time-by-market', { FID_INPUT_ISCD: config.market, FID_INPUT_ISCD_2: config.industry });

@@ -28,13 +28,13 @@ function futuresObservationAt(t, confirmedDay) {
     return ![0, 6].includes(session.getUTCDay()) && session.toISOString().slice(0,10) === confirmedDay;
 }
 
-function createSupplyService({ directory, http, getToken, resolveStock, now = Date.now,
+// minuteStore: kiwoom-minute-store(지난날 1분봉 저장 파일, 쏠림율과 함께 씀). 없으면 예전처럼 매번 키움에서 받는다.
+function createSupplyService({ directory, http, getToken, resolveStock, now = Date.now, minuteStore = null,
     pause = ms => new Promise(resolve => setTimeout(resolve, ms)), log = console.warn }) {
     const store = createSupplyStore({ directory, now });
-    const statuses = new Map(), verifiedDay = new Map();
     const { createHistoryCache, createDailyQueryCache } = require('./daily-query-cache');
     const cache = createDailyQueryCache({ now }), historyCache = createHistoryCache({ now });
-    let queue = Promise.resolve(), running = null, timer;
+    let queue = Promise.resolve();
     let market = store.marketDay(), lastMarketAttempt = null, marketRequest = null;
     function marketConfirmed() { return market?.day === dayKey(now()); }
     async function checkMarket() {
@@ -82,8 +82,7 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
     }
     function summary() {
         const config = store.config();
-        return { success: true, ...config, collecting: collectingAt(now()) && marketConfirmed(), market_confirmed: marketConfirmed(),
-            statuses: Object.fromEntries(config.stocks.map(stock => [stock.code, statuses.get(stock.code) || null])) };
+        return { success: true, ...config, market_confirmed: marketConfirmed() };
     }
     async function configure(codes, revision) {
         if (!Array.isArray(codes) || codes.length > 5 || codes.some(code => typeof code !== 'string' || !validCode(code))
@@ -92,75 +91,11 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
         for (const code of codes) stocks.push(await resolveStock(code));
         store.configure(stocks, revision);
         cache.clear();
-        // Schedule independently: a closed browser does not stop collection.
-        void collect().catch(error => log(`[Supply] ${error.message}`));
         return summary();
     }
-    function active(stock) {
-        return store.config().stocks.some(item => item.code === stock.code && item.added_at === stock.added_at);
-    }
-    function latestPoint(code, date, field) {
-        return store.points(code, date).findLast(point => Number.isSafeInteger(point[field]));
-    }
-    function latestInvestorPoint(code, date) {
-        return store.points(code, date).findLast(point => ['individual', 'foreign', 'institution'].some(field => Number.isSafeInteger(point[field])));
-    }
-    function collect() {
-        if (running) return running;
-        if (!collectingAt(now())) return Promise.resolve();
-        running = (async () => {
-            const stocks = store.config().stocks;
-            if (!stocks.length || !await confirmMarket() || !collectingAt(now())) return;
-            for (const stock of stocks) {
-                if (!active(stock)) continue;
-                const startDay = dayKey(now()), date = startDay.replaceAll('-', ''), errors = [];
-                const state = { ...statuses.get(stock.code), checked_at: now(), investor_ok: false, program_ok: false };
-                if (investorObservationAt(now())) {
-                    try {
-                        const response = await post('ka10060', { dt: date, stk_cd: `${stock.code}_AL`, amt_qty_tp: '2', trde_tp: '0', unit_tp: '1' });
-                        const rows = response.data.stk_invsr_orgn_chart;
-                        if (!Array.isArray(rows)) throw new Error('투자자 수급 응답 형식 오류');
-                        const row = rows.find(row => row.dt === date), observed = now();
-                        if (!row) throw new Error('당일 투자자 수급 미제공');
-                        const point = { t: observed, individual: quantity(row.ind_invsr), foreign: quantity(row.frgnr_invsr), institution: quantity(row.orgn) };
-                        if (dayKey(observed) === startDay && active(stock)) {
-                            verifiedDay.set(stock.code, startDay);
-                            const previous = latestInvestorPoint(stock.code, startDay);
-                            const changed = !previous || ['individual', 'foreign', 'institution'].some(field => point[field] !== previous[field]);
-                            if (['individual', 'foreign', 'institution'].some(field => point[field] != null) && (!previous || observed < timestamp(date, '153100') || changed)) {
-                                store.merge(stock.code, point); state.investor_at = observed;
-                            } else state.investor_at = previous.t;
-                            if (['individual', 'foreign', 'institution'].some(field => point[field] == null)) throw new Error('일부 투자자 수급 미제공');
-                            state.investor_ok = true;
-                        }
-                    } catch (error) { errors.push(error.message); }
-                } else {
-                    const previous = latestInvestorPoint(stock.code, startDay);
-                    state.investor_at = previous?.t;
-                    state.investor_ok = !!previous;
-                    if (!previous) errors.push('개인·외국인·기관 장마감 관측값 없음');
-                }
-                try {
-                    // ka90008 has only HHmmss. Require a verified investor date while polling is active.
-                    if (verifiedDay.get(stock.code) !== startDay && !(marketConfirmed() && !investorObservationAt(now()))) throw new Error('당일 거래일 미확인 · 프로그램 수집 대기');
-                    const response = await post('ka90008', { stk_cd: `${stock.code}_AL`, amt_qty_tp: '2', date });
-                    const rows = response.data.stk_tm_prm_trde_trnsn;
-                    if (!Array.isArray(rows)) throw new Error('프로그램 수급 응답 형식 오류');
-                    const observed = now();
-                    const latest = rows.map(row => ({ row, t: timestamp(date, String(row.tm || '')) }))
-                        .filter(item => Number.isFinite(item.t) && item.t <= observed && quantity(item.row.prm_netprps_qty) != null)
-                        .sort((a, b) => b.t - a.t)[0];
-                    if (!latest) throw new Error('당일 프로그램 수급 미제공');
-                    if (dayKey(observed) === startDay && active(stock)) {
-                        store.merge(stock.code, { t: observed, program: quantity(latest.row.prm_netprps_qty), program_at: latest.t });
-                        state.program_at = latest.t; state.program_ok = true;
-                    }
-                } catch (error) { errors.push(error.message); }
-                if (active(stock)) statuses.set(stock.code, { ...state, checked_at: now(), error: errors.join(' · ') });
-            }
-        })().finally(() => { running = null; });
-        return running;
-    }
+    // 종목 분봉 수급은 한투 자료(data/kis-supply, broker-stock-supply.js) 한 곳에만 둔다(2026-11-22, 소스는 한 곳).
+    // 예전 키움 1분 수집(ka10060 · ka90008 → data/supply/<종목>)은 화면에서 쓰지 않아 없앴다. 이 서비스는
+    // 종목수급 등록 목록 · 장 열린 날 확인 · 일봉 수급 · 가격 캔들만 맡는다.
     async function history(api, body, field, from, to, onPage = () => {}) {
         const rows = new Map(); let next = '', partial = false, error = '';
         for (let page = 0; page < 80; page++) {
@@ -190,7 +125,8 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
     async function daily(code, cursor, onProgress = () => {}) {
         const date = cursor || dayKey(now()).replaceAll('-', '');
         // Match concentration's initial stock page instead of choosing a calendar range.
-        const anchor = await post('ka10081', { stk_cd: `${code}_AL`, upd_stkpc_tp: '0', base_dt: date });
+        // 일봉 가격은 수정주가(upd_stkpc_tp 1)로 받는다(2026-11-21 사용자 결정). 액면분할 · 병합 전 봉도 지금 가격 기준으로 이어진다.
+        const anchor = await post('ka10081', { stk_cd: `${code}_AL`, upd_stkpc_tp: '1', base_dt: date });
         const bars = anchor.data.stk_dt_pole_chart_qry;
         if (!Array.isArray(bars)) throw new Error('일봉 기준 데이터 응답 형식 오류');
         const byDate = new Map(bars.filter(row => /^\d{8}$/.test(String(row.dt)) && row.dt <= date).map(row => [row.dt, row]));
@@ -234,17 +170,7 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
             throw failure('잘못된 수급 조회 조건입니다.');
         const config = store.config();
         if (!config.archive.some(stock => stock.code === code)) throw failure('등록 또는 보관된 종목을 선택하세요.', 404);
-        if (mode === 'minute') {
-            const dates = store.dates(code);
-            const date = input.date || (cursor ? dates.filter(day => day.replaceAll('-', '') <= cursor).at(-1) : dates.at(-1))
-                || (cursor ? `${cursor.slice(0,4)}-${cursor.slice(4,6)}-${cursor.slice(6,8)}` : dayKey(now()));
-            const index = dates.indexOf(date), hasMore = index > 0;
-            return { success: true, mode, date, available_dates: dates, points: store.points(code, date),
-                has_more: hasMore, cursor: hasMore ? dates[index - 1].replaceAll('-', '') : null,
-                status: statuses.get(code) || null, collecting: collectingAt(now()),
-                investor_api: 'ka10060', individual_supported: true,
-                warnings: ['1분마다 관측한 당일 누적 순매수수량 · 수집 이전/누락 구간은 제공되지 않습니다.'] };
-        }
+        if (mode === 'minute') throw failure('종목 분봉 수급은 한투 자료(/api/kis-supply/chart)에서 봅니다.');
         return cache.read(`${code}:${cursor}`, { ttl: cursor ? 6*3600000 : 60000, progressive: input.progressive === '1',
             load: onProgress => daily(code,cursor,onProgress) });
     }
@@ -263,10 +189,27 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
         let from = mode === 'day' ? input.from || (initialCount ? '19000101' : start.toISOString().slice(0, 10).replaceAll('-', '')) : to;
         if (from > to) throw failure('잘못된 캔들 조회 기간입니다.');
         const points = new Map(); let next = '', partial = false, previousDay = null;
+        const toPoint = (row, day, key) => {
+            const t = timestamp(day, mode === 'day' ? '000000' : key.slice(8));
+            const point = { t, open: Math.abs(quantity(row.open_pric) ?? NaN), high: Math.abs(quantity(row.high_pric) ?? NaN),
+                low: Math.abs(quantity(row.low_pric) ?? NaN), close: Math.abs(quantity(row.cur_prc) ?? NaN) };
+            if (Number.isFinite(t) && [point.open, point.high, point.low, point.close].every(value => Number.isFinite(value) && value > 0)) points.set(t, point);
+        };
+        // 지난날 1분봉은 쏠림율과 같은 저장 파일(kiwoom-minute-store)을 먼저 본다(2026-11-21). 한 (종목, 날짜)는 파일 하나.
+        const today = dayKey(now()).replaceAll('-', '');
+        const stored = mode === 'minute' && input.date && to < today && minuteStore ? minuteStore.read(`${code}_AL`, to) : null;
+        if (stored) {
+            for (const row of stored.rows) toPoint(row, to, String(row.cntr_tm));
+            return { success: true, points: [...points.values()].sort((a, b) => a.t - b.t), partial: false,
+                has_more: Boolean(stored.prev), cursor: stored.prev, date: `${to.slice(0,4)}-${to.slice(4,6)}-${to.slice(6,8)}` };
+        }
+        const dayRows = []; let more = false;
         for (let page = 0; page < 80; page++) {
             const response = await post(mode === 'day' ? 'ka10081' : 'ka10080', {
                 // 분봉도 날짜를 주면 base_dt로 그날 끝부터 받는다(2026-11-21). 예전에는 오늘부터 그날까지 거슬러 와서, 먼 날일수록 쪽이 늘었다.
-                stk_cd: `${code}_AL`, upd_stkpc_tp: '0', ...(mode === 'day' ? { base_dt: to } : { tic_scope: '1', ...(input.date ? { base_dt: to } : {}) })
+                // 일봉은 수정주가(1), 분봉은 실제 체결값(0, 2026-11-21). 키움 분봉은 1을 줘도 수정하지 않는 것을 확인했고
+                // (아스트 067390 2026-08-28 병합: 일봉만 ×10), 쏠림율과 같은 요청이어야 저장 파일 하나를 함께 쓴다.
+                stk_cd: `${code}_AL`, upd_stkpc_tp: mode === 'day' ? '1' : '0', ...(mode === 'day' ? { base_dt: to } : { tic_scope: '1', ...(input.date ? { base_dt: to } : {}) })
             }, next);
             const rows = response.data[mode === 'day' ? 'stk_dt_pole_chart_qry' : 'stk_min_pole_chart_qry'];
             if (!Array.isArray(rows)) throw new Error('캔들 응답 형식 오류');
@@ -280,31 +223,26 @@ function createSupplyService({ directory, http, getToken, resolveStock, now = Da
                 if (!/^\d{8}(\d{6})?$/.test(key)) continue;
                 if (day < from) { reached = true; if (!previousDay || day > previousDay) previousDay = day; }
                 if (day < from || day > to) continue;
-                const t = timestamp(day, mode === 'day' ? '000000' : key.slice(8));
-                const point = { t, open: Math.abs(quantity(row.open_pric) ?? NaN), high: Math.abs(quantity(row.high_pric) ?? NaN),
-                    low: Math.abs(quantity(row.low_pric) ?? NaN), close: Math.abs(quantity(row.cur_prc) ?? NaN) };
-                if (Number.isFinite(t) && [point.open, point.high, point.low, point.close].every(value => Number.isFinite(value) && value > 0)) points.set(t, point);
+                if (mode === 'minute') dayRows.push(row);
+                toPoint(row, day, key);
             }
+            more = response.headers?.['cont-yn'] === 'Y';
             if (reached || initialCount && points.size >= initialCount || response.headers?.['cont-yn'] !== 'Y') break;
             const key = String(response.headers?.['next-key'] || '');
             if (!key || key === next) throw new Error('캔들 연속조회 키 오류');
             next = key; if (page === 79) partial = true;
+        }
+        // 끝난 날을 다 받았으면(더 이전 날 행이 왔거나 연속조회 끝) 저장한다. 수급 캔들은 등록 · 보관 종목만 조회하므로 모두 저장 대상이다.
+        if (mode === 'minute' && input.date && minuteStore && to < today && dayRows.length && (previousDay || !more)) {
+            const unique = [...new Map(dayRows.map(row => [String(row.cntr_tm), row])).values()];
+            try { minuteStore.save(`${code}_AL`, to, unique, previousDay); } catch (error) { log(`[KiwoomMinute] ${code} ${to} 저장 안 함: ${error.message}`); }
         }
         const ordered = [...points.values()].sort((a, b) => a.t - b.t);
         return { success: true, points: initialCount ? ordered.slice(-initialCount) : ordered, partial,
             has_more: Boolean(previousDay), cursor: previousDay,
             date: `${to.slice(0,4)}-${to.slice(4,6)}-${to.slice(6,8)}` };
     }
-    function start() {
-        if (timer) return;
-        const run = () => {
-            try { store.archiveCompleted(); } catch (error) { log(`[Supply archive] ${error.message}`); }
-            void collect().catch(error => log(`[Supply] ${error.message}`));
-        };
-        run(); timer = setInterval(run, 60000); timer.unref?.();
-    }
-    function stop() { clearInterval(timer); timer = null; }
-    return { summary, configure, query, candles, collect, start, stop, store, confirmMarket,
+    return { summary, configure, query, candles, store, confirmMarket,
         futuresAllowed: () => futuresObservationAt(now(), market?.day) };
 }
 module.exports = { createSupplyService, quantity, timestamp, collectingAt, investorObservationAt, futuresObservationAt };

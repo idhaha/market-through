@@ -77,3 +77,44 @@ test('non-data files and unreadable folders are ignored', async t => {
     f.file('breadth/markets/daily.json.123.tmp', 'partial');
     assert.deepEqual(service.check(), first);
 });
+
+test('수정주가로 바꾼 경로(종목수급 · 쏠림율)는 저장 자료가 그대로여도 브라우저 저장 응답을 한 번 버리게 한다', t => {
+    const { ROUTES, BASIS } = require('../../chart-revisions');
+    const crypto = require('node:crypto');
+    const output = path.resolve(__dirname, '../output'); fs.mkdirSync(output, { recursive: true });
+    const root = fs.mkdtempSync(path.join(output, 'revisions-basis-'));
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const directory = path.join(root, 'data', 'chart-revisions');
+    const service = createChartRevisions({ dataDirectory: path.join(root, 'data'), directory, routes: ROUTES, now: () => Date.parse('2026-11-23T01:00:00Z'), minInterval: 0 });
+    const revisions = service.check(), id = JSON.parse(fs.readFileSync(path.join(directory, 'state.json'), 'utf8')).id;
+    const old = list => crypto.createHash('sha256').update(id + '|' + list.map(f => `${f}:0`).join('|')).digest('hex').slice(0, 16);
+    assert.ok(Object.hasOwn(revisions, '/api/concentration-chart'));
+    assert.equal(BASIS['/api/supply/chart'], 'adjusted-20261121');
+    // 예전 계산식(기준 없음)과 달라야 브라우저가 수정 전 가격 응답을 버린다.
+    assert.notEqual(revisions['/api/supply/chart'], old(ROUTES['/api/supply/chart']));
+    // 기준이 없는 경로는 예전과 같은 값이라 불필요하게 버리지 않는다.
+    assert.equal(revisions['/api/kis-supply/chart'], old(ROUTES['/api/kis-supply/chart']));
+});
+
+test('추가만 되는 kiwoom-minute: 처음 본 옛날 파일이 저장돼도 버전이 그대로이고, 파일이 고쳐지거나 지워질 때만 오른다', t => {
+    const output = path.resolve(__dirname, '../output'); fs.mkdirSync(output, { recursive: true });
+    const root = fs.mkdtempSync(path.join(output, 'revisions-append-'));
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    const data = path.join(root, 'data'), file = (rel, v) => { const full = path.join(data, rel); fs.mkdirSync(path.dirname(full), { recursive: true }); fs.writeFileSync(full, v); };
+    const service = createChartRevisions({ dataDirectory: data, directory: path.join(data, 'chart-revisions'),
+        routes: { '/api/concentration-chart': ['kiwoom-minute'], '/api/kis-supply/chart': ['kis-supply'] }, now: () => Date.parse('2026-11-23T01:00:00Z'), minInterval: 0 });
+    file('kiwoom-minute/005930_AL/2026-11-20.json.gz', 'a'); file('kis-supply/005930/2026-11-20.json.gz', 'a');
+    const first = service.check();
+    // 옛날 날을 처음 봐서 저장: kiwoom-minute는 그대로, 보통 폴더(백필)는 오른다.
+    file('kiwoom-minute/005930_AL/2026-11-10.json.gz', 'b'); file('kiwoom-minute/001/2026-11-10.json.gz', 'c'); file('kis-supply/005930/2026-11-10.json.gz', 'b');
+    const second = service.check();
+    assert.equal(second['/api/concentration-chart'], first['/api/concentration-chart']);
+    assert.notEqual(second['/api/kis-supply/chart'], first['/api/kis-supply/chart']);
+    // 저장된 파일이 고쳐지면 오른다.
+    file('kiwoom-minute/005930_AL/2026-11-10.json.gz', 'changed');
+    const third = service.check();
+    assert.notEqual(third['/api/concentration-chart'], second['/api/concentration-chart']);
+    // 지워져도 오른다.
+    fs.rmSync(path.join(data, 'kiwoom-minute/001/2026-11-10.json.gz'));
+    assert.notEqual(service.check()['/api/concentration-chart'], third['/api/concentration-chart']);
+});

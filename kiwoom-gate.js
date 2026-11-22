@@ -66,7 +66,7 @@ function createKiwoomGate({ key, perApi = 4, total = 12, cooldownMs = 1000, now 
 
 // 앱키별 관문 모음 + axios 가로채기.
 function createKiwoomGates({ options = {}, log = () => {}, now = Date.now } = {}) {
-    const gates = new Map(), tokens = new Map();
+    const gates = new Map(), tokens = new Map(), rejectedListeners = [];
     const gate = key => { if (!gates.has(key)) gates.set(key, createKiwoomGate({ key, now, ...options })); return gates.get(key); };
     gate('main');
     const keyOf = authorization => tokens.get(String(authorization || '').replace(/^Bearer\s+/i, '').trim()) || 'main';
@@ -78,20 +78,24 @@ function createKiwoomGates({ options = {}, log = () => {}, now = Date.now } = {}
     const isKiwoom = url => /^https:\/\/(api|mockapi)\.kiwoom\.com\//i.test(String(url || ''));
     // 키움 한도 오류 코드: 본문 return_msg의 [1700:…] 또는 return_code.
     const limitCode = data => { const m = /\[(17\d\d)\s*:/.exec(String(data?.return_msg || '')); return m ? m[1] : ''; };
+    // 토큰 거부 "[8005:Token이 유효하지 않습니다]"(2026-11-22 오라클: 만료 직전 여러 요청이 동시에 새 토큰을 받아 앞선 토큰이 무효가 됐는데
+    // 무효 토큰을 계속 써서 키움 화면이 모두 실패했다). 거부된 토큰을 알려 그 앱키 토큰을 버리고 다시 받게 한다.
+    const tokenRejected = data => /\[8005\s*:/.test(String(data?.return_msg || ''));
     function install(axios) {
         if (axios.kiwoomGateInstalled) return api;
         axios.kiwoomGateInstalled = true;
         axios.interceptors.request.use(async config => {
             const url = config.baseURL && !/^https?:/i.test(config.url || '') ? config.baseURL + config.url : config.url;
             if (!isKiwoom(url) || /\/oauth2\//i.test(url)) return config;
-            const apiId = header(config.headers, 'api-id'), key = keyOf(header(config.headers, 'authorization'));
+            const authorization = header(config.headers, 'authorization'), apiId = header(config.headers, 'api-id'), key = keyOf(authorization);
             await gate(key).acquire(apiId);
-            config.kiwoomGate = { key, api: apiId };
+            config.kiwoomGate = { key, api: apiId, token: authorization.replace(/^Bearer\s+/i, '').trim() };
             return config;
         });
         const check = (config, status, data) => {
             const g = config?.kiwoomGate; if (!g) return;
             if (gate(g.key).report(g.api, { status, code: limitCode(data) })) log(`[키움 관문] ${g.key} 앱키 ${g.api} 한도 초과(${status}${limitCode(data) ? ' ' + limitCode(data) : ''}) · 그 칸을 잠깐 쉼`);
+            if (tokenRejected(data)) for (const listener of rejectedListeners) { try { listener(g.key, g.token); } catch {} }
         };
         axios.interceptors.response.use(response => { check(response.config, response.status, response.data); return response; },
             error => { check(error.config, error.response?.status, error.response?.data); return Promise.reject(error); });
@@ -101,6 +105,8 @@ function createKiwoomGates({ options = {}, log = () => {}, now = Date.now } = {}
         install, gate, keyOf,
         // 앱키의 토큰을 알려 준다(토큰으로 어느 앱키 관문인지 안다).
         register(key, token) { if (token) tokens.set(String(token), key); gate(key); },
+        // 키움이 토큰을 거부(8005)하면 listener(앱키 이름, 거부된 토큰)를 부른다.
+        onTokenRejected(listener) { rejectedListeners.push(listener); },
         stats: () => [...gates.values()].map(g => g.stats())
     };
     return api;

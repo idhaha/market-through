@@ -6,6 +6,8 @@ const express = require('express');
 const axios = require('axios');
 // 키움 호출 관문(2026-11-21): 앱키마다 하나. 키움 REST(axios 기본 인스턴스)는 모두 자기 앱키 관문을 지난다. kiwoom-gate.js 참고.
 const kiwoomGates = require('./kiwoom-gate').createKiwoomGates({ log: message => fileLog(message) }).install(axios);
+// 키움이 기본 앱키 토큰을 거부하면(8005) 그 토큰을 버리고 다음 호출에서 한 번 새로 받는다(2026-11-22).
+kiwoomGates.onTokenRejected((key, token) => { if (key === 'main') rejectMainKiwoomToken(token); });
 setInterval(() => {
     for (const g of kiwoomGates.stats()) if (g.waited || g.limited) fileLog(`[키움 관문] ${g.key} 앱키 · 보냄 ${g.sent} · 기다림 ${g.waited}(평균 ${Math.round(g.waitMs / Math.max(1, g.waited))}ms) · 한도 초과 ${g.limited} · ` + Object.entries(g.byApi).filter(([, v]) => v.waited || v.limited).map(([id, v]) => `${id} 기다림 ${v.waited} 초과 ${v.limited}`).join(', '));
 }, 10 * 60000).unref();
@@ -247,7 +249,8 @@ createRankIndependentRelay({
             const config = supplyService.summary();
             const selected = config.archive.some(stock => stock.code === state.selected) ? state.selected : config.stocks[0]?.code || '';
             if (!selected) return { ...state, config, selected, points: [], candles: [] };
-            const result = await (peer && state.mode === 'minute' ? kisStockSupplyService : supplyService).query({ code: selected, mode: state.mode });
+            // 분봉 수급은 한투 자료 한 곳에서만 읽는다(2026-11-22).
+            const result = await (state.mode === 'minute' ? kisStockSupplyService : supplyService).query({ code: selected, mode: state.mode });
             const prices = state.mode === 'day' ? { points: result.candles || [] } : await supplyService.candles({ code: selected, mode: state.mode });
             return { ...state, config, selected, points: result.points, candles: prices.points, cursor: result.cursor, hasMore: result.has_more,
                 priceCursor: prices.cursor, minuteDays: prices.date ? [prices.date] : [], priceHistory: prices.date ? [[prices.date, prices.cursor || null]] : [], chartMessage: result.warnings?.join(' · ') || '', connection: { ok: !result.warnings?.some(text => /실패|오류/.test(text)), at: Date.now() } };
@@ -270,15 +273,19 @@ createRankIndependentRelay({
         throw new Error('지원하지 않는 요청입니다.');
     }
 }).mount(app);
-const concentrationChartService = createConcentrationChartService({ axios: indexHttp, getAccessToken, marketCache });
+// 지난날 키움 1분봉 저장 파일(2026-11-21, docs/CHART_DATA_STORAGE.md). 쏠림율 · 한투/LS 비교 기준 · 종목수급 캔들이 한 벌을 함께 쓴다.
+// 종목은 종목수급 등록 · 보관 종목만 저장하고, 업종 지수(001/101)는 늘 저장한다.
+const kiwoomMinuteStore = require('./kiwoom-minute-store').createKiwoomMinuteStore({ directory: path.join(__dirname, 'data', 'kiwoom-minute') });
+const minuteStoreOptions = { minuteStore: kiwoomMinuteStore, keepStock: code => { try { return supplyService.store.config().archive.some(stock => stock.code === code); } catch { return false; } } };
+const concentrationChartService = createConcentrationChartService({ axios: indexHttp, getAccessToken, marketCache, ...minuteStoreOptions });
 const kisConcentrationChartService = require('./kis-concentration-chart').createKisConcentrationChartService({
-    reference: createConcentrationChartService({ axios: indexHttp, getAccessToken, marketCache }), http: kisHttp,
+    reference: createConcentrationChartService({ axios: indexHttp, getAccessToken, marketCache, ...minuteStoreOptions }), http: kisHttp,
     directory: path.join(__dirname, 'data', 'kis-concentration'),
     credentials: () => ({ domain: (process.env.EFRIEND_DOMAIN || '').trim(), appKey: (process.env.EFRIEND_APPKEY || '').trim(), secretKey: (process.env.EFRIEND_SECRETKEY || '').trim() }),
     getToken: () => getEfriendAccessToken((process.env.EFRIEND_DOMAIN || '').trim(), (process.env.EFRIEND_APPKEY || '').trim(), (process.env.EFRIEND_SECRETKEY || '').trim())
 });
 const supplyService = createSupplyService({
-    directory: path.join(__dirname, 'data', 'supply'), http: axios,
+    directory: path.join(__dirname, 'data', 'supply'), http: axios, minuteStore: kiwoomMinuteStore,
     getToken: () => getAccessToken(process.env.KIWOOM_APPKEY, process.env.KIWOOM_SECRETKEY),
     resolveStock: code => concentrationChartService.resolveStock(code)
 });
@@ -314,7 +321,7 @@ app.get('/api/turnover/chart', async (req, res) => {
 });
 const chartReferenceService = require('./chart-reference-service').createChartReferenceService({ store: indexCandleStore });
 const marketSupplyService = require('./market-supply-service').createMarketSupplyService({
-    futuresDaytimeOnly: true,
+    futuresDaytimeOnly: true, collectSpot: false, // 현물 분봉 수급은 키움 한 곳(2026-11-22)
     directory: path.join(__dirname, 'data', 'market-supply'), http: kisHttp,
     credentials: () => ({ domain: (process.env.EFRIEND_DOMAIN || '').trim(), appKey: (process.env.EFRIEND_APPKEY || '').trim(), secretKey: (process.env.EFRIEND_SECRETKEY || '').trim() }),
     getToken: () => getEfriendAccessToken((process.env.EFRIEND_DOMAIN || '').trim(), (process.env.EFRIEND_APPKEY || '').trim(), (process.env.EFRIEND_SECRETKEY || '').trim()),
@@ -372,7 +379,7 @@ const viMonitorService = require('./vi-monitor-service').createViMonitor({
     directory: path.join(__dirname, 'data', 'vi-monitor'), getToken: () => lsMarketSupplyProvider.accessToken(), http: axios,
     enabled: viRealtime, historyDays: viHistoryDays(),
     kiwoomToken: () => getAccessToken((process.env.KIWOOM_APPKEY || '').trim(), (process.env.KIWOOM_SECRETKEY || '').trim()),
-    rejectKiwoomToken: () => { cachedToken = null; },
+    rejectKiwoomToken: () => rejectMainKiwoomToken(),
     quoteFeed: viQuoteFeed, log: fileLog,
     // NXT 행 매수 10호가 평균: 한투 NX 호가 조회(kis-nxt-book.js), NXT 발동 행이 켜져 있는 동안만 5초마다.
     nxtBook: require('./kis-nxt-book').createKisNxtBook({
@@ -417,7 +424,7 @@ viWindowAccess.mount(app, viMonitorService);
 const shortStopLoss = require('./short-stoploss-service').createShortStopLoss({
     directory: path.join(__dirname, 'data', 'short-stoploss'), http: axios,
     getToken: () => getAccessToken((process.env.KIWOOM_APPKEY || '').trim(), (process.env.KIWOOM_SECRETKEY || '').trim()),
-    rejectToken: () => { cachedToken = null; },
+    rejectToken: () => rejectMainKiwoomToken(),
     enabled: () => /^(on|true|1)$/i.test(String(process.env.SHORT_STOPLOSS || '').trim()),
     openDate: date => tradingSession.openDate(date), log: fileLog,
     // 키움 웹소켓은 앱키당 하나(2026-11-20 확인): VI 모니터의 연결에 0B · 00 · 04를 함께 등록한다. VI가 꺼진 서버는 조회만 쓴다.
@@ -434,6 +441,7 @@ for (const suffix of ['28']) {
     const appKey = (process.env['KIWOOM_APPKEY_' + suffix] || '').trim(), secretKey = (process.env['KIWOOM_SECRETKEY_' + suffix] || '').trim();
     if (!appKey || !secretKey) continue;
     const token = require('./kiwoom-key-token').createKiwoomKeyToken({ appKey, secretKey, file: path.join(__dirname, 'data', 'kiwoom-token', `token-${suffix}.json`), http: axios, log: fileLog, onToken: t => kiwoomGates.register(suffix, t) });
+    kiwoomGates.onTokenRejected((key, rejected) => { if (key === suffix) token.reject(rejected); });
     const realtime = require('./kiwoom-realtime').createKiwoomRealtime({ getToken: token.get, rejectToken: token.reject, active: shortStopLossOn, log: fileLog, label: `대주 StopLoss ${suffix} 계좌 실시간` });
     realtime.start();
     shortStopLossAccounts.push({ id: suffix, svc: require('./short-stoploss-service').createShortStopLoss({
@@ -508,7 +516,7 @@ const lsTurnoverData = createBrokerTurnoverData({ broker: 'ls', directory: path.
 const { createBrokerComparisonService } = require('./broker-comparison-service');
 const kisComparisonService = createBrokerComparisonService({ broker:'kis', data:kisTurnoverData, turnoverReference:turnoverService });
 const lsComparisonService = createBrokerComparisonService({ broker:'ls', data:lsTurnoverData, turnoverReference:turnoverService,
-    concentrationReference:createConcentrationChartService({ axios:indexHttp, getAccessToken, marketCache }) });
+    concentrationReference:createConcentrationChartService({ axios:indexHttp, getAccessToken, marketCache, ...minuteStoreOptions }) });
 for (const [broker,service] of [['kis',kisComparisonService],['ls',lsComparisonService]]) {
     app.get(`/api/${broker}-turnover/chart`, async (req,res) => {
         try { res.set('Cache-Control','no-store').json(await service.turnover(req.query)); }
@@ -838,8 +846,7 @@ app.get('/api/stock', async (req, res) => {
         // 토큰 에러 발생 시 캐시 초기화
         if (includeRanking && (totalResp.data.return_code === 3 || (totalResp.data.return_msg && totalResp.data.return_msg.includes("Token이 유효하지 않습니다")))) {
             console.warn("⚠️ 토큰 만료/유효하지 않음 감지. 캐시를 초기화합니다.");
-            cachedToken = null;
-            tokenExpiryTime = 0;
+            rejectMainKiwoomToken();
         }
 
         // 3. (삭제됨) 코스닥 상위 리스트 확보 로직 제거
@@ -1036,8 +1043,7 @@ async function transactionRankHandler(req, res) {
         // 토큰 에러 발생 시 캐시 초기화
         if (response.data.return_code === 3 || (response.data.return_msg && response.data.return_msg.includes("Token이 유효하지 않습니다"))) {
             console.warn("⚠️ 토큰 만료/유효하지 않음 감지. 캐시를 초기화합니다.");
-            cachedToken = null;
-            tokenExpiryTime = 0;
+            rejectMainKiwoomToken();
         }
 
         // 필터링 후 20개가 모일 때까지 순위 순서대로 후보를 확인한다.
@@ -1176,8 +1182,7 @@ app.get('/api/watchlist_groups', async (req, res) => {
 
         if (response.data.return_code === 3 || (response.data.return_msg && response.data.return_msg.includes("Token이 유효하지 않습니다"))) {
             console.warn("⚠️ 토큰 만료/유효하지 않음 감지. 캐시를 초기화합니다.");
-            cachedToken = null;
-            tokenExpiryTime = 0;
+            rejectMainKiwoomToken();
         }
 
         if (response.data.return_code !== 0 && response.data.return_code !== undefined) {
@@ -1272,8 +1277,7 @@ app.get('/api/watchlist_rank', async (req, res) => {
 
         if (response.data.return_code === 3 || (response.data.return_msg && response.data.return_msg.includes("Token이 유효하지 않습니다"))) {
             console.warn("⚠️ 토큰 만료/유효하지 않음 감지. 캐시를 초기화합니다.");
-            cachedToken = null;
-            tokenExpiryTime = 0;
+            rejectMainKiwoomToken();
         }
 
         if (response.data.return_code !== 0 && response.data.return_code !== undefined) {
@@ -3028,74 +3032,24 @@ app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// 토큰 캐싱을 위한 전역 변수
-let cachedToken = null;
-let tokenExpiryTime = 0;
-// The Kiwoom token is kept on disk: a restart reuses it, and local scripts (dev/breadth-backfill.cjs) share it
-// instead of issuing their own. It is read once at startup, so a token rejected later is never read back.
-const kiwoomTokenFile = path.join(__dirname, 'data', 'kiwoom-token', 'token.json');
-let kiwoomTokenFileRead = false;
+// 기본 앱키 키움 토큰(2026-11-22부터 kiwoom-key-token.js 하나로 관리).
+//  - 파일(data/kiwoom-token/token.json)에 남겨 재시작 때 다시 받지 않고, 로컬 스크립트(dev/breadth-backfill.cjs 등)도 같은 파일을 읽는다.
+//  - 새 토큰은 한 번에 하나만 받는다. 2026-11-22 오라클에서 만료 5분 전에 여러 요청이 동시에 7개를 받았고, 키움은 마지막 것만
+//    유효하게 두어 서버가 쥔 토큰이 8005(Token이 유효하지 않습니다)로 거부돼 키움 화면(순위 표 · 쏠림율 · 종목 캔들)이 모두 실패했다.
+//  - 키움이 토큰을 거부(8005)하면 키움 관문이 알려 주고(onTokenRejected) 그 토큰만 버린 뒤 다음 호출에서 새로 받는다.
+// 함수 선언(호이스팅)과 함수 속성에 두어, 모듈을 읽는 도중 불려도 초기화 순서 문제가 없다.
+function mainKiwoomToken() {
+    return mainKiwoomToken.instance ||= require('./kiwoom-key-token').createKiwoomKeyToken({
+        appKey: (process.env.KIWOOM_APPKEY || '').trim(), secretKey: (process.env.KIWOOM_SECRETKEY || '').trim(),
+        file: path.join(__dirname, 'data', 'kiwoom-token', 'token.json'), http: axios, log: fileLog });
+}
+function rejectMainKiwoomToken(token) { mainKiwoomToken().reject(token); }
 
 /**
- * Access Token 발급 함수 (캐싱 포함)
+ * Access Token 발급 함수 (캐싱 포함). 기본 앱키(KIWOOM_APPKEY)만 쓴다.
  */
-async function getAccessToken(appKey, secretKey) {
-    // 1. 캐시된 토큰이 있고, 만료시간이 5분 이상 남았으면 캐시 반환
-    if (cachedToken && Date.now() < (tokenExpiryTime - 300000)) {
-        return cachedToken;
-    }
-    if (!kiwoomTokenFileRead) {
-        kiwoomTokenFileRead = true;
-        try {
-            const saved = JSON.parse(fs.readFileSync(kiwoomTokenFile, 'utf8'));
-            if (typeof saved.token === 'string' && saved.token && saved.expires > Date.now() + 300000) {
-                cachedToken = saved.token; tokenExpiryTime = saved.expires; return cachedToken;
-            }
-        } catch {}
-    }
-
-    fileLog("새로운 Access Token 발급 시도...");
-    const response = await axios.post(
-        "https://api.kiwoom.com/oauth2/token",
-        {
-            appkey: appKey,
-            secretkey: secretKey,
-            grant_type: "client_credentials",
-        },
-        {
-            headers: {
-                "Content-Type": "application/json",
-                "User-Agent": "Mozilla/5.0"
-            },
-            timeout: 5000
-        }
-    );
-
-    if (response.data.return_code !== undefined && response.data.return_code !== 0) {
-        const errMsg = response.data.return_msg || `키움 인증 실패 (코드: ${response.data.return_code})`;
-        fileLog(`❌ 키움 토큰 발급 실패: ${errMsg}`);
-        throw new Error(errMsg);
-    }
-
-    const token = response.data.token || response.data.access_token;
-    if (!token) {
-        throw new Error(`토큰 필드가 없습니다. 응답: ${JSON.stringify(response.data)}`);
-    }
-
-    console.log(`DEBUG: New token issued. Length: ${token.length}, First 10 chars: ${token.substring(0, 10)}...`);
-
-    // 2. 토큰 및 만료 시간 캐싱 (기본 만료시간이 없을 경우 24시간으로 설정)
-    const expiresIn = response.data.expires_in || 86400; // 초 단위
-    cachedToken = token;
-    tokenExpiryTime = Date.now() + (expiresIn * 1000);
-    try {
-        fs.mkdirSync(path.dirname(kiwoomTokenFile), { recursive: true });
-        fs.writeFileSync(kiwoomTokenFile + '.tmp', JSON.stringify({ token, expires: tokenExpiryTime, issuedAt: Date.now() }), { mode: 0o600 });
-        fs.renameSync(kiwoomTokenFile + '.tmp', kiwoomTokenFile);
-    } catch {}
-
-    fileLog(`토큰 발급 완료 (만료: ${new Date(tokenExpiryTime).toLocaleString()})`);
-    return token;
+async function getAccessToken() {
+    return mainKiwoomToken().get();
 }
 
 // eFriend 토큰 캐싱을 위한 전역 변수
@@ -3192,23 +3146,15 @@ app.listen(PORT, async () => {
     if (collects) {
     if (alertsRealtime()) marketAlertService.start();
     if (viRealtime()) { viMonitorService.start(); lsFuturesEvents.start(); }
-    // Alternative sources that no card shows are not collected since 2026-11-07: Kiwoom stock minute (ka10060·ka90008),
-    // LS stock (t1717·t1637), LS market minute (t1602·t1662) and KIS index minute (FHKUP03500200). Their chart
-    // queries still answer (day charts query on demand). ALT_SUPPLY_COLLECTION=on collects them again.
-    // KIS index turnover (H0UPCNT0) is one of them: without kisTurnoverData.start() it is not subscribed, while the
-    // same KIS websocket keeps H0UNPGM0 for the stock supply card.
-    const altCollection = (process.env.ALT_SUPPLY_COLLECTION || '').trim() === 'on';
-    if (altCollection) supplyService.start();
+    // 소스는 한 곳(2026-11-22): 화면이 읽지 않는 비교 수집(키움 종목 분봉 ka10060·ka90008, LS 종목 t1717·t1637 → ls-supply,
+    // LS 시장 분봉 → ls-market-supply/raw, 한투 거래대금 H0UPCNT0 → kis-turnover, 한투 업종 분봉 → kis-concentration)은 없앴다.
+    // ALT_SUPPLY_COLLECTION 스위치도 없앴다. lsStockSupplyService는 LS 거래대금(ls-turnover)의 전송로로만 쓰고 수집은 시작하지 않는다.
     kisStockSupplyService.start();
-    if (altCollection) lsStockSupplyService.start();
-    if (altCollection) kisTurnoverData.start();
     lsTurnoverData.start();
     marketSupplyService.start();
     lsFuturesTestService.start();
     kiwoomMarketSupplyService.start();
     lsStockFuturesService.start();
-    if (altCollection) lsMarketSupplyService.start();
-    if (altCollection) kisConcentrationChartService.start();
     breadthService.start();
     backgroundRefreshService.start();
     concentrationChartService.startStockDirectorySchedule();

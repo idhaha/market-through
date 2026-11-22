@@ -56,11 +56,11 @@ test('persisted futures baseline ignores repeats and missing fields, retaining p
     setTime(timestamp(day,'220300')); await service.collect();
     assert.equal(service.store.points('FUTURE','2026-10-23').length,2);
 });
-function fixture(t, handler, confirmed = true, at = '101500', referenceRows) {
+function fixture(t, handler, confirmed = true, at = '101500', referenceRows, options = {}) {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(),'market-supply-'));
     t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
     const calls=[], references=[];let currentTime=timestamp(day,at);
-    const service=createMarketSupplyService({directory, now:()=>currentTime, pause:async()=>{},
+    const service=createMarketSupplyService({...options, directory, now:()=>currentTime, pause:async()=>{},
         credentials:()=>({domain:'https://kis.test',appKey:'test',secretKey:'test'}),getToken:async()=>'test',
         supply:{confirmMarket:async()=>confirmed,futuresAllowed:()=>confirmed},
         reference:{query:async input=>{references.push(input);return {points:referenceRows || [{t:timestamp(day,input.mode==='minute'?'101400':'090000'),open:100,high:110,low:90,close:105}],has_more:false};}},
@@ -178,4 +178,14 @@ test('successful empty program history is cached and not traversed again on each
  setTime(timestamp(day,'101510'));await service.query({code:'kospi'});assert.equal(calls.length,n,'Empty successful old ranges are cached');
  setTime(timestamp(day,'101610'));await service.query({code:'kospi'});
  const later=calls.slice(n).filter(c=>c.headers.tr_id==='FHPPG04600001');assert.ok(later.length>0);assert.ok(later.every(c=>c.params.FID_INPUT_DATE_1>=dates.at(-2)),'Only mutable recent window is revisited');
+});
+
+test('현물 분봉 수급 소스는 키움 한 곳: collectSpot false인 한투 서비스는 선물만 모으고 현물 투자자 · 프로그램은 부르지 않는다(2026-11-22)',async t=>{
+    const {service,calls}=fixture(t,async()=>[{frgn_ntby_tr_pbmn:'5',prsn_ntby_tr_pbmn:'-3',orgn_ntby_tr_pbmn:'-2'}],true,'101500',undefined,{futuresDaytimeOnly:true,collectSpot:false});
+    await service.collect();
+    const markets=calls.filter(c=>c.headers.tr_id==='FHPTJ04030000').map(c=>c.params.FID_INPUT_ISCD).sort();
+    assert.deepEqual(markets,['K2I','KQI']);
+    assert.ok(!calls.some(c=>c.headers.tr_id==='FHPPG04600101'),'현물 프로그램도 부르지 않는다');
+    assert.equal((await service.query({code:'kospi',mode:'minute',prices:'0'})).points.length,0);
+    assert.ok((await service.query({code:'futures',mode:'minute',prices:'0'})).points.length>0);
 });
