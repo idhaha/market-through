@@ -3,8 +3,8 @@
     const series = ['program', 'foreign', 'institution', 'individual'];
     const names = { individual: '개인', foreign: '외국인', institution: '기관', program: '프로그램' };
     const colors = { individual: '#339af0', foreign: '#e11d48', institution: '#16a34a', program: '#8b5cf6' };
-    const dayKey = t => new Date(t + 9 * 3600000).toISOString().slice(0, 10);
-    const clock = t => new Date(t + 9 * 3600000).toISOString().slice(11, 16);
+    const dayKey = t => window.RankChartAxis?.kstDay ? window.RankChartAxis.kstDay(t) : new Date(t + 9 * 3600000).toISOString().slice(0, 10);
+    const clock = t => window.RankChartAxis?.kstMinute ? window.RankChartAxis.kstMinute(t).slice(11, 16) : new Date(t + 9 * 3600000).toISOString().slice(11, 16);
     const formatAmount = (n, signed = true) => Number.isFinite(n) ? `${signed && n > 0 ? '+' : ''}${n.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}` : '미제공';
     function mergeFlow(previous, incoming) {
         const points = new Map(previous.map(point => [point.t, point]));
@@ -160,15 +160,21 @@
         // The window must not depend on the selected market: spot shows 08:00-20:00 while futures also
         // show the preceding night, so the full view matches trading days (night 18:00+ belongs to the
         // next open day) and a zoomed view uses the shared time axis.
+        // 18시 이후(야간)는 다음 개장일. 날마다 한 번만 계산한다(2026-11-22, 그릴 때마다 봉마다 Date를 만들어 느렸다).
+        const nextOpenCache = new Map();
         function tradingDay(t) {
-            const clock = new Date(t + 9 * 3600000);
-            let day = clock.toISOString().slice(0, 10);
-            if (clock.getUTCHours() < 18) return day;
+            let day = dayKey(t);
+            if (Math.floor(((t + 32400000) % 86400000) / 3600000) < 18) return day;
             const calendar = window.TradingRefresh?.state?.days || {};
+            const cached = nextOpenCache.get(day);
+            if (cached && cached.calendar === calendar) return cached.day;
+            const from = day;
             for (let i = 0; i < 10; i++) {
                 day = new Date(Date.parse(day + 'T00:00:00Z') + 86400000).toISOString().slice(0, 10);
                 if (![0, 6].includes(new Date(day + 'T00:00:00Z').getUTCDay()) && calendar[day] !== false) break;
             }
+            if (nextOpenCache.size > 2000) nextOpenCache.clear();
+            nextOpenCache.set(from, { calendar, day });
             return day;
         }
         function peerRows(rows, zoomed = false) {

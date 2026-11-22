@@ -1,6 +1,14 @@
 (() => {
+    // 한국 시각 날짜 · 분 문자열(2026-11-22): 카드가 그릴 때마다 봉마다 new Date().toISOString()을 불러, 과거 구간(1만 5천 봉 × 카드 8개)에서
+    // 브라우저가 30초 넘게 멈췄다(오라클 측정: 3번 경우 화면 처리 95%). 날 문자열은 날마다 한 번만 만들고 시 · 분은 계산으로 붙인다.
+    const kstDayCache=new Map(),PAD=Array.from({length:60},(_,i)=>String(i).padStart(2,'0'));
+    function kstDay(t){const day=Math.floor((t+32400000)/86400000);let s=kstDayCache.get(day);if(s===undefined){s=new Date(day*86400000).toISOString().slice(0,10);if(kstDayCache.size>20000)kstDayCache.clear();kstDayCache.set(day,s);}return s;}
+    function kstMinute(t){const ms=t+32400000,minute=Math.floor((ms-Math.floor(ms/86400000)*86400000)/60000);return kstDay(t)+' '+PAD[Math.floor(minute/60)]+':'+PAD[minute%60];}
+    const kstEpochDay=new Map();
+    // 'YYYY-MM-DD HH:MM'(한국 시각) → 분 단위 시각. 날짜 부분은 한 번만 계산한다.
+    function kstEpochMinutes(s){const day=s.slice(0,10);let base=kstEpochDay.get(day);if(base===undefined){base=Date.parse(day+'T00:00:00+09:00')/60000;if(kstEpochDay.size>20000)kstEpochDay.clear();kstEpochDay.set(day,base);}return base+(Number(s.slice(11,13))||0)*60+(Number(s.slice(14,16))||0);}
     function dateParts(value) {
-        if (typeof value === 'number') return new Date(value + 9 * 3600000).toISOString().slice(0,16).replace('T',' ');
+        if (typeof value === 'number') return Number.isFinite(value) ? kstMinute(value) : new Date(value + 9 * 3600000).toISOString().slice(0,16).replace('T',' ');
         const raw=String(value);
         return /^\d{8}/.test(raw) ? `${raw.slice(0,4)}-${raw.slice(4,6)}-${raw.slice(6,8)} ${raw.slice(8,10)||'00'}:${raw.slice(10,12)||'00'}` : raw;
     }
@@ -94,9 +102,17 @@
             }
         });
     }
+    // 모든 카드 다시 그리기는 0.2초에 한 번까지(2026-11-22). 과거 구간에서 쪽이 들어올 때마다 카드 8개를 다시 그려
+    // 30초에 251번(카드 그리기 2,800번) 그렸고 브라우저가 내내 멈춰 있었다. 처음 한 번은 바로, 이어지는 요청은 모아서 그린다.
+    // 사용자가 방금 조작했으면(확대 · 끌기 · 슬라이더 · 휠 · 단추) 기다리지 않고 바로 그린다. 묶는 것은 자료가 들어와 다시 그릴 때뿐이다.
+    let lastNotify=0,lastInput=0;
+    if(typeof window.addEventListener==='function')for(const type of ['pointerdown','pointermove','pointerup','wheel','keydown','input','click'])window.addEventListener(type,()=>{lastInput=Date.now();},{capture:true,passive:true});
     function notifyCharts() {
         if(redrawQueued)return;redrawQueued=true;
-        queueMicrotask(()=>{redrawQueued=false;for(const chart of minuteCharts.values())chart.draw();catchUpVisibleHistory();});
+        const run=()=>{redrawQueued=false;lastNotify=Date.now();for(const chart of minuteCharts.values())chart.draw();catchUpVisibleHistory();};
+        const wait=200-(Date.now()-lastNotify);
+        // 브라우저 밖(단위 시험의 vm)에는 타이머가 없으니 예전처럼 바로 그린다.
+        if(wait<=0 || Date.now()-lastInput<1000 || typeof document==='undefined' || typeof setTimeout!=='function')queueMicrotask(run);else setTimeout(run,wait);
     }
     const visibleHistoryAttempts=new Map(),visibleHistoryRunning=new Set();
     let visibleHistoryQueued=false;
@@ -506,7 +522,7 @@
             const last=clampWindow(viewport?.last || active.map(c=>c.last).filter(v=>v && v>=first).sort().at(-1) || first);
             const calendar=window.TradingRefresh?.state?.days || {};
             const open=date=>![0,6].includes(new Date(date+'T00:00:00Z').getUTCDay()) && calendar[date]!==false;
-            const epoch=s=>Date.parse(s.replace(' ','T')+':00+09:00')/60000;
+            const epoch=kstEpochMinutes;
             const bounds=[first,last,...active.flatMap(c=>[c.first,c.last]),...dates].filter(Boolean).sort();
             const from=bounds[0].slice(0,10),to=bounds.at(-1).slice(0,10);
             void window.TradingRefresh?.ensureCalendar?.(from,to);
@@ -877,5 +893,5 @@
         }
         return result;
     }
-    window.RankChartAxis={dayBoundaryPositions,showWindow,minuteWindow,dailyWindow,openPositions,drawDayBoundaries,concentrationCumulative,loadingBar,intradayGap,restoreHistoryRange,marketChoice,validCandle,candleLabel,selectViewport,plotBounds,registerHover,synchronizeHover,matchesHover,updateSlider,scrollViewport,synchronizeViewport,refreshOrder,refreshCharts,registerHistoryLoader,requestHistory,showHistory,showToday,sessionDay,sharedRange,dailyDomain,minuteDomain,ticks,todayRange,limitToday,sessionRange,limitSessions,sessionX,eightTick,sessionStartLabel,candleLayout,todayButton};
+    window.RankChartAxis={kstDay,kstMinute,dayBoundaryPositions,showWindow,minuteWindow,dailyWindow,openPositions,drawDayBoundaries,concentrationCumulative,loadingBar,intradayGap,restoreHistoryRange,marketChoice,validCandle,candleLabel,selectViewport,plotBounds,registerHover,synchronizeHover,matchesHover,updateSlider,scrollViewport,synchronizeViewport,refreshOrder,refreshCharts,registerHistoryLoader,requestHistory,showHistory,showToday,sessionDay,sharedRange,dailyDomain,minuteDomain,ticks,todayRange,limitToday,sessionRange,limitSessions,sessionX,eightTick,sessionStartLabel,candleLayout,todayButton};
 })();

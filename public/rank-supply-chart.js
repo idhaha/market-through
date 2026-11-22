@@ -3,7 +3,7 @@
     const series = ['individual', 'foreign', 'institution', 'program'];
     const names = { individual: '개인', foreign: '외국인', institution: '기관', program: '프로그램' };
     const colors = { individual: '#339af0', foreign: '#e11d48', institution: '#16a34a', program: '#8b5cf6' };
-    const dayKey = t => new Date(t + 9 * 3600000).toISOString().slice(0, 10);
+    const dayKey = t => window.RankChartAxis?.kstDay ? window.RankChartAxis.kstDay(t) : new Date(t + 9 * 3600000).toISOString().slice(0, 10);
     const clock = t => new Date(t + 9 * 3600000).toISOString().slice(11, 16);
     const afterInvestorClose = t => {
         const clock = new Date(t + 9 * 3600000);

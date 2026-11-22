@@ -235,7 +235,7 @@
             draw();void refreshBreadth().then(()=>{if(breadthMarket===market)return window.RankChartAxis.restoreHistoryRange('breadth',restoreRange);});
         }
         let candlePointerY = null, breadthPricePending='',breadthPriceSchedule=false,breadthPriceError='',candleEnsureActive=false;
-        const dateKey = t => new Date(t + 9 * 3600000).toISOString().slice(0, 10);
+        const dateKey = t => window.RankChartAxis?.kstDay ? window.RankChartAxis.kstDay(t) : new Date(t + 9 * 3600000).toISOString().slice(0, 10);
         function surface(target, context) {
             const w = target.clientWidth, h = target.clientHeight, dpr = window.devicePixelRatio || 1;
             target.width = Math.round(w * dpr); target.height = Math.round(h * dpr);

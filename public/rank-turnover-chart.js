@@ -54,7 +54,7 @@
             }catch(error){if(error.name!=='AbortError' && current===priceController)candle.title=error.message;}
             finally{if(current===priceController){pricePending='';priceBusy=false;draw();}}
         }
-        const dateKey = t => new Date(t + 9 * 3600000).toISOString().slice(0,10);
+        const dateKey = t => window.RankChartAxis?.kstDay ? window.RankChartAxis.kstDay(t) : new Date(t + 9 * 3600000).toISOString().slice(0,10);
         function fiveDayAverage(market, day) {
             const days = dailyTurnover[market].filter(p => dateKey(p.t) < day && Number.isFinite(p.market_turnover) && p.market_turnover > 0).slice(-5);
             return days.length === 5 ? days.reduce((sum, p) => sum + p.market_turnover, 0) / 5 : null;
