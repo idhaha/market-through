@@ -190,7 +190,17 @@
             context.setTransform(dpr, 0, 0, dpr, 0, 0); context.clearRect(0, 0, w, h);
             context.font = '12px Inter, sans-serif'; return { w, h };
         }
+        // 조회 중 그리기(2026-11-22): 응답 처리 · 캔들 합치기 중의 그리기는 다음 화면 프레임에 한 번으로 묶는다.
+        // 같은 과거 구간을 다시 열면 저장된 캔들과 수급 저장 전 날 건너뛰기로 하루씩 거슬러 가는 조회가 서버를 거치지 않고
+        // 한 작업 안에서 이어져, 매번 바로 그리던 것이 오라클에서 1~2초 화면을 멈추게 했다.
+        let drawPending = null;
+        function requestDraw() {
+            if (drawPending) return;
+            const run = () => { drawPending = null; draw(); };
+            drawPending = typeof requestAnimationFrame === 'function' && !document.hidden ? { frame: requestAnimationFrame(run) } : { timer: setTimeout(run, 16) };
+        }
         function draw() {
+            if (drawPending) { if (drawPending.frame) cancelAnimationFrame(drawPending.frame); else clearTimeout(drawPending.timer); drawPending = null; }
             if (mode === 'day' && selected && showCandles && !candleLoading) {
                 const range=dailyCandleRange(),key=`${selected}:${range.from || '600bars'}:${range.to}`;
                 if ((!dailyCandleCoverage || dailyCandleCoverage.from>range.from || dailyCandleCoverage.to<range.to) && dailyCandleAttempt!==key) {
@@ -418,8 +428,8 @@
             if(candleLoading && !target)return;
             candleController?.abort(); const current = candleController = new AbortController(), id = ++candleRevision;
             candleMessage = ''; candleError='';
-            if (!selected || !showCandles && mode === 'day') { draw(); return; }
-            candleLoading = true; candleMessage = '캔들 조회 중…'; setStatus(); draw();
+            if (!selected || !showCandles && mode === 'day') { requestDraw(); return; }
+            candleLoading = true; candleMessage = '캔들 조회 중…'; setStatus(); requestDraw();
             try {
                 const requestedDays=new Set(minuteDays);
                 if(target && mode==='minute'){const domain=window.RankChartAxis.minuteDomain();for(const day of domain.days || [])if(day>=target.slice(0,10))requestedDays.add(day);requestedDays.add(target.slice(0,10));}
@@ -452,7 +462,7 @@
                 candleMessage = partial ? '캔들 일부 과거 구간만 제공' : candles.length ? '' : '가격 캔들 없음';
             } catch (error) { if (error.name !== 'AbortError' && id === candleRevision) { candleError=error.message; candleMessage = '캔들 조회 실패'; } }
             if (id === candleRevision) {
-                candleLoading = false; setStatus(); draw(); publish();
+                candleLoading = false; setStatus(); requestDraw(); publish();
                 if (refreshPending && !refreshing && !loading && !drag) { refreshPending = false; void window[api('refreshRankSupplyChart')](); }
             }
         }
@@ -477,7 +487,7 @@
 
             if (!selected) { loading = false; clearView(); chartMessage = futures ? '종목 수급 카드의 + 종목 추가에서 최대 5종목을 지정하세요.' : '+ 종목 추가에서 최대 5종목을 지정하세요.'; setStatus(); return; }
             if(append){window.RankChartAxis.showHistory();todayOnly=false;}
-            loading = true; flowLoading=true; chartMessage = append ? '과거 수급 조회 중…' : '수급 조회 중…'; setStatus(); draw();
+            loading = true; flowLoading=true; chartMessage = append ? '과거 수급 조회 중…' : '수급 조회 중…'; setStatus(); requestDraw();
             try {
                 let firstResponse=true;
                 if(showCandles || mode==='minute')void loadCandles();
@@ -486,7 +496,10 @@
                 // 수급 저장이 시작되기 전 날(available_dates의 첫 날보다 이른 날)은 서버에 묻지 않고 빈 날로 넘긴다(2026-11-22).
                 // 과거 구간(7~8월)에서 한투 종목수급 · 종목 선물 수급이 자료 없는 날을 하루씩 1~3초씩 22번 묻고 있었다.
                 const askedDay = append && mode === 'minute' && /^\d{8}$/.test(String(nextCursor || '')) ? `${nextCursor.slice(0,4)}-${nextCursor.slice(4,6)}-${nextCursor.slice(6,8)}` : '';
-                const result = askedDay && flowDates?.length && askedDay < flowDates[0]
+                // 건너뛴 날도 한 번은 다른 일(그리기 · 다른 카드)에 차례를 넘긴다. 그렇지 않으면 이어지는 날들이 한 작업 안에서 끝까지 돈다.
+                const skipped = askedDay && flowDates?.length && askedDay < flowDates[0];
+                if (skipped) { await new Promise(resolve => setTimeout(resolve, 0)); if (id !== revision) return; }
+                const result = skipped
                     ? { success: true, mode: 'minute', date: askedDay, points: [], available_dates: flowDates, has_more: false, cursor: null, warnings: [] }
                     : await request(`${(combined || window.rankIndependentClient) && mode === 'minute' ? '/api/kis-supply/chart' : endpoint}?${params}`, { signal: current.signal });
                 if (mode === 'minute' && Array.isArray(result.available_dates) && result.available_dates.length) flowDates = [...result.available_dates].sort();
@@ -535,8 +548,8 @@
                 chartMessage = `${hasFlow ? message : '수급 기록 없음'}${warnings.length ? ` · ${warnings.join(' · ')}` : ''}${result.status?.error && mode === 'minute' ? ` · ${result.status.error}` : ''}`;
                 if(result.pending)chartMessage=hasFlow?`${chartMessage} · 추가 조회 중…`:'가격 수신 · 수급 조회 중…';
                 window.setRankCardConnection?.(panel, !result.status?.error && !result.warnings?.some(text => /실패|오류/.test(text)));
-                hover = null; info.hidden = true; setStatus(); draw();
-                flowLoading=!!result.pending;draw();
+                hover = null; info.hidden = true; setStatus(); requestDraw();
+                flowLoading=!!result.pending;
                 if (showCandles || mode === 'minute') void loadCandles();
                 publish();
                 firstResponse=false;
@@ -553,7 +566,7 @@
             }
             finally {
                 if (id === revision) {
-                    loading = false; flowLoading=false; draw(); publish();
+                    loading = false; flowLoading=false; requestDraw(); publish();
                     if (refreshPending && !refreshing && !drag) { refreshPending = false; void window[api('refreshRankSupplyChart')](); }
                 }
             }
