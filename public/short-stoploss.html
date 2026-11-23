@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>대주 StopLoss</title>
-<link rel="stylesheet" href="short-stoploss.css?v=20261123_plcolor">
-<script src="short-stoploss.js?v=20261123_plcolor" defer></script>
+<link rel="stylesheet" href="short-stoploss.css?v=20261124_cols">
+<script src="short-stoploss.js?v=20261124_cols" defer></script>
 </head>
 <body>
 <header class="ss-top">
@@ -37,16 +37,15 @@
       <div class="card-hd">
         <div class="row">
           <h2>대주 잔고</h2>
-          <label for="acct" class="muted">계좌</label>
-          <select id="acct" class="inp"><option>확인 중</option></select>
+          <select id="acct" class="inp" aria-label="계좌"><option>확인 중</option></select>
           <span class="tip"><button type="button" class="i" aria-label="대주 잔고 설명">i</button><span class="tipbox" role="tooltip">키움 kt00018(개별)의 대주 행을 대출일별로 보여 줍니다. 평가손익(대주)은 가격이 내리면 이익(빨강), 오르면 손실(파랑)입니다. 날짜는 연도를 두 자리로 줄여 보여 주고, 마우스를 올리면 전체 날짜가 보입니다. 대출일은 대주매도 결제일(매도일 + 2영업일), 만기일은 ka10085 값입니다. 창이 열려 있으면 30초마다 다시 조회하고, 행이 많으면 이 칸 안에서만 스크롤됩니다. 행을 누르면 오른쪽 설정란이 채워집니다.</span></span>
         </div>
         <div class="row"><span id="lotsAt" class="muted small"></span><button type="button" id="refreshBtn" class="btn">새로고침</button></div>
       </div>
       <div class="tbl-wrap">
         <table class="tbl" id="lotsTable">
-          <colgroup><col data-base="72" style="width: 72px"><col data-base="150" data-flex style="width: 150px"><col data-base="48" style="width: 48px"><col data-base="70" style="width: 70px"><col data-base="70" data-flex style="width: 70px"><col data-base="64" data-flex style="width: 64px"><col data-base="120" data-flex style="width: 120px"><col data-base="72" style="width: 72px"></colgroup>
-          <thead><tr><th>대출일</th><th>종목</th><th class="r">보유</th><th class="r">가능수량</th><th class="r">매도단가</th><th class="r">현재가</th><th class="r">평가손익(대주)</th><th>만기일</th></tr></thead>
+          <colgroup><col data-base="150" data-flex style="width: 150px"><col data-base="60" style="width: 60px"><col data-base="70" style="width: 70px"><col data-base="76" data-flex style="width: 76px"><col data-base="64" data-flex style="width: 64px"><col data-base="120" data-flex style="width: 120px"><col data-base="72" style="width: 72px"><col data-base="72" style="width: 72px"></colgroup>
+          <thead><tr><th>종목</th><th class="r">보유수량</th><th class="r">가능수량</th><th class="r">공매도단가</th><th class="r">현재가</th><th class="r">평가손익(대주)</th><th>대출일</th><th>만기일</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -63,8 +62,8 @@
       </div>
       <div class="tbl-wrap">
         <table class="tbl" id="watchTable">
-          <colgroup><col data-base="42" style="width: 42px"><col data-base="76" style="width: 76px"><col data-base="126" data-flex style="width: 126px"><col data-base="72" style="width: 72px"><col data-base="100" style="width: 100px"><col data-base="56" data-flex style="width: 56px"><col data-base="90" data-flex style="width: 90px"><col data-base="80" style="width: 80px"><col data-base="106" data-flex style="width: 106px"><col data-base="52" style="width: 52px"></colgroup>
-          <thead><tr><th>감시</th><th>상태</th><th>종목</th><th>대출일</th><th class="r">수량</th><th class="r">감시가</th><th>주문 방식</th><th>유효기간</th><th title="최근 판정 · 결과">판정 · 결과</th><th>조작</th></tr></thead>
+          <colgroup><col data-base="34" style="width: 34px"><col data-base="62" style="width: 62px"><col data-base="140" data-flex style="width: 140px"><col data-base="76" style="width: 76px"><col data-base="54" data-flex style="width: 54px"><col data-base="80" data-flex style="width: 80px"><col data-base="82" data-flex style="width: 82px"><col data-base="68" style="width: 68px"><col data-base="76" style="width: 76px"><col data-base="48" style="width: 48px"></colgroup>
+          <thead><tr><th>감시</th><th>상태</th><th>종목</th><th class="r th2" title="청산 전에는 감시수량, 청산 뒤에는 청산수량 (보유수량 대비 %)">감시 · 청산수량</th><th class="r">감시가</th><th>주문 방식</th><th title="최근 판정 · 결과">판정 · 결과</th><th>대출일</th><th>유효기간</th><th>조작</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -85,7 +84,7 @@
 
       <div class="sec">
         <div class="row">
-          <span>현재가</span><span class="ge">≥</span>
+          <span>현재가</span><span class="ge">≧</span>
           <label for="trigger">감시가</label>
           <input id="trigger" class="inp num" inputmode="numeric" autocomplete="off" style="width: 96px">
           <span class="stepper"><button type="button" id="trigUp" class="step-btn" aria-label="감시가 한 호가 올리기" title="한 호가 올리기(키보드 ↑)"><svg aria-hidden="true" width="9" height="6" viewBox="0 0 9 6"><path d="M4.5 0.5L8.5 5.5H0.5Z" fill="currentColor"></path></svg></button><button type="button" id="trigDown" class="step-btn" aria-label="감시가 한 호가 내리기" title="한 호가 내리기(키보드 ↓)"><svg aria-hidden="true" width="9" height="6" viewBox="0 0 9 6"><path d="M4.5 5.5L8.5 0.5H0.5Z" fill="currentColor"></path></svg></button></span>
@@ -116,15 +115,16 @@
       </div>
 
       <div class="sec">
-        <div class="row">
-          <span style="width: 40px">수량</span>
-          <label class="row"><input type="radio" name="qtyMode" value="pct" checked>가능수량의</label>
+        <div class="row oneline">
+          <span style="width: 34px">수량</span>
+          <label class="row"><input type="radio" name="qtyMode" value="pct" checked><span id="qtyBase">가능수량의</span></label>
           <select id="qtyPct" class="inp" aria-label="비율"></select>
+          <span id="qtyCalc" class="small accent"></span>
           <label class="row"><input type="radio" name="qtyMode" value="shares">주</label>
-          <input id="qtyShares" class="inp num" inputmode="numeric" aria-label="주 수" style="width: 60px" disabled>
-          <span id="qtyNote" class="small warn" hidden></span>
-          <span class="tip"><button type="button" class="i" aria-label="수량 설명">i</button><span class="tipbox" role="tooltip">고른 대출일 묶음의 가능수량 대비 % 또는 주 수입니다. 주 수는 보유수량보다 많이 넣을 수 없습니다. 주문 직전에 잔고를 다시 조회해 가능수량을 확인합니다.</span></span>
+          <input id="qtyShares" class="inp num" inputmode="numeric" aria-label="주 수" style="width: 52px" disabled>
+          <span class="tip"><button type="button" class="i" aria-label="수량 설명">i</button><span class="tipbox" role="tooltip">고른 대출일 묶음의 가능수량 대비 % 또는 주 수입니다. 같은 대출일 묶음에 감시 건을 여러 개 둘 수 있고, 가능수량은 다른 감시 건(감시중 · 중지)에 이미 할당한 수량을 뺀 남은 수량입니다. 예: 10주 중 60%(6주)를 등록했으면 다음 건의 100%는 4주입니다. %는 등록할 때 주 수로 정해지고, 발동하면 그 주 수(그때 가능수량까지)를 상환합니다. 남은 수량보다 많이 넣을 수 없습니다. 주문 직전에 잔고를 다시 조회해 가능수량을 확인합니다.</span></span>
         </div>
+        <div id="qtyNote" class="small warn" role="status" hidden></div>
         <div class="row">
           <label class="row"><input id="allLots" type="checkbox">다른 대출일 묶음도 함께 상환</label>
           <span class="tip"><button type="button" class="i" aria-label="다른 대출일 묶음 설명">i</button><span class="tipbox" role="tooltip">같은 종목의 다른 대출일 묶음도 발동 때 함께 상환합니다. 대출일별로 따로 주문하고, 만기가 가까운 묶음부터 냅니다. 기본은 꺼짐입니다.</span></span>

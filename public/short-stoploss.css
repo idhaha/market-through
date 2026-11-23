@@ -175,3 +175,6 @@ body.form-closed .fold-btn svg{transform:rotate(180deg)}
 .step-btn:disabled{color:#B0B7C3;cursor:default;background:#F3F5F8;border-color:#D3D8E0}
 /* 평가손익(대주): 이익 빨강 · 손실 파랑(2026-11-23 사용자 결정, 국내 관례) */
 .pl-up{color:var(--loss)}.pl-down{color:var(--gain)}
+/* 감시 목록(2026-11-24): 열이 10개라 칸 안쪽 여백을 줄이고, 수량 머리글은 두 줄까지 */
+#watchTable td,#watchTable th{padding-left:5px;padding-right:5px}
+.tbl th.th2{white-space:normal;line-height:1.2}

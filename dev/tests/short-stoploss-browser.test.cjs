@@ -43,7 +43,7 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         await page.waitForSelector('#lotsTable tbody tr.pick');
         assert.equal(await page.locator('#lotsTable tbody tr.pick').count(), 2);
         assert.equal(await page.textContent('#acct'), '3699-5772-11', '계좌 문구에 앱키 등록 없음 · 상품코드까지');
-        assert.ok((await page.$$eval('.acct-tag', t => t.map(x => x.textContent))).every(x => x === '5772'), '계좌가 하나여도 계좌 끝자리 표시(2026-11-23)');
+        assert.ok((await page.$$eval('.acct-tag', t => t.map(x => x.textContent))).every(x => x === '3699-5772'), '계좌가 하나여도 계좌 앞 8자리 표시(2026-11-24)');
         assert.equal(await page.locator('#lotsTable tbody tr').nth(1).locator('.pill.none').count(), 1, '흥아해운 NXT 비대상 표시');
         assert.deepEqual(await page.$$eval('#ticks option', o => [o[0].textContent, o.at(-1).textContent]), ['+10틱', '+1틱']);
         assert.deepEqual(await page.$$eval('#qtyPct option', o => [o[0].textContent, o.at(-1).textContent]), ['100%', '10%']);
@@ -59,11 +59,11 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         await page.locator('#lotsTable tbody tr.pick').first().click();
         assert.equal(await page.inputValue('#until'), '2026-12-18', '기본 1개월(12-20 일요일 → 12-18)');
         // 회귀(2026-11-23): 계좌는 대출일 아래 따로, 빈 감시가의 회색 글자는 "현재 7,000"(입력값처럼 보이지 않게)
-        assert.equal(await page.textContent('#fAcct'), '3699-5772-11');
+        assert.equal(await page.textContent('#fAcct'), '3699-5772', '설정란 계좌도 앞 8자리(2026-11-24)');
         // 회귀(2026-11-23): 평가손익(대주)은 이익 빨강 · 손실 파랑(예전에는 이익이 파랑)
         const plColor = pl => page.evaluate(pl => { const td = document.createElement('td'); td.className = 'r ' + (pl > 0 ? 'pl-up' : 'pl-down'); document.querySelector('#lotsTable tbody tr').append(td); const c = getComputedStyle(td).color; td.remove(); return c; }, pl);
         assert.deepEqual([await plColor(1), await plColor(-1)], ['rgb(179, 38, 30)', 'rgb(21, 87, 176)']);
-        assert.equal(await page.$eval('#lotsTable tbody tr td:nth-child(7)', td => getComputedStyle(td).color), 'rgb(179, 38, 30)', '실제 잔고 행(평가손익 +1)은 빨강');
+        assert.equal(await page.$eval('#lotsTable tbody tr td:nth-child(6)', td => getComputedStyle(td).color), 'rgb(179, 38, 30)', '실제 잔고 행(평가손익 +1)은 빨강');
         assert.equal(await page.getAttribute('#trigger', 'placeholder'), '현재 7,000');
         // 감시가 기본값(청산이라 업틱룰 무관): 현재가 7,000이 들어가 있어 고치지 않고 바로 조건 추가 가능, 직접 고치기 전까지는 현재가를 따라간다
         assert.equal(await page.inputValue('#trigger'), '7,000'); assert.equal(await page.isDisabled('#addBtn'), false); assert.match(await page.textContent('#chaseNote'), /7,700원/);
@@ -90,14 +90,20 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         await page.fill('#trigger', '900'); assert.equal(await page.isDisabled('#addBtn'), true); assert.match(await page.textContent('#chaseNote'), /하한가 1,000보다 낮습니다/);
         await page.fill('#trigger', '28,000'); assert.equal(await page.textContent('#chaseNote'), '30,000원(상한가)', '추격 한도도 상한가를 넘지 않음'); assert.equal(await page.isDisabled('#addBtn'), false);
         // 회귀(2026-11-23): 계좌가 하나뿐이어도 표의 대출일 아래 줄에 계좌 뒤 4자리를 보인다
-        assert.deepEqual((await page.$$eval('#lotsTable .acct-tag', t => t.map(x => [x.textContent, x.parentElement.cellIndex, getComputedStyle(x).display]))).filter((v, i, a) => i === 0 || JSON.stringify(v) !== JSON.stringify(a[0])), [['5772', 0, 'block']]);
+        // 회귀(2026-11-24): 열 순서(잔고: 종목 · 보유수량 · 가능수량 · 공매도단가 · 현재가 · 평가손익(대주) · 대출일 · 만기일), 계좌 표시 단어 없음,
+        // 거래소 표시는 종목명 왼쪽, 계좌 앞 8자리는 종목명 아래 줄 종목 코드 오른쪽
+        assert.deepEqual(await page.$$eval('#lotsTable thead th', t => t.map(x => x.textContent)), ['종목', '보유수량', '가능수량', '공매도단가', '현재가', '평가손익(대주)', '대출일', '만기일']);
+        assert.equal(await page.locator('label[for="acct"]').count(), 0);
+        assert.deepEqual((await page.$$eval('#lotsTable .acct-tag', t => t.map(x => [x.textContent, x.closest('td').cellIndex, x.parentElement.className]))).filter((v, i, a) => i === 0 || JSON.stringify(v) !== JSON.stringify(a[0])), [['3699-5772', 0, 'code']]);
+        assert.equal(await page.$eval('#lotsTable tbody .namecell', n => n.firstElementChild.className), 'ex', '거래소 표시가 종목명 왼쪽');
+        assert.equal(await page.textContent('.ge'), '≧');
         await page.fill('#trigger', '7300');
         assert.match(await page.textContent('#chaseNote'), /8,030/);
-        // 회귀(2026-11-23): 주 수는 보유수량(1주)보다 많이 넣을 수 없다 — 조건 추가가 꺼지고 이유가 보이며, 서버도 거부한다
+        // 회귀(2026-11-24): 주 수는 남은 가능수량(1주)보다 많이 넣을 수 없다 — 조건 추가가 꺼지고 이유가 보이며, 서버도 거부한다
         await page.check('input[name="qtyMode"][value="shares"]'); await page.fill('#qtyShares', '2');
-        assert.equal(await page.isDisabled('#addBtn'), true); assert.equal(await page.textContent('#qtyNote'), '보유수량 1주보다 많습니다'); assert.equal(await page.isVisible('#qtyNote'), true);
+        assert.equal(await page.isDisabled('#addBtn'), true); assert.equal(await page.textContent('#qtyNote'), '남은 가능수량 1주보다 많습니다'); assert.equal(await page.isVisible('#qtyNote'), true);
         const over = await page.evaluate(async () => { const st = await (await fetch('/api/short-stoploss/state')).json(); const r = await fetch('/api/short-stoploss/watches', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lotKey: st.lots[0].key, trigger: 7300, ticks: 10, chasePct: 10, qtyMode: 'shares', qtyValue: 2 }) }); return [r.status, (await r.json()).error]; });
-        assert.deepEqual(over, [400, '보유수량(1주)보다 많이 설정할 수 없습니다']);
+        assert.deepEqual(over, [400, '남은 가능수량(1주)보다 많이 설정할 수 없습니다']);
         await page.fill('#qtyShares', '1'); assert.equal(await page.isDisabled('#addBtn'), false); assert.equal(await page.isVisible('#qtyNote'), false);
         await page.check('input[name="qtyMode"][value="pct"]');
         // 달력: 아이콘을 눌러야 뜨고, 휴장일을 고르면 직전 거래일
@@ -119,13 +125,19 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         await page.waitForSelector('#watchTable tbody .st');
         assert.equal(await page.textContent('#watchTable tbody .st'), '감시중');
         // 회귀(2026-11-23): 수량 칸은 설정(주 · %)과 상관없이 주 수 먼저, %는 괄호. 값은 설정한 그대로(주 설정은 그 주 수, % 설정은 가능수량 × % 내림 · 최소 1주)
-        assert.equal(await page.textContent('#watchTable tbody tr td:nth-child(5)'), '1주 (100%)');
+        assert.deepEqual(await page.$$eval('#watchTable thead th', t => t.map(x => x.textContent)), ['감시', '상태', '종목', '감시 · 청산수량', '감시가', '주문 방식', '판정 · 결과', '대출일', '유효기간', '조작']);
+        assert.equal(await page.textContent('#watchTable tbody tr td:nth-child(4)'), '1주 (100%)');
+        // 회귀(2026-11-24): 같은 묶음을 다시 고르면 남은 가능수량 0(1주 모두 할당) → 조건 추가 꺼짐
+        await page.locator('#lotsTable tbody tr.pick').first().click();
+        assert.equal(await page.textContent('#qtyNote'), '남은 가능수량이 없습니다(다른 감시 건에 모두 할당)'); assert.equal(await page.isDisabled('#addBtn'), true);
+        await page.locator('#watchTable tbody tr.pick').first().click(); assert.equal(await page.isVisible('#qtyNote'), false, '그 감시 건을 고를 때는 자기 수량을 빼지 않음');
         const q = (w, able) => page.evaluate(([w, able]) => { const st = { lotKey: 'x', ...w }; const lots = able == null ? [] : [{ key: 'x', able, qty: Math.max(able, 10) }]; return window.__ssQtyTextWith(st, lots); }, [w, able]);
         assert.deepEqual([await q({ qtyMode: 'pct', qtyValue: 30 }, 10), await q({ qtyMode: 'pct', qtyValue: 10 }, 5), await q({ qtyMode: 'shares', qtyValue: 3 }, 10), await q({ qtyMode: 'shares', qtyValue: 10 }, 10),
             await q({ qtyMode: 'pct', qtyValue: 50 }, null), await q({ qtyMode: 'shares', qtyValue: 4 }, null), await q({ qtyMode: 'pct', qtyValue: 50, orders: [{ qty: 7 }] }, 0), await q({ qtyMode: 'pct', qtyValue: 100 }, 0),
             await q({ qtyMode: 'pct', qtyValue: 100, status: '체결완료', orders: [{ qty: 2, filled: 2 }] }, null), await q({ qtyMode: 'shares', qtyValue: 3, status: '체결완료', orders: [{ qty: 2, filled: 2 }, { qty: 1, filled: 1 }] }, null),
-            await q({ qtyMode: 'shares', qtyValue: 3, status: '체결완료', orders: [{ qty: 3, filled: 3, able: 10 }] }, null), await q({ qtyMode: 'shares', qtyValue: 3, status: '주문접수', orders: [{ qty: 3, filled: 0 }] }, 9)],
-            ['3주 (30%)', '1주 (10%)', '3주 (30%)', '10주 (100%)', '- (50%)', '4주', '7주 (50%)', '0주 (100%)', '2주 (100%)', '3주 (100%)', '3주 (30%)', '3주 (30%)']);
+            await q({ qtyMode: 'shares', qtyValue: 3, status: '체결완료', orders: [{ qty: 3, filled: 3, able: 10 }] }, null), await q({ qtyMode: 'shares', qtyValue: 3, status: '주문접수', orders: [{ qty: 3, filled: 0 }] }, 9),
+            await q({ qtyMode: 'pct', qtyValue: 60, shares: 6, baseQty: 10 }, 10), await q({ qtyMode: 'pct', qtyValue: 100, shares: 4, baseQty: 10 }, 4), await q({ qtyMode: 'pct', qtyValue: 60, shares: 6, baseQty: 10, status: '체결완료', orders: [{ qty: 6, filled: 6, able: 10 }] }, 4)],
+            ['3주 (30%)', '1주 (10%)', '3주 (30%)', '10주 (100%)', '- (50%)', '4주', '7주 (70%)', '0주 (0%)', '2주 (100%)', '3주 (100%)', '3주 (30%)', '3주 (30%)', '6주 (60%)', '4주 (40%)', '6주 (60%)']);
         // 상태 칸 등 말줄임 칸은 마우스를 올리면 전체 문구(title), 종목 코드는 이름 아래 줄
         assert.equal(await page.getAttribute('#watchTable tbody tr td:nth-child(2)', 'title'), '감시중');
         const nm = await page.evaluate(() => { const n = document.querySelector('#watchTable tbody .namecell .name').getBoundingClientRect(), c = document.querySelector('#watchTable tbody .namecell .code').getBoundingClientRect(); return c.top >= n.bottom - 1; });
@@ -184,8 +196,8 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         await page.waitForTimeout(200);
         const wide = await page.evaluate(() => [...document.querySelectorAll('#lotsTable thead th')].map(h => Math.round(h.getBoundingClientRect().width)));
         // 날짜 · 보유 · 가능수량은 기본 폭 그대로, 종목 · 가격 · 평가손익만 기본 폭 비율로 넓어짐(2026-11-20 사용자 요청: 날짜는 딱 맞게)
-        assert.deepEqual([wide[0], wide[2], wide[3], wide[7]], [72, 48, 70, 72], JSON.stringify(wide));
-        assert.ok(Math.abs(wide[1] / wide[6] - 150 / 120) < 0.05, JSON.stringify(wide));
+        assert.deepEqual([wide[1], wide[2], wide[6], wide[7]], [60, 70, 72, 72], JSON.stringify(wide)); // 열 순서 2026-11-24: 종목 · 보유수량 · 가능수량 · 공매도단가 · 현재가 · 평가손익 · 대출일 · 만기일
+        assert.ok(Math.abs(wide[0] / wide[5] - 150 / 120) < 0.05, JSON.stringify(wide));
         await page.setViewportSize({ width: 1200, height: 660 });
         const fit = await page.evaluate(() => { const f = document.querySelector('.ss-form'); return { page: document.documentElement.scrollHeight - innerHeight, form: f.scrollHeight - f.clientHeight, wrapped: f.getBoundingClientRect().top > 100 }; });
         assert.deepEqual(fit, { page: 0, form: 0, wrapped: false }, JSON.stringify(fit));

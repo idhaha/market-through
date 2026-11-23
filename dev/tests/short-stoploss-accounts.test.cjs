@@ -59,10 +59,10 @@ function fakeKiwoom(token, acctNo, pur) {
         // 2) 화면: 계좌 끝자리 표시, 계좌 고르기
         await page.goto(`http://127.0.0.1:${port}/short-stoploss.html`);
         await page.waitForFunction(() => document.querySelectorAll('#lotsTable tbody tr.pick').length === 2);
-        assert.deepEqual(await page.$$eval('#lotsTable .acct-tag', t => t.map(x => x.textContent)), ['5772', '0328']);
-        // 회귀(2026-11-23): 계좌 뒤 4자리는 종목 코드 옆이 아니라 대출일 칸 아래 줄에 보인다
-        assert.deepEqual(await page.$$eval('#lotsTable .acct-tag', t => t.map(x => [x.parentElement.cellIndex, getComputedStyle(x).display, x.getBoundingClientRect().top > x.parentElement.firstChild.parentElement.getBoundingClientRect().top + 8])), [[0, 'block', true], [0, 'block', true]]);
-        assert.equal(await page.locator('#lotsTable .code .acct-tag').count(), 0);
+        assert.deepEqual(await page.$$eval('#lotsTable .acct-tag', t => t.map(x => x.textContent)), ['3699-5772', '5641-0328']);
+        // 회귀(2026-11-24): 계좌 앞 8자리는 종목명 아래 줄 종목 코드 오른쪽에 보인다
+        assert.deepEqual(await page.$$eval('#lotsTable .acct-tag', t => t.map(x => [x.closest('td').cellIndex, x.parentElement.className])), [[0, 'code'], [0, 'code']]);
+        assert.equal(await page.locator('#lotsTable .code .acct-tag').count(), 2);
         // 실시간 연결은 마우스를 올리지 않아도 계좌별로 따로 보인다
         assert.deepEqual(await page.$$eval('#rtStates .ss-pill', p => p.map(x => [x.textContent, x.className])), [['5772 실시간 연결', 'ss-pill on'], ['0328 실시간 연결', 'ss-pill on']]);
         rt28.connected = () => false; await page.waitForFunction(() => document.querySelectorAll('#rtStates .ss-pill')[1]?.textContent === '0328 실시간 끊김');
@@ -71,11 +71,11 @@ function fakeKiwoom(token, acctNo, pur) {
         assert.deepEqual(await page.$$eval('#acct option', o => o.map(x => x.textContent)), ['전체 계좌', '3699-5772-11', '5641-0328-10']);
         await page.selectOption('#acct', '28');
         await page.waitForFunction(() => document.querySelectorAll('#lotsTable tbody tr.pick').length === 1);
-        assert.equal(await page.textContent('#lotsTable .acct-tag'), '0328');
+        assert.equal(await page.textContent('#lotsTable .acct-tag'), '5641-0328');
         // 28 계좌 행을 골라 조건 추가 → 28 계좌 서비스에만 등록
         await page.locator('#lotsTable tbody tr.pick').first().click();
         // 계좌는 대출일 아래 따로(2026-11-23), 대출일 줄에는 계좌가 붙지 않는다
-        assert.equal(await page.textContent('#fAcct'), '5641-0328-10'); assert.doesNotMatch(await page.textContent('#fLot'), /계좌/);
+        assert.equal(await page.textContent('#fAcct'), '5641-0328'); assert.doesNotMatch(await page.textContent('#fLot'), /계좌/);
         await page.fill('#trigger', '7300');
         await page.click('#addBtn');
         await page.waitForSelector('#watchTable tbody .st');

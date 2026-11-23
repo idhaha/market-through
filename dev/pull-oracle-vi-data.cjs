@@ -53,7 +53,8 @@ try {
     if (want.length && !dry) {
         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'oracle-vi-pull-'));
         try {
-            const archive = ssh(`cd ${REMOTE} && tar cf - -T -`, want.map(f => f.rel).join('\n') + '\n');
+            // --format=pax: 이름에 한글이 있어도 Windows tar가 풀 수 있게 UTF-8로 적는다(2026-11-23, 백업 스크립트와 같은 이유).
+            const archive = ssh(`cd ${REMOTE} && tar --format=pax -cf - -T -`, want.map(f => f.rel).join('\n') + '\n');
             fs.writeFileSync(path.join(tmp, 'pull.tar'), archive);
             execFileSync('tar', ['xf', 'pull.tar'], { cwd: tmp, timeout: 600000 });
             for (const f of want) {

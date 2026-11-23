@@ -47,7 +47,9 @@ if (require.main === module) {
         if (want.length && !dry) {
             const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'oracle-data-backup-'));
             try {
-                fs.writeFileSync(path.join(tmp, 'pull.tar'), ssh(`cd ${REMOTE} && tar cf - -T -`, want.map(f => f.rel).join('\n') + '\n'));
+                // --format=pax: 한글 폴더 이름(background-refresh/snapshots/거래대금 순위-…)을 UTF-8로 적는다. 기본 형식으로 묶으면
+                // Windows tar가 "Invalid empty pathname"으로 풀지 못해 2026-11-22 21:30 백업 전체가 실패했다.
+                fs.writeFileSync(path.join(tmp, 'pull.tar'), ssh(`cd ${REMOTE} && tar --format=pax -cf - -T -`, want.map(f => f.rel).join('\n') + '\n'));
                 execFileSync('tar', ['xf', 'pull.tar'], { cwd: tmp, timeout: 900000 });
                 for (const f of want) {
                     const got = path.join(tmp, ...f.rel.split('/'));

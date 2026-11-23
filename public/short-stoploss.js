@@ -79,9 +79,10 @@
     let acctFilter = ''; try { acctFilter = localStorage.getItem('short-stoploss-acct') || ''; } catch {}
     const accounts = () => state?.accounts || [];
     const multi = () => accounts().length > 1;
-    const acctShort = x => { const a = String(x?.account || x?.acct || ''); const m = a.match(/^\d{4}-(\d{4})/); return m ? m[1] : a; }; // 계좌번호 뒤 4자리(3699-5772-11 → 5772)
-    // 계좌 뒤 4자리는 표의 대출일 아래 줄에 붙인다(2026-11-23: 종목 코드 옆 → 대출일 아래, 계좌가 하나뿐이어도 보인다)
-    const acctTag = x => { const a = x.account || x.acct || state?.account; return a ? el('span', { class: 'acct-tag', title: '계좌 ' + a }, acctShort({ account: a })) : ''; };
+    const acctShort = x => { const a = String(x?.account || x?.acct || ''); const m = a.match(/^\d{4}-(\d{4})/); return m ? m[1] : a; }; // 계좌번호 가운데 4자리(3699-5772-11 → 5772): 위쪽 실시간 표시용
+    const acct8 = a => { const d = String(a || '').replace(/\D/g, ''); return d.length >= 8 ? d.slice(0, 4) + '-' + d.slice(4, 8) : String(a || ''); }; // 앞 8자리(3699-5772-11 → 3699-5772, 2026-11-24)
+    // 계좌는 표의 종목명 아래 줄, 종목 코드 오른쪽에 앞 8자리로(2026-11-24 사용자 결정, 계좌가 하나뿐이어도 보인다)
+    const acctTag = x => { const a = x.account || x.acct || state?.account; return a ? el('span', { class: 'acct-tag', title: '계좌 ' + a }, acct8(a)) : ''; };
     const shown = list => list.filter(x => !acctFilter || x.acct === acctFilter);
     function renderAccounts() {
         const sel = $('acct'), list = accounts();
@@ -102,11 +103,11 @@
         if (!lots.length) { body.append(el('tr', {}, el('td', { colspan: 8, class: 'empty' }, '대주 잔고가 없습니다'))); return; }
         for (const l of lots) {
             const tr = el('tr', { class: 'pick' + (l.key === selectedLot ? ' sel' : ''), tabindex: 0, onclick: () => pickLot(l.key), onkeydown: e => { if (e.key === 'Enter') pickLot(l.key); } },
-                el('td', { title: l.loanDt }, short(l.loanDt), acctTag(l)), el('td', { title: `${l.name} ${l.code}` }, el('span', { class: 'namecell strong' }, el('span', { class: 'nm' }, el('span', { class: 'name' }, l.name), el('span', { class: 'code' }, l.code)), badges(l.nxt))),
+                el('td', { title: `${l.name} ${l.code}` }, el('span', { class: 'namecell strong' }, badges(l.nxt), el('span', { class: 'nm' }, el('span', { class: 'name' }, l.name), el('span', { class: 'code' }, l.code, acctTag(l))))),
                 el('td', { class: 'r' }, fmt(l.qty)), el('td', { class: 'r' + (l.able < l.qty ? ' warn' : '') }, fmt(l.able) + (l.able < l.qty ? ` (미체결 ${fmt(l.qty - l.able)})` : '')),
                 el('td', { class: 'r' }, fmt(l.sellPrice)), el('td', { class: 'r' }, fmt(l.price)),
                 el('td', { class: 'r ' + (l.pl > 0 ? 'pl-up' : l.pl < 0 ? 'pl-down' : '') }, `${l.pl > 0 ? '+' : ''}${fmt(l.pl)} (${l.rate > 0 ? '+' : ''}${l.rate.toFixed(2)}%)`),
-                el('td', { title: l.maturity || '' }, short(l.maturity)));
+                el('td', { title: l.loanDt }, short(l.loanDt)), el('td', { title: l.maturity || '' }, short(l.maturity)));
             body.append(tr);
         }
     }
@@ -130,24 +131,34 @@
     }
     window.__ssLastText = w => lastText(w); // 화면 시험용(판정 · 결과 문구 확인)
     window.__ssQtyTextWith = (w, lots) => qtyText(w, lots); // 화면 시험용(수량 칸)
-    // 감시 목록 수량(2026-11-23): 설정이 %든 주든 설정한 값대로, 주 수를 먼저 · %를 괄호로(예: 3주 (30%)).
-    // 주로 설정했으면 그 주 수와 보유수량 대비 %, %로 설정했으면 지금 가능수량 × %(내림, 최소 1주)와 그 %
+    // 할당(2026-11-24): 같은 대출일 묶음에 감시 건을 여러 개 둘 수 있다. 주문 전(감시중 · 중지) 건의 수량은 그 묶음에 할당된 것으로 보고,
+    // 새 건의 가능수량은 남은 수량이다(서버 short-stoploss-service.js와 같은 규칙). 등록 때 정한 주 수는 w.shares, 그때 보유수량은 w.baseQty
+    const ALLOC = ['감시중', '중지'];
+    function watchShares(w, lot) {
+        if (w.shares > 0) return w.shares;
+        if (!lot) return w.qtyMode === 'shares' ? w.qtyValue : null;
+        return w.qtyMode === 'pct' ? (lot.able >= 1 ? Math.max(1, Math.floor(lot.able * w.qtyValue / 100)) : 0) : Math.min(w.qtyValue, lot.able);
+    }
+    function remainingFor(lot, exceptId) {
+        if (!lot || typeof lot.qty !== 'number') return null; // 잔고에서 사라진 건(보유 모름)
+        const used = (state?.watches || []).filter(w => w.lotKey === lot.key && w.id !== exceptId && ALLOC.includes(w.status)).reduce((a, w) => a + (watchShares(w, lot) || 0), 0);
+        return Math.max(0, lot.able - used);
+    }
+    // 감시 · 청산수량(2026-11-24): 청산 전에는 감시수량, 청산 뒤에는 청산(체결)수량. 둘 다 "N주 (보유수량 대비 %)"
+    // 예: 보유 10주를 6주 · 4주 두 건으로 나누면 6주 (60%), 4주 (40%)
     function qtyText(w, lots = state.lots) {
-        // 주문이 나간 건(2026-11-23): 청산하면 잔고 행이 없어져 "-"로 보였다. 체결완료는 체결 수량, 그 밖에는 주문 수량을 보이고 %를 괄호로(주 · % 설정 모두)
-        const os = (w.orders || []).filter(o => o.qty > 0);
+        const lot = lots.find(l => l.key === w.lotKey), os = (w.orders || []).filter(o => o.qty > 0);
+        let n, base = w.baseQty || 0;
         if (os.length) {
-            const n = w.status === '체결완료' ? os.reduce((a, o) => a + (o.filled || 0), 0) : os.reduce((a, o) => a + o.qty, 0);
-            // 주 설정도 %를 괄호로: 주문 때 가능수량(o.able, 2026-11-23부터 기록) 대비. 그 전 주문은 남은 보유 + 체결 수량을 주문 전 보유로 본다
-            const lot = lots.find(l => l.key === w.lotKey), filled = os.reduce((a, o) => a + (o.filled || 0), 0);
-            const base = os.every(o => o.able > 0) ? os.reduce((a, o) => a + o.able, 0) : (lot?.qty || 0) + filled;
-            const pct = w.qtyMode === 'pct' ? w.qtyValue : base > 0 ? Math.min(100, Math.round(n / base * 100)) : null;
-            return `${fmt(n)}주${pct == null ? '' : ` (${pct}%)`}`;
+            const filled = os.reduce((a, o) => a + (o.filled || 0), 0);
+            n = w.status === '체결완료' ? filled : os.reduce((a, o) => a + o.qty, 0);
+            if (!base) base = os.every(o => o.able > 0) ? os.reduce((a, o) => a + o.able, 0) : (lot?.qty || 0) + filled; // 예전 건: 주문 때 가능수량 또는 남은 보유 + 체결
+        } else {
+            n = watchShares(w, lot);
+            if (!base) base = lot?.qty || 0;
         }
-        const lot = lots.find(l => l.key === w.lotKey), able = lot ? lot.able : null;
-        // 주 설정의 %는 보유수량 대비(설정은 보유수량까지만 되므로 100%를 넘지 않는다)
-        if (w.qtyMode === 'shares') return `${fmt(w.qtyValue)}주${lot?.qty >= 1 ? ` (${Math.min(100, Math.round(w.qtyValue / lot.qty * 100))}%)` : ''}`;
-        const shares = able == null ? null : able >= 1 ? Math.max(1, Math.floor(able * w.qtyValue / 100)) : 0;
-        return `${shares == null ? '-' : fmt(shares) + '주'} (${w.qtyValue}%)`;
+        if (n == null) return w.qtyMode === 'pct' ? `- (${w.qtyValue}%)` : '-';
+        return `${fmt(n)}주${base > 0 ? ` (${Math.min(100, Math.round(n / base * 100))}%)` : ''}`;
     }
     function renderWatches() {
         const body = $('watchTable').tBodies[0]; body.textContent = '';
@@ -170,10 +181,10 @@
             buttons.append(el('button', { type: 'button', class: 'btn small link', onclick: e => { e.stopPropagation(); showLog(w.id); } }, '기록'));
             body.append(el('tr', { class: 'pick' + (w.id === selectedWatch ? ' sel' : ''), onclick: () => pickWatch(w.id) },
                 el('td', {}, box), el('td', {}, el('span', { class: 'st ' + statusClass(w.status) }, w.status)),
-                el('td', { title: `${w.name} ${w.code}` }, el('span', { class: 'namecell' }, el('span', { class: 'nm' }, el('span', { class: 'name' }, w.name), el('span', { class: 'code' }, w.code)), badges(w.nxt))),
-                el('td', { title: w.loanDt }, short(w.loanDt), acctTag(w)), el('td', { class: 'r' }, qtyText(w)),
-                el('td', { class: 'r' }, fmt(w.trigger)), el('td', { class: 'wrap', title: methodText(w) }, methodText(w)), el('td', { title: '~' + w.until }, '~' + short(w.until)),
-                el('td', { class: 'wrap ' + (['실패', '확인 필요', '부분체결'].includes(w.status) ? 'loss' : 'muted') }, lastText(w)), el('td', {}, buttons)));
+                el('td', { title: `${w.name} ${w.code}` }, el('span', { class: 'namecell' }, badges(w.nxt), el('span', { class: 'nm' }, el('span', { class: 'name' }, w.name), el('span', { class: 'code' }, w.code, acctTag(w))))),
+                el('td', { class: 'r' }, qtyText(w)), el('td', { class: 'r' }, fmt(w.trigger)), el('td', { class: 'wrap', title: methodText(w) }, methodText(w)),
+                el('td', { class: 'wrap ' + (['실패', '확인 필요', '부분체결'].includes(w.status) ? 'loss' : 'muted') }, lastText(w)),
+                el('td', { title: w.loanDt }, short(w.loanDt)), el('td', { title: '~' + w.until }, '~' + short(w.until)), el('td', {}, buttons)));
         }
     }
 
@@ -184,7 +195,7 @@
         if (!lot) { name.textContent = '-'; $('fLot').textContent = '-'; $('fAcct').textContent = '-'; return; }
         name.append(lot.name, ' ', el('span', { class: 'code' }, lot.code), badges(lot.nxt), el('span', { class: 'dae' }, '대주'));
         $('fLot').textContent = `${lot.loanDt} · 가능수량 ${fmt(lot.able)}주 · 만기 ${lot.maturity || '-'}`;
-        $('fAcct').textContent = lot.account || state?.account || '-'; // 계좌는 대출일 아래 따로(2026-11-23)
+        $('fAcct').textContent = acct8(lot.account || state?.account) || '-'; // 계좌는 대출일 아래 따로, 앞 8자리(2026-11-24)
     }
     function defaultUntil(lot) { const d = new Date(kstDay(serverNow()) + 'T00:00:00Z'); d.setUTCMonth(d.getUTCMonth() + 1); return adjust(d.toISOString().slice(0, 10), lot).value; }
     // 유효기간 칸은 비워 두지 않고 처음부터 기본값(오늘 + 1개월)을 넣는다(2026-11-21). 사용자가 직접 고르기 전까지(untilAuto)는
@@ -277,8 +288,13 @@
         $('chaseNote').textContent = range || (!v.fix || v.upperLimit ? (v.upperLimit ? '상한가 주문' : '정정 안 함') : !cap ? '-원' : up && cap >= up ? `${fmt(up)}원(상한가)` : `${fmt(cap)}원`);
         $('chaseNote').classList.toggle('warn', !!range);
         const w = state?.watches.find(x => x.id === selectedWatch);
-        // 주 수는 보유수량까지(2026-11-23): 넘으면 조건 추가 · 수정을 끄고 수량 칸 옆에 이유를 보인다
-        const qtyErr = v.qtyMode === 'shares' && lot?.qty >= 1 && v.qtyValue > lot.qty ? `보유수량 ${fmt(lot.qty)}주보다 많습니다` : '';
+        // 수량은 남은 가능수량까지(2026-11-24): 다른 감시 건에 할당한 수량을 뺀 나머지. %는 남은 수량 기준으로 주 수를 보여 준다
+        const rem = remainingFor(lot, selectedWatch);
+        const pctShares = rem == null ? null : rem >= 1 ? Math.max(1, Math.floor(rem * v.qtyValue / 100)) : 0;
+        const qtyErr = rem == null ? '' : rem < 1 ? '남은 가능수량이 없습니다(다른 감시 건에 모두 할당)' : v.qtyMode === 'shares' && v.qtyValue > rem ? `남은 가능수량 ${fmt(rem)}주보다 많습니다` : '';
+        // 설정란이 한 줄을 넘지 않게 짧게: "남은 4주의 [100%] = 4주"
+        $('qtyBase').textContent = rem == null ? '가능수량의' : `남은 ${fmt(rem)}주의`;
+        $('qtyCalc').textContent = rem == null || qtyErr || v.qtyMode !== 'pct' ? '' : `= ${fmt(pctShares)}주`;
         $('qtyNote').textContent = qtyErr; $('qtyNote').hidden = !qtyErr;
         const ok = !!lot && v.trigger > 0 && !range && !qtyErr && (v.qtyMode === 'pct' || v.qtyValue >= 1) && !busy;
         $('addBtn').disabled = !ok || !!w; $('editBtn').disabled = !ok || !w || ACTIVE.includes(w.status) || ['체결완료', '부분체결', '잔고없음'].includes(w.status);
@@ -390,9 +406,9 @@
              ['30초 기록', '확인용 기록 파일 남기기(감시 건의 마지막 판정 · 실시간 수신 건수). 판정 · 주문과는 무관. 파일은 당일 것만 두고 지난 날짜는 지웁니다', '감시 건이 있을 때만']]],
         ['계좌 (2026-11-21)', ['키움 계좌마다 앱키를 따로 둡니다(기본 앱키 계좌 · 끝자리 28 계좌). 두 계좌의 대주 잔고 · 감시 건을 한 화면에 함께 보여 주고, 계좌가 둘 이상이면 종목 코드 옆에 계좌번호 뒤 4자리(예: 0328)를 붙입니다', '잔고 조회 · 대주상환 주문 · 정정 · 취소 · 미체결 확인은 그 잔고 행(감시 건)의 계좌 앱키로 합니다. 다른 계좌로 주문이 나가지 않습니다', '실시간도 계좌마다 그 계좌 앱키의 웹소켓으로 받습니다(웹소켓은 앱키당 하나). 기본 계좌는 VI 모니터와 공용 연결, 끝자리 28 계좌는 자기 연결로 감시 종목 체결(0B)과 그 계좌의 주문체결(00)을 받아 바로 판정 · 확인합니다. 위쪽 "실시간 연결"은 두 계좌가 모두 붙어 있을 때 켜집니다', '잔고 칸의 계좌 고르기는 보기만 바꿉니다. 전체 감시 체크는 지금 보고 있는 계좌(전체 계좌면 모두)에 적용됩니다', '안전장치로 감시가 멈추면 그 계좌만 멈춥니다']],
         ['감시 단위', ['잔고에서 고른 한 행(종목 + 대출일)만 감시합니다', '"다른 대출일 묶음도 함께 상환"(기본 꺼짐)을 켜면 같은 종목의 모든 대출일을 대출일별로, 만기가 가까운 것부터 상환합니다']],
-        ['발동 조건', ['현재가 ≥ 감시가 하나입니다', '09:00~15:20: KRX · NXT 체결 중 어느 쪽이든(주문은 SOR, NXT 비대상은 KRX) · 08:00~08:50 · 15:30~20:00: NXT 체결 · 15:20~15:30: KRX 예상체결가', '오늘 체결이 없는 값으로는 판정하지 않습니다. 등록할 때 이미 조건을 만족하면 확인을 받습니다']],
+        ['발동 조건', ['현재가 ≧ 감시가 하나입니다', '09:00~15:20: KRX · NXT 체결 중 어느 쪽이든(주문은 SOR, NXT 비대상은 KRX) · 08:00~08:50 · 15:30~20:00: NXT 체결 · 15:20~15:30: KRX 예상체결가', '오늘 체결이 없는 값으로는 판정하지 않습니다. 등록할 때 이미 조건을 만족하면 확인을 받습니다']],
         ['주문 거래소 (시간대별 자동)', ['08:00~08:50 NXT(NXT 종목만) · 08:50~09:00 보류 · 09:00~15:20 SOR(NXT 비대상은 KRX) · 15:20~15:30 KRX 단일가 · 15:30~20:00 NXT(NXT 종목만)', 'SOR: 키움이 KRX · NXT 중 유리한 곳으로 보냅니다. 2026-11-20 실계좌로 대주상환 접수 · 취소 · 체결을 확인했습니다(SOR 정정은 아직 실제로 해 보지 않음)', '정규장 마감 뒤 남은 수량은 NXT 종목이면 NXT로 다시 냅니다', '수능일 같은 특수 시간표는 아직 반영하지 않습니다']],
-        ['주문 가격 · 수량', ['발동 체결가 + 틱(+1~+10, 기본 +10) 지정가, 상한가를 넘으면 상한가', '상한가 선택칸: 처음부터 상한가로 내고 정정하지 않습니다', '수량: 가능수량의 10~100%(기본 100%) 또는 주 수. 드롭다운은 큰 값이 위']],
+        ['주문 가격 · 수량', ['발동 체결가 + 틱(+1~+10, 기본 +10) 지정가, 상한가를 넘으면 상한가', '상한가 선택칸: 처음부터 상한가로 내고 정정하지 않습니다', '수량: 가능수량의 10~100%(기본 100%) 또는 주 수. 드롭다운은 큰 값이 위', '같은 대출일 묶음에 감시 건을 여러 개 둘 수 있습니다(2026-11-24). 가능수량은 다른 감시 건(감시중 · 중지)에 이미 할당한 수량을 뺀 남은 수량이고, %는 등록할 때 남은 수량 기준 주 수로 정해집니다. 예: 10주 중 60%(6주) 등록 뒤 다음 건의 100%는 4주. 감시 목록에는 6주 (60%), 4주 (40%)처럼 보유수량 대비로 보입니다']],
         ['미체결 정정 (기본 켜짐)', ['3초 간격 최대 3회: 1회 그때 매도1호가 + 틱, 2회 매도1호가 + 틱 × 2, 3회 추격 한도 가격', '추격 한도: 발동가 대비 1~10%(기본 10%). 처음 주문과 모든 정정가는 한도 · 상한가를 넘지 않습니다', '끄면 정정하지 않고 미체결을 알리기만 합니다. 3회 뒤에도 남으면 한도 가격 주문을 둡니다']],
         ['동일종목 미체결 상환 취소 후 주문 (기본 켜짐)', ['미체결 대주상환 주문이 있으면 가능수량이 0이라 거부되므로, 발동 때 먼저 취소합니다']],
         ['유효기간', ['기본 등록일 + 1개월. 만기일 이후 → 만기일, 오늘 이전 → 오늘, 휴장일 → 직전 거래일로 자동 조정', '마지막 날 20:00에 만료되고, 만료 건은 연장 뒤 다시 켭니다']],
@@ -499,6 +515,6 @@
         });
         new ResizeObserver(autoFit).observe(wrap); autoFit();
     }
-    resizable($('lotsTable'), 'short-stoploss-cols-lots'); resizable($('watchTable'), 'short-stoploss-cols-watch');
+    resizable($('lotsTable'), 'short-stoploss-cols-lots-v2'); resizable($('watchTable'), 'short-stoploss-cols-watch-v2'); // 열 순서가 바뀌어(2026-11-24) 예전에 저장한 폭은 쓰지 않는다
     autoUntil(); loadCalendar(); loop();
 })();

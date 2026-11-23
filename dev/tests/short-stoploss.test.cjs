@@ -12,7 +12,7 @@ function fakeKiwoom({ price = 7350, volume = 1000, ask = 7360, nxt = true, io = 
         const r = data => ({ status: 200, data: { return_code: 0, ...data } });
         if (api === 'ka00001') return r({ acctNo: '3699577211' });
         if (api === 'kt00018') return r({ acnt_evlt_remn_indv_tot: [
-            { stk_cd: 'A004980', stk_nm: '/성신양회', crd_tp: '05', crd_tp_nm: '대주', crd_loan_dt: '20261123', rmnd_qty: '1', trde_able_qty: String(k.able), pur_pric: '7030', cur_prc: String(k.price), evltv_prft: '-10', prft_rt: '-0.1' },
+            { stk_cd: 'A004980', stk_nm: '/성신양회', crd_tp: '05', crd_tp_nm: '대주', crd_loan_dt: '20261123', rmnd_qty: String(k.held || 1), trde_able_qty: String(k.able), pur_pric: '7030', cur_prc: String(k.price), evltv_prft: '-10', prft_rt: '-0.1' },
             { stk_cd: 'A180640', stk_nm: '한진칼', crd_tp: '00', crd_tp_nm: '', crd_loan_dt: '', rmnd_qty: '1', trde_able_qty: '1' }] });
         if (api === 'ka10085') return r({ acnt_prft_rt: [{ stk_cd: '004980', crd_tp: '07', loan_dt: '20261123', expr_dt: '20270222' }] });
         if (api === 'ka10001') {
@@ -296,6 +296,20 @@ async function runUntilDone(e, w, rounds = 40) { for (let i = 0; i < rounds; i++
         // 감시를 지우면 다시 남기지 않는다
         e.remove(w.id); clock.t += 31000; const before = fs.readFileSync(path.join(dir, 'realtime-2026-11-23.jsonl'), 'utf8'); await e.step(); await settle();
         assert.equal(fs.readFileSync(path.join(dir, 'realtime-2026-11-23.jsonl'), 'utf8'), before);
+        e.stop();
+    }
+    // 할당(2026-11-24): 보유 10주를 60% · 나머지 100%로 나누면 6주 · 4주. 남은 수량을 넘는 등록 · 수정은 거부, 발동하면 그 건의 주 수만 상환
+    {
+        const k = fakeKiwoom({ able: 10, price: 7000 }), { e } = engine(k); k.held = 10;
+        await e.loadLots();
+        const a = await e.create(input('004980:20261123', { qtyValue: 60 }));
+        const b = await e.create(input('004980:20261123', { qtyValue: 100, trigger: 7500 }));
+        assert.deepEqual([[a.shares, a.baseQty], [b.shares, b.baseQty]], [[6, 10], [4, 10]]);
+        await assert.rejects(e.create(input('004980:20261123', { qtyMode: 'shares', qtyValue: 1 })), /남은 가능수량이 없습니다/);
+        assert.throws(() => e.update(b.id, input('004980:20261123', { qtyMode: 'shares', qtyValue: 5, trigger: 7500 })), /남은 가능수량\(4주\)보다 많이/);
+        assert.equal(e.update(b.id, input('004980:20261123', { qtyMode: 'shares', qtyValue: 4, trigger: 7500 })).shares, 4, '자기 수량은 빼고 따짐');
+        k.price = 7300; await e.step(); const done = await runUntilDone(e, a);
+        assert.equal(done.status, '체결완료'); assert.equal(k.orders.length, 1); assert.equal(k.orders[0].ord_qty, '6', '60% 건은 6주만 상환');
         e.stop();
     }
     console.log('short-stoploss: 모든 확인 통과');
