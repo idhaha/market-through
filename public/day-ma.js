@@ -9,6 +9,7 @@
     const LINES = [[5, '#ff00ff'], [10, '#000080'], [20, '#ff6600'], [60, '#00a000']];
     const KST = 9 * 3600000, DAY_MS = 86400000, DAY_START = 8 * 60, NIGHT_START = 18 * 60, RETRY_MS = 60000;
     const states = new Map();
+    const dayOfPoint = new WeakMap(); // 봉 → 거래일 번호(그 봉 객체가 버려지면 함께 사라진다)
     const dayNames = new Map();
     const dayName = n => { let s = dayNames.get(n); if (s === undefined) { s = new Date(n * DAY_MS).toISOString().slice(0, 10).replaceAll('-', ''); if (dayNames.size > 5000) dayNames.clear(); dayNames.set(n, s); } return s; };
     const dayNumber = t => Math.floor((t + KST) / DAY_MS);
@@ -58,11 +59,11 @@
     }
     // 봉마다 거래일 번호. night: 지수 선물처럼 야간(18:00~다음 날 08:00 전) 봉이 있으면 그 봉은 뒤이어 오는 주간 거래일에 붙인다
     // (차트의 거래일 묶음과 같다). 아직 주간이 오지 않은 야간 봉은 null(그날 시가 전이라 그리지 않음).
-    function tradingDays(candles, time, night) {
-        const days = new Array(candles.length);
+    function tradingDays(ts, night) {
+        const days = new Array(ts.length);
         let next = null;
-        for (let i = candles.length - 1; i >= 0; i--) {
-            const t = time(candles[i]);
+        for (let i = ts.length - 1; i >= 0; i--) {
+            const t = ts[i];
             if (!Number.isFinite(t)) { days[i] = null; continue; }
             const day = dayNumber(t), minute = minuteOfDay(t);
             if (!night || (minute >= DAY_START && minute < NIGHT_START)) { days[i] = day; next = day; }
@@ -71,12 +72,12 @@
         return days;
     }
     // 거래일별 [5일, 10일, 20일, 60일] 값(없으면 null).
-    function averages(state, candles, days, time, open) {
+    function averages(state, candles, days, ts, open) {
         const today = dayNumber(Date.now()), result = new Map(), firstOpen = new Map(), ordered = [...new Set(days.filter(d => d != null))].sort((a, b) => a - b);
         for (let i = 0; i < candles.length; i++) {
             const day = days[i];
             // 그날 08:00 이후 봉만 시가 후보(야간 선물 봉은 앞 날짜라 빠진다).
-            const t = time(candles[i]);
+            const t = ts[i];
             if (day == null || firstOpen.has(day) || dayNumber(t) !== day || minuteOfDay(t) < DAY_START) continue;
             const value = Number(open(candles[i]));
             if (value > 0) firstOpen.set(day, value);
@@ -105,18 +106,31 @@
         // 같은 대상(예: KOSPI 지수)을 여러 카드가 각자의 봉 목록으로 그리므로 카드마다 하나씩 남도록 몇 개를 둔다.
         let memo = state.memos.get(signature);
         if (!memo) {
-            const ordered = candles.every((p, i) => i === 0 || time(candles[i - 1]) <= time(p)) ? candles : [...candles].sort((a, b) => time(a) - time(b));
-            const days = tradingDays(ordered, time, night);
+            // 봉 시각은 한 번만 구한다(쏠림율 카드의 시각은 글자라 바꾸는 데 시간이 든다).
+            let ts = candles.map(p => time(p)), ordered = candles;
+            if (!ts.every((t, i) => i === 0 || ts[i - 1] <= t)) {
+                const order = ts.map((t, i) => i).sort((a, b) => ts[a] - ts[b]);
+                ordered = order.map(i => candles[i]); ts = order.map(i => ts[i]);
+            }
+            const days = tradingDays(ts, night);
             let first = null, last = null;
-            for (const d of days) if (d != null) { if (first == null || d < first) first = d; if (last == null || d > last) last = d; }
-            memo = { first, last, byTime: new Map(ordered.map((p, i) => [time(p), days[i]])), values: state.days.length ? averages(state, ordered, days, time, open) : new Map() };
+            for (let i = 0; i < days.length; i++) {
+                const d = days[i];
+                if (d == null) continue;
+                // 야간 봉이 있는 대상(지수 선물)만 봉마다 정한 거래일을 그 봉에 붙여 둔다(2026-11-24). 야간 봉의 거래일은 뒤에 주간 봉이
+                // 와야 정해지므로 정해진 것만 붙인다. 그 밖의 대상은 거래일 = 봉 시각의 날짜라 그릴 때 바로 구한다(붙이는 비용이 더 크다).
+                if (night) dayOfPoint.set(ordered[i], d);
+                if (first == null || d < first) first = d; if (last == null || d > last) last = d;
+            }
+            memo = { first, last, hits: 0, values: state.days.length ? averages(state, ordered, days, ts, open) : new Map() };
             state.memos.set(signature, memo);
             if (state.memos.size > 8) state.memos.delete(state.memos.keys().next().value);
         }
+        memo.hits++;
         if (memo.first == null) return;
         ensure(target, dayName(memo.first), dayName(memo.last), redraw);
         if (!state.days.length) return;
-        const { byTime, values } = memo;
+        const { values } = memo;
         ctx.save();
         ctx.beginPath(); ctx.rect(left, top, right - left, bottom - top); ctx.clip();
         ctx.lineWidth = 1; ctx.setLineDash([]);
@@ -126,7 +140,9 @@
         visible.forEach((p, k) => {
             const px = x(p, k);
             if (!Number.isFinite(px)) return;
-            const day = byTime.get(time(p));
+            // 같은 봉 목록을 세 번째 그릴 때부터(마우스 이동 등) 봉에 거래일을 붙여 두고 그 값을 쓴다. 조회 중처럼 목록이 계속 바뀌면 붙이지 않는다.
+            let day = dayOfPoint.get(p);
+            if (day === undefined) { day = night ? null : dayNumber(time(p)); if (!night && memo.hits > 1) dayOfPoint.set(p, day); }
             if (run && run.day === day) { run.to = px; return; }
             run = { day, row: values.get(day) || null, from: px, to: px }; runs.push(run);
         });

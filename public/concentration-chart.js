@@ -207,9 +207,17 @@
                 && point.stock_low <= Math.min(point.stock_open, point.stock_price);
         }
         // 'YYYYMMDDHHMMSS'(한국 시각) → ms. 일봉 이평의 거래일 · 시가 판단용.
+        // 같은 글자 시각은 한 번만 바꾼다(2026-11-24): 조회가 올 때마다 봉 객체가 새로 만들어져도 글자는 같다.
+        const candleTimes = new Map();
         function candleTime(point) {
             const s = String(point.time || '');
-            return Date.UTC(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8), +s.slice(8, 10) - 9, +s.slice(10, 12), +s.slice(12, 14) || 0);
+            let t = candleTimes.get(s);
+            if (t === undefined) {
+                t = Date.UTC(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8), +s.slice(8, 10) - 9, +s.slice(10, 12), +s.slice(12, 14) || 0);
+                if (candleTimes.size > 100000) candleTimes.clear();
+                candleTimes.set(s, t);
+            }
+            return t;
         }
         function candleChange(point) {
             return Number.isFinite(point.stock_change_rate) ? point.stock_change_rate : null;
@@ -569,7 +577,8 @@
                 const valid = state.points.filter(point => point.value != null).length;
                 const notices = window.RankSupplyGuide?.loadingWarnings(panel, state.mode, result.notice ? [result.notice] : []) || (result.notice ? [result.notice] : []);
                 const loadNotice = notices.join(' · ');
-                const missing = state.points.length - valid;
+                // 누락은 정규장 분만 센다(2026-11-24). 서버가 NXT 시간대 봉에 regular_session:false를 붙인다(그 시간엔 시장 거래대금이 원래 없음).
+                const missing = state.points.filter(point => point.value == null && point.regular_session !== false).length;
                 status.textContent = result.history_pending ? '시장 과거 데이터가 더 필요합니다. 추가 조회 버튼을 눌러 주세요.'
                     : result.partial && loadNotice ? loadNotice : !state.points.length ? '표시할 데이터가 없습니다.' : !valid ? '같은 날짜·시간의 시장 거래대금이 없어 계산할 수 없습니다.'
                     : loadNotice || (missing ? `시장 거래대금 ${missing.toLocaleString()}개 시점 누락 · 쏠림율 계산 불가` : '');

@@ -40,6 +40,17 @@ function createBreadthService({ directory, legacyFile, legacyKospiDirectory, leg
         try { return JSON.parse(fs.readFileSync(file(name), 'utf8')); }
         catch (cause) { if (cause.code === 'ENOENT') return fallback; throw cause; }
     }
+    // 읽기만 하는 곳(조회 · 분 파일 날짜)의 daily.json(2026-11-24): 파일이 그대로면(수정 시각 · 크기) 해석한 것을 다시 쓴다.
+    // 오라클 daily.json은 1.5MB라 조회마다 두세 번 새로 해석했고, 과거 분봉 구간 측정에서 신고신저 한 쪽이 1~6초 걸리며 다른 요청도 밀었다.
+    // 돌려준 값을 고치면 안 된다(고쳐 쓰는 곳은 read를 쓴다).
+    let dailyShared = null;
+    function readDailyShared(fallback) {
+        let stat;
+        try { stat = fs.statSync(file('daily.json')); } catch (cause) { if (cause.code === 'ENOENT') return fallback; throw cause; }
+        const key = `${stat.mtimeMs}:${stat.size}`;
+        if (dailyShared?.key !== key) dailyShared = { key, value: read('daily.json') };
+        return dailyShared.value;
+    }
     function bytes(name, value) {
         fs.mkdirSync(directory, { recursive: true });
         const target = file(name), temp = `${target}.${process.pid}.tmp`;
@@ -275,7 +286,7 @@ function createBreadthService({ directory, legacyFile, legacyKospiDirectory, leg
             catch(error){if(error.code==='ENOENT')return [];throw error;}
         }
         // Minutes saved before the common-stock basis (minuteFrom) counted ETF·ETN too: kept on disk, not shown.
-        const minuteFrom=read('daily.json',{}).minuteFrom;
+        const minuteFrom=readDailyShared({}).minuteFrom;
         if(minuteFrom&&date<minuteFrom)return [];
         // Read older archives without moving or rewriting them. Never split a total.
         const rows=new Map();
@@ -286,7 +297,7 @@ function createBreadthService({ directory, legacyFile, legacyKospiDirectory, leg
     }
     // 분 파일이 있는 날짜(보통주 기준 minuteFrom 이후). 옛 폴더도 함께 본다.
     function minuteDates() {
-        const minuteFrom = read('daily.json', {}).minuteFrom || '', dates = new Set();
+        const minuteFrom = readDailyShared({}).minuteFrom || '', dates = new Set();
         for (const folder of [directory, legacyKospiDirectory, legacyCombinedDirectory]) {
             if (!folder) continue;
             let names = []; try { names = fs.readdirSync(folder); } catch (error) { if (error.code !== 'ENOENT') throw error; }
@@ -374,7 +385,7 @@ function createBreadthService({ directory, legacyFile, legacyKospiDirectory, leg
         const key = `${market}:${mode}:${cursor}`, cached = cache.get(key);
         if (cached && cached.until > now()) return cached.promise;
         const promise = (async () => {
-            const daily = read('daily.json'), byDay = new Map(daily.points.map(p => [p.date, p])), minutes = new Map();
+            const daily = readDailyShared(), byDay = new Map(daily.points.map(p => [p.date, p])), minutes = new Map();
             // The time axis comes from Kiwoom (Samsung 005930_AL candles). When Kiwoom fails, the stored dates
             // still draw the counts and ADR (no candles), so a Kiwoom outage does not blank the chart.
             let response, rows, referenceError = '';

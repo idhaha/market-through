@@ -184,9 +184,16 @@ function createBrokerTurnoverData({ broker, directory, transport, http, getToken
             }
         }
         let previous;
+        // 그날 첫 분이 개장 시각이면 그 분 거래대금은 누적값 그대로다(2026-11-24). 저장 자료는 누적이라 직전 분과의 차이로 1분 값을 만드는데,
+        // 첫 분은 직전 분이 없어 비었다: 지난날 시장 지수 09:00 거래대금이 늘 빈칸이라 그날 쏠림율이 381봉 중 380봉만 나왔다
+        // (장중에는 REST 1분 값을 써서 381봉, 장이 끝나 저장 자료로 읽으면 380봉). 개장 시각은 수능일 등 늦게 연 날을 따른다.
+        const openingClocks=t=>{const day=dayKey(t),open=shiftClock('090000',openDelay(day));return stock?['080000',open]:[open];};
+        const clockOf=t=>new Date(t+9*3600000).toISOString().slice(11,19).replaceAll(':','');
         for(const p of ws) {
             const contiguous=previous&&(p.t-previous.t===60000||bridged(previous.t,p.t,stock));
-            const value=cumulative?p.amount:contiguous&&p.amount>=previous.amount?p.amount-previous.amount:null;
+            const firstOfDay=!previous||dayKey(previous.t)!==dayKey(p.t);
+            const value=cumulative?p.amount:contiguous&&p.amount>=previous.amount?p.amount-previous.amount
+                :firstOfDay&&openingClocks(p.t).includes(clockOf(p.t))?p.amount:null;
             if(value!==null)result.set(p.t,value);previous=p;
         }
         return {values:result,warnings:data.warnings};

@@ -47,7 +47,8 @@ const BASIS = {
     '/api/supply/chart': 'adjusted-20261121',
     '/api/concentration-chart': 'adjusted-20261121|day-cursor-20261122',
     // 1분봉 커서를 서버 세션 번호에서 날짜(day:YYYYMMDD)로 바꿨다(2026-11-22). 예전 세션 번호가 든 저장 응답을 한 번 버린다.
-    '/api/ls-concentration-chart': 'day-cursor-20261122'
+    // 지난날 시장 09:00 1분 거래대금을 채우고 정규장 여부(regular_session)를 붙였다(2026-11-24). 저장 응답을 한 번 버린다.
+    '/api/ls-concentration-chart': 'day-cursor-20261122|open-minute-20261124'
 };
 // Files in those folders that are not chart data.
 const IGNORED = /^(?:state|master|watchlist|market-day|validation|universe|jusikbot-backup|token)\.json$|^daily\.before|\.tmp$|\.bak$/;

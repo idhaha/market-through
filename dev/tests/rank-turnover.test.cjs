@@ -75,6 +75,8 @@ const assert=require('node:assert/strict');
             return getComputedStyle(el).flexDirection==='column'&&legend.right<=panel.right&&rows[1].getBoundingClientRect().top>rows[0].getBoundingClientRect().top;
         }),'Today values use two lines aligned with the candle controls and inset from the right edge');
         await page.evaluate(()=>{window.refreshPhase='recent';return window.refreshRankCombinedTurnoverChart();});
+        // 화면은 다음 화면 프레임에 그린다(requestDraw). 갱신이 끝난 직후 바로 읽으면 이전 값이라 다섯 번 중 세 번 실패했다(2026-11-24).
+        await page.waitForFunction(()=>document.querySelector('#rankCombinedTurnoverChartPanel [data-latest="kospi"]').textContent==='20.0조원',null,{timeout:3000}).catch(()=>{});
         assert.equal(await panel.locator('[data-latest="kospi"]').textContent(),'20.0조원');
         assert.ok(await page.evaluate(()=>window.calls.at(-1).includes('/api/turnover/chart?mode=day&cursor=')),'Refresh reuses the loaded page contract');
         await page.evaluate(()=>{window.refreshPhase='failed';return window.refreshRankCombinedTurnoverChart();});

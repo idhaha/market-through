@@ -47,3 +47,34 @@ test('같은 값을 다시 저장하면 파일을 다시 쓰지 않고, 값이 �
     assert.notEqual(fs.statSync(file).mtimeMs, old.getTime());
     assert.equal(store.points('KOSPI0', '2026-11-19')[0].amount, 7);
 });
+
+// 2026-11-24 오라클 측정: 지난날 쏠림율이 정규장 381분 중 380분만 나왔다. 저장분은 누적이라 1분 값을 직전 분과의 차이로 만드는데,
+// 그날 첫 분(시장 09:00, 수능일 10:00)은 직전 분이 없어 빈칸이었다. 개장 시각의 첫 분은 누적값이 곧 그 분 거래대금이다.
+test('저장된 지난날의 개장 첫 분(평소 09:00 · 수능일 10:00) 1분 거래대금이 빈칸이 아니다', async t => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ls-saved-open-'));
+    t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+    savedDay(directory, '2026-11-20', '09:00', '15:30');
+    savedDay(directory, '2026-11-19', '10:00', '16:30');
+    const data = createBrokerTurnoverData({
+        broker: 'ls', directory, now: () => at('2026-11-24', '09:30'), transport: { setStreams() {} }, getToken: async () => 't', pause: async () => {},
+        http: { post: async () => { throw new Error('LS를 부르면 안 된다'); } }
+    });
+    const result = await data.amounts('kospi', 'minute', ['20261119', '20261120']);
+    assert.equal(result.values.get(at('2026-11-20', '09:00')), 1000000, '평소 09:00');
+    assert.equal(result.values.get(at('2026-11-20', '09:01')), 1000000);
+    assert.equal(result.values.get(at('2026-11-19', '10:00')), 1000000, '수능일 10:00');
+    assert.equal(result.values.has(at('2026-11-20', '08:59')), false);
+});
+
+// 저장분이 장중에 끊겨 개장 시각이 아닌 분부터 시작하면 첫 분은 누적 전체라 1분 값으로 쓰지 않는다.
+test('개장 시각이 아닌 분에서 시작한 날의 첫 분은 빈칸으로 둔다', async t => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ls-saved-late-'));
+    t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+    savedDay(directory, '2026-11-20', '10:15', '15:30');
+    const data = createBrokerTurnoverData({
+        broker: 'ls', directory, now: () => at('2026-11-24', '09:30'), transport: { setStreams() {} }, getToken: async () => 't', pause: async () => {},
+        http: { post: async () => ({ data: {} }) }
+    });
+    const result = await data.amounts('kospi', 'minute', ['20261120']);
+    assert.equal(result.values.has(at('2026-11-20', '10:15')), false);
+});

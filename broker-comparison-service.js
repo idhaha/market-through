@@ -1,6 +1,11 @@
 const { dayKey } = require('./supply-store');
 const { timestamp } = require('./supply-service');
 const compact = t => dayKey(t).replaceAll('-', '');
+const { openDelay, closeDelay, shiftClock } = require('./market-open-delay');
+// 정규장 분인지(2026-11-24): 시장(업종지수) 거래대금은 정규장(09:00~15:30, 수능일 등은 늦춘 시각)에만 있다. 그 밖의 NXT 시간대 봉은
+// 쏠림율이 원래 없는 구간이라, 화면이 "시장 거래대금 누락"으로 세지 않게 regular_session:false로 표시한다.
+const regularSession = time => { const day = `${time.slice(0,4)}-${time.slice(4,6)}-${time.slice(6,8)}`, clock = time.slice(8, 14);
+    return clock >= shiftClock('090000', openDelay(day)) && clock <= shiftClock('153000', closeDelay(day)); };
 function createBrokerComparisonService({ broker, data, turnoverReference, concentrationReference }) {
     const scope = broker === 'ls' ? 'LS 종목은 통합, 시장은 업종지수 기준 · 통합 집계 범위 미확인' : '한투 업종지수 거래대금 · 통합 집계 범위 미확인';
     async function turnover(input = {}) {
@@ -27,7 +32,7 @@ function createBrokerComparisonService({ broker, data, turnoverReference, concen
             const t=timestamp(p.time.slice(0,8),mode==='day'?'000000':p.time.slice(8));
             const numerator=stock.values.get(t) ?? null,denominator=index.values.get(t) ?? null;
             const cumulativeStock=stockCumulative?.values.get(t)??null,cumulativeMarket=indexCumulative?.values.get(t)??null;
-            return {...p,cumulative_value:cumulativeStock!==null&&cumulativeMarket>0?cumulativeStock/cumulativeMarket*100:null,stock_turnover_cumulative:cumulativeStock,market_turnover_cumulative:cumulativeMarket,stock_turnover:numerator,market_turnover:denominator,
+            return {...p,...(mode==='minute'?{regular_session:regularSession(p.time)}:{}),cumulative_value:cumulativeStock!==null&&cumulativeMarket>0?cumulativeStock/cumulativeMarket*100:null,stock_turnover_cumulative:cumulativeStock,market_turnover_cumulative:cumulativeMarket,stock_turnover:numerator,market_turnover:denominator,
                 stock_turnover_million:numerator===null?null:numerator/1000000,market_turnover_million:denominator===null?null:denominator/1000000,
                 value:numerator!==null&&denominator>0?numerator/denominator*100:null};
         });

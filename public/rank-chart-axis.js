@@ -111,10 +111,15 @@
     // 사용자가 방금 조작했으면(확대 · 끌기 · 슬라이더 · 휠 · 단추) 기다리지 않고 바로 그린다. 묶는 것은 자료가 들어와 다시 그릴 때뿐이다.
     let lastNotify=0,lastInput=0;
     if(typeof window.addEventListener==='function')for(const type of ['pointerdown','pointermove','pointerup','wheel','keydown','input','click'])window.addEventListener(type,()=>{lastInput=Date.now();},{capture:true,passive:true});
+    // 직전 전체 그리기가 80ms를 넘으면 간격을 그 4배로(2026-11-24, 최대 1초). 과거 분봉 구간(카드마다 2만여 봉)에서 한 번에 약 0.1초씩
+    // 걸려 0.2초마다 다시 그리니 브라우저가 바쁜 시간의 70%가 이것이었고(오라클 측정 13초 중 5.3초), 그동안 하루씩 이어 받는
+    // 시장 거래대금 · 시장 수급 쪽 처리도 밀렸다. 사용자 조작 직후는 지금처럼 바로 그린다.
+    let lastDrawMs=0;
     function notifyCharts() {
         if(redrawQueued)return;redrawQueued=true;
-        const run=()=>{redrawQueued=false;lastNotify=Date.now();for(const chart of minuteCharts.values())chart.draw();catchUpVisibleHistory();};
-        const wait=200-(Date.now()-lastNotify);
+        const run=()=>{redrawQueued=false;lastNotify=Date.now();const began=typeof performance!=='undefined'?performance.now():Date.now();for(const chart of minuteCharts.values())chart.draw();lastDrawMs=(typeof performance!=='undefined'?performance.now():Date.now())-began;catchUpVisibleHistory();};
+        // 그리기가 가벼우면(80ms 이하, 당일 화면 등) 예전처럼 0.2초, 무거울 때만 늘린다.
+        const wait=(lastDrawMs>80?Math.min(1000,lastDrawMs*4):200)-(Date.now()-lastNotify);
         // 브라우저 밖(단위 시험의 vm)에는 타이머가 없으니 예전처럼 바로 그린다.
         if(wait<=0 || Date.now()-lastInput<1000 || typeof document==='undefined' || typeof setTimeout!=='function')queueMicrotask(run);else setTimeout(run,wait);
     }
