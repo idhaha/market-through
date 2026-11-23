@@ -5,6 +5,11 @@
     const fmt = n => Number(n || 0).toLocaleString('ko-KR');
     const tick = p => p < 2000 ? 1 : p < 5000 ? 5 : p < 20000 ? 10 : p < 50000 ? 50 : p < 200000 ? 100 : p < 500000 ? 500 : 1000;
     const floorTick = p => Math.floor(p / tick(p)) * tick(p);
+    // 한 호가 위 · 아래(2026-11-23): 가격대 경계에서는 단위가 바뀐다(1,999 ↑ 2,000 ↑ 2,005 / 5,000 ↓ 4,995). 호가 단위에 안 맞는 값은 먼저 맞는 호가로 간다
+    const tickUp = p => { const a = floorTick(p); return a + tick(a); };
+    const tickDown = p => { const a = floorTick(p); return Math.max(1, a < p ? a : p - tick(p - 1)); };
+    // 숫자 읽기: 한글 입력기 전각 모드로 친 숫자(７３５０)도 받는다. 예전에는 칸에 숫자가 보여도 0으로 읽혀 조건 추가가 꺼지고 추격 한도가 "-원"이었다
+    const num = s => Number(String(s ?? '').normalize('NFKC').replace(/[^0-9]/g, ''));
     const el = (tag, props = {}, ...children) => { const n = document.createElement(tag); for (const [k, v] of Object.entries(props)) { if (k === 'class') n.className = v; else if (k.startsWith('on')) n.addEventListener(k.slice(2), v); else if (v !== undefined && v !== null && v !== false) n.setAttribute(k, v === true ? '' : v); } for (const c of children.flat()) if (c != null) n.append(c instanceof Node ? c : String(c)); return n; };
     const badges = nxt => el('span', { class: 'ex', 'aria-label': nxt ? 'KRX · NXT 거래' : 'KRX만 거래' }, el('span', { class: 'pill krx' }, 'KRX'), el('span', { class: 'pill ' + (nxt ? 'nxt' : 'none') }, 'NXT'));
     const ACTIVE = ['발동', '주문접수', '정정중', '미체결'];
@@ -155,9 +160,10 @@
     function currentLot() { const w = state?.watches.find(x => x.id === selectedWatch); return state?.lots.find(l => l.key === (w ? w.lotKey : selectedLot)) || (w ? { key: w.lotKey, code: w.code, name: w.name, loanDt: w.loanDt, maturity: w.maturity, nxt: w.nxt, acct: w.acct, account: w.account, able: 0 } : null); }
     function fillLotInfo(lot) {
         const name = $('fName'); name.textContent = '';
-        if (!lot) { name.textContent = '-'; $('fLot').textContent = '-'; return; }
+        if (!lot) { name.textContent = '-'; $('fLot').textContent = '-'; $('fAcct').textContent = '-'; return; }
         name.append(lot.name, ' ', el('span', { class: 'code' }, lot.code), badges(lot.nxt), el('span', { class: 'dae' }, '대주'));
-        $('fLot').textContent = `${multi() && lot.account ? '계좌 ' + lot.account + ' · ' : ''}${lot.loanDt} · 가능수량 ${fmt(lot.able)}주 · 만기 ${lot.maturity || '-'}`;
+        $('fLot').textContent = `${lot.loanDt} · 가능수량 ${fmt(lot.able)}주 · 만기 ${lot.maturity || '-'}`;
+        $('fAcct').textContent = lot.account || state?.account || '-'; // 계좌는 대출일 아래 따로(2026-11-23)
     }
     function defaultUntil(lot) { const d = new Date(kstDay(serverNow()) + 'T00:00:00Z'); d.setUTCMonth(d.getUTCMonth() + 1); return adjust(d.toISOString().slice(0, 10), lot).value; }
     // 유효기간 칸은 비워 두지 않고 처음부터 기본값(오늘 + 1개월)을 넣는다(2026-11-21). 사용자가 직접 고르기 전까지(untilAuto)는
@@ -171,7 +177,8 @@
         selectedLot = key; selectedWatch = '';
         const lot = currentLot();
         fillLotInfo(lot);
-        $('trigger').value = ''; $('trigger').placeholder = lot ? fmt(lot.price) : '';
+        // 빈 칸의 회색 글자가 입력값처럼 보이지 않게 "현재"를 붙인다(값은 비어 있어 조건 추가가 꺼져 있다)
+        $('trigger').value = ''; $('trigger').placeholder = lot?.price ? '현재 ' + fmt(lot.price) : '';
         $('until').value = defaultUntil(lot); untilAuto = true; $('calNote').hidden = true;
         $('formMode').textContent = '새 조건';
         renderAll(); updateForm();
@@ -225,8 +232,8 @@
     }
     function formValue() {
         const mode = document.querySelector('input[name="qtyMode"]:checked').value;
-        return { trigger: Number(String($('trigger').value).replace(/[^0-9]/g, '')), ticks: +$('ticks').value, upperLimit: $('upperLimit').checked, fix: $('fix').checked, chasePct: +$('chasePct').value,
-            qtyMode: mode, qtyValue: mode === 'pct' ? +$('qtyPct').value : Number(String($('qtyShares').value).replace(/[^0-9]/g, '')),
+        return { trigger: num($('trigger').value), ticks: +$('ticks').value, upperLimit: $('upperLimit').checked, fix: $('fix').checked, chasePct: +$('chasePct').value,
+            qtyMode: mode, qtyValue: mode === 'pct' ? +$('qtyPct').value : num($('qtyShares').value),
             allLots: $('allLots').checked, cancelPending: $('cancelPending').checked, until: $('until').value };
     }
     function updateForm() {
@@ -238,10 +245,21 @@
         const ok = !!lot && v.trigger > 0 && (v.qtyMode === 'pct' || v.qtyValue >= 1) && !busy;
         $('addBtn').disabled = !ok || !!w; $('editBtn').disabled = !ok || !w || ACTIVE.includes(w.status) || ['체결완료', '부분체결', '잔고없음'].includes(w.status);
         $('fromDay').textContent = kstDay(serverNow()) + ' ~';
+        const canStep = !!lot && (v.trigger > 0 || lot.price > 0); $('trigUp').disabled = !canStep; $('trigDown').disabled = !canStep || v.trigger === 1;
     }
+    // 감시가 한 호가씩(2026-11-23): 화살표 버튼 · 칸에서 키보드 ↑ ↓. 빈 칸이면 현재가 기준(↑ 현재가 위 첫 호가, ↓ 현재가)
+    function stepTrigger(dir) {
+        const lot = currentLot(), v = num($('trigger').value), p = v || lot?.price || 0; if (!p) return;
+        $('trigger').value = fmt(v ? (dir > 0 ? tickUp(v) : tickDown(v)) : (dir > 0 ? tickUp(p) : floorTick(p)));
+        updateForm();
+    }
+    $('trigUp').addEventListener('click', () => stepTrigger(1));
+    $('trigDown').addEventListener('click', () => stepTrigger(-1));
+    $('trigger').addEventListener('keydown', e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); stepTrigger(e.key === 'ArrowUp' ? 1 : -1); } });
     for (const id of ['trigger', 'ticks', 'upperLimit', 'fix', 'chasePct', 'qtyPct', 'qtyShares', 'allLots', 'cancelPending']) { $(id).addEventListener('input', updateForm); $(id).addEventListener('change', updateForm); }
     for (const r of document.querySelectorAll('input[name="qtyMode"]')) r.addEventListener('change', updateForm);
-    $('trigger').addEventListener('blur', () => { const n = Number(String($('trigger').value).replace(/[^0-9]/g, '')); if (n) $('trigger').value = fmt(n); });
+    $('trigger').addEventListener('blur', () => { const n = num($('trigger').value); if (n) $('trigger').value = fmt(n); });
+    $('qtyShares').addEventListener('blur', () => { const n = num($('qtyShares').value); if (n) $('qtyShares').value = String(n); });
     $('addBtn').addEventListener('click', () => {
         const lot = currentLot(), v = formValue();
         if (lot.price && lot.price >= v.trigger && !confirm(`현재가 ${fmt(lot.price)}이 감시가 ${fmt(v.trigger)} 이상입니다. 등록하면 바로 발동해 대주상환 주문이 나갈 수 있습니다. 계속할까요?`)) return;

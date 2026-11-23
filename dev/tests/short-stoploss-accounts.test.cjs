@@ -71,7 +71,8 @@ function fakeKiwoom(token, acctNo, pur) {
         assert.equal(await page.textContent('#lotsTable .acct-tag'), '0328');
         // 28 계좌 행을 골라 조건 추가 → 28 계좌 서비스에만 등록
         await page.locator('#lotsTable tbody tr.pick').first().click();
-        assert.match(await page.textContent('#fLot'), /계좌 5641-0328-10/);
+        // 계좌는 대출일 아래 따로(2026-11-23), 대출일 줄에는 계좌가 붙지 않는다
+        assert.equal(await page.textContent('#fAcct'), '5641-0328-10'); assert.doesNotMatch(await page.textContent('#fLot'), /계좌/);
         await page.fill('#trigger', '7300');
         await page.click('#addBtn');
         await page.waitForSelector('#watchTable tbody .st');

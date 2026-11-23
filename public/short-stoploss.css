@@ -164,3 +164,9 @@ body.form-closed .fold-btn svg{transform:rotate(180deg)}
 /* 미체결 정정: 선택칸 · 추격 한도 · 계산 결과를 한 줄로 */
 .row.oneline{flex-wrap:nowrap;white-space:nowrap;gap:6px}
 .row.oneline .gap-left{margin-left:8px}
+/* 감시가 한 호가 올리기 · 내리기(2026-11-23): 입력칸 높이에 맞춘 위아래 화살표 */
+.stepper{display:inline-flex;flex-direction:column;gap:1px;margin-left:-4px}
+.step-btn{width:22px;height:14px;padding:0;display:flex;align-items:center;justify-content:center;border:1px solid #C3C9D3;background:#F6F7F9;color:#3B4556;cursor:pointer}
+.step-btn:first-child{border-radius:4px 4px 0 0}.step-btn:last-child{border-radius:0 0 4px 4px}
+.step-btn:hover,.step-btn:focus-visible{background:#E8EEF8;border-color:var(--blue);color:var(--accent)}
+.step-btn:disabled{color:#B0B7C3;cursor:default;background:#F3F5F8;border-color:#D3D8E0}

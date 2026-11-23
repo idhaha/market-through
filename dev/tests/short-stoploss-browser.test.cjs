@@ -58,6 +58,19 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         // 행 선택 → 조건 추가
         await page.locator('#lotsTable tbody tr.pick').first().click();
         assert.equal(await page.inputValue('#until'), '2026-12-18', '기본 1개월(12-20 일요일 → 12-18)');
+        // 회귀(2026-11-23): 계좌는 대출일 아래 따로, 빈 감시가의 회색 글자는 "현재 7,000"(입력값처럼 보이지 않게)
+        assert.equal(await page.textContent('#fAcct'), '3699-5772-11');
+        assert.equal(await page.getAttribute('#trigger', 'placeholder'), '현재 7,000'); assert.equal(await page.isDisabled('#addBtn'), true);
+        // 회귀(2026-11-23): 전각 숫자로 쳐도 감시가로 읽어 조건 추가가 켜지고 추격 한도 금액이 나온다(예전: 0으로 읽혀 꺼짐 · "-원")
+        await page.locator('#trigger').focus(); await page.keyboard.insertText('７３００');
+        assert.equal(await page.isDisabled('#addBtn'), false); assert.match(await page.textContent('#chaseNote'), /8,030원/);
+        await page.locator('#ticks').focus(); assert.equal(await page.inputValue('#trigger'), '7,300', '칸을 떠나면 보통 숫자로 바꿈');
+        // 한 호가씩: 빈 칸이면 현재가 기준(↑ 7,010 · ↓ 7,000), 가격대 경계에서 단위가 바뀐다, 호가 단위에 안 맞는 값은 맞는 호가로
+        const step = async (v, how) => { await page.fill('#trigger', v); if (how === 'up' || how === 'down') await page.click(how === 'up' ? '#trigUp' : '#trigDown'); else { await page.locator('#trigger').focus(); await page.keyboard.press(how); } return page.inputValue('#trigger'); };
+        assert.deepEqual([await step('', 'up'), await step('', 'down'), await step('', 'ArrowUp')], ['7,010', '7,000', '7,010']);
+        assert.deepEqual([await step('2,000', 'down'), await step('1,999', 'up'), await step('2,000', 'ArrowUp'), await step('5,000', 'ArrowDown'), await step('20,000', 'down'), await step('7,003', 'up'), await step('7,003', 'down'), await step('1', 'ArrowDown')],
+            ['1,999', '2,000', '2,005', '4,995', '19,990', '7,010', '7,000', '1']);
+        assert.match(await page.textContent('#chaseNote'), /^1원$/); assert.equal(await page.isDisabled('#trigDown'), true, '1원 아래는 없음');
         await page.fill('#trigger', '7300');
         assert.match(await page.textContent('#chaseNote'), /8,030/);
         // 달력: 아이콘을 눌러야 뜨고, 휴장일을 고르면 직전 거래일
