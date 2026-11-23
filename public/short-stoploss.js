@@ -133,6 +133,16 @@
     // 감시 목록 수량(2026-11-23): 설정이 %든 주든 설정한 값대로, 주 수를 먼저 · %를 괄호로(예: 3주 (30%)).
     // 주로 설정했으면 그 주 수와 보유수량 대비 %, %로 설정했으면 지금 가능수량 × %(내림, 최소 1주)와 그 %
     function qtyText(w, lots = state.lots) {
+        // 주문이 나간 건(2026-11-23): 청산하면 잔고 행이 없어져 "-"로 보였다. 체결완료는 체결 수량, 그 밖에는 주문 수량을 보이고 %를 괄호로(주 · % 설정 모두)
+        const os = (w.orders || []).filter(o => o.qty > 0);
+        if (os.length) {
+            const n = w.status === '체결완료' ? os.reduce((a, o) => a + (o.filled || 0), 0) : os.reduce((a, o) => a + o.qty, 0);
+            // 주 설정도 %를 괄호로: 주문 때 가능수량(o.able, 2026-11-23부터 기록) 대비. 그 전 주문은 남은 보유 + 체결 수량을 주문 전 보유로 본다
+            const lot = lots.find(l => l.key === w.lotKey), filled = os.reduce((a, o) => a + (o.filled || 0), 0);
+            const base = os.every(o => o.able > 0) ? os.reduce((a, o) => a + o.able, 0) : (lot?.qty || 0) + filled;
+            const pct = w.qtyMode === 'pct' ? w.qtyValue : base > 0 ? Math.min(100, Math.round(n / base * 100)) : null;
+            return `${fmt(n)}주${pct == null ? '' : ` (${pct}%)`}`;
+        }
         const lot = lots.find(l => l.key === w.lotKey), able = lot ? lot.able : null;
         // 주 설정의 %는 보유수량 대비(설정은 보유수량까지만 되므로 100%를 넘지 않는다)
         if (w.qtyMode === 'shares') return `${fmt(w.qtyValue)}주${lot?.qty >= 1 ? ` (${Math.min(100, Math.round(w.qtyValue / lot.qty * 100))}%)` : ''}`;

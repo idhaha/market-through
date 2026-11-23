@@ -118,8 +118,10 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         assert.equal(await page.textContent('#watchTable tbody tr td:nth-child(5)'), '1주 (100%)');
         const q = (w, able) => page.evaluate(([w, able]) => { const st = { lotKey: 'x', ...w }; const lots = able == null ? [] : [{ key: 'x', able, qty: Math.max(able, 10) }]; return window.__ssQtyTextWith(st, lots); }, [w, able]);
         assert.deepEqual([await q({ qtyMode: 'pct', qtyValue: 30 }, 10), await q({ qtyMode: 'pct', qtyValue: 10 }, 5), await q({ qtyMode: 'shares', qtyValue: 3 }, 10), await q({ qtyMode: 'shares', qtyValue: 10 }, 10),
-            await q({ qtyMode: 'pct', qtyValue: 50 }, null), await q({ qtyMode: 'shares', qtyValue: 4 }, null), await q({ qtyMode: 'pct', qtyValue: 50, orders: [{ qty: 7 }] }, 0), await q({ qtyMode: 'pct', qtyValue: 100 }, 0)],
-            ['3주 (30%)', '1주 (10%)', '3주 (30%)', '10주 (100%)', '- (50%)', '4주', '0주 (50%)', '0주 (100%)']);
+            await q({ qtyMode: 'pct', qtyValue: 50 }, null), await q({ qtyMode: 'shares', qtyValue: 4 }, null), await q({ qtyMode: 'pct', qtyValue: 50, orders: [{ qty: 7 }] }, 0), await q({ qtyMode: 'pct', qtyValue: 100 }, 0),
+            await q({ qtyMode: 'pct', qtyValue: 100, status: '체결완료', orders: [{ qty: 2, filled: 2 }] }, null), await q({ qtyMode: 'shares', qtyValue: 3, status: '체결완료', orders: [{ qty: 2, filled: 2 }, { qty: 1, filled: 1 }] }, null),
+            await q({ qtyMode: 'shares', qtyValue: 3, status: '체결완료', orders: [{ qty: 3, filled: 3, able: 10 }] }, null), await q({ qtyMode: 'shares', qtyValue: 3, status: '주문접수', orders: [{ qty: 3, filled: 0 }] }, 9)],
+            ['3주 (30%)', '1주 (10%)', '3주 (30%)', '10주 (100%)', '- (50%)', '4주', '7주 (50%)', '0주 (100%)', '2주 (100%)', '3주 (100%)', '3주 (30%)', '3주 (30%)']);
         // 상태 칸 등 말줄임 칸은 마우스를 올리면 전체 문구(title), 종목 코드는 이름 아래 줄
         assert.equal(await page.getAttribute('#watchTable tbody tr td:nth-child(2)', 'title'), '감시중');
         const nm = await page.evaluate(() => { const n = document.querySelector('#watchTable tbody .namecell .name').getBoundingClientRect(), c = document.querySelector('#watchTable tbody .namecell .code').getBoundingClientRect(); return c.top >= n.bottom - 1; });

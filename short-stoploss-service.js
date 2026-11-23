@@ -341,7 +341,7 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
                 const qty = w.qtyMode === 'pct' ? Math.max(1, Math.floor(lot.able * w.qtyValue / 100)) : Math.min(w.qtyValue, lot.able);
                 if (!(lot.able >= 1) || !(qty >= 1)) { event(w, '잔고 확인', `대출일 ${lot.loanDt} 가능수량 0 · 주문하지 않음`); continue; }
                 event(w, '잔고 확인', `대출일 ${lot.loanDt} 가능수량 ${lot.able}주 → ${qty}주 상환`);
-                const o = { loanRaw: lot.loanRaw, qty, ex: orderEx, ordNos: [], price: 0, filled: 0, attempts: 0, state: '주문', cap, upper };
+                const o = { loanRaw: lot.loanRaw, qty, able: lot.able, ex: orderEx, ordNos: [], price: 0, filled: 0, attempts: 0, state: '주문', cap, upper };
                 w.orders.push(o);
                 let price = w.upperLimit && upper ? upper : addTicks(firePrice, w.ticks);
                 price = Math.min(price, upper || price, w.fix ? cap : Infinity);
