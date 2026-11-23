@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>대주 StopLoss</title>
-<link rel="stylesheet" href="short-stoploss.css?v=20261123_acct">
-<script src="short-stoploss.js?v=20261123_acct" defer></script>
+<link rel="stylesheet" href="short-stoploss.css?v=20261123_qtymax">
+<script src="short-stoploss.js?v=20261123_qtymax" defer></script>
 </head>
 <body>
 <header class="ss-top">
@@ -63,7 +63,7 @@
       </div>
       <div class="tbl-wrap">
         <table class="tbl" id="watchTable">
-          <colgroup><col data-base="42" style="width: 42px"><col data-base="76" style="width: 76px"><col data-base="126" data-flex style="width: 126px"><col data-base="72" style="width: 72px"><col data-base="40" style="width: 40px"><col data-base="56" data-flex style="width: 56px"><col data-base="90" data-flex style="width: 90px"><col data-base="80" style="width: 80px"><col data-base="106" data-flex style="width: 106px"><col data-base="52" style="width: 52px"></colgroup>
+          <colgroup><col data-base="42" style="width: 42px"><col data-base="76" style="width: 76px"><col data-base="126" data-flex style="width: 126px"><col data-base="72" style="width: 72px"><col data-base="100" style="width: 100px"><col data-base="56" data-flex style="width: 56px"><col data-base="90" data-flex style="width: 90px"><col data-base="80" style="width: 80px"><col data-base="106" data-flex style="width: 106px"><col data-base="52" style="width: 52px"></colgroup>
           <thead><tr><th>감시</th><th>상태</th><th>종목</th><th>대출일</th><th class="r">수량</th><th class="r">감시가</th><th>주문 방식</th><th>유효기간</th><th title="최근 판정 · 결과">판정 · 결과</th><th>조작</th></tr></thead>
           <tbody></tbody>
         </table>
@@ -122,7 +122,8 @@
           <select id="qtyPct" class="inp" aria-label="비율"></select>
           <label class="row"><input type="radio" name="qtyMode" value="shares">주</label>
           <input id="qtyShares" class="inp num" inputmode="numeric" aria-label="주 수" style="width: 60px" disabled>
-          <span class="tip"><button type="button" class="i" aria-label="수량 설명">i</button><span class="tipbox" role="tooltip">고른 대출일 묶음의 가능수량 대비 % 또는 주 수입니다. 주문 직전에 잔고를 다시 조회해 가능수량을 확인합니다.</span></span>
+          <span id="qtyNote" class="small warn" hidden></span>
+          <span class="tip"><button type="button" class="i" aria-label="수량 설명">i</button><span class="tipbox" role="tooltip">고른 대출일 묶음의 가능수량 대비 % 또는 주 수입니다. 주 수는 보유수량보다 많이 넣을 수 없습니다. 주문 직전에 잔고를 다시 조회해 가능수량을 확인합니다.</span></span>
         </div>
         <div class="row">
           <label class="row"><input id="allLots" type="checkbox">다른 대출일 묶음도 함께 상환</label>

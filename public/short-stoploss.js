@@ -129,6 +129,16 @@
         return w.note || (w.log?.length ? '' : '') || w.status;
     }
     window.__ssLastText = w => lastText(w); // 화면 시험용(판정 · 결과 문구 확인)
+    window.__ssQtyTextWith = (w, lots) => qtyText(w, lots); // 화면 시험용(수량 칸)
+    // 감시 목록 수량(2026-11-23): 설정이 %든 주든 설정한 값대로, 주 수를 먼저 · %를 괄호로(예: 3주 (30%)).
+    // 주로 설정했으면 그 주 수와 보유수량 대비 %, %로 설정했으면 지금 가능수량 × %(내림, 최소 1주)와 그 %
+    function qtyText(w, lots = state.lots) {
+        const lot = lots.find(l => l.key === w.lotKey), able = lot ? lot.able : null;
+        // 주 설정의 %는 보유수량 대비(설정은 보유수량까지만 되므로 100%를 넘지 않는다)
+        if (w.qtyMode === 'shares') return `${fmt(w.qtyValue)}주${lot?.qty >= 1 ? ` (${Math.min(100, Math.round(w.qtyValue / lot.qty * 100))}%)` : ''}`;
+        const shares = able == null ? null : able >= 1 ? Math.max(1, Math.floor(able * w.qtyValue / 100)) : 0;
+        return `${shares == null ? '-' : fmt(shares) + '주'} (${w.qtyValue}%)`;
+    }
     function renderWatches() {
         const body = $('watchTable').tBodies[0]; body.textContent = '';
         const ws = shown(state.watches);
@@ -151,7 +161,7 @@
             body.append(el('tr', { class: 'pick' + (w.id === selectedWatch ? ' sel' : ''), onclick: () => pickWatch(w.id) },
                 el('td', {}, box), el('td', {}, el('span', { class: 'st ' + statusClass(w.status) }, w.status)),
                 el('td', { title: `${w.name} ${w.code}` }, el('span', { class: 'namecell' }, el('span', { class: 'nm' }, el('span', { class: 'name' }, w.name), el('span', { class: 'code' }, w.code)), badges(w.nxt))),
-                el('td', { title: w.loanDt }, short(w.loanDt), acctTag(w)), el('td', { class: 'r' }, w.qtyMode === 'pct' ? w.qtyValue + '%' : w.qtyValue + '주'),
+                el('td', { title: w.loanDt }, short(w.loanDt), acctTag(w)), el('td', { class: 'r' }, qtyText(w)),
                 el('td', { class: 'r' }, fmt(w.trigger)), el('td', { class: 'wrap', title: methodText(w) }, methodText(w)), el('td', { title: '~' + w.until }, '~' + short(w.until)),
                 el('td', { class: 'wrap ' + (['실패', '확인 필요', '부분체결'].includes(w.status) ? 'loss' : 'muted') }, lastText(w)), el('td', {}, buttons)));
         }
@@ -256,7 +266,10 @@
         $('chaseNote').textContent = range || (!v.fix || v.upperLimit ? (v.upperLimit ? '상한가 주문' : '정정 안 함') : !cap ? '-원' : up && cap >= up ? `${fmt(up)}원(상한가)` : `${fmt(cap)}원`);
         $('chaseNote').classList.toggle('warn', !!range);
         const w = state?.watches.find(x => x.id === selectedWatch);
-        const ok = !!lot && v.trigger > 0 && !range && (v.qtyMode === 'pct' || v.qtyValue >= 1) && !busy;
+        // 주 수는 보유수량까지(2026-11-23): 넘으면 조건 추가 · 수정을 끄고 수량 칸 옆에 이유를 보인다
+        const qtyErr = v.qtyMode === 'shares' && lot?.qty >= 1 && v.qtyValue > lot.qty ? `보유수량 ${fmt(lot.qty)}주보다 많습니다` : '';
+        $('qtyNote').textContent = qtyErr; $('qtyNote').hidden = !qtyErr;
+        const ok = !!lot && v.trigger > 0 && !range && !qtyErr && (v.qtyMode === 'pct' || v.qtyValue >= 1) && !busy;
         $('addBtn').disabled = !ok || !!w; $('editBtn').disabled = !ok || !w || ACTIVE.includes(w.status) || ['체결완료', '부분체결', '잔고없음'].includes(w.status);
         $('fromDay').textContent = kstDay(serverNow()) + ' ~';
         // 화살표: 상한가에 닿으면 ↑, 하한가(없으면 1원)에 닿으면 ↓를 더 누를 수 없다

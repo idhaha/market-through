@@ -219,6 +219,8 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
         if (!(chasePct >= 1 && chasePct <= 10)) throw Object.assign(Error('추격 한도는 1~10%입니다'), { status: 400 });
         if (qtyMode === 'pct' && !(qtyValue >= 10 && qtyValue <= 100 && qtyValue % 10 === 0)) throw Object.assign(Error('수량 %는 10~100%입니다'), { status: 400 });
         if (qtyMode === 'shares' && !(qtyValue >= 1)) throw Object.assign(Error('주 수를 입력하세요'), { status: 400 });
+        // 보유수량보다 많이 설정할 수 없다(2026-11-23). 잔고에서 행이 사라진 감시 건을 고칠 때(보유 모름)는 검사하지 않는다
+        if (qtyMode === 'shares' && lot.qty >= 1 && qtyValue > lot.qty) throw Object.assign(Error(`보유수량(${lot.qty}주)보다 많이 설정할 수 없습니다`), { status: 400 });
         const until = adjustUntil(String(input.until || addMonth(today())), { today: today(), maturity: lot.maturity, openDate });
         return { trigger: t, ticks, upperLimit: !!input.upperLimit, fix: input.fix !== false, chasePct, qtyMode, qtyValue,
             allLots: !!input.allLots, cancelPending: input.cancelPending !== false, until: until.value, untilNote: until.note };
@@ -239,7 +241,7 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
         const w = find(id);
         if (ACTIVE.has(w.status) || running.has(w.id)) throw Object.assign(Error('주문 처리 중에는 고칠 수 없습니다'), { status: 409 });
         if (['체결완료', '부분체결', '잔고없음'].includes(w.status)) throw Object.assign(Error('끝난 건은 고칠 수 없습니다'), { status: 409 });
-        Object.assign(w, validate(input, { maturity: w.maturity }));
+        Object.assign(w, validate(input, { maturity: w.maturity, qty: lots.find(l => l.key === w.lotKey)?.qty }));
         if (w.status === '만료' || w.status === '실패' || w.status === '확인 필요') { w.status = w.enabled ? '감시중' : '중지'; }
         event(w, '수정', `감시가 ${w.trigger.toLocaleString('ko-KR')} · +${w.ticks}틱 · ~${w.until}`);
         save(); return publicWatch(w);

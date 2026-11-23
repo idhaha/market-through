@@ -89,6 +89,13 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         assert.deepEqual((await page.$$eval('#lotsTable .acct-tag', t => t.map(x => [x.textContent, x.parentElement.cellIndex, getComputedStyle(x).display]))).filter((v, i, a) => i === 0 || JSON.stringify(v) !== JSON.stringify(a[0])), [['5772', 0, 'block']]);
         await page.fill('#trigger', '7300');
         assert.match(await page.textContent('#chaseNote'), /8,030/);
+        // 회귀(2026-11-23): 주 수는 보유수량(1주)보다 많이 넣을 수 없다 — 조건 추가가 꺼지고 이유가 보이며, 서버도 거부한다
+        await page.check('input[name="qtyMode"][value="shares"]'); await page.fill('#qtyShares', '2');
+        assert.equal(await page.isDisabled('#addBtn'), true); assert.equal(await page.textContent('#qtyNote'), '보유수량 1주보다 많습니다'); assert.equal(await page.isVisible('#qtyNote'), true);
+        const over = await page.evaluate(async () => { const st = await (await fetch('/api/short-stoploss/state')).json(); const r = await fetch('/api/short-stoploss/watches', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lotKey: st.lots[0].key, trigger: 7300, ticks: 10, chasePct: 10, qtyMode: 'shares', qtyValue: 2 }) }); return [r.status, (await r.json()).error]; });
+        assert.deepEqual(over, [400, '보유수량(1주)보다 많이 설정할 수 없습니다']);
+        await page.fill('#qtyShares', '1'); assert.equal(await page.isDisabled('#addBtn'), false); assert.equal(await page.isVisible('#qtyNote'), false);
+        await page.check('input[name="qtyMode"][value="pct"]');
         // 달력: 아이콘을 눌러야 뜨고, 휴장일을 고르면 직전 거래일
         assert.equal(await page.isHidden('#cal'), true);
         await page.click('#calBtn'); assert.equal(await page.isVisible('#cal'), true);
@@ -107,6 +114,12 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         await page.click('#addBtn');
         await page.waitForSelector('#watchTable tbody .st');
         assert.equal(await page.textContent('#watchTable tbody .st'), '감시중');
+        // 회귀(2026-11-23): 수량 칸은 설정(주 · %)과 상관없이 주 수 먼저, %는 괄호. 값은 설정한 그대로(주 설정은 그 주 수, % 설정은 가능수량 × % 내림 · 최소 1주)
+        assert.equal(await page.textContent('#watchTable tbody tr td:nth-child(5)'), '1주 (100%)');
+        const q = (w, able) => page.evaluate(([w, able]) => { const st = { lotKey: 'x', ...w }; const lots = able == null ? [] : [{ key: 'x', able, qty: Math.max(able, 10) }]; return window.__ssQtyTextWith(st, lots); }, [w, able]);
+        assert.deepEqual([await q({ qtyMode: 'pct', qtyValue: 30 }, 10), await q({ qtyMode: 'pct', qtyValue: 10 }, 5), await q({ qtyMode: 'shares', qtyValue: 3 }, 10), await q({ qtyMode: 'shares', qtyValue: 10 }, 10),
+            await q({ qtyMode: 'pct', qtyValue: 50 }, null), await q({ qtyMode: 'shares', qtyValue: 4 }, null), await q({ qtyMode: 'pct', qtyValue: 50, orders: [{ qty: 7 }] }, 0), await q({ qtyMode: 'pct', qtyValue: 100 }, 0)],
+            ['3주 (30%)', '1주 (10%)', '3주 (30%)', '10주 (100%)', '- (50%)', '4주', '0주 (50%)', '0주 (100%)']);
         // 상태 칸 등 말줄임 칸은 마우스를 올리면 전체 문구(title), 종목 코드는 이름 아래 줄
         assert.equal(await page.getAttribute('#watchTable tbody tr td:nth-child(2)', 'title'), '감시중');
         const nm = await page.evaluate(() => { const n = document.querySelector('#watchTable tbody .namecell .name').getBoundingClientRect(), c = document.querySelector('#watchTable tbody .namecell .code').getBoundingClientRect(); return c.top >= n.bottom - 1; });
