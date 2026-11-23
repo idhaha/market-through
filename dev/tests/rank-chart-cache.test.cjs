@@ -235,3 +235,30 @@ test('a changed server revision drops every saved page of that route together; o
   assert.equal(calls.length,before+1,'the saved past page of the revised route is fetched again');
  }finally{await browser.close();}
 });
+test('과거 구간을 다시 열 때 먼저 받아 두고 다시 꺼내 쓴 지난 쪽이 한도에 밀려 버려지지 않는다(2026-11-23 오라클 측정 5번)',async()=>{
+ // 60거래일 구간 하나가 저장 응답 약 107건 · 21MB였다. 예전 한도(24MB · 180건)에서는 다른 카드의 쪽을 더 받으면 먼저 받은
+ // 시장 수급 쪽이 밀려나, 같은 구간을 다시 열 때 36건 중 18~29건을 서버에서 다시 받았다.
+ const browser=await chromium.launch({headless:true,channel:'msedge'});
+ try{
+  const page=await browser.newPage(),counts=new Map(),big='x'.repeat(100*1024);
+  await page.route('https://window-reuse.test/**',route=>{
+   const url=new URL(route.request().url());
+   if(url.pathname==='/')return route.fulfill({contentType:'text/html',body:'<html></html>'});
+   if(url.pathname==='/api/chart-revisions')return route.fulfill({json:{success:true,revisions:{}}});if(url.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:'window@example.test'}}});
+   const key=url.pathname+url.search;counts.set(key,(counts.get(key)||0)+1);
+   return route.fulfill({json:{success:true,points:[{t:1793059200000,foreign:1,pad:big}],has_more:true,cursor:'20260701'}});
+  });
+  const start=async()=>{await page.goto('https://window-reuse.test/');await page.evaluate(()=>window.TradingRefresh={allowsUrl:()=>false});await page.addScriptTag({path:'public/rank-chart-cache.js'});};
+  const days=Array.from({length:60},(_,i)=>new Date(Date.UTC(2026,6,1)+i*86400000).toISOString().slice(0,10).replaceAll('-',''));
+  const read=urls=>page.evaluate(async urls=>{for(const u of urls){const r=await RankChartCache.fetch(u);await r.json();}},urls);
+  const market=days.map(d=>'/api/kiwoom-market-supply/chart?code=kospi&mode=minute&cursor='+d),turnover=days.map(d=>'/api/ls-turnover/chart?mode=minute&cursor='+d),breadth=days.map(d=>'/api/risk/breadth?market=kospi&mode=minute&cursor='+d);
+  await start();
+  await read(market);          // 처음 연 구간: 시장 수급 60쪽
+  await start();await read(market); // 다시 열기: 저장분에서 꺼내 쓴다
+  await read(turnover);await read(breadth); // 다른 카드 120쪽을 더 받는다(예전 한도 180건을 넘김)
+  await page.waitForTimeout(500);
+  await start();await read(market);
+  const again=market.filter(u=>counts.get(u)>1);
+  assert.deepEqual(again,[],'같은 구간의 시장 수급 쪽은 서버에 다시 묻지 않는다');
+ }finally{await browser.close();}
+});

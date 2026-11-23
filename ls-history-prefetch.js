@@ -7,7 +7,7 @@
 // 관심 종목은 종목 수급 카드에 등록한 종목이다. 증권사 호출은 천천히(LS 거래대금은 그 서비스의 1.1초 간격, 종목 선물은 1초 쉼).
 // AI나 다른 스케줄러 없이 서버 안 타이머로 돈다(정기 수집이 켜진 서버, 오라클에서만 시작).
 function createLsHistoryPrefetch({ turnover, futuresCandles, stocks, openDate = () => null, now = () => Date.now(), log = () => {},
-    days = 60, hour = 22, minute = 0, pause = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+    days = 60, hour = 20, minute = 20, pause = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
     const kstDay = t => new Date(t + 9 * 3600000).toISOString().slice(0, 10);
     // 어제부터 거슬러 올라가며 장이 열린 날(주말 · 달력에 휴장으로 적힌 날 제외) count개. 오늘은 장중 자료라 넣지 않는다.
     function pastOpenDays(count = days) {

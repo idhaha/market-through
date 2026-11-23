@@ -92,6 +92,10 @@ function createSupplyStore({ directory, now = Date.now, fields: valueFields = fi
                 }
                 if (!valueFields.some(field => Number.isSafeInteger(next[field]))) continue;
                 if(point.source==='LS' && point.session==='N'){next.source='LS';next.session='N';}
+                // 같은 값이면 파일을 다시 쓰지 않는다(2026-11-23: 지난날 파일을 같은 내용으로 덮어써도 수정 시각이 바뀌어
+                // 차트 변경 번호가 올라가고 브라우저 저장분이 버려졌다).
+                const before = byTime.get(t);
+                if (before && Object.keys(next).length === Object.keys(before).length && Object.keys(next).every(key => next[key] === before[key])) continue;
                 byTime.set(t, next);changed=true;
             }
             if(!changed)continue;

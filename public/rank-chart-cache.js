@@ -4,6 +4,10 @@
     // HISTORY_TTL: past pages (date cursor before today). Their data only changes when the server rewrites
     // stored past data, which the data revisions below catch, so they can be kept longer.
     const TTL=16*3600000,HISTORY_TTL=7*24*3600000,FRESH=60000,MAX_BYTES=24*1024*1024,MAX_ENTRIES=180;
+    // 2026-11-23: 과거 분봉 구간 하나(60거래일)가 저장 응답 약 107건 · 21MB라, 24MB · 180건 한도에서는 같은 구간을 다시 열 때
+    // 먼저 받은 카드(시장 수급)의 저장분이 이미 밀려나 서버에서 다시 받았다. 브라우저 저장(IndexedDB)은 구간 몇 개를 담도록 늘리고,
+    // 메모리는 그대로 두되 둘 다 '최근에 쓴 것'을 남긴다(꺼내 쓴 응답도 쓴 시각 used를 새로 적는다).
+    const DB_MAX_BYTES=160*1024*1024,DB_MAX_ENTRIES=900,TOUCH_MS=60000;
     const nativeFetch=window.fetch.bind(window),memory=new Map(),pending=new Map(),blocked=new Set(),handoff=new Map(),closedRefresh=new Map(),CLOSE_GRACE=2*60000,CURSOR_TTL=20*60000;
     let database,identity,identityAt=0,identityJob,revision=0;
     const routes=/^\/api\/(?:concentration-chart|ls-concentration-chart|chart-reference|(?:ls-)?turnover\/chart|(?:kis-)?supply\/chart|ls-stock-futures\/chart|(?:kiwoom-|ls-)?market-supply\/chart|adr\/(?:candles|history|today)|risk\/(?:breadth|sentiment|volatility))$/;
@@ -21,7 +25,7 @@
     let pruneJob;
     async function prune(){
         if(pruneJob)return pruneJob;
-        pruneJob=(async()=>{const d=await db();if(!d)return;await new Promise(resolve=>{try{const tx=d.transaction('responses','readwrite'),store=tx.objectStore('responses'),r=store.openCursor(),items=[];r.onsuccess=()=>{const c=r.result;if(c){if(!c.value.meta)items.push({key:c.key,at:c.value.at,bytes:c.value.bytes||0,ttl:c.value.ttl||TTL});c.continue();return;}let size=0,count=0;for(const item of items.sort((a,b)=>b.at-a.at)){size+=item.bytes;count++;if(Date.now()-item.at>=item.ttl||count>MAX_ENTRIES||size>MAX_BYTES)store.delete(item.key);}};tx.oncomplete=tx.onerror=tx.onabort=()=>resolve();}catch{resolve();}});})().finally(()=>pruneJob=null);return pruneJob;
+        pruneJob=(async()=>{const d=await db();if(!d)return;await new Promise(resolve=>{try{const tx=d.transaction('responses','readwrite'),store=tx.objectStore('responses'),r=store.openCursor(),items=[];r.onsuccess=()=>{const c=r.result;if(c){if(!c.value.meta)items.push({key:c.key,at:c.value.at,used:c.value.used||c.value.at,bytes:c.value.bytes||0,ttl:c.value.ttl||TTL});c.continue();return;}let size=0,count=0;for(const item of items.sort((a,b)=>b.used-a.used)){size+=item.bytes;count++;if(Date.now()-item.at>=item.ttl||count>DB_MAX_ENTRIES||size>DB_MAX_BYTES)store.delete(item.key);}};tx.oncomplete=tx.onerror=tx.onabort=()=>resolve();}catch{resolve();}});})().finally(()=>pruneJob=null);return pruneJob;
     }
     async function account(){
         // Native views authenticate by relay capability, not browser login cookies.
@@ -131,6 +135,8 @@
         }
         if(blocked.has(key))return network();
         const entry=memory.get(key)||await storage('get',key);throwIfAborted(options.signal);
+        // 꺼내 쓴 응답은 최근에 쓴 것으로 옮긴다(메모리 순서 · 저장분 used). 저장분은 1분에 한 번만 다시 적는다.
+        const touch=()=>{if(memory.has(key)){memory.delete(key);memory.set(key,entry);}if(!body&&!(Date.now()-(entry.used||entry.at)<TOUCH_MS)){entry.used=Date.now();void storage('put',key,entry);}};
         if(entry&&entry.scope===owner&&Date.now()>=entry.at&&(Date.now()-entry.at<(entry.ttl||TTL) || window.TradingRefresh?.allowsUrl(url)===false)){
             // Persisted concentration responses have no reusable server cursor.
             // A user-initiated initial read must restore pagination even while
@@ -151,6 +157,7 @@
                 const stale=closedAt!=null ? Date.now()>=closedAt+CLOSE_GRACE && entry.at<closedAt+CLOSE_GRACE : entry.open!==false;
                 if(stale && closedRefresh.get(key)!==mark){closedRefresh.set(key,mark);void network(true).catch(()=>{});}
             }
+            touch();
             return response(entry.data);
         }
         if(entry)await storage('delete',key);

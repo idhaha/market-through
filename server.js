@@ -526,7 +526,7 @@ const lsStockFuturesService = require('./ls-stock-futures').createLsStockFutures
     // Past 1-minute futures bars (days LS t8406 no longer serves): KIS FHKIF03020200, stock futures market JF.
     kisMinute: kisFuturesMinute
 });
-// 지난 분봉 미리 받기(2026-11-23): 매일 22:00 최근 60거래일의 LS 1분 거래대금(시장 · 관심 종목)과 종목 선물 1분 가격을 저장해 둔다.
+// 지난 분봉 미리 받기(2026-11-23, 2026-11-23 밤 사용자 결정으로 20:20로 당김): 매일 20:20 최근 60거래일의 LS 1분 거래대금(시장 · 관심 종목)과 종목 선물 1분 가격을 저장해 둔다.
 // 과거 분봉 구간을 처음 열 때 서버가 증권사에서 받느라 요청마다 3~9초씩 걸리던 것을 없앤다. ls-history-prefetch.js 참고.
 const lsHistoryPrefetch = require('./ls-history-prefetch').createLsHistoryPrefetch({
     turnover: (instrument, mode, dates) => lsTurnoverData.amounts(instrument, mode, dates),

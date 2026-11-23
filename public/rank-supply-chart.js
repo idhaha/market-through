@@ -103,7 +103,7 @@
         addButton?.addEventListener('click', openPicker);
         let multiplier = 10, config = { stocks: [], archive: [], revision: 0 }, selected = '', mode = 'day', cursor = null, hasMore = false, loading = false, historyLoaded = false, flowDates = null;
         let flowLoading=false, flowCoverageFirst='', candleError='';
-        const minuteDays = new Set(), candleCache = new Map(), priceHistory = new Map();
+        const minuteDays = new Set(), candleCache = new Map(), priceHistory = new Map(); const candleInflight = new Map();
         let priceCursor = null, candleLoading = false;
         // The candle cursor only counts while it points at a day not requested yet: while that day's candles are
         // still loading, reusing it would ask the same day again (2026-11-07 Oracle: "과거 조회가 진행되지 않았습니다").
@@ -432,15 +432,44 @@
                 if(target && mode==='minute'){const domain=window.RankChartAxis.minuteDomain();for(const day of domain.days || [])if(day>=target.slice(0,10) && (!domain.openDate || domain.openDate(day)))requestedDays.add(day);requestedDays.add(target.slice(0,10));}
                 const days = dailyRange?['']:[...requestedDays].sort(); if (!days.length) days.push(mode==='minute' && window.RankChartAxis.minuteWindow?.()?.to || ''); // 과거 구간 보기 중에는 오늘 캔들을 받지 않는다
                 const merged = new Map(candles.map(point => [point.t, point])); let partial = false;
-                for (const day of days) {
-                    const key = `${selected}:${mode}:${dailyRange?(dailyRange.from || '600bars')+':'+dailyRange.to:day || dayKey(Date.now())}`;
-                    let result = candleCache.get(key);
-                    if (!result || day === dayKey(Date.now()) || !day) {
-                        const params = new URLSearchParams({ code: selected, mode, ...(dailyRange?dailyRange:day ? { date: day } : {}) });
-                        result = await request(`${candleEndpoint}?${params}`, { signal: current.signal });
-                        if (id !== candleRevision) return;
-                        if(!result.partial)candleCache.set(key, result); if (candleCache.size > 60) candleCache.delete(candleCache.keys().next().value);
+                const keyOf = day => `${selected}:${mode}:${dailyRange?(dailyRange.from || '600bars')+':'+dailyRange.to:day || dayKey(Date.now())}`;
+                // 지난날 캔들은 끝난 날이라 받은 것을 그대로 쓴다: 취소하지 않고(다음 조회가 이어 받음) 같은 날을 두 번 묻지 않는다.
+                const today = dayKey(Date.now()), past = day => !dailyRange && day && day < today;
+                const fetchDay = day => {
+                    const key = keyOf(day), cached = candleCache.get(key);
+                    if (cached && past(day)) return Promise.resolve(cached);
+                    if (candleInflight.has(key)) return candleInflight.get(key);
+                    const params = new URLSearchParams({ code: selected, mode, ...(dailyRange?dailyRange:day ? { date: day } : {}) });
+                    const job = request(`${candleEndpoint}?${params}`, past(day) ? {} : { signal: current.signal }).then(result => {
+                        if(!result.partial)candleCache.set(key, result); if (candleCache.size > 90) candleCache.delete(candleCache.keys().next().value);
+                        return result;
+                    }).finally(() => { if (candleInflight.get(key) === job) candleInflight.delete(key); });
+                    if (past(day)) candleInflight.set(key, job);
+                    return job;
+                };
+                // 종목 선물 분봉 캔들(2026-11-23 사용자 결정): 지난날 하나에 한투가 약 4초 걸려, 과거 구간을 하루씩 차례로 받으면 31일에 약 125초였다.
+                // 3일까지 함께 묻는다: 그릴 날을 받는 동안 다음에 거슬러 갈 지난날 2일(장이 열린 날, 구간 시작일까지)도 미리 받아 캐시에 둔다.
+                const width = futures && mode === 'minute' ? 3 : 1, ahead = [];
+                if (width > 1 && !dailyRange && !todayOnly && days[0]) { // 당일만 볼 때는 지난날을 미리 받지 않는다
+                    const floor = window.RankChartAxis.minuteWindow?.()?.from || '', openDay = window.RankChartAxis.minuteDomain()?.openDate;
+                    for (let d = days[0], i = 0; ahead.length < 2 && i < 14; i++) {
+                        d = new Date(Date.parse(d + 'T00:00:00Z') - 86400000).toISOString().slice(0, 10);
+                        if (floor && d < floor) break;
+                        if ([0, 6].includes(new Date(d + 'T00:00:00Z').getUTCDay()) || openDay && !openDay(d)) continue;
+                        if (!candleCache.has(keyOf(d))) ahead.push(d);
                     }
+                }
+                const queue = [...days].reverse(), results = new Map();
+                const worker = async () => { while (queue.length && id === candleRevision) { const day = queue.shift(); results.set(day, await fetchDay(day)); } };
+                // 미리 받기: 비어 있는 자리만큼(동시 3개까지). 실패는 무시한다(그날 차례에 다시 묻는다).
+                const prefetch = () => { for (const d of ahead) { if (candleInflight.size >= width) break; if (!candleCache.has(keyOf(d)) && !candleInflight.has(keyOf(d))) void fetchDay(d).catch(() => {}); } };
+                const work = Promise.all(Array.from({ length: Math.min(width, queue.length) }, worker));
+                prefetch();
+                await work;
+                prefetch();
+                if (id !== candleRevision) return;
+                for (const day of days) {
+                    const result = results.get(day);
                     partial ||= result.partial;
                     for (const point of result.points || []) merged.set(point.t, point);
                     const actualDay = result.date || (result.points?.length ? dayKey(result.points.at(-1).t) : day);

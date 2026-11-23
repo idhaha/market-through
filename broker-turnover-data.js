@@ -156,8 +156,12 @@ function createBrokerTurnoverData({ broker, directory, transport, http, getToken
             const times=store.points(code,`${date.slice(0,4)}-${date.slice(4,6)}-${date.slice(6,8)}`).map(p=>p.t);
             if(!times.length)return false;
             const clock=t=>new Date(t+9*3600000).toISOString().slice(11,19).replaceAll(':','');
-            const regular=times.filter(t=>clock(t)>='090000'&&clock(t)<='153000').length;
-            return clock(Math.min(...times))<='090000' && clock(Math.max(...times))>='153000' && regular>=Math.ceil(391*0.8);
+            // 개장이 늦은 날(수능일 10:00 등, market-open-delay.js)은 늦은 개장 시각부터 센다. 2026-11-23: 11/19(수능일)를 09:00 기준으로
+            // 보아 늘 "덜 받은 날"이 되어, 볼 때마다 LS에서 다시 받아 파일을 덮어쓰고 차트 변경 번호가 하루 380번 올랐다.
+            const day=`${date.slice(0,4)}-${date.slice(4,6)}-${date.slice(6,8)}`,open=shiftClock('090000',openDelay(day)),close=shiftClock('153000',closeDelay(day));
+            const span=(Date.parse(`${day}T${close.slice(0,2)}:${close.slice(2,4)}:00+09:00`)-Date.parse(`${day}T${open.slice(0,2)}:${open.slice(2,4)}:00+09:00`))/60000+1;
+            const regular=times.filter(t=>clock(t)>=open&&clock(t)<=close).length;
+            return clock(Math.min(...times))<=open && clock(Math.max(...times))>=close && regular>=Math.ceil(span*0.8);
         };
         const restDates=mode==='minute'?dates.filter(date=>date>=today || !savedDays.has(date) || !covered(date)):dates;
         const data=await series(instrument,mode,restDates), result=new Map();

@@ -1,4 +1,4 @@
-// 지난 분봉 미리 받기(2026-11-23): 매일 22:00 최근 60거래일의 LS 1분 거래대금(시장 · 관심 종목)과 종목 선물 1분 가격을 받아 둔다.
+// 지난 분봉 미리 받기(2026-11-23): 매일 20:20(처음 22:00에서 당김) 최근 60거래일의 LS 1분 거래대금(시장 · 관심 종목)과 종목 선물 1분 가격을 받아 둔다.
 const test = require('node:test'), assert = require('node:assert/strict');
 const { createLsHistoryPrefetch } = require('../../ls-history-prefetch');
 const at = s => Date.parse(s);
@@ -49,9 +49,9 @@ test('주식선물이 없는 종목은 한 번 확인한 뒤 건너뛴다', asyn
     assert.match(calls.logs.at(-1), /선물 없음 1/);
 });
 
-test('다음 22:00(한국 시각)까지 기다린다', () => {
-    assert.equal(setup({ now: at('2026-11-23T21:00:00+09:00') }).prefetch.msUntilNext(), 3600000);
-    assert.equal(setup({ now: at('2026-11-23T22:30:00+09:00') }).prefetch.msUntilNext(), 23.5 * 3600000);
+test('다음 20:20(한국 시각)까지 기다린다', () => {
+    assert.equal(setup({ now: at('2026-11-23T19:20:00+09:00') }).prefetch.msUntilNext(), 3600000);
+    assert.equal(setup({ now: at('2026-11-23T20:50:00+09:00') }).prefetch.msUntilNext(), 23.5 * 3600000);
 });
 
 test('도는 중에 다시 불러도 한 번만 돈다', async () => {
