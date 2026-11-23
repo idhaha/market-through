@@ -60,6 +60,9 @@ function fakeKiwoom(token, acctNo, pur) {
         await page.goto(`http://127.0.0.1:${port}/short-stoploss.html`);
         await page.waitForFunction(() => document.querySelectorAll('#lotsTable tbody tr.pick').length === 2);
         assert.deepEqual(await page.$$eval('#lotsTable .acct-tag', t => t.map(x => x.textContent)), ['5772', '0328']);
+        // 회귀(2026-11-23): 계좌 뒤 4자리는 종목 코드 옆이 아니라 대출일 칸 아래 줄에 보인다
+        assert.deepEqual(await page.$$eval('#lotsTable .acct-tag', t => t.map(x => [x.parentElement.cellIndex, getComputedStyle(x).display, x.getBoundingClientRect().top > x.parentElement.firstChild.parentElement.getBoundingClientRect().top + 8])), [[0, 'block', true], [0, 'block', true]]);
+        assert.equal(await page.locator('#lotsTable .code .acct-tag').count(), 0);
         // 실시간 연결은 마우스를 올리지 않아도 계좌별로 따로 보인다
         assert.deepEqual(await page.$$eval('#rtStates .ss-pill', p => p.map(x => [x.textContent, x.className])), [['5772 실시간 연결', 'ss-pill on'], ['0328 실시간 연결', 'ss-pill on']]);
         rt28.connected = () => false; await page.waitForFunction(() => document.querySelectorAll('#rtStates .ss-pill')[1]?.textContent === '0328 실시간 끊김');

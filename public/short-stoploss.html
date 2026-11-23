@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>대주 StopLoss</title>
-<link rel="stylesheet" href="short-stoploss.css?v=20261123_step">
-<script src="short-stoploss.js?v=20261123_step" defer></script>
+<link rel="stylesheet" href="short-stoploss.css?v=20261123_acct">
+<script src="short-stoploss.js?v=20261123_acct" defer></script>
 </head>
 <body>
 <header class="ss-top">
@@ -90,7 +90,7 @@
           <input id="trigger" class="inp num" inputmode="numeric" autocomplete="off" style="width: 96px">
           <span class="stepper"><button type="button" id="trigUp" class="step-btn" aria-label="감시가 한 호가 올리기" title="한 호가 올리기(키보드 ↑)"><svg aria-hidden="true" width="9" height="6" viewBox="0 0 9 6"><path d="M4.5 0.5L8.5 5.5H0.5Z" fill="currentColor"></path></svg></button><button type="button" id="trigDown" class="step-btn" aria-label="감시가 한 호가 내리기" title="한 호가 내리기(키보드 ↓)"><svg aria-hidden="true" width="9" height="6" viewBox="0 0 9 6"><path d="M4.5 5.5L8.5 0.5H0.5Z" fill="currentColor"></path></svg></button></span>
           <span>원 이면</span>
-          <span class="tip"><button type="button" class="i" aria-label="현재가 조건 설명">i</button><span class="tipbox" role="tooltip">현재가는 체결가입니다. 09:00~15:20에는 KRX와 NXT 체결 중 어느 쪽이든 감시가 이상이면 발동하고(주문은 SOR, NXT 비대상은 KRX), 08:00~08:50 · 15:30~20:00에는 NXT 체결, 15:20~15:30에는 KRX 예상체결가로 판정합니다. 체결은 VI 모니터와 함께 쓰는 키움 실시간(0B)으로 바로 받고, 5초마다 조회로 한 번 더 봅니다(실시간이 끊기면 1초 조회). 오늘 체결이 없는 값으로는 판정하지 않습니다. 등록할 때 이미 조건을 만족하면 확인을 받습니다. 옆 위아래 화살표(또는 칸에서 키보드 ↑ ↓)는 가격대별 호가 단위로 한 호가씩 올리고 내립니다(예: 1,999 → 2,000 → 2,005). 칸이 비어 있으면 현재가 기준으로 시작합니다. 전각 숫자로 쳐도 그대로 받습니다.</span></span>
+          <span class="tip"><button type="button" class="i" aria-label="현재가 조건 설명">i</button><span class="tipbox" role="tooltip">현재가는 체결가입니다. 09:00~15:20에는 KRX와 NXT 체결 중 어느 쪽이든 감시가 이상이면 발동하고(주문은 SOR, NXT 비대상은 KRX), 08:00~08:50 · 15:30~20:00에는 NXT 체결, 15:20~15:30에는 KRX 예상체결가로 판정합니다. 체결은 VI 모니터와 함께 쓰는 키움 실시간(0B)으로 바로 받고, 5초마다 조회로 한 번 더 봅니다(실시간이 끊기면 1초 조회). 오늘 체결이 없는 값으로는 판정하지 않습니다. 등록할 때 이미 조건을 만족하면 확인을 받습니다. 옆 위아래 화살표(또는 칸에서 키보드 ↑ ↓)는 가격대별 호가 단위로 한 호가씩 올리고 내립니다(예: 1,999 → 2,000 → 2,005). 그날 상한가 · 하한가에 닿으면 그 방향 화살표는 더 눌리지 않고, 범위 밖 값을 직접 넣으면 조건 추가가 꺼집니다. 잔고 행을 고르면 감시가에 현재가 바로 위 한 호가(업틱)가 미리 들어가 있어 그대로 조건 추가를 누를 수 있고, 직접 고치기 전까지는 현재가를 따라갑니다. 칸을 비우면 현재가 기준으로 다시 시작합니다. 전각 숫자로 쳐도 그대로 받습니다.</span></span>
         </div>
         <div class="row">
           <span>체결가</span>

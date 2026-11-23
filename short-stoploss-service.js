@@ -172,6 +172,18 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
         nxtCache.set(code, { day, value });
         return value;
     }
+    // 그날 상한가 · 하한가(2026-11-23): 대주창 감시가 화살표가 이 범위를 넘지 않게 잔고 행에 붙인다. 하루 동안 바뀌지 않아 종목당 하루 한 번만 조회한다(ka10001 KRX).
+    const limitCache = new Map();
+    async function priceLimits(code) {
+        const day = kstParts(now()).day, hit = limitCache.get(code);
+        if (hit && hit.day === day) return hit.value;
+        try {
+            const r = await call('stkinfo', 'ka10001', { stk_cd: code });
+            const value = { upper: abs(r.upl_pric), lower: abs(r.lst_pric) };
+            if (value.upper) limitCache.set(code, { day, value });
+            return value;
+        } catch { return { upper: 0, lower: 0 }; }
+    }
     // 대주 잔고: kt00018 개별(대출일별, crd_tp_nm "대주") + ka10085 만기일.
     async function loadLots() {
         const [b, p] = [await call('acnt', 'kt00018', { qry_tp: '2', dmst_stex_tp: 'KRX' }), await call('acnt', 'ka10085', { stex_tp: '0' })];
@@ -185,7 +197,7 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
             next.push({ key: code + ':' + r.crd_loan_dt, code, name: String(r.stk_nm || '').replace(/^\//, ''), loanDt: ymd(r.crd_loan_dt), loanRaw: r.crd_loan_dt,
                 maturity: ymd(maturity.get(code + ':' + r.crd_loan_dt) || ''), qty: abs(r.rmnd_qty), able: abs(r.trde_able_qty), sellPrice: abs(r.pur_pric), price: abs(r.cur_prc), pl: num(r.evltv_prft), rate: num(r.prft_rt) });
         }
-        for (const lot of next) lot.nxt = await nxtEligible(lot.code);
+        for (const lot of next) { lot.nxt = await nxtEligible(lot.code); Object.assign(lot, await priceLimits(lot.code)); }
         lots = next; lotsAt = now(); lotsError = '';
         return lots;
     }

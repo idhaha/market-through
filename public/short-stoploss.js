@@ -80,7 +80,8 @@
     const accounts = () => state?.accounts || [];
     const multi = () => accounts().length > 1;
     const acctShort = x => { const a = String(x?.account || x?.acct || ''); const m = a.match(/^\d{4}-(\d{4})/); return m ? m[1] : a; }; // 계좌번호 뒤 4자리(3699-5772-11 → 5772)
-    const acctTag = x => multi() ? el('span', { class: 'acct-tag', title: '계좌 ' + (x.account || x.acct) }, acctShort(x)) : '';
+    // 계좌 뒤 4자리는 표의 대출일 아래 줄에 붙인다(2026-11-23: 종목 코드 옆 → 대출일 아래, 계좌가 하나뿐이어도 보인다)
+    const acctTag = x => { const a = x.account || x.acct || state?.account; return a ? el('span', { class: 'acct-tag', title: '계좌 ' + a }, acctShort({ account: a })) : ''; };
     const shown = list => list.filter(x => !acctFilter || x.acct === acctFilter);
     function renderAccounts() {
         const sel = $('acct'), list = accounts();
@@ -101,7 +102,7 @@
         if (!lots.length) { body.append(el('tr', {}, el('td', { colspan: 8, class: 'empty' }, '대주 잔고가 없습니다'))); return; }
         for (const l of lots) {
             const tr = el('tr', { class: 'pick' + (l.key === selectedLot ? ' sel' : ''), tabindex: 0, onclick: () => pickLot(l.key), onkeydown: e => { if (e.key === 'Enter') pickLot(l.key); } },
-                el('td', { title: l.loanDt }, short(l.loanDt)), el('td', { title: `${l.name} ${l.code}` }, el('span', { class: 'namecell strong' }, el('span', { class: 'nm' }, el('span', { class: 'name' }, l.name), el('span', { class: 'code' }, l.code, acctTag(l))), badges(l.nxt))),
+                el('td', { title: l.loanDt }, short(l.loanDt), acctTag(l)), el('td', { title: `${l.name} ${l.code}` }, el('span', { class: 'namecell strong' }, el('span', { class: 'nm' }, el('span', { class: 'name' }, l.name), el('span', { class: 'code' }, l.code)), badges(l.nxt))),
                 el('td', { class: 'r' }, fmt(l.qty)), el('td', { class: 'r' + (l.able < l.qty ? ' warn' : '') }, fmt(l.able) + (l.able < l.qty ? ` (미체결 ${fmt(l.qty - l.able)})` : '')),
                 el('td', { class: 'r' }, fmt(l.sellPrice)), el('td', { class: 'r' }, fmt(l.price)),
                 el('td', { class: 'r ' + (l.pl > 0 ? 'gain' : l.pl < 0 ? 'loss' : '') }, `${l.pl > 0 ? '+' : ''}${fmt(l.pl)} (${l.rate > 0 ? '+' : ''}${l.rate.toFixed(2)}%)`),
@@ -149,8 +150,8 @@
             buttons.append(el('button', { type: 'button', class: 'btn small link', onclick: e => { e.stopPropagation(); showLog(w.id); } }, '기록'));
             body.append(el('tr', { class: 'pick' + (w.id === selectedWatch ? ' sel' : ''), onclick: () => pickWatch(w.id) },
                 el('td', {}, box), el('td', {}, el('span', { class: 'st ' + statusClass(w.status) }, w.status)),
-                el('td', { title: `${w.name} ${w.code}` }, el('span', { class: 'namecell' }, el('span', { class: 'nm' }, el('span', { class: 'name' }, w.name), el('span', { class: 'code' }, w.code, acctTag(w))), badges(w.nxt))),
-                el('td', { title: w.loanDt }, short(w.loanDt)), el('td', { class: 'r' }, w.qtyMode === 'pct' ? w.qtyValue + '%' : w.qtyValue + '주'),
+                el('td', { title: `${w.name} ${w.code}` }, el('span', { class: 'namecell' }, el('span', { class: 'nm' }, el('span', { class: 'name' }, w.name), el('span', { class: 'code' }, w.code)), badges(w.nxt))),
+                el('td', { title: w.loanDt }, short(w.loanDt), acctTag(w)), el('td', { class: 'r' }, w.qtyMode === 'pct' ? w.qtyValue + '%' : w.qtyValue + '주'),
                 el('td', { class: 'r' }, fmt(w.trigger)), el('td', { class: 'wrap', title: methodText(w) }, methodText(w)), el('td', { title: '~' + w.until }, '~' + short(w.until)),
                 el('td', { class: 'wrap ' + (['실패', '확인 필요', '부분체결'].includes(w.status) ? 'loss' : 'muted') }, lastText(w)), el('td', {}, buttons)));
         }
@@ -173,12 +174,20 @@
         if (!untilAuto || selectedWatch || document.activeElement === $('until')) return;
         const v = defaultUntil(currentLot()); if ($('until').value !== v) $('until').value = v;
     }
+    let triggerAuto = false;
+    function autoTrigger() {
+        if (!triggerAuto || selectedWatch) return;
+        const lot = currentLot(); if (!lot?.price) return;
+        const v = fmt(lot.upper ? Math.min(lot.upper, tickUp(lot.price)) : tickUp(lot.price)); $('trigger').placeholder = '현재 ' + fmt(lot.price);
+        if ($('trigger').value !== v) { $('trigger').value = v; updateForm(); }
+    }
     function pickLot(key) {
         selectedLot = key; selectedWatch = '';
         const lot = currentLot();
         fillLotInfo(lot);
-        // 빈 칸의 회색 글자가 입력값처럼 보이지 않게 "현재"를 붙인다(값은 비어 있어 조건 추가가 꺼져 있다)
-        $('trigger').value = ''; $('trigger').placeholder = lot?.price ? '현재 ' + fmt(lot.price) : '';
+        // 감시가 기본값(2026-11-23): 업틱룰처럼 현재가 바로 위 한 호가를 넣어 두어 고치지 않고도 바로 조건 추가를 할 수 있다.
+        // 칸을 직접 고치거나 화살표를 쓰기 전까지(triggerAuto)는 현재가가 바뀌면 따라간다. 칸을 비우면 회색 "현재 ○○"만 보인다
+        $('trigger').value = ''; $('trigger').placeholder = lot?.price ? '현재 ' + fmt(lot.price) : ''; triggerAuto = true; autoTrigger();
         $('until').value = defaultUntil(lot); untilAuto = true; $('calNote').hidden = true;
         $('formMode').textContent = '새 조건';
         renderAll(); updateForm();
@@ -221,7 +230,7 @@
     $('foldBtn').addEventListener('click', () => setFold(document.body.classList.contains('form-closed')));
     function pickWatch(id) {
         const w = state.watches.find(x => x.id === id); if (!w) return;
-        selectedWatch = id; selectedLot = w.lotKey;
+        selectedWatch = id; selectedLot = w.lotKey; triggerAuto = false;
         fillLotInfo(currentLot());
         $('trigger').value = fmt(w.trigger); $('ticks').value = w.ticks; $('upperLimit').checked = w.upperLimit; $('fix').checked = w.fix; $('chasePct').value = w.chasePct;
         document.querySelector(`input[name="qtyMode"][value="${w.qtyMode}"]`).checked = true;
@@ -240,19 +249,31 @@
         const v = formValue(), lot = currentLot();
         $('chasePct').disabled = !v.fix || v.upperLimit; $('fix').disabled = v.upperLimit;
         $('qtyPct').disabled = v.qtyMode !== 'pct'; $('qtyShares').disabled = v.qtyMode !== 'shares';
-        $('chaseNote').textContent = !v.fix || v.upperLimit ? (v.upperLimit ? '상한가 주문' : '정정 안 함') : v.trigger ? `${fmt(floorTick(v.trigger * (1 + v.chasePct / 100)))}원` : '-원'; // 고른 %를 감시가에 더한 가격(감시가가 없으면 금액만 비운다)
+        // 감시가 범위(2026-11-23): 그날 하한가 ~ 상한가. 넘으면 조건 추가를 끄고 이유를 추격 한도 자리에 보인다
+        const up = lot?.upper || 0, low = lot?.lower || 0;
+        const range = !v.trigger ? '' : up && v.trigger > up ? `감시가가 상한가 ${fmt(up)}보다 높습니다` : low && v.trigger < low ? `감시가가 하한가 ${fmt(low)}보다 낮습니다` : '';
+        const cap = v.trigger ? floorTick(v.trigger * (1 + v.chasePct / 100)) : 0; // 고른 %를 감시가에 더한 가격, 상한가를 넘으면 상한가(서버 주문도 같음)
+        $('chaseNote').textContent = range || (!v.fix || v.upperLimit ? (v.upperLimit ? '상한가 주문' : '정정 안 함') : !cap ? '-원' : up && cap >= up ? `${fmt(up)}원(상한가)` : `${fmt(cap)}원`);
+        $('chaseNote').classList.toggle('warn', !!range);
         const w = state?.watches.find(x => x.id === selectedWatch);
-        const ok = !!lot && v.trigger > 0 && (v.qtyMode === 'pct' || v.qtyValue >= 1) && !busy;
+        const ok = !!lot && v.trigger > 0 && !range && (v.qtyMode === 'pct' || v.qtyValue >= 1) && !busy;
         $('addBtn').disabled = !ok || !!w; $('editBtn').disabled = !ok || !w || ACTIVE.includes(w.status) || ['체결완료', '부분체결', '잔고없음'].includes(w.status);
         $('fromDay').textContent = kstDay(serverNow()) + ' ~';
-        const canStep = !!lot && (v.trigger > 0 || lot.price > 0); $('trigUp').disabled = !canStep; $('trigDown').disabled = !canStep || v.trigger === 1;
+        // 화살표: 상한가에 닿으면 ↑, 하한가(없으면 1원)에 닿으면 ↓를 더 누를 수 없다
+        const base = v.trigger || lot?.price || 0, floor = Math.max(1, low);
+        $('trigUp').disabled = !lot || !base || (up > 0 && base >= up);
+        $('trigDown').disabled = !lot || !base || (v.trigger ? v.trigger <= floor : floorTick(base) < floor);
     }
     // 감시가 한 호가씩(2026-11-23): 화살표 버튼 · 칸에서 키보드 ↑ ↓. 빈 칸이면 현재가 기준(↑ 현재가 위 첫 호가, ↓ 현재가)
     function stepTrigger(dir) {
-        const lot = currentLot(), v = num($('trigger').value), p = v || lot?.price || 0; if (!p) return;
-        $('trigger').value = fmt(v ? (dir > 0 ? tickUp(v) : tickDown(v)) : (dir > 0 ? tickUp(p) : floorTick(p)));
+        const lot = currentLot(), v = num($('trigger').value), p = v || lot?.price || 0; if (!p) return; triggerAuto = false;
+        const up = lot?.upper || 0, floor = Math.max(1, lot?.lower || 0);
+        let next = v ? (dir > 0 ? tickUp(v) : tickDown(v)) : (dir > 0 ? tickUp(p) : floorTick(p));
+        if (up && next > up) next = up; if (next < floor) next = floor; // 범위 밖 값에서 누르면 가까운 끝으로
+        $('trigger').value = fmt(next);
         updateForm();
     }
+    $('trigger').addEventListener('input', () => { triggerAuto = false; });
     $('trigUp').addEventListener('click', () => stepTrigger(1));
     $('trigDown').addEventListener('click', () => stepTrigger(-1));
     $('trigger').addEventListener('keydown', e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); stepTrigger(e.key === 'ArrowUp' ? 1 : -1); } });
@@ -403,7 +424,7 @@
         if (selectedWatch && !s.watches.some(w => w.id === selectedWatch)) selectedWatch = '';
         renderAll(); updateForm();
         if (selectedLot) fillLotInfo(currentLot());
-        autoUntil();
+        autoUntil(); autoTrigger();
         followScale();
     }
     // 독립창 앱: 메인 화면의 확대 · 축소 배율을 따라간다(VI 창과 같음). 메인 화면이 바꾼 배율을 5초마다 확인한다

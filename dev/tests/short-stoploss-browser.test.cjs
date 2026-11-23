@@ -7,7 +7,7 @@ const { createShortStopLoss } = require('../../short-stoploss-service');
 const { createShortStopLossAccounts } = require('../../short-stoploss-accounts');
 
 (async () => {
-    const k = { price: 7000, orders: [], book: new Map(), seq: 500 };
+    const k = { upl: 30000, lst: 1000, price: 7000, orders: [], book: new Map(), seq: 500 };
     const http = { post: async (url, body, { headers }) => {
         const api = headers['api-id'], r = data => ({ status: 200, data: { return_code: 0, ...data } });
         if (api === 'ka00001') return r({ acctNo: '3699577211' });
@@ -15,7 +15,7 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
             { stk_cd: 'A003280', stk_nm: '/흥아해운', crd_tp: '05', crd_tp_nm: '대주', crd_loan_dt: '20261123', rmnd_qty: '1', trde_able_qty: '1', pur_pric: '1560', cur_prc: '1559', evltv_prft: '1', prft_rt: '0.06' },
             ...(k.many ? Array.from({ length: 20 }, (_, i) => ({ stk_cd: 'A003280', stk_nm: '/흥아해운', crd_tp: '05', crd_tp_nm: '대주', crd_loan_dt: String(20261001 + i), rmnd_qty: '1', trde_able_qty: '1', pur_pric: '1560', cur_prc: '1559', evltv_prft: '1', prft_rt: '0.06' })) : [])] });
         if (api === 'ka10085') return r({ acnt_prft_rt: [{ stk_cd: '004980', loan_dt: '20261123', expr_dt: '20270222' }, { stk_cd: '003280', loan_dt: '20261123', expr_dt: '20270222' }] });
-        if (api === 'ka10001') return body.stk_cd === '003280_NX' ? r({ cur_prc: '', base_pric: '' }) : r({ cur_prc: '+' + k.price, trde_qty: '100', upl_pric: '+8900', base_pric: '6850' });
+        if (api === 'ka10001') return body.stk_cd === '003280_NX' ? r({ cur_prc: '', base_pric: '' }) : r({ cur_prc: '+' + k.price, trde_qty: '100', upl_pric: '+' + (k.upl || 8900), lst_pric: k.lst ? '+' + k.lst : '', base_pric: '6850' });
         if (api === 'ka10004') return r({ sel_fpr_bid: '+' + (k.price + 10) });
         if (api === 'kt10006') { const o = String(++k.seq).padStart(7, '0'); k.orders.push(body); k.book.set(o, +body.ord_uv); return r({ ord_no: o }); }
         if (api === 'ka10075') return r({ oso: [] });
@@ -43,7 +43,7 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         await page.waitForSelector('#lotsTable tbody tr.pick');
         assert.equal(await page.locator('#lotsTable tbody tr.pick').count(), 2);
         assert.equal(await page.textContent('#acct'), '3699-5772-11', '계좌 문구에 앱키 등록 없음 · 상품코드까지');
-        assert.equal(await page.locator('.acct-tag').count(), 0, '계좌가 하나면 계좌 끝자리 표시 없음');
+        assert.ok((await page.$$eval('.acct-tag', t => t.map(x => x.textContent))).every(x => x === '5772'), '계좌가 하나여도 계좌 끝자리 표시(2026-11-23)');
         assert.equal(await page.locator('#lotsTable tbody tr').nth(1).locator('.pill.none').count(), 1, '흥아해운 NXT 비대상 표시');
         assert.deepEqual(await page.$$eval('#ticks option', o => [o[0].textContent, o.at(-1).textContent]), ['+10틱', '+1틱']);
         assert.deepEqual(await page.$$eval('#qtyPct option', o => [o[0].textContent, o.at(-1).textContent]), ['100%', '10%']);
@@ -60,7 +60,13 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         assert.equal(await page.inputValue('#until'), '2026-12-18', '기본 1개월(12-20 일요일 → 12-18)');
         // 회귀(2026-11-23): 계좌는 대출일 아래 따로, 빈 감시가의 회색 글자는 "현재 7,000"(입력값처럼 보이지 않게)
         assert.equal(await page.textContent('#fAcct'), '3699-5772-11');
-        assert.equal(await page.getAttribute('#trigger', 'placeholder'), '현재 7,000'); assert.equal(await page.isDisabled('#addBtn'), true);
+        assert.equal(await page.getAttribute('#trigger', 'placeholder'), '현재 7,000');
+        // 감시가 기본값: 현재가 7,000 바로 위 한 호가(업틱) 7,010이 들어가 있어 고치지 않고 바로 조건 추가 가능, 직접 고치기 전까지는 현재가를 따라간다
+        assert.equal(await page.inputValue('#trigger'), '7,010'); assert.equal(await page.isDisabled('#addBtn'), false); assert.match(await page.textContent('#chaseNote'), /7,710원/);
+        k.price = 7020; await page.click('#refreshBtn'); await page.waitForFunction(() => document.querySelector('#trigger').value === '7,030');
+        await page.click('#trigUp'); assert.equal(await page.inputValue('#trigger'), '7,040');
+        k.price = 7000; await page.click('#refreshBtn'); await page.waitForTimeout(2500); assert.equal(await page.inputValue('#trigger'), '7,040', '화살표로 고친 뒤에는 따라가지 않음');
+        await page.fill('#trigger', ''); assert.equal(await page.isDisabled('#addBtn'), true);
         // 회귀(2026-11-23): 전각 숫자로 쳐도 감시가로 읽어 조건 추가가 켜지고 추격 한도 금액이 나온다(예전: 0으로 읽혀 꺼짐 · "-원")
         await page.locator('#trigger').focus(); await page.keyboard.insertText('７３００');
         assert.equal(await page.isDisabled('#addBtn'), false); assert.match(await page.textContent('#chaseNote'), /8,030원/);
@@ -68,9 +74,19 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         // 한 호가씩: 빈 칸이면 현재가 기준(↑ 7,010 · ↓ 7,000), 가격대 경계에서 단위가 바뀐다, 호가 단위에 안 맞는 값은 맞는 호가로
         const step = async (v, how) => { await page.fill('#trigger', v); if (how === 'up' || how === 'down') await page.click(how === 'up' ? '#trigUp' : '#trigDown'); else { await page.locator('#trigger').focus(); await page.keyboard.press(how); } return page.inputValue('#trigger'); };
         assert.deepEqual([await step('', 'up'), await step('', 'down'), await step('', 'ArrowUp')], ['7,010', '7,000', '7,010']);
-        assert.deepEqual([await step('2,000', 'down'), await step('1,999', 'up'), await step('2,000', 'ArrowUp'), await step('5,000', 'ArrowDown'), await step('20,000', 'down'), await step('7,003', 'up'), await step('7,003', 'down'), await step('1', 'ArrowDown')],
-            ['1,999', '2,000', '2,005', '4,995', '19,990', '7,010', '7,000', '1']);
-        assert.match(await page.textContent('#chaseNote'), /^1원$/); assert.equal(await page.isDisabled('#trigDown'), true, '1원 아래는 없음');
+        assert.deepEqual([await step('2,000', 'down'), await step('1,999', 'up'), await step('2,000', 'ArrowUp'), await step('5,000', 'ArrowDown'), await step('20,000', 'down'), await step('7,003', 'up'), await step('7,003', 'down')],
+            ['1,999', '2,000', '2,005', '4,995', '19,990', '7,010', '7,000']);
+        // 회귀(2026-11-23): 그날 하한가(시험 1,000) · 상한가(시험 30,000)에 닿으면 그 방향 화살표는 더 눌리지 않고, 범위 밖 값은 조건 추가를 끈다
+        assert.equal(await step('1,001', 'down'), '1,000'); assert.equal(await page.isDisabled('#trigDown'), true, '하한가 아래는 없음'); assert.equal(await page.isDisabled('#trigUp'), false);
+        await page.keyboard.press('ArrowDown'); assert.equal(await page.inputValue('#trigger'), '1,000');
+        assert.equal(await step('29,950', 'up'), '30,000'); assert.equal(await page.isDisabled('#trigUp'), true, '상한가 위는 없음');
+        await page.keyboard.press('ArrowUp'); assert.equal(await page.inputValue('#trigger'), '30,000');
+        await page.fill('#trigger', '31,000'); assert.equal(await page.isDisabled('#addBtn'), true); assert.match(await page.textContent('#chaseNote'), /상한가 30,000보다 높습니다/);
+        assert.equal(await step('31,000', 'down'), '30,000', '범위 밖에서 누르면 가까운 끝으로');
+        await page.fill('#trigger', '900'); assert.equal(await page.isDisabled('#addBtn'), true); assert.match(await page.textContent('#chaseNote'), /하한가 1,000보다 낮습니다/);
+        await page.fill('#trigger', '28,000'); assert.equal(await page.textContent('#chaseNote'), '30,000원(상한가)', '추격 한도도 상한가를 넘지 않음'); assert.equal(await page.isDisabled('#addBtn'), false);
+        // 회귀(2026-11-23): 계좌가 하나뿐이어도 표의 대출일 아래 줄에 계좌 뒤 4자리를 보인다
+        assert.deepEqual((await page.$$eval('#lotsTable .acct-tag', t => t.map(x => [x.textContent, x.parentElement.cellIndex, getComputedStyle(x).display]))).filter((v, i, a) => i === 0 || JSON.stringify(v) !== JSON.stringify(a[0])), [['5772', 0, 'block']]);
         await page.fill('#trigger', '7300');
         assert.match(await page.textContent('#chaseNote'), /8,030/);
         // 달력: 아이콘을 눌러야 뜨고, 휴장일을 고르면 직전 거래일
