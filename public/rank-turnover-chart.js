@@ -218,6 +218,8 @@
             boundaries(cc,layout.top,layout.bottom);
             cc.lineWidth=1;
             window.RankChartAxis.drawOhlc(cc,selected,p=>x(p.t),cy,cw);
+            // 분봉에만 일봉 기준 이평(2026-11-24, docs/MINUTE_DAILY_MA.md): 선택 시장 업종 일봉.
+            if(mode==='minute')window.RankDayMa?.draw(cc,{target:`index:${selectedMarket==='kosdaq'?'kosdaq':'kospi'}`,candles:data[selectedMarket].filter(window.RankChartAxis.validCandle),visible:selected,x:p=>x(p.t),y:cy,left,right,top:layout.top,bottom:layout.bottom,redraw:requestDraw});
             if(hover&&indices.has(hover)){cc.strokeStyle='#000';cc.setLineDash([3,3]);cc.beginPath();cc.moveTo(x(hover),layout.top);cc.lineTo(x(hover),layout.bottom);cc.stroke();cc.setLineDash([]);}
             const hovered=selected.find(p=>p.t===hover);
             const price=hovered?.close;

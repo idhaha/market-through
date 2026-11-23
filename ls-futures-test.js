@@ -506,7 +506,9 @@ function createLsFuturesTest({ http, getToken, directory, daytimeStore, dailyPro
         if(priceRanges.size>40)priceRanges.delete(priceRanges.keys().next().value);
         return promise;
     }
-    return { query,priceRange,collect:options=>nightCollector?.collect(options),start(){
+    // 일봉 이평(day-ma-service, 2026-11-24): 주간 연결선물 일봉만(야간 제외). 저장된 연결 일봉을 그대로 쓴다.
+    const sessionDaily=(code,from,to)=>{if(!Object.hasOwn(assets,code)||!validDate(from)||!validDate(to)||from>to)throw failure('잘못된 선물 일봉 조회 범위');return connectedDaily(code,'D',to,from);};
+    return { query,priceRange,sessionDaily,collect:options=>nightCollector?.collect(options),start(){
         if(!nightCollector)return;
         for(const code of Object.keys(assets))try{nightCollector.ingest(code,readHistory(code,'N'));}catch{console.warn('[LS night] saved history import failed');}
         nightCollector.start();

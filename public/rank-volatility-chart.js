@@ -372,6 +372,9 @@ tip.hidden=false;}
             boundaries(cc, top, bottom);
             const width = layout.width;cc.lineWidth=1;
             window.RankChartAxis.drawOhlc(cc, rows, point => x(point.date), y, width);
+            // 분봉에만 일봉 기준 이평(2026-11-24, docs/MINUTE_DAILY_MA.md): 선택 시장 업종 일봉.
+            if (breadth && breadthMode === 'minute') window.RankDayMa?.draw(cc, { target: `index:${breadthMarket === 'kosdaq' ? 'kosdaq' : 'kospi'}`, candles: candles.filter(window.RankChartAxis.validCandle), visible: rows,
+                time: point => Number(point.t), x: point => x(point.date), y, left, right, top, bottom, redraw: draw });
             axis(cc, h); candleGeometry = { top, bottom };
             if (hover && indices.has(hover)) { cc.strokeStyle = '#000'; cc.setLineDash([3, 3]); cc.beginPath(); cc.moveTo(x(hover), top); cc.lineTo(x(hover), bottom); cc.stroke(); cc.setLineDash([]); }
             const hovered = rows.find(point => point.date === hover);

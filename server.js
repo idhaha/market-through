@@ -269,6 +269,7 @@ createRankIndependentRelay({
             ? supplyService.configure(command.body?.codes, command.body?.revision) : supplyService.summary();
         if (url.pathname === '/api/supply/chart') return supplyService.query(Object.fromEntries(url.searchParams));
         if (url.pathname === '/api/supply/candles') return supplyService.candles(Object.fromEntries(url.searchParams));
+        if (url.pathname === '/api/day-ma') return dayMaService.query(Object.fromEntries(url.searchParams));
         if (url.pathname === '/api/chart-revisions') return { success: true, revisions: chartRevisions.check() };
         throw new Error('지원하지 않는 요청입니다.');
     }
@@ -540,6 +541,15 @@ app.get('/api/ls-stock-futures/chart', async (req, res) => {
 });
 app.get('/api/ls-stock-futures/candles', async (req, res) => {
     try { res.set('Cache-Control', 'no-store').json(await lsStockFuturesService.candles(req.query)); }
+    catch (error) { res.status(error.status || 502).json({ success: false, error: error.message }); }
+});
+// 분봉 캔들의 일봉 기준 이동평균선 재료(2026-11-24, docs/MINUTE_DAILY_MA.md): 대상 일봉의 [날짜, 시가, 종가](어제까지). 계산은 화면에서.
+const dayMaService = require('./day-ma-service').createDayMaService({
+    kiwoomHttp: kiwoomDailyHttp, getKiwoomToken: () => getAccessToken(process.env.KIWOOM_APPKEY, process.env.KIWOOM_SECRETKEY),
+    stockFutures: lsStockFuturesService, indexFutures: lsFuturesTestService
+});
+app.get('/api/day-ma', async (req, res) => {
+    try { res.set('Cache-Control', 'no-store').json(await dayMaService.query(req.query)); }
     catch (error) { res.status(error.status || 502).json({ success: false, error: error.message }); }
 });
 app.get('/api/ls-market-supply/chart', async (req, res) => {

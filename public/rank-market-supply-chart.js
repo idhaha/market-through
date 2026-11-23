@@ -395,7 +395,12 @@
             grid(cc,size.w,layout.minimum,layout.maximum,cy,false);
             boundaries(cc,layout.top,layout.bottom);
             cc.lineWidth=1;
-            window.RankChartAxis.drawOhlc(cc, visible, p => x(p.t), cy, width); cursor(cc, size.h); selection(cc, size.h);
+            window.RankChartAxis.drawOhlc(cc, visible, p => x(p.t), cy, width);
+            // 분봉에만 일봉 기준 이평(2026-11-24). 현물은 업종 일봉, 선물은 주간 연결선물 일봉(야간 봉은 다음 주간 거래일에 붙임).
+            if (mode === 'minute') { const futuresTarget = selected.startsWith('futures');
+                window.RankDayMa?.draw(cc, { target: futuresTarget ? `indexFutures:${selected}` : `index:${selected === 'kosdaq' ? 'kosdaq' : 'kospi'}`, night: futuresTarget,
+                    candles: candles.filter(window.RankChartAxis.validCandle), visible, x: p => x(p.t), y: cy, left, right, top: layout.top, bottom: layout.bottom, redraw: requestDraw }); }
+            cursor(cc, size.h); selection(cc, size.h);
             const hovered = visible.find(p => p.t === hover);
             if (hovered) valueBadge(cc, hovered.close, cy(hovered.close), '#000', size.h, hovered.close.toLocaleString('ko-KR'));
         }

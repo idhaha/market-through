@@ -206,6 +206,11 @@
                 && point.stock_high >= Math.max(point.stock_open, point.stock_price)
                 && point.stock_low <= Math.min(point.stock_open, point.stock_price);
         }
+        // 'YYYYMMDDHHMMSS'(한국 시각) → ms. 일봉 이평의 거래일 · 시가 판단용.
+        function candleTime(point) {
+            const s = String(point.time || '');
+            return Date.UTC(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8), +s.slice(8, 10) - 9, +s.slice(10, 12), +s.slice(12, 14) || 0);
+        }
         function candleChange(point) {
             return Number.isFinite(point.stock_change_rate) ? point.stock_change_rate : null;
         }
@@ -268,6 +273,9 @@
                 });
             }
             candleCtx.restore();
+            // 분봉에만 일봉 기준 이평(2026-11-24, docs/MINUTE_DAILY_MA.md): 선택 종목 통합 일봉.
+            if (state.mode === 'minute' && state.selection?.code) window.RankDayMa?.draw(candleCtx, { target: `stock:${state.selection.code}`, candles: points.filter(validCandle), visible: candles,
+                time: candleTime, open: p => p.stock_open, x: (p, k) => xs[k], y, left: plot.left, right: plot.right, top, bottom, redraw: draw });
             if (state.hover != null && points[state.hover]) {
                 candleCtx.beginPath(); candleCtx.setLineDash([3,3]); candleCtx.strokeStyle = '#000';
                 candleCtx.moveTo(x(state.hover), top); candleCtx.lineTo(x(state.hover), bottom); candleCtx.stroke(); candleCtx.setLineDash([]);

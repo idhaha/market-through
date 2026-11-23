@@ -375,7 +375,11 @@
             grid(cc,size.w,layout.minimum,layout.maximum,cy,false);
             boundaries(cc,layout.top,layout.bottom);
             cc.lineWidth=1;
-            window.RankChartAxis.drawOhlc(cc, visible, p => x(p.t), cy, width); cursor(cc, size.h); selection(cc, size.h);
+            window.RankChartAxis.drawOhlc(cc, visible, p => x(p.t), cy, width);
+            // 분봉에만 일봉 기준 이평(2026-11-24, docs/MINUTE_DAILY_MA.md). 종목은 통합 일봉, 종목 선물은 연결선물 일봉.
+            if (mode === 'minute' && selected) window.RankDayMa?.draw(cc, { target: `${futures ? 'stockFutures' : 'stock'}:${selected}`, candles: candles.filter(window.RankChartAxis.validCandle), visible,
+                x: p => x(p.t), y: cy, left, right, top: layout.top, bottom: layout.bottom, redraw: requestDraw });
+            cursor(cc, size.h); selection(cc, size.h);
             const hovered = visible.find(p => p.t === hover);
             if (hovered) valueBadge(cc, hovered.close, cy(hovered.close), '#000', size.h, hovered.close.toLocaleString('ko-KR'));
         }
