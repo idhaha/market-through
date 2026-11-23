@@ -182,9 +182,14 @@ function createLsStockFutures({ http, getToken, directory, supply, now = Date.no
         let date = input.date || (input.cursor ? dashed(input.cursor) : '') || session.latest || today;
         let saved = readDay(code, date);
         const registered = (supply.summary().stocks || []).some(s => s.code === code);
-        if (date === today && session.started) {
-            if (!saved || now() - (saved.updatedAt || 0) > (registered && collects() && collectingAt(now()) ? 180000 : 60000))
-                saved = await refreshDay(code, item).catch(() => saved);
+        // 2026-11-23: 장이 끝난 밤에 오늘을 물으면 t8463(bgubun 0)이 빈 목록을 주어 refreshDay가 null을 돌려주고, 저장해 둔
+        // 오늘 분봉(08:45~16:11)을 버린 빈 응답이 나갔다(화면에 오늘 종목 선물 수급이 안 그려짐). 받은 것이 오늘이 아니면 저장분을 쓰고,
+        // 수집이 끝난 뒤 마감 행까지 저장된 날은 LS를 다시 부르지 않는다.
+        if (date === today && session.started && !(final(saved) && !collectingAt(now()))) {
+            if (!saved || now() - (saved.updatedAt || 0) > (registered && collects() && collectingAt(now()) ? 180000 : 60000)) {
+                const fetched = await refreshDay(code, item).catch(() => null);
+                if (fetched?.day === date) saved = fetched;
+            }
         } else if ((date === session.latest || date === session.previous) && !final(saved)) {
             // One try per day and 10 min: LS answers an empty or other day when it no longer serves this one.
             const key = code + ':' + date;

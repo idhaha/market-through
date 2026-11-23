@@ -214,3 +214,21 @@ test('한투 분봉을 새로 받을 때 연결이 잠깐 끊기면 다시 묻�
  calls=0;fails=9;await assert.rejects(make(kisMinute).candles({code:'005930',mode:'minute',date:'2026-11-03'}),/socket hang up/);assert.equal(calls,3,'세 번까지');
  calls=0;await assert.rejects(make(async()=>{calls++;throw new Error('FHKIF03020200 OPSQ0002 잘못된 종목');}).candles({code:'005930',mode:'minute',date:'2026-11-02'}));assert.equal(calls,1,'다른 오류는 다시 묻지 않는다');
 });
+test('장이 끝난 밤에 오늘을 물으면 저장한 오늘 분봉을 그대로 주고, LS가 빈 목록을 줘도 버리지 않는다(2026-11-23 오라클)',async()=>{
+ // 2026-11-23 21:20: 오늘 08:45~16:11 저장분이 있는데 t8463(bgubun 0)이 빈 목록을 주자 응답이 빈 오늘이 되어 카드에 오늘이 안 그려졌다.
+ const night=Date.parse('2026-11-23T21:20:00+09:00'),calls=[],directory=fs.mkdtempSync(path.join(os.tmpdir(),'lsf-test-'));
+ const ls={post:async(url,body,{headers})=>{const tr=headers.tr_cd;calls.push(tr);const data={rsp_cd:'00000'};
+  if(tr==='t2522')data.t2522OutBlock1=[{bsc_asts_nm:'삼성전자',bsc_asts_is_cd:'005930',bsc_asts_id:'S11',nmc_is_shrt_cd:'A116C000'}];
+  if(tr==='t8463')data.t8463OutBlock1=[];if(tr==='t8402')data.t8402OutBlock={mulcnt:10};return {data};}};
+ const t=hm=>Date.parse('2026-11-23T'+hm+':00+09:00');
+ const write=(points)=>{fs.mkdirSync(path.join(directory,'005930'),{recursive:true});fs.writeFileSync(path.join(directory,'005930','2026-11-23.json'),JSON.stringify({day:'2026-11-23',points,contract:'A116C000',updatedAt:t('16:20')}));};
+ const svc=createLsStockFutures({http:ls,getToken:async()=>'t',directory,supply:{summary:()=>({stocks:[{code:'005930'}]})},now:()=>night,policy:()=>({openDate:()=>true}),pause:async()=>{}});
+ write([{t:t('08:45'),individual:1,foreign:2,institution:3,source_time:'084530'},{t:t('16:11'),individual:4,foreign:5,institution:6,source_time:'161136'}]);
+ const done=await svc.query({code:'005930',mode:'minute'});
+ assert.equal(done.date,'2026-11-23');assert.equal(done.points.length,2,'저장한 오늘 분봉');
+ assert.equal(calls.filter(c=>c==='t8463').length,0,'마감 행까지 저장된 날은 수집이 끝난 뒤 LS를 다시 부르지 않는다');
+ // 마감 행이 없는 날(수집이 중간에 끊긴 날)은 LS에 묻지만, 빈 목록이 와도 저장분을 쓴다.
+ write([{t:t('08:45'),individual:1,foreign:2,institution:3,source_time:'084530'}]);
+ const partial=await svc.query({code:'005930',mode:'minute'});
+ assert.equal(calls.filter(c=>c==='t8463').length,1);assert.equal(partial.points.length,1,'빈 응답으로 저장분을 버리지 않는다');
+});
