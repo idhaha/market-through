@@ -173,3 +173,5 @@ body.form-closed .fold-btn svg{transform:rotate(180deg)}
 .step-btn:first-child{border-radius:4px 4px 0 0}.step-btn:last-child{border-radius:0 0 4px 4px}
 .step-btn:hover,.step-btn:focus-visible{background:#E8EEF8;border-color:var(--blue);color:var(--accent)}
 .step-btn:disabled{color:#B0B7C3;cursor:default;background:#F3F5F8;border-color:#D3D8E0}
+/* 평가손익(대주): 이익 빨강 · 손실 파랑(2026-11-23 사용자 결정, 국내 관례) */
+.pl-up{color:var(--loss)}.pl-down{color:var(--gain)}

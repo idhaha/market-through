@@ -60,12 +60,16 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         assert.equal(await page.inputValue('#until'), '2026-12-18', '기본 1개월(12-20 일요일 → 12-18)');
         // 회귀(2026-11-23): 계좌는 대출일 아래 따로, 빈 감시가의 회색 글자는 "현재 7,000"(입력값처럼 보이지 않게)
         assert.equal(await page.textContent('#fAcct'), '3699-5772-11');
+        // 회귀(2026-11-23): 평가손익(대주)은 이익 빨강 · 손실 파랑(예전에는 이익이 파랑)
+        const plColor = pl => page.evaluate(pl => { const td = document.createElement('td'); td.className = 'r ' + (pl > 0 ? 'pl-up' : 'pl-down'); document.querySelector('#lotsTable tbody tr').append(td); const c = getComputedStyle(td).color; td.remove(); return c; }, pl);
+        assert.deepEqual([await plColor(1), await plColor(-1)], ['rgb(179, 38, 30)', 'rgb(21, 87, 176)']);
+        assert.equal(await page.$eval('#lotsTable tbody tr td:nth-child(7)', td => getComputedStyle(td).color), 'rgb(179, 38, 30)', '실제 잔고 행(평가손익 +1)은 빨강');
         assert.equal(await page.getAttribute('#trigger', 'placeholder'), '현재 7,000');
-        // 감시가 기본값: 현재가 7,000 바로 위 한 호가(업틱) 7,010이 들어가 있어 고치지 않고 바로 조건 추가 가능, 직접 고치기 전까지는 현재가를 따라간다
-        assert.equal(await page.inputValue('#trigger'), '7,010'); assert.equal(await page.isDisabled('#addBtn'), false); assert.match(await page.textContent('#chaseNote'), /7,710원/);
-        k.price = 7020; await page.click('#refreshBtn'); await page.waitForFunction(() => document.querySelector('#trigger').value === '7,030');
-        await page.click('#trigUp'); assert.equal(await page.inputValue('#trigger'), '7,040');
-        k.price = 7000; await page.click('#refreshBtn'); await page.waitForTimeout(2500); assert.equal(await page.inputValue('#trigger'), '7,040', '화살표로 고친 뒤에는 따라가지 않음');
+        // 감시가 기본값(청산이라 업틱룰 무관): 현재가 7,000이 들어가 있어 고치지 않고 바로 조건 추가 가능, 직접 고치기 전까지는 현재가를 따라간다
+        assert.equal(await page.inputValue('#trigger'), '7,000'); assert.equal(await page.isDisabled('#addBtn'), false); assert.match(await page.textContent('#chaseNote'), /7,700원/);
+        k.price = 7020; await page.click('#refreshBtn'); await page.waitForFunction(() => document.querySelector('#trigger').value === '7,020');
+        await page.click('#trigUp'); assert.equal(await page.inputValue('#trigger'), '7,030');
+        k.price = 7000; await page.click('#refreshBtn'); await page.waitForTimeout(2500); assert.equal(await page.inputValue('#trigger'), '7,030', '화살표로 고친 뒤에는 따라가지 않음');
         await page.fill('#trigger', ''); assert.equal(await page.isDisabled('#addBtn'), true);
         // 회귀(2026-11-23): 전각 숫자로 쳐도 감시가로 읽어 조건 추가가 켜지고 추격 한도 금액이 나온다(예전: 0으로 읽혀 꺼짐 · "-원")
         await page.locator('#trigger').focus(); await page.keyboard.insertText('７３００');

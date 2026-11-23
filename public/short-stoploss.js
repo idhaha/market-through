@@ -105,7 +105,7 @@
                 el('td', { title: l.loanDt }, short(l.loanDt), acctTag(l)), el('td', { title: `${l.name} ${l.code}` }, el('span', { class: 'namecell strong' }, el('span', { class: 'nm' }, el('span', { class: 'name' }, l.name), el('span', { class: 'code' }, l.code)), badges(l.nxt))),
                 el('td', { class: 'r' }, fmt(l.qty)), el('td', { class: 'r' + (l.able < l.qty ? ' warn' : '') }, fmt(l.able) + (l.able < l.qty ? ` (미체결 ${fmt(l.qty - l.able)})` : '')),
                 el('td', { class: 'r' }, fmt(l.sellPrice)), el('td', { class: 'r' }, fmt(l.price)),
-                el('td', { class: 'r ' + (l.pl > 0 ? 'gain' : l.pl < 0 ? 'loss' : '') }, `${l.pl > 0 ? '+' : ''}${fmt(l.pl)} (${l.rate > 0 ? '+' : ''}${l.rate.toFixed(2)}%)`),
+                el('td', { class: 'r ' + (l.pl > 0 ? 'pl-up' : l.pl < 0 ? 'pl-down' : '') }, `${l.pl > 0 ? '+' : ''}${fmt(l.pl)} (${l.rate > 0 ? '+' : ''}${l.rate.toFixed(2)}%)`),
                 el('td', { title: l.maturity || '' }, short(l.maturity)));
             body.append(tr);
         }
@@ -198,14 +198,15 @@
     function autoTrigger() {
         if (!triggerAuto || selectedWatch) return;
         const lot = currentLot(); if (!lot?.price) return;
-        const v = fmt(lot.upper ? Math.min(lot.upper, tickUp(lot.price)) : tickUp(lot.price)); $('trigger').placeholder = '현재 ' + fmt(lot.price);
+        const v = fmt(lot.price); $('trigger').placeholder = '현재 ' + fmt(lot.price);
         if ($('trigger').value !== v) { $('trigger').value = v; updateForm(); }
     }
     function pickLot(key) {
         selectedLot = key; selectedWatch = '';
         const lot = currentLot();
         fillLotInfo(lot);
-        // 감시가 기본값(2026-11-23): 업틱룰처럼 현재가 바로 위 한 호가를 넣어 두어 고치지 않고도 바로 조건 추가를 할 수 있다.
+        // 감시가 기본값(2026-11-23): 현재가를 넣어 두어 고치지 않고도 바로 조건 추가를 할 수 있다(청산이라 업틱룰과 무관, 사용자 결정).
+        // 현재가 = 감시가라 등록하면 바로 발동할 수 있어, 조건 추가 때 확인을 받는다.
         // 칸을 직접 고치거나 화살표를 쓰기 전까지(triggerAuto)는 현재가가 바뀌면 따라간다. 칸을 비우면 회색 "현재 ○○"만 보인다
         $('trigger').value = ''; $('trigger').placeholder = lot?.price ? '현재 ' + fmt(lot.price) : ''; triggerAuto = true; autoTrigger();
         $('until').value = defaultUntil(lot); untilAuto = true; $('calNote').hidden = true;
