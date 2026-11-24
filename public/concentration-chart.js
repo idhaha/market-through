@@ -465,7 +465,9 @@
             await load(false, false); todayOnly = false;
             if (!candleArea.hidden) await loadIndependentPrices(false);
         }
-        function leaveWindow() { if (!windowBase) return; windowBase = ''; priceIdentity = ''; priceCursor = null; void load(false, false); }
+        // 일봉에 가 있는 동안 구간 보기가 끝나도(당일 · 오늘 포함 확대로 다시 분봉) 옛 구간 기준일을 지운다(2026-11-24). 예전엔 분봉일 때만
+        // 불러 windowBase가 남아, 과거 구간을 본 뒤 일봉에서 다시 분봉으로 오면 쏠림율만 옛 구간을 받았다. 다시 받기는 분봉일 때만 한다.
+        function leaveWindow() { if (!windowBase) return; windowBase = ''; priceIdentity = ''; priceCursor = null; if (state.mode === 'minute') void load(false, false); }
         let priceController,priceIdentity='',priceCursor=null,priceBusy=false,priceWork;
         function hasPriceHistory(){return !candleArea.hidden && priceIdentity===`${state.selection?.code}:${state.mode}:${state.interval}` && !!priceCursor;}
         function loadIndependentPrices(append){
@@ -742,7 +744,7 @@
             if (button.dataset.chartMode === 'minute' && state.mode !== 'minute') state.interval = 1;
             state.mode = button.dataset.chartMode; updateControls(); saveDisplaySettings(); load();
         }));
-        window.RankChartAxis.registerHistoryLoader(chartKey,()=>state.hasMore?load(true):loadIndependentPrices(true),()=>state.busy,()=>({hasMore:!!state.selection && !!(state.hasMore || hasPriceHistory()),cursor:[state.cursor,priceCursor].join(':'),progress:state.historyProgress,error:state.historyError,identity:state.selection?.code,ensureRange:ensurePriceRange,seek:state.mode==='minute'?seekWindow:undefined,leaveWindow:state.mode==='minute'?leaveWindow:undefined}));
+        window.RankChartAxis.registerHistoryLoader(chartKey,()=>state.hasMore?load(true):loadIndependentPrices(true),()=>state.busy,()=>({hasMore:!!state.selection && !!(state.hasMore || hasPriceHistory()),cursor:[state.cursor,priceCursor].join(':'),progress:state.historyProgress,error:state.historyError,identity:state.selection?.code,ensureRange:ensurePriceRange,seek:state.mode==='minute'?seekWindow:undefined,leaveWindow}));
         more.addEventListener('click', () => window.RankChartAxis.requestHistory(state.mode));
         function zoom(factor, anchor = .5) {
             if (!state.points.length) return;

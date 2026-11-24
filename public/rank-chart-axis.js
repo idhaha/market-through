@@ -87,7 +87,7 @@
         return {start,count};
     }
     let historyMode=false, sharedCutoff='',redrawQueued=false,historyBusy=false,historyEpoch=0;
-    let windowEnd='',windowFirstDay=''; // 과거 분봉 구간 보기(아래 showWindow)
+    let windowEnd='',windowFirstDay='',windowLive=false; // 과거 분봉 구간 보기(아래 showWindow), windowLive: 최신 봉까지 포함한 구간
     const seekedWindows=new Map();
     let dailyHistory=false,dailyCutoff='',rangeRevision=0;
     const historyLoaders=new Map();
@@ -172,7 +172,8 @@
         const day=sessionDay(),night=previousOpenDay(day)+' 18:00',first=(chart.dates || []).find(date=>date>=night);
         return first && first<day+' 08:00' ? first : day+' 08:00';
     }
-    function showToday(){resetHistoryWork();windowEnd='';windowFirstDay='';leaveWindow();viewports.delete('minute');historyMode=false;todayPinned=true;sharedCutoff=sessionDay()+' 08:00';rangeRevision++;for(const chart of minuteCharts.values())chart.applied=undefined;notifyCharts();}
+    function showToday(){resetHistoryWork();windowEnd='';windowFirstDay='';windowLive=false;leaveWindow();viewports.delete('minute');historyMode=false;todayPinned=true;sharedCutoff=sessionDay()+' 08:00';rangeRevision++;for(const chart of minuteCharts.values())chart.applied=undefined;notifyCharts();}
+    const cardNames={testMarketSupply:'시장 수급',testMarketSupplySecondary:'시장 수급(둘째)',combinedSupply:'종목수급',futuresSupply:'종목 선물 수급',combinedTurnover:'시장 거래대금',turnover:'시장 거래대금',combinedConcentration:'쏠림율',concentration:'쏠림율',supply:'종목수급',breadth:'ADR · 신고신저',volatility:'변동성',sentiment:'심리'};
     const refreshOrder=['concentration','combinedConcentration','supply','breadth','turnover','sentiment','volatility','combinedTurnover','combinedSupply','futuresSupply','testMarketSupply','testMarketSupplySecondary'];
     const refreshMethods={testMarketSupply:'refreshRankTestMarketSupplyChart',testMarketSupplySecondary:'refreshRankTestMarketSupplySecondaryChart',combinedSupply:'refreshRankCombinedSupplyChart',futuresSupply:'refreshRankFuturesSupplyChart',combinedTurnover:'refreshRankCombinedTurnoverChart',combinedConcentration:'refreshConcentrationChart',concentration:'refreshConcentrationChart',supply:'refreshRankSupplyChart',breadth:'refreshRankBreadthChart',turnover:'refreshRankTurnoverChart',sentiment:'refreshRankSentimentChart',volatility:'refreshRankVolatilityChart'};
     const closeReads=new Map();
@@ -191,6 +192,9 @@
             if(mode && minuteCharts.get(id)?.mode!==mode)continue;
             // 과거 분봉 구간을 보는 동안에는 분봉 카드를 자동 갱신하지 않는다(구간 밖의 오늘 자료라 화면이 바뀌지 않고 조회만 늘어난다).
             if(automatic && windowEnd && minuteCharts.get(id)?.mode==='minute')continue;
+            // 더 불러오기가 도는 동안에는 분봉 카드 자동 갱신을 건너뛴다(2026-11-24). 장중엔 30초 갱신이 카드를 바쁘게 해 과거 조회가
+            // 그 갱신이 끝나기를 기다렸고(최대 20초, 넘으면 "조회 대기 시간 초과" 실패), 서버 · 증권사 호출도 겹쳐 느렸다. 끝나면 다음 갱신이 받는다.
+            if(automatic && historyBusy && minuteCharts.get(id)?.mode==='minute')continue;
             if(skipConcentration && id==='concentration')continue;
             try {const result=window[refreshMethods[id]]?.();pending.push(Promise.resolve(result));}
             catch(error){pending.push(Promise.reject(error));}
@@ -263,6 +267,9 @@
         historyBusy=true;scheduleHistoryButtons();
         const participants=[...minuteCharts.entries()].filter(([id,c])=>c.mode===mode && historyLoaders.has(id)).sort(([a],[b])=>(refreshOrder.indexOf(a)<0?99:refreshOrder.indexOf(a))-(refreshOrder.indexOf(b)<0?99:refreshOrder.indexOf(b)));
         const failures=[], exhausted=[];
+        // 실패 이유를 카드별로 남겨 안내 문구와 rankHistoryMetrics.errors에 보인다(2026-11-24: 장중 "일부 차트 조회 실패"가 떴는데 어느 카드가 왜 실패했는지 알 수 없었다).
+        const errors={},fail=(id,error)=>{failures.push(id);errors[id] ||= String(error?.message || error || '실패');};
+        metrics.errors=errors;
         const coordinated=participants.some(([id])=>historyLoaders.get(id).state);
         const originalViewport=viewports.get(mode);
         const initialDomain=mode==='day'?dailyDomain():minuteDomain();
@@ -272,6 +279,10 @@
         }
         const hadVisibleData=participants.some(([id])=>minuteCharts.get(id)?.dates.some(date=>!initialDomain || date>=initialDomain.first && date<=initialDomain.last));
         let target=pendingHistoryTargets.get(mode), cancelled=false,showAvailable=false;
+        // 앞선 더 불러오기가 일부 실패했어도 받은 자료로 그 날까지 이미 넓혀 보였다면(showAvailable), 다음 누름은 같은 날을 다시
+        // 목표로 삼지 않고 더 과거로 간다. 실패했던 카드는 그 과정에서 함께 채운다. 예전엔 실패 카드만 채우고 기간은 그대로라
+        // "공통으로 표시할 더 이전 자료가 없어 기존 표시 기간을 유지합니다."가 떠 더 불러오기가 안 되는 것처럼 보였다(2026-11-24 19:50 오라클).
+        if(target && before && target>=before){target=undefined;pendingHistoryTargets.delete(mode);}
         const ensureReady=async loader=>{
             const deadline=Date.now()+20000;
             while(loader.busy() && epoch===historyEpoch && Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,50));
@@ -291,7 +302,7 @@
         };
         try {
             if(coordinated){
-                if(mode!=='minute')await historyPeers(participants,mode,async id=>{try{await ensureReady(historyLoaders.get(id));}catch{failures.push(id);}});
+                if(mode!=='minute')await historyPeers(participants,mode,async id=>{try{await ensureReady(historyLoaders.get(id));}catch(error){fail(id,error);}});
                 // One leading page establishes a fixed target; peers catch up to it.
                 if(!target && (!failures.length || mode==='minute')){
                     const leaders=[...participants].sort(([a],[b])=>(coverageFirst(a) || '').localeCompare(coverageFirst(b) || ''));
@@ -304,7 +315,7 @@
                                 await ensureReady(historyLoaders.get(id));
                                 if(!historyLoaders.get(id).state?.().hasMore || coverageFirst(id)<firstBeforeReady && coverageFirst(id)<before)return;
                                 await step(id);
-                            }catch{failures.push(id);}
+                            }catch(error){fail(id,error);}
                         });
                         target=leaders.filter(([id])=>!failures.includes(id)).map(([id])=>coverageFirst(id)).find(first=>first && first<before);
                     }
@@ -316,7 +327,7 @@
                                 if(++pages>80)throw new Error('과거 조회 페이지 한도 도달');
                                 await step(id);target=coverageFirst(id);
                             }
-                        }catch{failures.push(id);if(cancelled || mode!=='minute')break;continue;}
+                        }catch(error){fail(id,error);if(cancelled || mode!=='minute')break;continue;}
                         if(target && target<before)break;
                     }
                     if(!target)target=before || participants.map(([id])=>minuteCharts.get(id)?.first).filter(Boolean).sort()[0];
@@ -331,14 +342,14 @@
                                 if(++pages>80)throw new Error('과거 조회 페이지 한도 도달');
                                 await step(id);
                             }
-                        }catch{failures.push(id);}
+                        }catch(error){fail(id,error);}
                     });
                 }
                 if(target && (!failures.length || mode==='minute')){
                     await historyPeers(participants,mode,async id=>{
                         if(cancelled || failures.includes(id))return;
                         const loader=historyLoaders.get(id),ensure=loader.state?.().ensureRange;
-                        if(ensure)try{await ensureReady(loader);await timed(id,'rangeMs',()=>ensure(target));await ensureReady(loader);if(loader.state?.().error)throw new Error(loader.state().error);}catch{failures.push(id);}
+                        if(ensure)try{await ensureReady(loader);await timed(id,'rangeMs',()=>ensure(target));await ensureReady(loader);if(loader.state?.().error)throw new Error(loader.state().error);}catch(error){fail(id,error);}
                     });
                 }
                 if(failures.length && target && !cancelled)pendingHistoryTargets.set(mode,target);
@@ -350,7 +361,7 @@
                     if(epoch!==historyEpoch){cancelled=true;throw new Error('조회 주기 변경');}
             if(loader.busy())throw new Error('조회 대기 시간 초과');
                     await loader.load();
-                } catch(error){failures.push(id);}
+                } catch(error){fail(id,error);}
             }
         } finally {
             metrics.totalMs=Date.now()-metrics.startedAt;
@@ -394,7 +405,8 @@
             const panel=document.getElementById(panelIds[id]);if(!panel)continue;
             let notice=panel.querySelector('.rank-history-notice');
             if(!notice){notice=document.createElement('p');notice.className='rank-history-notice';notice.setAttribute('role','status');panel.append(notice);}
-            notice.textContent=showAvailable?'일부 차트 조회 실패 · 확보한 과거 자료를 표시합니다.':advanced && !exhausted.length?'':failures.length?'일부 차트의 과거 조회가 완료되지 않아 기존 표시 기간을 유지합니다.':exhausted.length?'일부 차트는 원천 과거 자료가 끝나 해당 구간을 결측으로 표시합니다.':'공통으로 표시할 더 이전 자료가 없어 기존 표시 기간을 유지합니다.';
+            const failed=[...new Set(failures)].map(f=>`${cardNames[f] || f}: ${errors[f] || '실패'}`).join(', ');
+            notice.textContent=showAvailable?`일부 차트 조회 실패(${failed}) · 확보한 과거 자료를 표시합니다.`:advanced && !exhausted.length?'':failures.length?`일부 차트의 과거 조회가 완료되지 않아(${failed}) 기존 표시 기간을 유지합니다.`:exhausted.length?'일부 차트는 원천 과거 자료가 끝나 해당 구간을 결측으로 표시합니다.':'공통으로 표시할 더 이전 자료가 없어 기존 표시 기간을 유지합니다.';
             notice.hidden=advanced && !failures.length && !exhausted.length;
         }
         return {advanced,failures,exhausted,target,partial:showAvailable,metrics};
@@ -429,7 +441,7 @@
         const overnight=overnightChart();
         const today=overnight?.mode==='minute' && overnight.first ? overnightStart(overnight) : sessionDay()+' 08:00';
         const candidate=historyMode && starts.length?starts.sort().at(-1):today;
-        const cutoff=historyBusy || windowEnd && sharedCutoff ? (sharedCutoff || today) : historyMode && sharedCutoff && candidate>sharedCutoff ? sharedCutoff : candidate;
+        const cutoff=historyBusy || (windowEnd || windowLive) && sharedCutoff ? (sharedCutoff || today) : historyMode && sharedCutoff && candidate>sharedCutoff ? sharedCutoff : candidate;
         if(atLatest){
             const domain=sliderDomain(mode),viewport=viewports.get(mode);
             if(domain && domain.last>viewport.last){
@@ -513,17 +525,26 @@
     const clampWindow=last=>windowEnd && last>windowEnd?windowEnd:last;
     function dailyWindow(){
         const viewport=viewports.get('day'),daily=dailyDomain(),all=sliderDomain('day');
-        if(!viewport || !daily || !all || daily.last>=all.last)return null; // 확대하지 않았거나 최신 봉이 보이면 평소대로 당일
+        // 확대하지 않았으면 평소대로 당일. 거꾸로 끌어 확대를 풀면 표시 범위가 전체로 남으므로(selectViewport) 전체를 보고 있어도 당일이다.
+        if(!viewport || !daily || !all || daily.first<=all.first && daily.last>=all.last)return null;
+        // 최신 봉(오늘)까지 보이게 확대했어도 화면의 모든 날 분봉을 보인다(2026-11-24 사용자 요청: 예전엔 오늘 분봉만 나왔다).
+        // 이때는 오른쪽 끝을 묶지 않고 자동 갱신도 그대로 해 최신 분봉을 계속 그린다(live). 60거래일을 넘으면 최신 쪽 60일이다.
+        const days=daily.days,live=daily.last>=all.last;
+        if(live){const first=Math.max(0,days.length-WINDOW_MAX);return {center:days[Math.floor((first+days.length-1)/2)],from:days[first],to:days.at(-1),live:true};}
         // 한도 60거래일(2026-11-23 사용자 결정): 일봉을 더 넓게 본 채 분봉을 누르면 화면 가운데 봉을 중심으로 60거래일만 받는다.
-        const days=daily.days,center=Math.floor((days.length-1)/2),first=days.length>WINDOW_MAX?Math.max(0,Math.min(days.length-WINDOW_MAX,center-Math.floor(WINDOW_MAX/2))):0;
+        const center=Math.floor((days.length-1)/2),first=days.length>WINDOW_MAX?Math.max(0,Math.min(days.length-WINDOW_MAX,center-Math.floor(WINDOW_MAX/2))):0;
         return {center:days[center],from:days[first],to:days[Math.min(days.length,first+WINDOW_MAX)-1]};
     }
     // 구간 보기에 들어갈 때마다 카드가 구간 끝 날짜로 다시 가게 한다(2026-11-22). 일봉에 갔다가 같은 구간으로 다시 들어오면
     // 카드는 분봉 버튼으로 오늘을 받았는데 seek 기록이 남아 있어, 오늘부터 하루씩 거슬러 왔다(종목 수급 요청 500번).
-    function showWindow(from,to){
-        seekedWindows.clear();
+    // live(최신 봉 포함): 오른쪽 끝을 묶지 않고(windowEnd 없음) 카드도 seek하지 않는다. 카드는 오늘 분봉을 받은 채 기존 과거 조회로
+    // from까지 채우고, 자동 갱신이 최신 분봉을 계속 그린다. 왼쪽 끝은 windowLive 동안 from에 고정한다.
+    function showWindow(from,to,live=false){
+        // live는 seek하지 않으므로, 앞서 과거 구간으로 seek한 카드는 오늘 분봉으로 되돌린다(2026-11-24: 과거 구간을 본 뒤 오늘 포함
+        // 확대로 들어오면 쏠림율이 옛 구간 자료를 그대로 들고 있어 더 불러오기가 그 앞까지 두 달을 한 번에 받았다).
+        if(live)leaveWindow();else seekedWindows.clear();
         resetHistoryWork();viewports.delete('minute');historyMode=true;todayPinned=false;
-        windowFirstDay=from;windowEnd=to+' 20:00';
+        windowFirstDay=live?'':from;windowEnd=live?'':to+' 20:00';windowLive=!!live;
         const overnight=overnightChart();
         sharedCutoff=overnight?.mode==='minute'?previousOpenDay(from)+' 18:00':from+' 08:00';
         rangeRevision++;visibleHistoryAttempts.clear();
@@ -873,7 +894,7 @@
             resetHistoryWork();viewports.delete(mode);pendingHistoryTargets.delete(mode);
             const revision=++modeRevision;
             if(mode==='day' && [...minuteCharts.values()].some(c=>c.mode==='minute')){dailyHistory=false;dailyCutoff='';}
-            if(mode==='minute'){if(window_)showWindow(window_.from,window_.to);else showToday();}
+            if(mode==='minute'){if(window_)showWindow(window_.from,window_.to,window_.live);else showToday();}
             function apply() {
                 if(revision!==modeRevision)return;
                 let pending=false;dispatchingMode=true;

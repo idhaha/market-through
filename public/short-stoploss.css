@@ -114,6 +114,10 @@ body.form-closed .fold-btn svg{transform:rotate(180deg)}
 /* 설명 풍선은 화면 맨 위(#floatTip)에 띄운다: 칸의 스크롤 · 경계에 잘리지 않고 창 안쪽으로 위치를 맞춘다(short-stoploss.js) */
 #floatTip{position:fixed;display:none;width:280px;max-width:calc(100vw - 16px);background:#23324A;color:#FFFFFF;font-size:12px;line-height:1.5;padding:8px 10px;border-radius:6px;box-shadow:0 4px 14px rgba(20,30,50,.25);z-index:60;pointer-events:none;font-style:normal;font-weight:400;white-space:normal;text-align:left}
 #floatTip.wide{width:340px}
+#floatTip.xwide,.tipbox.xwide{width:800px}
+table.tt{border-collapse:collapse;width:100%;font-size:11px;line-height:1.35;margin:2px 0}
+table.tt th,table.tt td{border:1px solid #4A5B78;padding:2px 5px;text-align:left;vertical-align:top}
+table.tt thead th{background:#33476A}
 #floatTip .block{display:block;margin:4px 0}
 .tipbox.wide{width:340px}
 .tipbox .block{display:block;margin:4px 0}

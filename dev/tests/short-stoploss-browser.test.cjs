@@ -245,6 +245,12 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
             const b = await page.evaluate(() => { const r = document.getElementById('floatTip').getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom, vis: getComputedStyle(document.getElementById('floatTip')).display, w: innerWidth, h: innerHeight }; });
             assert.ok(b.vis === 'block' && b.l >= 0 && b.r <= b.w && b.t >= 0 && b.b <= b.h, label + ' ' + JSON.stringify(b));
         }
+        // 주문 거래소 i 풍선에 엔진 시간표(8줄)와 장 마감 뒤 정리(2026-11-24 사용자 요청), 창(1200×660) 안에 다 보임
+        await page.hover('.ss-form [aria-label="주문 거래소 설명"]');
+        assert.equal(await page.locator('#floatTip table.tt tbody tr').count(), 8);
+        assert.match(await page.textContent('#floatTip'), /15:30~15:40: NXT로 미리 접수해 15:40 단일가로 체결/);
+        assert.equal(await page.locator('#floatTip .mk-unk').count() > 0, true);
+        assert.ok(await page.$eval('#floatTip', f => f.scrollWidth <= f.clientWidth + 1), '풍선 표가 가로로 넘치지 않음');
         await page.mouse.move(5, 5);
         // 정책 i
         await page.click('#policyBtn'); assert.match(await page.textContent('#policyBody'), /추격 한도/);

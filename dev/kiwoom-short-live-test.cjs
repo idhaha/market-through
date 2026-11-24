@@ -18,7 +18,10 @@ const step = args[args.indexOf('--step') + 1];
 const code = (args[args.indexOf('--code') + 1] || '').replace(/^A/, '');
 const exArg = args.includes('--ex') ? args[args.indexOf('--ex') + 1] : '';
 if (!['nxt', 'cover', 'short', 'accept', 'modify'].includes(step) || !/^[0-9A-Z]{6}$/.test(code)) { console.error('--step nxt|accept|modify|cover|short --code <종목코드> 필요'); process.exit(2); }
-const tag = step + (exArg ? '-' + exArg : '') + (args.includes('--tag') ? '-' + args[args.indexOf('--tag') + 1] : '');
+// --acct 28: 끝자리 28 계좌 앱키(KIWOOM_APPKEY_28 · token-28.json). 2026-11-24 사용자 결정 — 대주 체결 시험은 VI 웹소켓(기본 앱키)과 겹치지 않게 28 계좌로 한다
+const acct = args.includes('--acct') ? args[args.indexOf('--acct') + 1] : '';
+if (acct && acct !== '28') { console.error('--acct는 28만 지원'); process.exit(2); }
+const tag = (acct ? 'a' + acct + '-' : '') + step + (exArg ? '-' + exArg : '') + (args.includes('--tag') ? '-' + args[args.indexOf('--tag') + 1] : '');
 const day = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10).replace(/-/g, '');
 const outDir = path.join(root, 'outputs', `kiwoom-short-cover-${day}`);
 fs.mkdirSync(outDir, { recursive: true });
@@ -31,12 +34,13 @@ function log(msg, data) {
     console.log(line); fs.appendFileSync(path.join(outDir, 'log.txt'), line + '\n');
 }
 // 서버 토큰 파일을 쓰고, 없거나 만료가 가까우면 새로 발급해 같은 파일에 기록한다(서버도 재사용).
-const tokenFile = path.join(root, 'data', 'kiwoom-token', 'token.json');
+const tokenFile = path.join(root, 'data', 'kiwoom-token', acct ? `token-${acct}.json` : 'token.json');
+const envKey = name => (process.env[name + (acct ? '_' + acct : '')] || '').trim();
 let token = '';
 async function ensureToken() {
     try { const s = JSON.parse(fs.readFileSync(tokenFile, 'utf8')); if (s.token && s.expires > Date.now() + 600000) { token = s.token; return; } } catch {}
     const r = await fetch('https://api.kiwoom.com/oauth2/token', { method: 'POST', headers: { 'Content-Type': 'application/json;charset=UTF-8' }, signal: AbortSignal.timeout(15000),
-        body: JSON.stringify({ grant_type: 'client_credentials', appkey: (process.env.KIWOOM_APPKEY || '').trim(), secretkey: (process.env.KIWOOM_SECRETKEY || '').trim() }) });
+        body: JSON.stringify({ grant_type: 'client_credentials', appkey: envKey('KIWOOM_APPKEY'), secretkey: envKey('KIWOOM_SECRETKEY') }) });
     const j = await r.json().catch(() => ({}));
     if (!j.token) throw Error('키움 토큰 발급 실패: ' + (j.return_msg || r.status));
     token = j.token; log('토큰 새로 발급 (서버 토큰 파일에 기록)');
@@ -124,6 +128,8 @@ async function main() {
         if (!lot) { out.skipped = '상환 가능한 대주 잔고 없음'; log(out.skipped); return ws; }
         const ex = step === 'nxt' ? 'NXT' : step === 'modify' ? 'KRX' : (exArg || 'KRX');
         const q = await quote(ex === 'SOR' ? 'KRX' : ex);
+        // SOR 체결 시험: KRX · NXT 중 매도호가가 있는 쪽의 높은 값 기준(장 마감 뒤 KRX 호가가 없을 때도 체결되게, 2026-11-24)
+        if (step === 'cover' && ex === 'SOR') { const n = await quote('NXT'); q.ask = Math.max(q.ask || 0, n.ask || 0); q.upper = q.upper || n.upper; out.quote = { krx: q, nxt: n }; }
         if (step === 'cover' && !q.ask) { out.skipped = `${ex} 매도호가 없음`; log(out.skipped); return ws; }
         let price = step === 'cover' ? Math.min(q.upper, q.ask + 2 * tick(q.ask)) : q.lower;
         if (!price) { out.skipped = '가격 계산 실패'; log(out.skipped); return ws; }
@@ -154,6 +160,19 @@ async function main() {
             for (let i = 0; i < 10; i++) { await wait(3000); s = await orderState(r.ord_no, ex); if (s.filled >= 1) break; }
             log('체결 상태', s); out.fill = s;
             if (!(s.filled >= 1)) await cancel(r.ord_no, ex, 'crdordr', 'kt10009');
+            else {
+                // 실제 체결 거래소 단서(SOR은 kt00009에 "SOR"로만 나옴): 거래소별로 걸러 본 체결 현황 + KRX · NXT 체결 틱(같은 시각 · 가격 · 1주)
+                const venue = {};
+                for (const dx of ['%', 'KRX', 'NXT', 'SOR']) {
+                    const p = await call('acnt', 'kt00009', { ord_dt: '', stk_bond_tp: '0', mrkt_tp: '0', sell_tp: '0', qry_tp: '0', stk_cd: code, fr_ord_no: '', dmst_stex_tp: dx }, `체결 현황 ${dx}`);
+                    venue['kt00009_' + dx] = (p.acnt_ord_cntr_prst_array || []).filter(x => x.ord_no === r.ord_no || x.orig_ord_no === r.ord_no).map(x => ({ ord_no: x.ord_no, stex: x.dmst_stex_tp, qty: x.cntr_qty, uv: x.cntr_uv, tm: x.cntr_tm }));
+                }
+                for (const [nm, id] of [['KRX', code], ['NXT', code + '_NX']]) {
+                    const t = await call('stkinfo', 'ka10003', { stk_cd: id }, `체결 틱 ${nm}`);
+                    venue['ticks_' + nm] = (t.cntr_infr || []).slice(0, 30).map(x => ({ tm: x.tm, price: abs(x.cur_prc), qty: x.cntr_trde_qty }));
+                }
+                out.venue = venue; log('체결 거래소 단서', venue);
+            }
         }
     } else {
         const q = await quote('KRX');

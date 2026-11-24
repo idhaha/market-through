@@ -411,6 +411,10 @@
     ];
     const MARKS = { '○': 'mk-ok', '△': 'mk-wait', '×': 'mk-no', '?': 'mk-unk' };
     const marked = t => String(t).split(/([○△×?])/).filter(Boolean).map(p => MARKS[p] ? el('span', { class: 'mk ' + MARKS[p] }, p) : p);
+    const timetableEl = cls => el('table', { class: cls }, el('thead', {}, el('tr', {}, TIMETABLE[0].map(t => el('th', { scope: 'col' }, t)))),
+        el('tbody', {}, TIMETABLE.slice(1).map(r => el('tr', {}, r.map((t, i) => el(i ? 'td' : 'th', i ? {} : { scope: 'row' }, marked(t)))))));
+    // 주문 거래소 i 풍선에도 같은 시간표(2026-11-24 사용자 요청)
+    $('exTimetable')?.append(timetableEl('tt'));
     const POLICY = [
         ['쓰는 키움 API (2026-11-19 · 20 실계좌 시험으로 확인)', ['대주 잔고: kt00018 개별 조회(대출일별 행 · 가능수량), 만기일은 ka10085', '상환 주문: kt10006에 신용구분 77(대주상환) · 대출일. 공식 명세에 없는 값이라 접수마다 "+상환대주"를 확인합니다. KRX · NXT 접수 · 체결 확인', '정정 kt10008 · 취소 kt10009 · 접수 확인 ka10075 · kt00009, 시세 조회 ka10001 · 호가 ka10004', '대주매도(진입)는 API에서 막혀 있어 영웅문에서 합니다. 일반 매수(kt10000)는 대주를 갚지 않아 쓰지 않습니다']],
         ['실시간 (VI 모니터와 공용 연결)', ['키움 웹소켓은 앱키당 하나만 열 수 있어(새 연결이 기존 연결을 끊음), VI 모니터의 연결 하나에 대주 감시 종목 체결(0B)과 주문체결 · 잔고(00 · 04)를 함께 등록합니다', '실시간이 붙어 있으면 체결이 올 때마다 바로 판정하고 조회는 5초 간격 보조, 끊기면 1초 조회로 감시합니다. 위쪽 "실시간 연결" 표시로 상태를 봅니다', '주문을 낸 뒤의 접수 확인("+상환대주" · 신용 77)과 체결 확인도 내 주문체결 이벤트(00)로 바로 합니다. 조회(접수 1초 · 체결 3초)는 이벤트를 놓쳤을 때의 보조입니다', '충돌하면 대주가 우선입니다: 대주 실시간 등록이 거부되면 VI 등록을 해지하고 대주를 다시 등록합니다', 'VI 모니터를 켜지 않는 서버(오라클)는 조회만으로 감시합니다']],
@@ -460,7 +464,7 @@
     const floatTip = el('div', { id: 'floatTip', role: 'tooltip' }); document.body.append(floatTip);
     function showTip(tip) {
         const box = tip.querySelector('.tipbox'), btn = tip.querySelector('.i'); if (!box || !btn) return;
-        floatTip.innerHTML = box.innerHTML; floatTip.className = box.classList.contains('wide') ? 'wide' : ''; floatTip.style.display = 'block';
+        floatTip.innerHTML = box.innerHTML; floatTip.className = box.classList.contains('xwide') ? 'xwide' : box.classList.contains('wide') ? 'wide' : ''; floatTip.style.display = 'block';
         const r = btn.getBoundingClientRect(), w = floatTip.offsetWidth, h = floatTip.offsetHeight, m = 8;
         let left = Math.min(Math.max(m, r.right - w + 8), innerWidth - w - m);
         let top = r.top - h - 8; if (top < m) top = Math.min(r.bottom + 8, innerHeight - h - m);

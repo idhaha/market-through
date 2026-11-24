@@ -6,7 +6,7 @@ const iso=t=>new Date(t+9*3600000).toISOString();
 const weekdays=(from,to)=>{const r=[];for(let t=Date.parse(from+'T00:00:00Z');t<=Date.parse(to+'T00:00:00Z');t+=86400000){const d=new Date(t);if(![0,6].includes(d.getUTCDay()))r.push(d.toISOString().slice(0,10));}return r;};
 const DAYS=weekdays('2026-08-03','2026-10-23'),TODAY='2026-10-23';
 const compact=d=>d.replaceAll('-',''),dashed=c=>c.slice(0,4)+'-'+c.slice(4,6)+'-'+c.slice(6,8);
-const minutes=day=>Array.from({length:6},(_,i)=>Date.parse(day+'T09:00:00+09:00')+i*600000);
+let extra=0;const minutes=day=>Array.from({length:6+(day===TODAY?extra:0)},(_,i)=>Date.parse(day+'T09:00:00+09:00')+i*600000);
 const bar=(t,i=0)=>({t,date:iso(t).slice(0,16).replace('T',' '),open:100+i,high:110+i,low:90+i,close:105+i,market_turnover:1e12});
 const dayBar=day=>bar(Date.parse(day+'T00:00:00+09:00'));
 const before=(day,cursor)=>DAYS.filter(d=>d<=day).at(-1);
@@ -122,6 +122,33 @@ const before=(day,cursor)=>DAYS.filter(d=>d<=day).at(-1);
  };
  await enterWindow();await enterWindow();
  {const again=cursors('/api/kis-supply/chart');assert.ok(again.includes(compact(to)) && !again.some(c=>c>compact(to)),'같은 구간 다시: '+again);}
+ // 2026-11-24 사용자 요청: 최신 봉(오늘)까지 포함해 확대해도 화면의 모든 날 분봉을 보이고, 최신 분봉은 자동 갱신으로 계속 그린다.
+ {
+  const live={first:DAYS.at(-15),last:TODAY},liveFrom=live.first;
+  await page.locator('#rankCombinedSupplyChartPanel [data-mode="day"]').click();await page.waitForTimeout(800);
+  await page.evaluate(({first,last})=>{const d=window.RankChartAxis.dailyDomain(),n=d.days.length-1;window.RankChartAxis.selectViewport('combinedSupply',d.days.indexOf(first)/n,d.days.indexOf(last)/n);},live);
+  assert.deepEqual(await page.evaluate(()=>{const d=window.RankChartAxis.dailyDomain();return [d.first,d.last];}),[live.first,live.last],'최신 봉 포함 확대');
+  assert.equal((await page.evaluate(()=>window.RankChartAxis.dailyWindow()))?.live,true,'최신 봉 포함 구간');
+  requests.length=0;await page.locator('#rankCombinedSupplyChartPanel [data-mode="minute"]').click();
+  await page.waitForFunction(from=>{const s=window.getRankCombinedSupplyState(),day=p=>new Date(p.t+9*3600000).toISOString().slice(0,10);return s.points.some(p=>day(p)<=from) && window.getRankCombinedTurnoverState().markets.kospi.some(p=>day(p)<=from);},liveFrom,{timeout:60000});
+  await page.waitForTimeout(800);
+  const d=await page.evaluate(()=>{const d=window.RankChartAxis.minuteDomain();return {first:d.first,last:d.last,window:window.RankChartAxis.minuteWindow()};});
+  // 바로 앞에서 과거 구간을 봤어도(enterWindow) 쏠림율이 옛 구간 기준일(base_dt)을 들고 있지 않고 오늘부터 받는다.
+  for(const until=Date.now()+30000;;){const c=await page.evaluate(()=>window.getCombinedRankChartState?.()||window.getRankChartState());const days=[...new Set(c.points.map(p=>p.time.slice(0,8)))].sort();if(days.at(-1)===compact(TODAY) && days[0]<=compact(liveFrom) && days[0]>=compact(DAYS[DAYS.indexOf(liveFrom)-3]))break;if(Date.now()>until)throw new Error('오늘 포함 확대 쏠림율 '+days[0]+'~'+days.at(-1));await page.waitForTimeout(200);}
+  assert.equal(d.first.slice(0,10),liveFrom,'확대한 첫날부터 '+JSON.stringify(d));assert.equal(d.last.slice(0,10),TODAY,'오늘까지 '+JSON.stringify(d));
+  // 새 분봉이 생기면 자동 갱신이 받아 오른쪽 끝이 따라간다. 왼쪽 끝은 확대한 첫날 그대로.
+  extra=3;requests.length=0;await page.evaluate(()=>window.RankChartAxis.refreshCharts({automatic:true}));await page.waitForTimeout(1500);
+  assert.ok(requests.some(r=>r.startsWith('/api/kis-supply/chart') && r.includes('mode=minute')),'자동 갱신이 분봉을 받는다 '+requests);
+  const later=await page.evaluate(()=>{const d=window.RankChartAxis.minuteDomain();return {first:d.first,last:d.last};});
+  assert.equal(later.first.slice(0,10),liveFrom,'왼쪽 끝 유지 '+JSON.stringify(later));assert.ok(later.last>d.last,'최신 분봉을 그린다 '+JSON.stringify([d.last,later.last]));
+  const supplyLast=await page.evaluate(()=>{const s=window.getRankCombinedSupplyState();return new Date(s.points.at(-1).t+9*3600000).toISOString().slice(0,16);});
+  assert.equal(supplyLast,TODAY+'T10:20','종목수급 최신 분봉(09:00부터 10분 간격 9개)');
+  extra=0;
+  // 거꾸로 끌어 확대를 풀면(표시 범위 = 전체) 확대하지 않은 것으로 보고 당일 분봉이다(60거래일을 받지 않는다).
+  await page.locator('#rankCombinedSupplyChartPanel [data-mode="day"]').click();await page.waitForTimeout(800);
+  await page.evaluate(()=>window.RankChartAxis.selectViewport('combinedSupply',1,0));
+  assert.equal(await page.evaluate(()=>window.RankChartAxis.dailyWindow()),null,'확대 풀기 뒤에는 당일');
+ }
  assert.deepEqual(errors,[]);
- console.log('PASS 일봉 확대 → 분봉 구간 보기, 날짜 커서 카드 바로 이동, 자동 갱신 생략, 더 불러오기, 당일 복귀');
+ console.log('PASS 일봉 확대 → 분봉 구간 보기, 날짜 커서 카드 바로 이동, 자동 갱신 생략, 더 불러오기, 당일 복귀, 최신 봉 포함 확대(구간 + 실시간)');
 }finally{await browser.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

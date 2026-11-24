@@ -122,8 +122,12 @@ test('minute history shows loaded older records even when a peer fails and today
  assert.equal(f.domain().first,'2026-10-23 08:00');
  const result=await f.api.requestHistory('minute');f.flush();
  assert.equal(result.partial,true);assert.equal(result.advanced,true);assert.equal(f.domain().first,f.date(22));assert.ok(result.failures.includes('marketSupply'));
+ assert.equal(result.metrics.errors.marketSupply,'offline','실패 이유를 카드별로 남긴다');
+ // 2026-11-24 19:50 오라클: 이어서 누르면 예전엔 실패 카드만 22일로 채우고 기간은 그대로(advanced=false, 실패·결측 없음)라
+ // "공통으로 표시할 더 이전 자료가 없어 기존 표시 기간을 유지합니다."가 떴다. 이제 실패 카드를 채우면서 더 과거(21일)로 간다.
  f.states.marketSupply.fail=false;const retry=await f.api.requestHistory('minute');f.flush();
- assert.equal(retry.failures.length,0);assert.equal(f.calls.filter(id=>id==='concentration').length,1);assert.equal(f.domain().first,f.date(22));
+ assert.equal(retry.failures.length,0);assert.equal(retry.advanced,true);assert.equal(f.domain().first,f.date(21));
+ assert.equal(f.states.marketSupply.first,22,'앞서 실패한 카드도 채운다');assert.ok(retry.exhausted.includes('marketSupply'));
 });
 
 test('minute refresh excludes daily-only risk cards while unfiltered refresh still updates them',async()=>{
@@ -160,4 +164,17 @@ test('an explicitly empty source coverage must not fall back to the price timeli
  const f=fixture('minute');f.add('concentration',22,[18]);f.add('combinedSupply',18,[]);f.flush();let loaded=false;
  f.api.registerHistoryLoader('combinedSupply',async()=>{loaded=true;},()=>false,()=>({coverageFirst:loaded?f.date(18):'',hasMore:!loaded,cursor:loaded?null:'older'}));
  const result=await f.api.requestHistory('minute');f.flush();assert.ok(loaded);assert.equal(result.failures.length,0);
+});
+
+// 2026-11-24 장중: 더 불러오기 중에도 30초 자동 갱신이 분봉 카드를 바쁘게 해 과거 조회가 기다렸다(최대 20초). 도는 동안은 건너뛴다.
+test('automatic minute refresh skips cards while history is in flight, resumes after',async()=>{
+ const f=fixture('minute','2026-10-23T12:00:00+09:00');f.add('concentration',23,[]);f.add('combinedSupply',23,[]);f.flush();
+ let release;const gate=new Promise(r=>release=r);
+ f.api.registerHistoryLoader('concentration',async()=>{await gate;},()=>false,()=>({hasMore:true,cursor:'c'}));
+ const calls=[];f.window.refreshConcentrationChart=()=>calls.push('concentration');f.window.refreshRankCombinedSupplyChart=()=>calls.push('combinedSupply');
+ const pending=f.api.requestHistory('minute');await new Promise(r=>setImmediate(r));
+ await f.api.refreshCharts({automatic:true});assert.deepEqual(calls,[],'과거 조회 중 자동 갱신은 건너뛴다');
+ await f.api.refreshCharts();assert.deepEqual(calls,['concentration','combinedSupply'],'사용자 갱신은 그대로');
+ release();await pending;f.flush();calls.length=0;
+ await f.api.refreshCharts({automatic:true});assert.deepEqual(calls,['concentration','combinedSupply'],'끝나면 다시 갱신');
 });
