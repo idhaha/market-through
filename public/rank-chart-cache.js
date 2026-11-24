@@ -100,7 +100,12 @@
         // Concentration cursors are short-lived, owner-bound server sessions.
         // 2026-11-16: the server forgets a cursor after 30 minutes or a restart (410). Drop the cached first pages that carry it,
         // so the card's next first-page read gets a new session instead of the dead cursor again.
-        if(body?.cursor){const r=await nativeFetch(input,options);if(r.status===410)for(const [k,e] of memory)if(e.data?.cursor===body.cursor)memory.delete(k);return r;}
+        // 쏠림율 1분봉 날짜 커서(day:YYYYMMDD, 2026-11-22)는 서버 세션이 아니라 같은 요청에 늘 같은 쪽을 준다. 오늘 전 날짜 커서는
+        // 지난 쪽으로 저장해 다시 쓴다(2026-11-24: 같은 과거 구간을 다시 열 때 쏠림율 지난 쪽 30여 건을 서버에서 다시 받아 8.6초).
+        const dayCursor=/^day:(\d{8})$/.exec(String(body?.cursor||'')),pastDayCursor=!!dayCursor&&dayCursor[1]<day().replaceAll('-','');
+        // 과거 구간 첫 쪽(base_dt가 오늘 전)도 날짜 커서를 주면 지난 쪽으로 둔다. 날짜 커서는 저장해도 다시 쓸 수 있다.
+        const pastBase=!!body&&!body.cursor&&/^\d{8}$/.test(String(body.base_dt||''))&&String(body.base_dt)<day().replaceAll('-',''),dayCursorOf=data=>/^day:\d{8}$/.test(String(data?.cursor||''));
+        if(body?.cursor&&!pastDayCursor){const r=await nativeFetch(input,options);if(r.status===410)for(const [k,e] of memory)if(e.data?.cursor===body.cursor)memory.delete(k);return r;}
         const owner=await account();throwIfAborted(options.signal);if(!owner)return nativeFetch(input,options);
         await syncRevisions(owner);throwIfAborted(options.signal);
         url.searchParams.sort();const canonical=body?JSON.stringify(Object.fromEntries(Object.entries(body).sort(([a],[b])=>a.localeCompare(b)))):'';
@@ -121,9 +126,9 @@
                 if(r.ok&&safe(data)&&hasValues(data)){
                     // open: fetched while the market was open, so today's data may still be growing.
                     const entry={key,at:Date.now(),data,bytes:JSON.stringify(data).length*2,scope:owner,open:window.TradingRefresh?.allowsUrl?.(url)!==false,
-                        path:url.pathname,ttl:method==='GET'&&historical(url)?HISTORY_TTL:TTL};
+                        path:url.pathname,ttl:method==='GET'&&historical(url)||pastDayCursor||pastBase&&dayCursorOf(data)?HISTORY_TTL:TTL};
                     if(entry.bytes<5*1024*1024){memory.delete(key);memory.set(key,entry);let size=0;for(const value of memory.values())size+=value.bytes;while(memory.size>MAX_ENTRIES||size>MAX_BYTES){const first=memory.keys().next().value;size-=memory.get(first).bytes;memory.delete(first);}
-                        const saved=body?{...entry,data:{...data,cursor:null,has_more:false}}:entry;
+                        const saved=body&&!(pastDayCursor||pastBase&&dayCursorOf(data))?{...entry,data:{...data,cursor:null,has_more:false}}:entry;
                         await storage('put',key,saved);void prune();
                     }
                 }else{memory.delete(key);await storage('delete',key);}
@@ -136,14 +141,15 @@
         if(blocked.has(key))return network();
         const entry=memory.get(key)||await storage('get',key);throwIfAborted(options.signal);
         // 꺼내 쓴 응답은 최근에 쓴 것으로 옮긴다(메모리 순서 · 저장분 used). 저장분은 1분에 한 번만 다시 적는다.
-        const touch=()=>{if(memory.has(key)){memory.delete(key);memory.set(key,entry);}if(!body&&!(Date.now()-(entry.used||entry.at)<TOUCH_MS)){entry.used=Date.now();void storage('put',key,entry);}};
+        const touch=()=>{if(memory.has(key)){memory.delete(key);memory.set(key,entry);}if((!body||pastDayCursor||pastBase&&dayCursorOf(entry.data))&&!(Date.now()-(entry.used||entry.at)<TOUCH_MS)){entry.used=Date.now();void storage('put',key,entry);}};
         if(entry&&entry.scope===owner&&Date.now()>=entry.at&&(Date.now()-entry.at<(entry.ttl||TTL) || window.TradingRefresh?.allowsUrl(url)===false)){
             // Persisted concentration responses have no reusable server cursor.
             // A user-initiated initial read must restore pagination even while
             // periodic broker refresh is paused for a closed market.
             // A cursor older than CURSOR_TTL may already be gone on the server (30 minutes): read the first page again.
-            if(body && (!entry.data.cursor || Date.now()-entry.at>=CURSOR_TTL))return network();
-            const isHistorical=method==='GET'&&historical(url);
+            const pastPage=pastDayCursor||pastBase&&dayCursorOf(entry.data);
+            if(body && !pastPage && (!entry.data.cursor || Date.now()-entry.at>=CURSOR_TTL))return network();
+            const isHistorical=method==='GET'&&historical(url)||pastPage;
             // Persisted POST responses deliberately have no reusable pagination cursor.
             const marketOpen=window.TradingRefresh?.allowsUrl(url)!==false;
             if(!isHistorical && marketOpen && (Date.now()-entry.at>=1000||body&&!entry.data.cursor))void network(true).catch(()=>{});

@@ -297,9 +297,12 @@ test('지난 구간 선물 분봉은 날마다 파일로 두고, 넓힌 구간�
     // 왼쪽으로 넓힌 구간(더 불러오기): 새 날만.
     const wider=await make().priceRange({code:'futures',from:'20261020',to:'20261027'});
     assert.deepEqual(asked[1],['20261020','20261021']);assert.equal(wider.points.length,6);
-    // 오늘이 든 범위는 예전처럼 매번 받는다(저장 안 함).
+    // 오늘이 든 범위(2026-11-24): 어제까지는 파일(받은 날은 다시 묻지 않음), 오늘만 매번 LS에서 받는다.
+    const live=await make().priceRange({code:'futures',from:'20261027',to:'20261031'});
+    assert.deepEqual(asked.slice(2),[['20261028','20261030'],['20261031','20261031']]);
+    assert.ok(live.points.some(p=>p.t===timestamp('20261027','090000')),'파일에 있던 지난날도 함께 돌려준다');
     await make().priceRange({code:'futures',from:'20261027',to:'20261031'});
-    assert.deepEqual(asked[2],['20261027','20261031']);
+    assert.deepEqual(asked.slice(4),[['20261031','20261031']],'다시 열어도 오늘만 묻는다');
 });
 test('지수 선물 연결 일봉(t2214/t8459)은 끝난 날을 파일로 두고, 새 서버는 최근 날과 빠진 날만 LS에 묻는다(2026-11-22)',async t=>{
     const fs=require('node:fs'),path=require('node:path');

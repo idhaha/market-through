@@ -136,9 +136,13 @@ const before=(day,cursor)=>DAYS.filter(d=>d<=day).at(-1);
   // 바로 앞에서 과거 구간을 봤어도(enterWindow) 쏠림율이 옛 구간 기준일(base_dt)을 들고 있지 않고 오늘부터 받는다.
   for(const until=Date.now()+30000;;){const c=await page.evaluate(()=>window.getCombinedRankChartState?.()||window.getRankChartState());const days=[...new Set(c.points.map(p=>p.time.slice(0,8)))].sort();if(days.at(-1)===compact(TODAY) && days[0]<=compact(liveFrom) && days[0]>=compact(DAYS[DAYS.indexOf(liveFrom)-3]))break;if(Date.now()>until)throw new Error('오늘 포함 확대 쏠림율 '+days[0]+'~'+days.at(-1));await page.waitForTimeout(200);}
   assert.equal(d.first.slice(0,10),liveFrom,'확대한 첫날부터 '+JSON.stringify(d));assert.equal(d.last.slice(0,10),TODAY,'오늘까지 '+JSON.stringify(d));
+  // 과거로 이어 받는 동안 오늘 캔들은 1분 안에 받은 것을 다시 쓴다(2026-11-24: 쪽마다 다시 받아 오라클 측정 6번에서 8번).
+  const todayCandles=()=>requests.filter(r=>r.startsWith('/api/supply/candles?') && r.includes('mode=minute') && (r.includes('date='+TODAY) || !r.includes('date='))).length;
+  assert.ok(todayCandles()<=2,'오늘 캔들 반복 요청 '+todayCandles());
   // 새 분봉이 생기면 자동 갱신이 받아 오른쪽 끝이 따라간다. 왼쪽 끝은 확대한 첫날 그대로.
   extra=3;requests.length=0;await page.evaluate(()=>window.RankChartAxis.refreshCharts({automatic:true}));await page.waitForTimeout(1500);
   assert.ok(requests.some(r=>r.startsWith('/api/kis-supply/chart') && r.includes('mode=minute')),'자동 갱신이 분봉을 받는다 '+requests);
+  assert.ok(todayCandles()>=1,'자동 갱신은 오늘 캔들을 새로 받는다 '+requests.filter(r=>r.includes('candles')));
   const later=await page.evaluate(()=>{const d=window.RankChartAxis.minuteDomain();return {first:d.first,last:d.last};});
   assert.equal(later.first.slice(0,10),liveFrom,'왼쪽 끝 유지 '+JSON.stringify(later));assert.ok(later.last>d.last,'최신 분봉을 그린다 '+JSON.stringify([d.last,later.last]));
   const supplyLast=await page.evaluate(()=>{const s=window.getRankCombinedSupplyState();return new Date(s.points.at(-1).t+9*3600000).toISOString().slice(0,16);});

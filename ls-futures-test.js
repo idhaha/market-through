@@ -484,15 +484,20 @@ function createLsFuturesTest({ http, getToken, directory, daytimeStore, dailyPro
             }
             const contract=await master(code,'D');
             // 지난 구간(오늘 전)은 받은 날을 파일로 두고 아직 받지 않은 날만 LS에서 받는다(2026-11-22: 8월 구간 24~60초, 504).
-            if(directory && to<compact(now())){
-                const shcode=contract.shcode,gaps=uncovered(coveredOf(shcode),from,to),rows=new Map();let partial=false;
+            // 오늘이 든 범위(2026-11-24): 어제까지는 파일로, 오늘만 LS에서 받는다. 예전엔 범위 전체를 LS에서 받아
+            // 오늘 포함 10거래일 확대 · 더 불러오기에서 이 요청 하나가 11~15초 걸렸다.
+            const today=compact(now());
+            if(directory && from<today){
+                const pastTo=to<today?to:dayBefore(today);
+                const shcode=contract.shcode,gaps=uncovered(coveredOf(shcode),from,pastTo),rows=new Map();let partial=false;
                 for(const [a,b] of gaps){
                     const got=await minuteRange(contract,a,b);
                     for(const [t,p] of got.rows)rows.set(t,p);
                     if(got.partial){partial=true;continue;}
                     saveDays(shcode,got.rows,a,b);addCovered(shcode,a,b);
                 }
-                for(const p of readDays(shcode,from,to))if(!rows.has(p.t))rows.set(p.t,p);
+                for(const p of readDays(shcode,from,pastTo))if(!rows.has(p.t))rows.set(p.t,p);
+                if(to>=today){const got=await minuteRange(contract,today,to);for(const [t,p] of got.rows)rows.set(t,p);if(got.partial)partial=true;}
                 return {success:true,points:[...rows.values()].sort((a,b)=>a.t-b.t),partial,source:'LS t8465'};
             }
             const got=await minuteRange(contract,from,to);

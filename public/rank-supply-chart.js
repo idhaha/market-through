@@ -103,7 +103,7 @@
         addButton?.addEventListener('click', openPicker);
         let multiplier = 10, config = { stocks: [], archive: [], revision: 0 }, selected = '', mode = 'day', cursor = null, hasMore = false, loading = false, historyLoaded = false, flowDates = null;
         let flowLoading=false, flowCoverageFirst='', candleError='';
-        const minuteDays = new Set(), candleCache = new Map(), priceHistory = new Map(); const candleInflight = new Map();
+        const minuteDays = new Set(), candleCache = new Map(), priceHistory = new Map(); const candleInflight = new Map(), candleFetchedAt = new Map();
         let priceCursor = null, candleLoading = false;
         // The candle cursor only counts while it points at a day not requested yet: while that day's candles are
         // still loading, reusing it would ask the same day again (2026-11-07 Oracle: "과거 조회가 진행되지 않았습니다").
@@ -415,14 +415,16 @@
             if(restoreWindow && restoreWindow.first.slice(0,10)<window.RankChartAxis.sessionDay())todayOnly=false;
             void load(false,restoreWindow);
         }
-        function loadCandles(target, onlyCoverage = false) {
+        // reuseToday(2026-11-24): 과거로 이어 받는 동안(더 불러오기 · 과거 구간 열기 · 공통 축 범위 맞추기)은 1분 안에 받은 오늘 캔들을 다시 쓴다.
+        // 쪽마다 오늘 캔들을 0.3~1.9초씩 다시 받고 있었다(측정 6번: 8번). 30초 자동 갱신은 그대로 새로 받는다.
+        function loadCandles(target, onlyCoverage = false, reuseToday = false) {
             if(candleLoading){
-                if(target)return Promise.resolve(candleWork).then(()=>loadCandles(target));
+                if(target)return Promise.resolve(candleWork).then(()=>loadCandles(target,false,true));
                 return candleWork;
             }
-            return candleWork=performCandleLoad(target, onlyCoverage);
+            return candleWork=performCandleLoad(target, onlyCoverage, reuseToday || !!target);
         }
-        async function performCandleLoad(target, onlyCoverage) {
+        async function performCandleLoad(target, onlyCoverage, reuseToday = false) {
             const dailyRange=mode==='day'?dailyCandleRange(target):null;
             if((target || onlyCoverage) && dailyRange && dailyCandleCoverage && dailyCandleCoverage.from<=dailyRange.from && dailyCandleCoverage.to>=dailyRange.to)return;
             if(candleLoading && !target)return;
@@ -441,11 +443,11 @@
                 const today = dayKey(Date.now()), past = day => !dailyRange && day && day < today;
                 const fetchDay = day => {
                     const key = keyOf(day), cached = candleCache.get(key);
-                    if (cached && past(day)) return Promise.resolve(cached);
+                    if (cached && (past(day) || reuseToday && Date.now() - (candleFetchedAt.get(key) || 0) < 60000)) return Promise.resolve(cached);
                     if (candleInflight.has(key)) return candleInflight.get(key);
                     const params = new URLSearchParams({ code: selected, mode, ...(dailyRange?dailyRange:day ? { date: day } : {}) });
                     const job = request(`${candleEndpoint}?${params}`, past(day) ? {} : { signal: current.signal }).then(result => {
-                        if(!result.partial)candleCache.set(key, result); if (candleCache.size > 90) candleCache.delete(candleCache.keys().next().value);
+                        if(!result.partial){candleCache.set(key, result);candleFetchedAt.set(key,Date.now());} if (candleCache.size > 90) candleCache.delete(candleCache.keys().next().value);
                         return result;
                     }).finally(() => { if (candleInflight.get(key) === job) candleInflight.delete(key); });
                     if (past(day)) candleInflight.set(key, job);
@@ -520,7 +522,7 @@
             loading = true; flowLoading=true; chartMessage = append ? '과거 수급 조회 중…' : '수급 조회 중…'; setStatus(); requestDraw();
             try {
                 let firstResponse=true;
-                if(showCandles || mode==='minute')void loadCandles();
+                if(showCandles || mode==='minute')void loadCandles(undefined,false,append);
                 do {
                 const params = new URLSearchParams({ code: selected, mode, ...(mode === 'day' ? { progressive: '1' } : {}), ...(append ? { cursor: nextCursor } : {}) });
                 // 수급 저장이 시작되기 전 날(available_dates의 첫 날보다 이른 날)은 서버에 묻지 않고 빈 날로 넘긴다(2026-11-22).
@@ -580,7 +582,7 @@
                 window.setRankCardConnection?.(panel, !result.status?.error && !result.warnings?.some(text => /실패|오류/.test(text)));
                 hover = null; info.hidden = true; setStatus(); requestDraw();
                 flowLoading=!!result.pending;
-                if (showCandles || mode === 'minute') void loadCandles();
+                if (showCandles || mode === 'minute') void loadCandles(undefined,false,append);
                 publish();
                 firstResponse=false;
                 if (!result.pending) break;

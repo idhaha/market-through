@@ -262,3 +262,26 @@ test('과거 구간을 다시 열 때 먼저 받아 두고 다시 꺼내 쓴 지
   assert.deepEqual(again,[],'같은 구간의 시장 수급 쪽은 서버에 다시 묻지 않는다');
  }finally{await browser.close();}
 });
+test('쏠림율 1분봉 지난 날짜 커서(day:YYYYMMDD)와 과거 구간 첫 쪽은 저장해 다시 쓰고, 오늘 · 세션 커서는 저장하지 않는다(2026-11-24)',async()=>{
+ const browser=await chromium.launch({headless:true,channel:'msedge'});try{
+ const page=await browser.newPage();const calls=[];
+ await page.route('https://day-cursor.test/**',async route=>{
+  const u=new URL(route.request().url());if(u.pathname==='/')return route.fulfill({contentType:'text/html',body:'<html><body></body></html>'});
+  if(u.pathname==='/api/chart-revisions')return route.fulfill({json:{success:true,revisions:{}}});if(u.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:'one@example.test'}}});
+  const body=JSON.parse(route.request().postData()||'{}');calls.push(body.cursor||'first:'+(body.base_dt||''));
+  const from=String(body.cursor||'').replace('day:','')||body.base_dt||'20261124';
+  return route.fulfill({json:{success:true,points:[{t:Date.parse('2026-11-20T09:00:00+09:00'),value:1}],cursor:body.cursor==='opaque'?'session-x':'day:'+String(Number(from)-1),has_more:true}});
+ });
+ const clock=Date.parse('2026-11-24T22:00:00+09:00');
+ async function start(){await page.goto('https://day-cursor.test/');await page.evaluate(at=>{Date.now=()=>at;},clock);await page.addScriptTag({path:'public/rank-chart-cache.js'});}
+ const read=body=>page.evaluate(async b=>{const r=await RankChartCache.fetch('/api/ls-concentration-chart',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});return r.json();},body);
+ const past={code:'005930',mode:'minute',interval:1,cursor:'day:20261120'},base={code:'005930',mode:'minute',interval:1,cursor:null,base_dt:'20260909'};
+ await start();await read(past);await read(base);assert.equal(calls.length,2);
+ await start();
+ const again=await read(past),baseAgain=await read(base);
+ assert.equal(calls.length,2,'새로고침 뒤에도 지난 날짜 커서 쪽과 과거 구간 첫 쪽을 서버에 다시 묻지 않는다');
+ assert.equal(again.cursor,'day:20261119','저장한 쪽의 다음 날짜 커서를 그대로 준다');assert.equal(baseAgain.cursor,'day:20260908');
+ await read({...past,cursor:'day:20261124'});await read({...past,cursor:'day:20261124'});assert.equal(calls.length,4,'오늘 날짜 커서는 저장하지 않는다');
+ await read({...past,cursor:'opaque'});await read({...past,cursor:'opaque'});assert.equal(calls.length,6,'세션 커서는 저장하지 않는다');
+ }finally{await browser.close();}
+});
