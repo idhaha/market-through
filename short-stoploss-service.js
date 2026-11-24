@@ -35,9 +35,16 @@ function segmentAt(t, openDate) {
     if (openDate && openDate(day) === false) return null;
     if (m >= 480 && m < 530) return { id: 'NXT_PRE', ex: 'NXT', label: 'NXT 프리마켓' };
     if (m >= 530 && m < 540) return { id: 'HOLD', ex: null, label: '보류(08:50~09:00)' };
-    if (m >= 540 && m < 920) return { id: 'KRX', ex: 'KRX', label: 'KRX 정규장' };
-    if (m >= 920 && m < 930) return { id: 'KRX_CLOSE', ex: 'KRX', label: 'KRX 종가 단일가' };
-    if (m >= 930 && m < 1200) return { id: 'NXT_AFTER', ex: 'NXT', label: 'NXT 애프터마켓' };
+    // dual: KRX · NXT 체결을 모두 판정하고 NXT 거래 종목은 SOR로 낸다. auction: 단일가(체결 없음) → 예상체결가로 판정, 1초 조회, 정정 안 함
+    if (m >= 540 && m < 920) return { id: 'KRX', ex: 'KRX', dual: true, label: 'KRX 정규장' };
+    if (m >= 920 && m < 930) return { id: 'KRX_CLOSE', ex: 'KRX', auction: true, label: 'KRX 종가 단일가' };
+    // 2026-09-14 개편 뒤 장 마감 이후(2026-11-24 실계좌 접수 시험, outputs/kiwoom-short-cover-20261124):
+    // 15:30~15:40 NXT 애프터 단일가 — NXT 대주상환 접수됨(15:40 체결), 사용자 결정으로 미리 접수
+    // 15:40~16:00 KRX는 "장종료되었습니다" 거부 → NXT만
+    // 16:00~20:00 KRX · NXT 애프터마켓 — KRX · SOR 모두 접수됨 → NXT 거래 종목은 SOR, 비대상은 KRX
+    if (m >= 930 && m < 940) return { id: 'NXT_SINGLE', ex: 'NXT', auction: true, label: 'NXT 애프터 단일가(15:40 체결)' };
+    if (m >= 940 && m < 960) return { id: 'NXT_AFTER', ex: 'NXT', label: 'NXT 애프터마켓' };
+    if (m >= 960 && m < 1200) return { id: 'AFTER', ex: 'KRX', dual: true, label: 'KRX · NXT 애프터마켓' };
     return null;
 }
 // 유효기간 자동 조정: 만기일 이후 → 만기일, 오늘 이전 → 오늘, 휴장일 → 직전 거래일.
@@ -88,9 +95,9 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
         if (type !== '0B') return;
         const price = abs(v['10']); if (!price) return;
         const ex = /_NX$/.test(item) ? 'NXT' : 'KRX', code = code6(item), seg = segmentAt(now(), openDate);
-        // KRX 정규장(09:00~15:20)에는 KRX와 NXT 체결을 모두 본다(주문은 KRX). 그 밖에는 주문 거래소의 체결만.
-        if (!seg || seg.id === 'KRX_CLOSE' || !enabled() || state.halted) return;
-        if (seg.ex !== ex && !(seg.id === 'KRX' && ex === 'NXT')) return;
+        // KRX 정규장(09:00~15:20) · 애프터마켓(16:00~20:00)에는 KRX와 NXT 체결을 모두 본다. 그 밖에는 주문 거래소의 체결만. 단일가에는 0B로 판정하지 않는다.
+        if (!seg || seg.auction || !enabled() || state.halted) return;
+        if (seg.ex !== ex && !(seg.dual && ex === 'NXT')) return;
         for (const w of state.watches) {
             if (w.code !== code || w.status !== '감시중' || !w.enabled || running.has(w.id) || (ex === 'NXT' && !w.nxt)) continue;
             w.lastCheck = { at: now(), ex, price, live: true, text: `${ex} ${price.toLocaleString('ko-KR')} ${price >= w.trigger ? '≥' : '<'} ${w.trigger.toLocaleString('ko-KR')} · 실시간` };
@@ -285,7 +292,8 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
     async function bestAsk(code, ex) { const r = await call('mrkcond', 'ka10004', { stk_cd: ex === 'NXT' ? code + '_NX' : code }); return abs(r.sel_fpr_bid); }
     // 정규장 주문 거래소(2026-11-20 사용자 결정): NXT 거래 종목은 SOR(키움이 KRX · NXT 중 유리한 곳으로 보냄), NXT 비대상은 KRX.
     // SOR 대주상환은 11/20 실계좌로 접수 · 취소 · 체결을 확인했다(outputs/kiwoom-short-cover-20261120). 단일가 · NXT 시간대는 그대로.
-    const orderExFor = (seg, w) => seg.id === 'KRX' && w.nxt ? 'SOR' : seg.ex;
+    // 16:00~20:00 애프터마켓도 같은 규칙(2026-11-24 SOR 접수 확인, 실제로 간 거래소는 체결 전이라 미확인)
+    const orderExFor = (seg, w) => seg.dual && w.nxt ? 'SOR' : seg.ex;
     async function orderState(code, ex, ordNos) {
         // 미체결 조회 거래소: KRX 1 · NXT 2 · 전체 0(SOR 주문은 전체로 봐야 보인다, 11/20 시험)
         const oso = await call('acnt', 'ka10075', { all_stk_tp: '1', trde_tp: '2', stk_cd: code, stex_tp: ex === 'NXT' ? '2' : ex === 'SOR' ? '0' : '1' });
@@ -341,13 +349,13 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
         return r.ord_no;
     }
 
-    async function fire(w, firePrice, seg, srcEx = seg.ex, via = '조회') {
+    async function fire(w, firePrice, seg, srcEx = seg.ex, via = '조회', expected = !!seg.auction) {
         running.add(w.id);
         try {
             const orderEx = orderExFor(seg, w);
             w.status = '발동'; w.firedAt = now(); w.firePrice = firePrice; w.fireEx = orderEx; w.enabled = false;
             w.fireSrc = srcEx; w.fireVia = via;
-            event(w, '발동', `${srcEx} ${seg.id === 'KRX_CLOSE' ? '예상체결가' : '체결가'} ${firePrice.toLocaleString('ko-KR')} ≥ 감시가 ${w.trigger.toLocaleString('ko-KR')} · ${via} 판정 · 주문 거래소 ${orderEx}`);
+            event(w, '발동', `${srcEx} ${expected ? '예상체결가' : '체결가'} ${firePrice.toLocaleString('ko-KR')} ≥ 감시가 ${w.trigger.toLocaleString('ko-KR')} · ${via} 판정 · 주문 거래소 ${orderEx}`);
             save();
             await loadLots();
             let targets = lots.filter(l => l.code === w.code && (w.allLots || l.key === w.lotKey)).sort((a, b) => String(a.maturity).localeCompare(String(b.maturity)));
@@ -360,7 +368,7 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
                 const qty = w.shares > 0 && lot.key === w.lotKey ? Math.min(w.shares, lot.able) : w.qtyMode === 'pct' ? Math.max(1, Math.floor(lot.able * w.qtyValue / 100)) : Math.min(w.qtyValue, lot.able);
                 if (!(lot.able >= 1) || !(qty >= 1)) { event(w, '잔고 확인', `대출일 ${lot.loanDt} 가능수량 0 · 주문하지 않음`); continue; }
                 event(w, '잔고 확인', `대출일 ${lot.loanDt} 가능수량 ${lot.able}주 → ${qty}주 상환`);
-                const o = { loanRaw: lot.loanRaw, qty, able: lot.able, ex: orderEx, ordNos: [], price: 0, filled: 0, attempts: 0, state: '주문', cap, upper };
+                const o = { loanRaw: lot.loanRaw, qty, able: lot.able, ex: orderEx, seg: seg.id, ordNos: [], price: 0, filled: 0, attempts: 0, state: '주문', cap, upper };
                 w.orders.push(o);
                 let price = w.upperLimit && upper ? upper : addTicks(firePrice, w.ticks);
                 price = Math.min(price, upper || price, w.fix ? cap : Infinity);
@@ -395,10 +403,18 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
                 if (o.filled >= o.qty) { o.state = '체결'; continue; }
                 const seg = segmentAt(now(), openDate);
                 if (s.open === 0) {
-                    if ((o.ex === 'KRX' || o.ex === 'SOR') && seg?.id === 'NXT_AFTER' && w.nxt && !o.rerouted) {
-                        const was = o.ex; o.rerouted = true; o.ex = 'NXT'; o.qty -= o.filled; o.filled = 0; o.ordNos = []; o.attempts = 0;
-                        const ask = await bestAsk(w.code, 'NXT'); const price = Math.min(o.cap, addTicks(ask || w.firePrice, w.ticks));
-                        event(w, '재주문', `${was === 'SOR' ? 'SOR 주문이 정규장 마감 뒤 남아' : 'KRX 마감 뒤'} 남은 ${o.qty}주를 NXT로 다시 냅니다`);
+                    // 정규장 · 종가 단일가 주문이 15:30 마감으로 없어지면: NXT 종목은 15:30부터 NXT로(15:30~15:40은 미리 접수),
+                    // NXT 비대상은 KRX 애프터마켓이 열리는 16:00까지 기다렸다가 KRX로 다시 낸다(2026-11-24)
+                    const afterClose = seg && ['NXT_SINGLE', 'NXT_AFTER', 'AFTER'].includes(seg.id);
+                    if ((o.ex === 'KRX' || o.ex === 'SOR') && afterClose && !o.rerouted && (!o.seg || o.seg === 'KRX' || o.seg === 'KRX_CLOSE')) {
+                        const target = w.nxt ? 'NXT' : seg.id === 'AFTER' ? 'KRX' : '';
+                        if (!target) {
+                            if (!o.waitAfter) { o.waitAfter = true; event(w, '알림', `KRX 마감 뒤 남은 ${o.qty - o.filled}주 · NXT 비대상이라 16:00 KRX 애프터마켓에 다시 냅니다`); }
+                            pending = true; continue;
+                        }
+                        const was = o.ex; o.rerouted = true; o.ex = target; o.qty -= o.filled; o.filled = 0; o.ordNos = []; o.attempts = 0;
+                        const ask = await bestAsk(w.code, target); const price = Math.min(o.cap, addTicks(ask || w.firePrice, w.ticks));
+                        event(w, '재주문', `${was === 'SOR' ? 'SOR 주문이 정규장 마감 뒤 남아' : 'KRX 마감 뒤'} 남은 ${o.qty}주를 ${target}로 다시 냅니다`);
                         if (!await sendCover(w, o, price)) o.state = '실패';
                         pending = true; continue;
                     }
@@ -406,7 +422,8 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
                     continue;
                 }
                 pending = true;
-                if (w.fix && !w.upperLimit && o.attempts < 3 && seg && seg.id !== 'HOLD') {
+                // NXT 애프터 단일가(15:30~15:40)에는 체결이 없으므로 정정 횟수를 쓰지 않고 15:40을 기다린다
+                if (w.fix && !w.upperLimit && o.attempts < 3 && seg && seg.id !== 'HOLD' && seg.id !== 'NXT_SINGLE') {
                     o.attempts++;
                     const ask = await bestAsk(w.code, o.ex);
                     const price = repriceFor(o.attempts, ask, w.ticks, o.cap);
@@ -447,27 +464,29 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
             const watching = state.watches.filter(w => w.status === '감시중' && w.enabled && !running.has(w.id));
             if (!seg || !seg.ex) { for (const w of watching) w.lastCheck = { at: t, text: seg ? seg.label + ' · 판정 안 함' : '장 시간 아님' }; return; }
             // 공용 실시간이 붙어 있으면 0B가 바로 판정하므로 조회는 5초 간격 보조(종가 단일가 15:20~15:30은 0B가 없어 1초 조회).
-            if (realtime?.connected() && seg.id !== 'KRX_CLOSE' && now() - lastPollAt < 5000) return;
+            if (realtime?.connected() && !seg.auction && now() - lastPollAt < 5000) return;
             lastPollAt = now();
             const codes = [...new Set(watching.filter(w => seg.ex === 'KRX' || w.nxt).map(w => w.code))];
-            for (const w of watching) if (seg.ex === 'NXT' && !w.nxt) w.lastCheck = { at: t, text: 'NXT 비대상 · 09:00 KRX 대기' };
+            for (const w of watching) if (seg.ex === 'NXT' && !w.nxt) w.lastCheck = { at: t, text: `NXT 비대상 · ${seg.id === 'NXT_PRE' ? '09:00' : '16:00'} KRX 대기` };
             for (const code of codes) {
                 const group = watching.filter(x => x.code === code);
-                // KRX 정규장에는 NXT 체결도 본다(실시간이 끊겨 조회로 감시할 때). 오늘 체결이 있는 쪽만 쓴다.
+                // KRX 정규장 · 애프터마켓에는 NXT 체결도 본다(실시간이 끊겨 조회로 감시할 때). 오늘 체결이 있는 쪽만 쓴다.
                 const sources = [seg.ex];
-                if (seg.id === 'KRX' && group.some(w => w.nxt)) sources.push('NXT');
+                if (seg.dual && group.some(w => w.nxt)) sources.push('NXT');
                 const seen = [];
                 for (const ex of sources) {
                     const q = await quote(code, ex);
-                    const price = seg.id === 'KRX_CLOSE' ? q.exp : q.cur;
-                    if (q.ok && price && (seg.id === 'KRX_CLOSE' || q.volume)) seen.push({ ex, price });
+                    // KRX 종가 단일가는 예상체결가. NXT 애프터 단일가(15:30~15:40)는 예상체결가, 없으면 오늘 마지막 NXT 체결가
+                    if (seg.id === 'KRX_CLOSE') { if (q.ok && q.exp) seen.push({ ex, price: q.exp, expected: true }); continue; }
+                    if (seg.id === 'NXT_SINGLE' && q.ok && q.exp) { seen.push({ ex, price: q.exp, expected: true }); continue; }
+                    if (q.ok && q.cur && q.volume) seen.push({ ex, price: q.cur });
                 }
                 for (const w of group) {
                     const usable = seen.filter(s => s.ex === seg.ex || w.nxt);
                     if (!usable.length) { w.lastCheck = { at: now(), ex: seg.ex, text: `${seg.ex} 오늘 체결 없음` }; continue; }
                     const best = usable.reduce((a, b) => (b.price > a.price ? b : a));
                     w.lastCheck = { at: now(), ex: best.ex, price: best.price, text: usable.map(s => `${s.ex} ${s.price.toLocaleString('ko-KR')}`).join(' · ') + ` ${best.price >= w.trigger ? '≥' : '<'} ${w.trigger.toLocaleString('ko-KR')}` };
-                    if (best.price >= w.trigger && !state.halted) void fire(w, best.price, seg, best.ex, '조회');
+                    if (best.price >= w.trigger && !state.halted) void fire(w, best.price, seg, best.ex, '조회', !!best.expected);
                 }
             }
         } catch (error) { log('대주 StopLoss 감시 오류: ' + (error.stack || error)); }

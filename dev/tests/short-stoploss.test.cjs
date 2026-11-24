@@ -17,7 +17,7 @@ function fakeKiwoom({ price = 7350, volume = 1000, ask = 7360, nxt = true, io = 
         if (api === 'ka10085') return r({ acnt_prft_rt: [{ stk_cd: '004980', crd_tp: '07', loan_dt: '20261123', expr_dt: '20270222' }] });
         if (api === 'ka10001') {
             if (body.stk_cd.endsWith('_NX') && !k.nxt) return r({ cur_prc: '', base_pric: '' });
-            return r({ cur_prc: '+' + (body.stk_cd.endsWith('_NX') && k.nxtPrice ? k.nxtPrice : k.price), trde_qty: String(k.volume), upl_pric: '+8900', base_pric: '6850', exp_cntr_pric: '' });
+            return r({ cur_prc: '+' + (body.stk_cd.endsWith('_NX') && k.nxtPrice ? k.nxtPrice : k.price), trde_qty: String(k.volume), upl_pric: '+8900', base_pric: '6850', exp_cntr_pric: k.exp ? '+' + k.exp : '' });
         }
         if (api === 'ka10004') return r({ sel_fpr_bid: '+' + (k.askSeq ? k.askSeq[Math.min(k.modifies.length, k.askSeq.length - 1)] : k.ask) });
         if (api === 'kt10006') {
@@ -67,7 +67,11 @@ async function runUntilDone(e, w, rounds = 40) { for (let i = 0; i < rounds; i++
     assert.equal(seg('2026-11-20T08:55:00'), 'HOLD');
     assert.equal(seg('2026-11-20T10:00:00'), 'KRX');
     assert.equal(seg('2026-11-20T15:25:00'), 'KRX_CLOSE');
-    assert.equal(seg('2026-11-20T15:35:00'), 'NXT_AFTER');
+    // 2026-11-24: 15:30~15:40 NXT 단일가 미리 접수 · 15:40~16:00 NXT만(KRX 장종료 거부) · 16:00~20:00 SOR
+    assert.equal(seg('2026-11-20T15:35:00'), 'NXT_SINGLE');
+    assert.equal(seg('2026-11-20T15:45:00'), 'NXT_AFTER');
+    assert.equal(seg('2026-11-20T16:00:00'), 'AFTER');
+    assert.equal(seg('2026-11-20T19:59:00'), 'AFTER');
     assert.equal(seg('2026-11-20T20:00:00'), null);
     assert.equal(seg('2026-11-21T10:00:00'), null); // 토요일
     assert.equal(S.segmentAt(at('2026-12-25T10:00:00'), d => d !== '2026-12-25'), null);
@@ -311,6 +315,47 @@ async function runUntilDone(e, w, rounds = 40) { for (let i = 0; i < rounds; i++
         k.price = 7300; await e.step(); const done = await runUntilDone(e, a);
         assert.equal(done.status, '체결완료'); assert.equal(k.orders.length, 1); assert.equal(k.orders[0].ord_qty, '6', '60% 건은 6주만 상환');
         e.stop();
+    }
+    // 장 마감 뒤 시간표(2026-11-24 실계좌 접수 시험 · 사용자 결정)
+    {
+        const run = async (t, opts = {}, extra = {}) => { const k = fakeKiwoom(opts); Object.assign(k, extra); const { e } = engine(k, { t }); await e.loadLots(); const w = await e.create(input('004980:20261123')); await e.step(); const done = await runUntilDone(e, w); e.stop(); return { k, done, log: e.history(w.id).log.map(x => x.text).join(' | ') }; };
+        // 16:00~20:00: NXT 종목은 SOR, KRX · NXT 체결을 모두 판정(KRX 7,200 아래여도 NXT 7,320이면 발동)
+        let r = await run('2026-11-20T16:30:00', { price: 7200 }, { nxtPrice: 7320 });
+        assert.equal(r.k.orders[0].dmst_stex_tp, 'SOR'); assert.equal(r.done.fireSrc, 'NXT'); assert.equal(r.done.status, '체결완료');
+        // 16:00~20:00 NXT 비대상은 KRX
+        r = await run('2026-11-20T16:30:00', { nxt: false });
+        assert.equal(r.k.orders[0].dmst_stex_tp, 'KRX');
+        // 15:40~16:00: NXT만, NXT 비대상은 주문하지 않고 16:00 대기
+        r = await run('2026-11-20T15:45:00');
+        assert.equal(r.k.orders[0].dmst_stex_tp, 'NXT');
+        { const k = fakeKiwoom({ nxt: false }), { e } = engine(k, { t: '2026-11-20T15:45:00' }); await e.loadLots(); await e.create(input('004980:20261123')); await e.step(); await settle();
+          assert.equal(k.orders.length, 0); assert.match(e._state().watches[0].lastCheck.text, /NXT 비대상 · 16:00 KRX 대기/); e.stop(); }
+        // 15:30~15:40: NXT로 미리 접수, 체결이 없어도 정정하지 않는다
+        { const k = fakeKiwoom({ fill: false }), { e, clock } = engine(k, { t: '2026-11-20T15:31:00' }); const modAt = [], post = k.http.post; k.http.post = async (u, b, o) => { if (o.headers['api-id'] === 'kt10008') modAt.push(clock.t); return post(u, b, o); }; await e.loadLots(); const w = await e.create(input('004980:20261123')); await e.step();
+          for (let i = 0; i < 20 && k.orders.length < 1; i++) await new Promise(r => setTimeout(r, 2));
+          for (let i = 0; i < 30; i++) await new Promise(r => setTimeout(r, 2));
+          assert.equal(k.orders[0].dmst_stex_tp, 'NXT');
+          assert.ok(modAt.every(t => t >= at('2026-11-20T15:40:00')), '15:40 전에는 정정 안 함 ' + modAt.map(t => new Date(t + 9 * 3600000).toISOString().slice(11, 19)));
+          assert.ok(clock.t > at('2026-11-20T15:33:00'), '단일가 구간에서 여러 번 추적');
+          e._state().watches.find(x => x.id === w.id).status = '실패'; for (const o of k.book.values()) o.open = 0; await runUntilDone(e, w); e.stop(); }
+        // 종가 단일가(KRX) 주문이 15:30 마감으로 없어지면: NXT 비대상은 16:00까지 기다렸다가 KRX로, NXT 종목은 15:30부터 NXT로 다시 낸다
+        for (const [nxt, wantEx, notBefore] of [[false, 'KRX', '16:00:00'], [true, 'NXT', '15:30:00']]) {
+            const k = fakeKiwoom({ nxt, fill: false, price: 7000 }); k.exp = 7350;
+            const { e, clock } = engine(k, { t: '2026-11-20T15:25:00' }); const sentAt = [], post = k.http.post;
+            k.http.post = async (u, b, o) => { const api = o.headers['api-id'];
+                if (api === 'kt10006') sentAt.push(clock.t);
+                if (clock.t >= at('2026-11-20T15:30:00')) for (const [ord, x] of k.book) if (x.krxClose) x.open = 0; // 15:30 마감으로 KRX 미체결 소멸
+                const res = await post(u, b, o);
+                if (api === 'kt10006' && b.dmst_stex_tp === 'KRX' && clock.t < at('2026-11-20T15:30:00')) k.book.get(res.data.ord_no).krxClose = true;
+                if (api === 'kt10006' && sentAt.length === 2) k.book.get(res.data.ord_no).filled = k.book.get(res.data.ord_no).qty, k.book.get(res.data.ord_no).open = 0;
+                return res; };
+            await e.loadLots(); const w = await e.create(input('004980:20261123', { fix: false })); await e.step();
+            const done = await runUntilDone(e, w, 4000);
+            assert.equal(k.orders[0].dmst_stex_tp, 'KRX', '종가 단일가는 KRX');
+            assert.equal(k.orders.length, 2); assert.equal(k.orders[1].dmst_stex_tp, wantEx);
+            assert.ok(sentAt[1] >= at('2026-11-20T' + notBefore), `${wantEx} 재주문 시각 ${new Date(sentAt[1] + 9 * 3600000).toISOString().slice(11, 19)}`);
+            assert.equal(done.status, '체결완료'); e.stop();
+        }
     }
     console.log('short-stoploss: 모든 확인 통과');
 })().catch(error => { console.error(error); process.exit(1); });

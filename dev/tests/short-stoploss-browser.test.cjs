@@ -248,10 +248,17 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         await page.mouse.move(5, 5);
         // 정책 i
         await page.click('#policyBtn'); assert.match(await page.textContent('#policyBody'), /추격 한도/);
-        // 정책 표 2개: 확인 주기(3줄) · 서버 재시작(5줄)
-        assert.equal(await page.locator('#policyBody table').count(), 2);
+        // 정책 표 3개: 확인 주기(3줄) · 엔진 시간표(8줄, 2026-11-24) · 서버 재시작(5줄)
+        assert.equal(await page.locator('#policyBody table').count(), 3);
         assert.ok((await page.locator('#policyBody table').nth(0).textContent()).includes('내 주문체결(00) · 3초 조회')); assert.equal(await page.locator('#policyBody table').nth(0).locator('tbody tr').count(), 3);
-        assert.match(await page.locator('#policyBody table').nth(1).textContent(), /주문 전에 꺼짐/); assert.equal(await page.locator('#policyBody table').nth(1).locator('tbody tr').count(), 5);
+        const tt = page.locator('#policyBody table').nth(1);
+        assert.deepEqual(await tt.locator('thead th').allTextContents(), ['시간', 'KRX', 'NXT', 'SOR', '판정(현재가)', '엔진 주문']);
+        assert.equal(await tt.locator('tbody tr').count(), 8);
+        assert.deepEqual(await tt.locator('tbody tr').nth(5).locator('th, td').allTextContents(), ['15:40~16:00', '접수 × 장종료 (11/24)', '접수 ○ · 체결 ○', '접수 ○ (11/24) · 체결 ?', 'NXT 체결가', 'NXT (비대상은 16:00 대기)']);
+        assert.deepEqual(await tt.locator('tbody tr').nth(4).locator('.mk').evaluateAll(n => n.map(x => [x.textContent, getComputedStyle(x).backgroundColor])),
+            [['×', 'rgb(138, 147, 163)'], ['×', 'rgb(138, 147, 163)'], ['○', 'rgb(31, 138, 76)'], ['△', 'rgb(242, 193, 78)'], ['?', 'rgb(228, 233, 241)']], '기호마다 색');
+        assert.ok(await page.$eval('#policyModal .modal-box', b => b.scrollWidth <= b.clientWidth), '시간표가 가로로 넘치지 않음');
+        assert.match(await page.locator('#policyBody table').nth(2).textContent(), /주문 전에 꺼짐/); assert.equal(await page.locator('#policyBody table').nth(2).locator('tbody tr').count(), 5);
         assert.deepEqual(errors, []);
         console.log('short-stoploss-browser: 모든 확인 통과');
     } finally { await browser.close(); server.close(); svc.stop(); }

@@ -119,7 +119,7 @@ body.form-closed .fold-btn svg{transform:rotate(180deg)}
 .tipbox .block{display:block;margin:4px 0}
 .exbar{display:flex;height:22px;border-radius:4px;overflow:hidden;font-size:11px;color:#FFFFFF;font-weight:500;border:1px solid #5A6A85}
 .exbar span{display:flex;align-items:center;justify-content:center}
-.exbar .nxt{background:var(--purple)}.exbar .krx{background:var(--blue)}.exbar .hold{background:#8A93A3}.exbar .close{background:#0E2F66}
+.exbar .nxt{background:var(--purple)}.exbar .krx{background:var(--blue)}.exbar .hold{background:#8A93A3}.exbar .close{background:#0E2F66}.exbar .nxtsingle{background:repeating-linear-gradient(45deg,var(--purple) 0 3px,#B9A8E8 3px 6px)}
 .exlabels{display:flex;justify-content:space-between;font-size:11px;color:#C9D3E3;margin-top:3px}
 .cal-btn{width:30px;height:30px;border:1px solid #C3C9D3;background:#F6F7F9;border-radius:4px;display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer}
 /* 날짜 자동 조정 안내: 아래 칸을 밀지 않도록 겹쳐 띄운다(밀리면 조건 추가 클릭이 빗나감) */
@@ -153,6 +153,8 @@ body.form-closed .fold-btn svg{transform:rotate(180deg)}
 .policy ul{margin:0;padding-left:18px;line-height:1.6}
 .policy table{border-collapse:collapse;margin:4px 0;font-size:12px}
 .policy td,.policy th{border:1px solid var(--line2);padding:4px 8px;text-align:left}
+.mk{display:inline-block;min-width:16px;text-align:center;font-weight:700;border-radius:3px;padding:0 3px;margin:0 1px}
+.mk-ok{color:#FFFFFF;background:#1F8A4C}.mk-wait{color:#3A2A00;background:#F2C14E}.mk-no{color:#FFFFFF;background:#8A93A3}.mk-unk{color:#5A6A85;background:#E4E9F1}
 @media (max-width:1000px){body{overflow:auto;height:auto}.ss-main{flex:none}.ss-left-inner{position:static}.ss-form{overflow:visible}.card.half .tbl-wrap{max-height:320px}
   /* 접었을 때는 좁은 창에서도 창 전체 스크롤 없이 두 표가 높이를 반씩 나눠 쓴다 */
   body.form-closed{overflow:hidden;height:100%}body.form-closed .ss-main{flex:1 1 auto}body.form-closed .ss-left-inner{position:absolute}body.form-closed .card.half .tbl-wrap{max-height:none}}

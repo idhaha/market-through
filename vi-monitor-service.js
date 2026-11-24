@@ -1015,7 +1015,7 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
             registered=0;sharedStatus.viSuspended=false;state='VI 등록 확인 중';emit();
             // Group 1: the whole market (KRX, plus SOR copies). Group 2: NXT (_NX).
             socket?.send(JSON.stringify({trnm:'REG',grp_no:'1',refresh:'1',data:[{item:[''],type:['1h']}]}));
-            const ws=socket;regTimer=setTimeout(()=>{if(socket===ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({trnm:'REG',grp_no:'2',refresh:'1',data:[{item:['_NX'],type:['1h']}]}));},1000);regTimer.unref?.();
+            const ws=socket;regTimer=setTimeout(()=>{if(ws&&socket===ws&&ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({trnm:'REG',grp_no:'2',refresh:'1',data:[{item:['_NX'],type:['1h']}]}));},1000);regTimer.unref?.();
             return;
         }
         if(m.trnm==='REG') {

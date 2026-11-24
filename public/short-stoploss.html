@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>대주 StopLoss</title>
-<link rel="stylesheet" href="short-stoploss.css?v=20261124_cols">
-<script src="short-stoploss.js?v=20261124_cols" defer></script>
+<link rel="stylesheet" href="short-stoploss.css?v=20261124_tt">
+<script src="short-stoploss.js?v=20261124_tt" defer></script>
 </head>
 <body>
 <header class="ss-top">
@@ -152,10 +152,10 @@
           <span class="strong">주문 거래소</span>
           <span id="exNow" class="accent small"></span>
           <span class="tip"><button type="button" class="i" aria-label="주문 거래소 설명">i</button><span class="tipbox wide" role="tooltip">
-            <span class="block">시간대별로 자동 선택합니다. 정규장 주문은 SOR로 냅니다(키움이 KRX · NXT 중 유리한 곳으로 보냄, NXT 비대상 종목은 KRX). 판정은 정규장에 KRX · NXT 체결을 모두 봅니다. NXT 비대상 종목은 KRX 시간에만 주문합니다. 수능일 같은 특수 시간표는 아직 반영하지 않습니다.</span>
-            <span class="exbar"><span style="flex: 50 1 0" class="nxt">NXT</span><span style="flex: 10 1 0" class="hold"></span><span style="flex: 380 1 0" class="krx">정규장 SOR</span><span style="flex: 10 1 0" class="close"></span><span style="flex: 270 1 0" class="nxt">NXT 애프터</span></span>
-            <span class="exlabels"><span>08:00</span><span>09:00</span><span>15:30</span><span>20:00</span></span>
-            <span class="block">08:00~08:50 NXT · 08:50~09:00 보류 · 09:00~15:20 SOR(NXT 비대상은 KRX) · 15:20~15:30 KRX 단일가 · 15:30~20:00 NXT</span>
+            <span class="block">시간대별로 자동 선택합니다. 정규장 · 16:00 뒤 애프터마켓 주문은 SOR로 냅니다(키움이 KRX · NXT 중 유리한 곳으로 보냄, NXT 비대상 종목은 KRX). NXT 비대상 종목은 KRX 시간에만 주문합니다. 접수 · 체결 가능 여부는 정책 보기의 엔진 시간표에 있습니다. 수능일 같은 특수 시간표는 아직 반영하지 않습니다.</span>
+            <span class="exbar"><span style="flex: 50 1 0" class="nxt">NXT</span><span style="flex: 10 1 0" class="hold"></span><span style="flex: 380 1 0" class="krx">정규장 SOR</span><span style="flex: 10 1 0" class="close"></span><span style="flex: 10 1 0" class="close nxtsingle"></span><span style="flex: 20 1 0" class="nxt"></span><span style="flex: 240 1 0" class="krx">애프터 SOR</span></span>
+            <span class="exlabels"><span>08:00</span><span>09:00</span><span>15:30</span><span>16:00</span><span>20:00</span></span>
+            <span class="block">08:00~08:50 NXT · 08:50~09:00 보류 · 09:00~15:20 SOR(NXT 비대상은 KRX) · 15:20~15:30 KRX 단일가 · 15:30~15:40 NXT 단일가 미리 접수(15:40 체결) · 15:40~16:00 NXT · 16:00~20:00 SOR(NXT 비대상은 KRX)</span>
           </span></span>
         </div>
       </div>
