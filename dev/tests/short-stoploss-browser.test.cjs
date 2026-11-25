@@ -218,6 +218,11 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         const tok = 'a'.repeat(64); seenTokens.clear();
         await np.goto(`http://127.0.0.1:${port}/short-stoploss.html#token=${tok}`); await np.waitForSelector('#lotsTable tbody tr.pick');
         assert.ok(seenTokens.has('S' + tok.slice(0, 8)) && !seenTokens.has(tok), '여는 토큰은 바꾸는 데만 쓰고 대주 API에는 창 토큰'); assert.equal(await np.evaluate(() => location.hash), '', '주소에서 토큰을 지운다');
+        // 항상 위 체크박스(2026-11-26 사용자 요청): 독립창 앱에서만 보이고, 켜고 끄면 앱에 topmost 메시지를 보낸다. 머리줄이 넘치지 않는다.
+        assert.equal(await page.isVisible('#topmostWrap'), false, '브라우저에서는 항상 위를 감춤'); assert.equal(await np.isVisible('#topmostWrap'), true, '앱에서는 항상 위가 보임');
+        await np.check('#topmost'); await np.uncheck('#topmost');
+        assert.deepEqual((await np.evaluate(() => window.__msgs || [])).filter(m => m.startsWith('topmost:')), ['topmost:true', 'topmost:false']);
+        assert.ok(await np.$eval('.ss-top', h => h.scrollWidth <= h.clientWidth && document.querySelector('.ss-topmost').getBoundingClientRect().right <= h.getBoundingClientRect().right), '1200 폭 머리줄에 항상 위가 다 보임');
         const nInfo = () => np.evaluate(() => ({ msgs: window.__msgs || [], leftW: Math.round(document.querySelector('.ss-left').getBoundingClientRect().width), closed: document.body.classList.contains('form-closed'), fold: JSON.parse(localStorage.getItem('short-stoploss-fold') || 'null'), need: Math.ceil(document.querySelector('.ss-fold').getBoundingClientRect().right) + 12 }));
         const n0 = await nInfo(); assert.deepEqual(n0.msgs.filter(m => m.startsWith('resize-window')), [], '처음에는 창 크기를 바꾸지 않는다');
         await np.click('#foldBtn'); const n1 = await nInfo();
@@ -233,7 +238,9 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         assert.deepEqual(n3.msgs.filter(m => m.startsWith('resize-window')), [`resize-window:${cut},0,${n1.need},660`], JSON.stringify(n3));
         assert.equal(n3.closed, false); assert.deepEqual(n3.fold, { closed: false });
         // 메인 화면 버튼을 다시 누르면 앱이 새 토큰을 넘긴다(서버 재시작 뒤 이어 쓰기)
+        await np.check('#topmost'); const topBefore = (await np.evaluate(() => window.__msgs)).filter(m => m === 'topmost:true').length;
         const tok2 = 'b'.repeat(64); await np.evaluate(t => window.refreshNativeShortStopLossCredentials(t), tok2); await np.waitForTimeout(500);
+        assert.equal((await np.evaluate(() => window.__msgs)).filter(m => m === 'topmost:true').length, topBefore + 1, '메인 화면에서 다시 열어도(앱이 항상 위를 끔) 체크돼 있으면 다시 켠다'); await np.uncheck('#topmost');
         assert.ok(seenTokens.has('S' + tok2.slice(0, 8)), '새 창 토큰으로 다시 조회');
         // 이미 쓴 여는 토큰이 다시 오면 안내를 띄우되, 쓰던 창 토큰으로 계속 조회한다
         seenTokens.clear(); await np.evaluate(t => window.refreshNativeShortStopLossCredentials(t), tok); await np.waitForTimeout(2600);

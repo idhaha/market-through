@@ -35,7 +35,7 @@
     let ready = launch ? exchange(launch) : Promise.resolve();
     const auth = () => token ? { 'X-SS-Token': token } : {};
     // 대주창이 이미 열려 있을 때 메인 화면 버튼을 다시 누르면 앱이 새 여는 토큰을 넘긴다(서버 재시작 뒤 이어 쓰기)
-    window.refreshNativeShortStopLossCredentials = next => { ready = exchange(next); ready.then(() => { if (!linkError) { $('message').hidden = true; loadCalendar(); } loop(); }); };
+    window.refreshNativeShortStopLossCredentials = next => { if ($('topmost')?.checked) window.chrome?.webview?.postMessage('topmost:true'); /* 앱이 다시 열면서 항상 위를 끄므로 체크 상태대로 되돌린다 */ ready = exchange(next); ready.then(() => { if (!linkError) { $('message').hidden = true; loadCalendar(); } loop(); }); };
     async function api(method, url, body) {
         await ready;
         if (linkError) throw Error(linkError);
@@ -454,6 +454,9 @@
             if (after) b.append(el('ul', {}, after.map(t => el('li', {}, t))));
         }
     }
+    // 항상 위(2026-11-26 사용자 요청): 독립창 앱(WebView2)에 topmost 메시지를 보낸다. 브라우저에서는 감춘다.
+    if (window.chrome?.webview) $('topmost').addEventListener('change', e => window.chrome.webview.postMessage('topmost:' + e.target.checked));
+    else $('topmostWrap').hidden = true;
     $('policyBtn').addEventListener('click', () => { renderPolicy(); $('policyModal').hidden = false; $('policyModal').querySelector('[data-close]').focus(); });
     for (const m of document.querySelectorAll('.modal')) {
         m.addEventListener('click', e => { if (e.target === m || e.target.closest('[data-close]')) m.hidden = true; });
