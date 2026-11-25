@@ -973,5 +973,8 @@
             entry.task.then(v=>setTimeout(()=>{signal?.removeEventListener('abort',abort);if(!signal?.aborted)resolve(wrap(v));},0),e=>{signal?.removeEventListener('abort',abort);reject(e);});
         });
     }
-    window.RankChartAxis={kstDay,sharedFetch,drawOhlc,kstMinute,dayBoundaryPositions,showWindow,minuteWindow,dailyWindow,openPositions,drawDayBoundaries,concentrationCumulative,loadingBar,intradayGap,restoreHistoryRange,marketChoice,validCandle,candleLabel,selectViewport,plotBounds,registerHover,synchronizeHover,matchesHover,updateSlider,scrollViewport,synchronizeViewport,refreshOrder,refreshCharts,registerHistoryLoader,requestHistory,showHistory,showToday,sessionDay,sharedRange,dailyDomain,minuteDomain,ticks,todayRange,limitToday,sessionRange,limitSessions,sessionX,eightTick,sessionStartLabel,candleLayout,todayButton};
+    // 화면 복귀(visibilitychange) 새로고침도 자동 갱신과 같이 건너뛸지(2026-11-25): 더 불러오기가 도는 동안이나 과거 분봉 구간을 보는 동안.
+    // 측정 4)에서 80초 과거 조회 도중 탭으로 돌아오자 수급 카드 넷이 오늘 분봉을 다시 받았다.
+    const skipMinuteRefresh=()=>historyBusy || !!windowEnd;
+    window.RankChartAxis={skipMinuteRefresh,kstDay,sharedFetch,drawOhlc,kstMinute,dayBoundaryPositions,showWindow,minuteWindow,dailyWindow,openPositions,drawDayBoundaries,concentrationCumulative,loadingBar,intradayGap,restoreHistoryRange,marketChoice,validCandle,candleLabel,selectViewport,plotBounds,registerHover,synchronizeHover,matchesHover,updateSlider,scrollViewport,synchronizeViewport,refreshOrder,refreshCharts,registerHistoryLoader,requestHistory,showHistory,showToday,sessionDay,sharedRange,dailyDomain,minuteDomain,ticks,todayRange,limitToday,sessionRange,limitSessions,sessionX,eightTick,sessionStartLabel,candleLayout,todayButton};
 })();

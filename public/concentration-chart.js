@@ -580,10 +580,13 @@
                 const notices = window.RankSupplyGuide?.loadingWarnings(panel, state.mode, result.notice ? [result.notice] : []) || (result.notice ? [result.notice] : []);
                 const loadNotice = notices.join(' · ');
                 // 누락은 정규장 분만 센다(2026-11-24). 서버가 NXT 시간대 봉에 regular_session:false를 붙인다(그 시간엔 시장 거래대금이 원래 없음).
-                const missing = state.points.filter(point => point.value == null && point.regular_session !== false).length;
+                // 어느 쪽이 비었는지 나눠 적는다(2026-11-25 오라클 측정: 오늘 11:20은 종목 거래대금이 비었는데 "시장 거래대금 1개 누락"으로 보였다).
+                const gaps = state.points.filter(point => point.value == null && point.regular_session !== false);
+                const stockMissing = gaps.filter(point => point.stock_turnover == null && point.market_turnover != null).length, marketMissing = gaps.length - stockMissing;
+                const missingText = [marketMissing ? `시장 거래대금 ${marketMissing.toLocaleString()}개` : '', stockMissing ? `종목 거래대금 ${stockMissing.toLocaleString()}개` : ''].filter(Boolean).join(' · ');
                 status.textContent = result.history_pending ? '시장 과거 데이터가 더 필요합니다. 추가 조회 버튼을 눌러 주세요.'
                     : result.partial && loadNotice ? loadNotice : !state.points.length ? '표시할 데이터가 없습니다.' : !valid ? '같은 날짜·시간의 시장 거래대금이 없어 계산할 수 없습니다.'
-                    : loadNotice || (missing ? `시장 거래대금 ${missing.toLocaleString()}개 시점 누락 · 쏠림율 계산 불가` : '');
+                    : loadNotice || (missingText ? `${missingText} 시점 누락 · 쏠림율 계산 불가` : '');
             } catch (error) {
                 if (request !== state.request || error.name === 'AbortError') return;
                 state.historyError=error.message;

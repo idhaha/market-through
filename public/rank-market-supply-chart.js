@@ -658,7 +658,7 @@
         }
         new ResizeObserver(scheduleResize).observe(reference); new ResizeObserver(scheduleResize).observe(canvas.parentElement);
         new ResizeObserver(scheduleResize).observe(panel.querySelector('.rank-adr-controls'));
-        document.addEventListener('visibilitychange', () => { if (!document.hidden) window[api('refreshRankMarketSupplyChart')](); });
+        document.addEventListener('visibilitychange', () => { if (!document.hidden && !(mode === 'minute' && window.RankChartAxis?.skipMinuteRefresh?.())) window[api('refreshRankMarketSupplyChart')](); });
         document.addEventListener(eventName('rank-market-supply-restore'), event=>{const value=event.detail;if(value?.selected && ['kospi','kosdaq','futures','futuresKosdaq'].includes(value.selected)){selected=value.selected;paintStocks();remember();clearView();void load();}});
         window.addEventListener('online', window[api('refreshRankMarketSupplyChart')]);
         if(!window.rankIndependentClient && typeof window.rankMainCandleOpen==='boolean')window[api('applyRankMarketSupplyCandleOpen')](window.rankMainCandleOpen);

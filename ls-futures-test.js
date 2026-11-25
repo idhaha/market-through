@@ -426,6 +426,7 @@ function createLsFuturesTest({ http, getToken, directory, daytimeStore, dailyPro
         const dir=candleDir(shcode),file=path.join(dir,'covered.json');fs.mkdirSync(dir,{recursive:true});
         fs.writeFileSync(file+'.tmp',JSON.stringify(merged));fs.renameSync(file+'.tmp',file);
     }
+    function weekendOnly(from,to){for(let d=from;d<=to;d=dayAfter(d))if(![0,6].includes(new Date(timestamp(d)+9*3600000).getUTCDay()))return false;return true;}
     function uncovered(covered,from,to){
         const gaps=[];let start=from;
         for(const [a,b] of [...covered].sort((x,y)=>x[0].localeCompare(y[0]))){
@@ -457,7 +458,7 @@ function createLsFuturesTest({ http, getToken, directory, daytimeStore, dailyPro
         for(let page=0;page<400;page++){
             const response=await rest('t8465','chart',{shcode:contract.shcode,ncnt:1,qrycnt:500,nday:'0',sdate:from,stime:'',edate:to,etime:'',cts_date,cts_time,comp_yn:'N'},continuation);
             const batch=response.t8465OutBlock1;
-            if(!Array.isArray(batch))throw failure('LS 선물 가격 응답 오류',502);
+            if(!Array.isArray(batch)){console.warn(`[LS t8465] 분봉 응답에 OutBlock1 없음 ${from}~${to} ${page+1}쪽 ${String(response.rsp_msg||'').trim()}`);throw failure('LS 선물 가격 응답 오류',502);}
             for(const row of batch){const p=candle(row,investorTime(row));if(p && compact(p.t)>=from && compact(p.t)<=to && p.t<Math.floor(now()/60000)*60000)rows.set(p.t,p);}
             const header=response.t8465OutBlock||{},nextDate=String(header.cts_date||'').trim(),nextTime=String(header.cts_time||'').trim();
             if(!batch.length || response._continuation?.more===false || !nextDate || nextDate==='00000000' || nextDate<from)break;
@@ -490,15 +491,30 @@ function createLsFuturesTest({ http, getToken, directory, daytimeStore, dailyPro
             if(directory && from<today){
                 const pastTo=to<today?to:dayBefore(today);
                 const shcode=contract.shcode,gaps=uncovered(coveredOf(shcode),from,pastTo),rows=new Map();let partial=false;
-                for(const [a,b] of gaps){
-                    const got=await minuteRange(contract,a,b);
-                    for(const [t,p] of got.rows)rows.set(t,p);
-                    if(got.partial){partial=true;continue;}
-                    saveDays(shcode,got.rows,a,b);addCovered(shcode,a,b);
+                try{
+                    for(const [a,b] of gaps){
+                        // 주말뿐인 틈은 LS에 묻지 않는다(자료가 없으면 LS가 OutBlock1 없이 답해 오류가 된다).
+                        if(weekendOnly(a,b)){addCovered(shcode,a,b);continue;}
+                        // 틈의 양 끝이 주말이면 평일로 줄여 묻는다(2026-11-25 저녁 오라클 측정: 받은 월요일 바로 앞 틈은 일요일에 끝나
+                        // 11-18~25 · 11-12~25 · 11-09~25 · 11-04~25가 모두 502였고, 평일에 끝나는 11-23~25 · 07-10~28은 됐다).
+                        let ask=a,askTo=b;while(weekendOnly(askTo,askTo))askTo=dayBefore(askTo);while(weekendOnly(ask,ask))ask=dayAfter(ask);
+                        const got=await minuteRange(contract,ask,askTo);
+                        for(const [t,p] of got.rows)rows.set(t,p);
+                        if(got.partial){partial=true;continue;}
+                        saveDays(shcode,got.rows,a,b);addCovered(shcode,a,b);
+                    }
+                    for(const p of readDays(shcode,from,pastTo))if(!rows.has(p.t))rows.set(p.t,p);
+                    if(to>=today){const got=await minuteRange(contract,today,to);for(const [t,p] of got.rows)rows.set(t,p);if(got.partial)partial=true;}
+                    return {success:true,points:[...rows.values()].sort((a,b)=>a.t-b.t),partial,source:'LS t8465'};
+                }catch(error){
+                    // 오늘이 든 범위에서 나눠 받기가 실패하면 예전처럼 범위 전체를 한 번에 받고, 그 결과로 지난날 파일을 채운다
+                    // (2026-11-25 오라클 장중 측정: 어제까지 틈을 따로 묻자 'LS 선물 가격 응답 오류' 502가 되풀이됐다. 범위 전체는 전에 됐다).
+                    if(to<today)throw error;
+                    console.warn(`[LS futures] ${from}~${to} 나눠 받기 실패(${error.message}), 범위 전체로 다시 받음`);
+                    const got=await minuteRange(contract,from,to);
+                    if(!got.partial)for(const [a,b] of uncovered(coveredOf(shcode),from,pastTo)){saveDays(shcode,got.rows,a,b);addCovered(shcode,a,b);}
+                    return {success:true,points:[...got.rows.values()].sort((a,b)=>a.t-b.t),partial:got.partial,source:'LS t8465'};
                 }
-                for(const p of readDays(shcode,from,pastTo))if(!rows.has(p.t))rows.set(p.t,p);
-                if(to>=today){const got=await minuteRange(contract,today,to);for(const [t,p] of got.rows)rows.set(t,p);if(got.partial)partial=true;}
-                return {success:true,points:[...rows.values()].sort((a,b)=>a.t-b.t),partial,source:'LS t8465'};
             }
             const got=await minuteRange(contract,from,to);
             return {success:true,points:[...got.rows.values()].sort((a,b)=>a.t-b.t),partial:got.partial,source:'LS t8465'};

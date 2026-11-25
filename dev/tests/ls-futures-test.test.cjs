@@ -304,6 +304,66 @@ test('지난 구간 선물 분봉은 날마다 파일로 두고, 넓힌 구간�
     await make().priceRange({code:'futures',from:'20261027',to:'20261031'});
     assert.deepEqual(asked.slice(4),[['20261031','20261031']],'다시 열어도 오늘만 묻는다');
 });
+test('오늘이 든 선물 분봉 범위에서 지난날 틈을 따로 묻다 LS가 OutBlock1 없이 답하면 범위 전체로 다시 받아 파일을 채운다(2026-11-25)',async t=>{
+    const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+    const directory=fs.mkdtempSync(path.join(os.tmpdir(),'lsft-fallback-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+    const days=['20261026','20261027','20261028','20261029','20261030','20261031'],asked=[];
+    const make=()=>createLsFuturesTest({directory,now:()=>fixedNow,pause:async()=>{},getToken:async()=>'',http:{post:async(url,body,{headers})=>{
+        const tr=headers.tr_cd,p=body[tr+'InBlock'];
+        if(tr==='t8467')return {data:{rsp_cd:'00000',t8467OutBlock:[{hname:'F 2612',shcode:'A016C000'}]}};
+        asked.push([p.sdate,p.edate]);
+        // 실제 장중 오라클에서 본 증상: 어제로 끝나는 지난 범위는 정상 코드로 답하면서 OutBlock1이 없다.
+        if(p.sdate<'20261031'&&p.edate<'20261031')return {headers:{tr_cont:'N'},data:{rsp_cd:'00000',rsp_msg:'조회내역이 없습니다'}};
+        const rows=days.filter(d=>d>=p.sdate&&d<=p.edate).reverse().map(d=>({date:d,time:'090000',open:900,high:902,low:898,close:901}));
+        return {headers:{tr_cont:'N'},data:{rsp_cd:'00000',t8465OutBlock:{},t8465OutBlock1:rows}};
+    }}});
+    const warn=console.warn;console.warn=()=>{};t.after(()=>{console.warn=warn;});
+    const live=await make().priceRange({code:'futures',from:'20261026',to:'20261031'});
+    assert.equal(live.success,true);assert.equal(live.points.length,5,'예전처럼 범위 전체를 돌려준다(오늘 09:00 봉은 아직 진행 중이라 빠진다)');
+    assert.deepEqual(asked,[['20261026','20261030'],['20261026','20261031']]);
+    assert.ok(fs.existsSync(path.join(directory,'candles','A016C000','2026-10-27.json.gz')),'범위 전체 결과로 지난날 파일을 채운다');
+    await make().priceRange({code:'futures',from:'20261026',to:'20261031'});
+    assert.deepEqual(asked.slice(2),[['20261031','20261031']],'다음부터는 오늘만 묻는다');
+});
+test('주말뿐인 지난 틈은 LS에 묻지 않는다(2026-11-25)',async t=>{
+    const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+    const directory=fs.mkdtempSync(path.join(os.tmpdir(),'lsft-weekend-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+    const asked=[];
+    const make=()=>createLsFuturesTest({directory,now:()=>timestamp('20261103','090000'),pause:async()=>{},getToken:async()=>'',http:{post:async(url,body,{headers})=>{
+        const tr=headers.tr_cd,p=body[tr+'InBlock'];
+        if(tr==='t8467')return {data:{rsp_cd:'00000',t8467OutBlock:[{hname:'F 2612',shcode:'A016C000'}]}};
+        asked.push([p.sdate,p.edate]);
+        const rows=['20261030','20261102'].filter(d=>d>=p.sdate&&d<=p.edate).map(d=>({date:d,time:'090000',open:900,high:902,low:898,close:901}));
+        return {headers:{tr_cont:'N'},data:rows.length?{rsp_cd:'00000',t8465OutBlock:{},t8465OutBlock1:rows}:{rsp_cd:'00000'}};
+    }}});
+    await make().priceRange({code:'futures',from:'20261030',to:'20261030'});
+    await make().priceRange({code:'futures',from:'20261102',to:'20261102'});
+    asked.length=0;
+    const result=await make().priceRange({code:'futures',from:'20261030',to:'20261102'});
+    assert.deepEqual(asked,[],'10-31 · 11-01(토 · 일) 틈은 묻지 않는다');assert.equal(result.points.length,2);
+});
+test('지난 틈의 끝이 주말이면 평일로 줄여 묻는다(LS는 주말로 끝나는 범위에 OutBlock1 없이 답함, 2026-11-25)',async t=>{
+    const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+    const directory=fs.mkdtempSync(path.join(os.tmpdir(),'lsft-trim-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+    const asked=[],weekend=d=>[0,6].includes(new Date(`${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6)}T00:00:00Z`).getUTCDay());
+    const days=['20261028','20261029','20261030','20261102','20261103'];
+    const make=()=>createLsFuturesTest({directory,now:()=>timestamp('20261103','100000'),pause:async()=>{},getToken:async()=>'',http:{post:async(url,body,{headers})=>{
+        const tr=headers.tr_cd,p=body[tr+'InBlock'];
+        if(tr==='t8467')return {data:{rsp_cd:'00000',t8467OutBlock:[{hname:'F 2612',shcode:'A016C000'}]}};
+        asked.push([p.sdate,p.edate]);
+        if(weekend(p.sdate)||weekend(p.edate))return {headers:{tr_cont:'N'},data:{rsp_cd:'00000',rsp_msg:'조회내역이 없습니다'}};
+        const rows=days.filter(d=>d>=p.sdate&&d<=p.edate).reverse().map(d=>({date:d,time:'090000',open:900,high:902,low:898,close:901}));
+        return {headers:{tr_cont:'N'},data:{rsp_cd:'00000',t8465OutBlock:{},t8465OutBlock1:rows}};
+    }}});
+    const warns=[],warn=console.warn;console.warn=m=>warns.push(m);t.after(()=>{console.warn=warn;});
+    await make().priceRange({code:'futures',from:'20261102',to:'20261102'});
+    asked.length=0;
+    const result=await make().priceRange({code:'futures',from:'20261028',to:'20261103'});
+    assert.deepEqual(asked,[['20261028','20261030'],['20261103','20261103']],'10-28~11-01 틈은 금요일(10-30)까지로 묻고, 범위 전체로 다시 받지 않는다');
+    assert.deepEqual(warns,[]);assert.equal(result.points.length,5,'10-28 · 29 · 30 · 11-02 · 오늘(11-03 09:00)');
+    asked.length=0;await make().priceRange({code:'futures',from:'20261028',to:'20261103'});
+    assert.deepEqual(asked,[['20261103','20261103']],'주말까지 받은 범위로 적어 두어 다시 묻지 않는다');
+});
 test('지수 선물 연결 일봉(t2214/t8459)은 끝난 날을 파일로 두고, 새 서버는 최근 날과 빠진 날만 LS에 묻는다(2026-11-22)',async t=>{
     const fs=require('node:fs'),path=require('node:path');
     const directory=fs.mkdtempSync(path.join(path.resolve(__dirname,'../output'),'lsft-daily-'));t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));

@@ -8,6 +8,8 @@ const { chromium } = require('playwright');
     try {
         const page = await browser.newPage({ viewport: { width: 1800, height: 1000 } });
         await page.addInitScript(() => {
+            // 모의 분봉은 2026-10-20 자료다. '당일'은 실제 오늘 날짜로 정하므로 페이지 시계를 그날 장중(10:00 KST)으로 옮겨 둔다.
+            const realNow = Date.now.bind(Date), shift = Date.parse('2026-10-20T01:00:00Z') - realNow(); Date.now = () => realNow() + shift;
             window.supplyTimers = []; const original = window.setInterval;
             window.setInterval = (callback, delay, ...args) => { window.supplyTimers.push(delay); return original(callback, delay, ...args); };
             window.priceCandles = 0; const fillRect = CanvasRenderingContext2D.prototype.fillRect;
@@ -127,8 +129,21 @@ const { chromium } = require('playwright');
         // 바쁜 컴퓨터에서는 과거 조회가 아직 끝나지 않았을 수 있다(2026-11-21 병렬 실행). 조회가 끝난 뒤 새로고침하고, 새로고침이 끝난 뒤 본다.
         const idleStatus = () => page.waitForFunction(() => { const t = document.querySelector('#rankCombinedSupplyChartPanel .rank-adr-status').textContent; return !t.includes('조회 중') && t.includes('2026-10-19'); });
         await idleStatus();
-        await page.evaluate(() => window.refreshRankCombinedSupplyChart()); await idleStatus();
-        assert.match(await panel.locator('.rank-adr-status').textContent(), /2026-10-19 ~ 2026-10-20/, 'Refresh retains loaded minute days');
+        // 읽는 순간 공통 축 맞추기가 다시 '과거 수급 조회 중…'을 띄울 수 있어(2026-11-25 한 번 실패) 조회가 멈춘 상태의 문구를 기다려 본다.
+        await page.evaluate(() => window.refreshRankCombinedSupplyChart());
+        await page.waitForFunction(() => /2026-10-19 ~ 2026-10-20/.test(document.querySelector('#rankCombinedSupplyChartPanel .rank-adr-status').textContent), null, { timeout: 10000 })
+            .catch(async () => assert.fail('Refresh retains loaded minute days: ' + await panel.locator('.rank-adr-status').textContent()));
+        // 화면 복귀 새로고침(2026-11-25): 더 불러오기 중 · 과거 분봉 구간에서는 분봉을 다시 받지 않는다(측정 4: 탭으로 돌아오자 카드 넷이 오늘 분봉을 다시 받음).
+        const headCall = c => c.path === '/api/kis-supply/chart' && !c.params.has('cursor') && !c.params.has('date'); // 과거 쪽(cursor · date) 조회는 그대로 이어진다
+        const flowCalls = () => calls.filter(headCall).length;
+        const original = await page.evaluate(() => { window.__skip = window.RankChartAxis.skipMinuteRefresh; window.RankChartAxis.skipMinuteRefresh = () => true; return typeof window.__skip; });
+        assert.equal(original, 'function', 'RankChartAxis.skipMinuteRefresh is exported');
+        let before = flowCalls(); await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange'))); await page.waitForTimeout(300);
+        assert.equal(flowCalls(), before, 'Returning to the tab during history loading does not refetch minute flow: ' + calls.filter(headCall).slice(before).map(c => String(c.params)).join(' '));
+        await page.evaluate(() => { window.RankChartAxis.skipMinuteRefresh = () => false; });
+        before = flowCalls(); const allBefore = calls.length; await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange'))); await page.waitForTimeout(1000);
+        assert.ok(flowCalls() > before, 'Returning to the tab otherwise refreshes as before: ' + calls.slice(allBefore).map(c => c.path + '?' + c.params).join(' '));
+        await page.evaluate(() => { window.RankChartAxis.skipMinuteRefresh = window.__skip; });
         await panel.getByRole('button', { name: '캔들차트', exact: true }).click();
         await page.waitForFunction(() => !document.querySelector('#rankCombinedSupplyChartPanel .rank-adr-candle-area').hidden);
         assert.equal(await panel.evaluate(el => el.getBoundingClientRect().height), 730, 'Candle expansion adds exactly 280px');
@@ -166,15 +181,22 @@ const { chromium } = require('playwright');
         await search.press('ArrowDown'); await search.press('ArrowDown');
         assert.equal(await picker.getByRole('option').nth(1).getAttribute('aria-selected'), 'true');
         await search.press('ArrowDown'); await search.press('Enter');
-        await page.waitForFunction(() => document.querySelector('.supply-stock-dialog').hidden);
+        await page.waitForFunction(() => document.querySelector('.supply-stock-dialog [role="status"]').textContent.includes('추가했습니다'));
         assert.equal(config.stocks.at(-1).code, '035420', 'Enter adds the highlighted suggestion');
+        // 고른 뒤에도 창은 열려 있고 검색칸 · 자동완성은 비워진다(2026-11-25).
+        assert.deepEqual(await picker.evaluate(el => ({ open: el.open, value: el.querySelector('input').value, list: el.querySelector('[role="listbox"]').hidden, focused: document.activeElement === el.querySelector('input') })),
+            { open: true, value: '', list: true, focused: true }, 'Adding from the suggestions keeps the picker open');
+        assert.ok(await picker.locator('.supply-picker-stocks').textContent().then(text => text.includes('035420')), 'The added stock shows in the picker list');
         assert.equal(calls.filter(c => c.path === '/api/concentration-stock' && c.params.get('q') === '검색').length, 0);
-        for (const [i, code] of ['035720','005380'].entries()) {
-            await panel.getByRole('button', { name: '+ 종목 추가', exact: true }).click();
-            await add(code); await page.waitForFunction(() => document.querySelector('.supply-stock-dialog').hidden);
-            assert.equal(config.stocks.length, i + 4, 'Each add saves immediately without a separate save step');
-        }
+        // 마우스로 자동완성 항목을 눌러도 창은 닫히지 않는다.
+        await search.fill('035720'); await picker.getByRole('option').first().click();
+        await page.waitForFunction(() => document.querySelector('.supply-stock-dialog [role="status"]').textContent.includes('카카오 추가했습니다'));
+        assert.equal(await picker.evaluate(el => el.open), true, 'A mouse click on a suggestion keeps the picker open');
+        assert.equal(config.stocks.length, 4, 'Each add saves immediately without a separate save step');
+        await add('005380'); await page.waitForFunction(() => document.querySelector('.supply-stock-dialog [role="status"]').textContent.includes('최대 5종목'));
         assert.equal(config.stocks.length, 5);
+        await picker.getByRole('button', { name: '닫기', exact: true }).click();
+        assert.equal(await picker.evaluate(el => el.open), false);
         const longButton = panel.locator('.supply-stock-select option[value="035420"]');
         assert.equal(await longButton.textContent(), Array.from(names['035420']).slice(0,6).join(''));
         assert.ok((await longButton.getAttribute('title')).includes(names['035420']));
@@ -185,6 +207,8 @@ const { chromium } = require('playwright');
         await panel.getByRole('button', { name: '+ 종목 추가', exact: true }).click();
         await picker.getByRole('button', { name: '삼성전자 수집 제외', exact: true }).click();
         await page.waitForFunction(() => document.querySelectorAll('#rankCombinedSupplyChartPanel .supply-stock-select option[value]:not([value=""])').length === 4);
+        assert.match(await picker.locator('[role="status"]').textContent(), /삼성전자 수집을 제외했습니다/, 'Removing keeps the picker open too');
+        await picker.getByRole('button', { name: '닫기', exact: true }).click();
         await panel.getByRole('button', { name: '+ 종목 추가', exact: true }).click();
         await picker.locator('summary').click();
         await picker.locator('.supply-archive-menu').getByRole('button', { name: '삼성전자', exact: true }).click();

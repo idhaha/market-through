@@ -98,6 +98,9 @@ test('browser chart cache keeps past pages 7 days, revalidates live data, exclud
  await page.evaluate(()=>window.testNow+=61000);const stale=await read(live);assert.equal(stale.body.points[0].value,10);
  await page.waitForFunction(()=>window.updates>0);assert.equal((await read(live)).body.points[0].value,20);
  value=21;const updateCount=await page.evaluate(()=>window.updates);await page.evaluate(()=>window.testNow+=5000);assert.equal((await read(live)).body.points[0].value,20);await page.waitForFunction(n=>window.updates>n,updateCount);assert.equal((await read(live)).body.points[0].value,21,'A five-second refresh cadence is not changed into a one-minute freeze');
+ {const quiet=await page.evaluate(()=>window.updates),c=calls.length;await page.evaluate(()=>window.testNow+=5000);await read(live);
+  for(let i=0;i<100&&calls.length===c;i++)await new Promise(r=>setTimeout(r,20));assert.equal(calls.length,c+1,'Live data is still revalidated in the background');
+  await new Promise(r=>setTimeout(r,200));assert.equal(await page.evaluate(()=>window.updates),quiet,'An unchanged background read does not notify cards (2026-11-25: notify → refresh → revalidate looped every 0.5s)');}
  const n=calls.length;await read('/api/ls-turnover/chart?cursor=20261023&mode=minute');assert.equal(calls.length,n,'Query order is canonical');
  failure=true;const bad='/api/kis-turnover/chart?mode=minute&cursor=20261022';await read(bad);await read(bad);assert.equal(calls.length,n+2);failure=false;
  missing=true;const empty='/api/kis-turnover/chart?mode=minute&cursor=20261021';await read(empty);await read(empty);assert.equal(calls.length,n+4);missing=false;

@@ -692,7 +692,7 @@
                 const item = document.createElement('li'), remove = document.createElement('button');
                 item.append(document.createTextNode(stock.name + ' (' + stock.code + ') '));
                 remove.type = 'button'; remove.textContent = '삭제'; remove.setAttribute('aria-label', stock.name + ' 수집 제외'); remove.disabled = saving;
-                remove.addEventListener('click', () => saveCodes(config.stocks.filter(s => s.code !== stock.code).map(s => s.code), selected === stock.code ? config.stocks.find(s => s.code !== stock.code)?.code || '' : selected));
+                remove.addEventListener('click', () => saveCodes(config.stocks.filter(s => s.code !== stock.code).map(s => s.code), selected === stock.code ? config.stocks.find(s => s.code !== stock.code)?.code || '' : selected, stock.name + ' 수집을 제외했습니다.'));
                 item.append(remove); return item;
             }));
             const area = picker.querySelector('.supply-archive-menu div'); area.replaceChildren();
@@ -715,12 +715,14 @@
             pickerStatus.textContent = config.stocks.length >= 5 ? '최대 5종목입니다. 위 목록에서 삭제한 뒤 추가할 수 있습니다.' : '';
             search.value = ''; lastSuggestionQuery = ''; clearSuggestions(); ++searchRevision; paintStocks(); picker.showModal(); search.focus();
         }
-        async function saveCodes(codes, nextSelected) {
+        // 추가 · 삭제 뒤에도 창은 열어 둔다(2026-11-25: 자동완성에서 고르면 창이 닫혀 여러 종목을 이어 넣기 어려웠다). 닫기 · Esc로 닫는다.
+        async function saveCodes(codes, nextSelected, done = '') {
             if (saving) return; saving = true; pickerStatus.textContent = '저장 중…'; paintStocks();
             try {
                 config = await request('/api/supply/watchlist', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ codes, revision: config.revision }) });
-                pickerStatus.textContent = ''; picker.close(); picker.hidden = true; ++searchRevision; clearTimeout(searchTimer);
+                ++searchRevision; clearTimeout(searchTimer); search.value = ''; lastSuggestionQuery = ''; clearSuggestions();
+                pickerStatus.textContent = done + (config.stocks.length >= 5 ? ' 최대 5종목입니다.' : '');
                 if (selected !== nextSelected) choose(nextSelected);
                 else { paintStocks(); void window[api('refreshRankSupplyChart')](); }
             } catch (error) {
@@ -735,7 +737,8 @@
             if (saving) return;
             if (config.stocks.length >= 5) { pickerStatus.textContent = '최대 5종목까지 지정할 수 있습니다.'; return; }
             if (config.stocks.some(item => item.code === stock.code)) { pickerStatus.textContent = '이미 지정한 종목입니다.'; return; }
-            await saveCodes([...config.stocks.map(item => item.code), stock.code], stock.code);
+            await saveCodes([...config.stocks.map(item => item.code), stock.code], stock.code, stock.name + ' 추가했습니다.');
+            if (picker.open) search.focus();
         }
         const suggestionQuery = () => search.value.replace(/[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\ud7b0-\ud7ff]/g, '').trim();
         search.addEventListener('input', () => {
@@ -815,7 +818,7 @@
         }
         new ResizeObserver(scheduleResize).observe(reference); new ResizeObserver(scheduleResize).observe(canvas.parentElement);
         new ResizeObserver(scheduleResize).observe(panel.querySelector('.rank-adr-controls'));
-        document.addEventListener('visibilitychange', () => { if (!document.hidden) window[api('refreshRankSupplyChart')](); });
+        document.addEventListener('visibilitychange', () => { if (!document.hidden && !(mode === 'minute' && window.RankChartAxis?.skipMinuteRefresh?.())) window[api('refreshRankSupplyChart')](); });
         window.addEventListener('online', window[api('refreshRankSupplyChart')]);
         if(!window.rankIndependentClient && typeof window.rankMainCandleOpen==='boolean')window[api('applyRankSupplyCandleOpen')](window.rankMainCandleOpen);
         if (broker) { try { window[api('applyRankSupplySettings')](JSON.parse(localStorage.getItem(`${panelId}Settings`)), false); } catch {} }

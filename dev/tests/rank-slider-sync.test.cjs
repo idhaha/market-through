@@ -12,6 +12,8 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),{chromium}=requ
  if(url.pathname==='/api/adr/today')return route.fulfill({json:{intraday:points}});
  if(url.pathname==='/api/adr/history')return route.fulfill({json:{series:[]}});
  return route.fulfill({contentType:'text/html',body:fs.readFileSync('public/index.html','utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'').replace(/<link\b[^>]*>/gi,'')});});
+ // 시계 전체(new Date() 포함)를 모의 자료 날 장중으로(2026-11-25): Date.now만 바꾸면 실제 시각이 저녁일 때 분봉이 100개가 안 돼 자주 실패했다.
+ await page.clock.install({time:new Date('2026-10-23T10:00:00+09:00')});
  await page.goto('http://drag.test/');await page.addStyleTag({path:'public/style.css'});
  await page.evaluate(INDEPENDENT=>{Date.now=()=>Date.parse('2026-10-23T10:00:00+09:00');document.querySelector('#tabContents').style.display='block';document.querySelector('#loginOverlay').style.display='none';window.rankIndependentClient=INDEPENDENT;if(!INDEPENDENT){const panel=document.createElement('section');panel.id='rankBreadthChartPanel';document.querySelector('.rank-chart-row').append(panel);}
  const p=CanvasRenderingContext2D.prototype,clear=p.clearRect,line=p.lineTo,fill=p.fillRect;

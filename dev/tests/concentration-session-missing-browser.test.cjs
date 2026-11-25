@@ -10,7 +10,7 @@ const fs = require('fs'), assert = require('node:assert/strict'), { chromium } =
         page.on('pageerror', e => errors.push(e.message));
         await page.clock.install({ time: new Date('2026-11-24T12:00:00+09:00') });
         const html = fs.readFileSync('public/index.html', 'utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<link\b[^>]*>/gi, '');
-        let regularGap = false;
+        let regularGap = false, stockGap = false;
         const bars = () => {
             const out = [];
             for (let m = 8 * 60; m < 20 * 60; m++) {
@@ -18,6 +18,8 @@ const fs = require('fs'), assert = require('node:assert/strict'), { chromium } =
                 const clock = String(Math.floor(m / 60)).padStart(2, '0') + String(m % 60).padStart(2, '0') + '00';
                 const regular = m >= 9 * 60 && m <= 15 * 60 + 30;
                 const value = regular && !(regularGap && m === 10 * 60) ? 1.5 : null;
+                // stockGap(2026-11-25 오라클 측정): 11:20은 종목 거래대금만 비고 시장 거래대금은 있다.
+                if (stockGap && m === 11 * 60 + 20) { out.push({ time: '20261124' + clock, stock_open: 100, stock_high: 101, stock_low: 99, stock_price: 100, value: null, stock_turnover: null, market_turnover: 48353000000, regular_session: true }); continue; }
                 out.push({ time: '20261124' + clock, stock_open: 100, stock_high: 101, stock_low: 99, stock_price: 100, value, regular_session: regular });
             }
             return out;
@@ -41,6 +43,10 @@ const fs = require('fs'), assert = require('node:assert/strict'), { chromium } =
         await page.evaluate(() => window.refreshConcentrationChart?.());
         await page.waitForTimeout(800);
         assert.equal(await status(), '시장 거래대금 1개 시점 누락 · 쏠림율 계산 불가', '정규장 안에서 빈 분만 센다');
+        stockGap = true;
+        await page.evaluate(() => window.refreshConcentrationChart?.());
+        await page.waitForTimeout(800);
+        assert.equal(await status(), '시장 거래대금 1개 · 종목 거래대금 1개 시점 누락 · 쏠림율 계산 불가', '종목 쪽이 빈 분은 종목 거래대금 누락으로 적는다');
         assert.deepEqual(errors, []);
         console.log('쏠림율 누락 문구: NXT 시간대는 세지 않고 정규장 빈 분만 센다.');
     } finally { await browser.close(); }

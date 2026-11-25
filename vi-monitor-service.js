@@ -372,7 +372,9 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
             for(const code of futuresBookWanted()){
                 try{
                     if(futuresMul[code]===undefined)await expiryOf(code);
-                    const o=(await rest('t8403','futureoption/market-data',{shcode:code})).t8403OutBlock||{},mul=futuresMul[code];
+                    const answer=await rest('t8403','futureoption/market-data',{shcode:code},false,()=>futuresBookWanted().includes(code));
+                    if(!answer)continue;
+                    const o=answer.t8403OutBlock||{},mul=futuresMul[code];
                     const amounts=Array.from({length:10},(_,i)=>[num(o['bidho'+(i+1)]),num(o['bidrem'+(i+1)])]).filter(([p,q])=>p>0&&q!=null&&q>=0).map(([p,q])=>p*q*mul);
                     if(mul>0&&amounts.length){quotes.set('BID:FUT:'+code,{value:amounts.reduce((a,v)=>a+v,0)/amounts.length,receivedAt:now(),via:'LS',levels:amounts.length,multiplier:mul});emit();}
                     if(futuresBookError){log('[VI 선물 호가] LS t8403 조회 다시 됨');futuresBookError='';}
@@ -393,13 +395,16 @@ function createViMonitor({getToken,http=require('axios'),WebSocket=require('ws')
         emitTimer=setTimeout(()=>{emitTimer=null;const data=snapshot();for(const listener of listeners)listener(data);},50);emitTimer.unref?.();
     }
     let queue=Promise.resolve();
-    async function rest(tr,endpoint,params,cont=false) {
+    // still: 줄을 기다리는 동안 필요 없어졌으면 보내지 않는다(예: 선물 행이 풀린 뒤의 t8403, 2026-11-25). 이때 null을 돌려준다.
+    async function rest(tr,endpoint,params,cont=false,still=null) {
+        let skipped=false;
         const task=queue.then(async()=>{
+            if(still&&!still()){skipped=true;return null;}
             const response=await http.post('https://openapi.ls-sec.co.kr:8080/'+endpoint,{[tr+'InBlock']:params},{headers:{authorization:'Bearer '+await getToken(),'Content-Type':'application/json; charset=UTF-8',tr_cd:tr,tr_cont:cont?'Y':'N',tr_cont_key:''},timeout:15000});
             if(String(response.data?.rsp_cd)!=='00000')throw Error('LS '+tr+' 조회 실패');
             return response.data;
         });
-        queue=task.catch(()=>{}).then(()=>new Promise(resolve=>{const timer=setTimeout(resolve,restGapMs);timer.unref?.();}));
+        queue=task.catch(()=>{}).then(()=>skipped?undefined:new Promise(resolve=>{const timer=setTimeout(resolve,restGapMs);timer.unref?.();}));
         return task;
     }
     // Kiwoom REST, one call at a time with a short gap (shared app key with the rank tables and 52주 신고/신저).

@@ -92,6 +92,8 @@
             task.then(value=>{signal.removeEventListener('abort',abort);if(signal.aborted)abort();else resolve(value);},error=>{signal.removeEventListener('abort',abort);reject(error);});
         });
     }
+    const VOLATILE=new Set(['fetched_at','server_time','cursor']);
+    function sameData(a,b){const text=v=>JSON.stringify(v,(k,x)=>VOLATILE.has(k)?undefined:x);try{return text(a)===text(b);}catch{return false;}}
     function notify(url){document.dispatchEvent(new CustomEvent('rank-chart-cache-updated',{detail:{path:url.pathname,mode:url.searchParams.get('mode')}}));}
     async function request(input,options={}){
         const url=new URL(typeof input==='string'?input:input.url,location.href),method=(options.method||'GET').toUpperCase();
@@ -111,7 +113,10 @@
         url.searchParams.sort();const canonical=body?JSON.stringify(Object.fromEntries(Object.entries(body).sort(([a],[b])=>a.localeCompare(b)))):'';
         const key=await hash(owner+'|'+method+'|'+url.href+'|'+canonical),epoch=revision;
         if(handoff.has(key)){const saved=handoff.get(key);handoff.delete(key);if(Date.now()-saved.at<FRESH)return response(saved.data);}
-        async function network(background=false){
+        // 뒤에서 다시 받은 응답이 보여 준 것과 같으면 알리지 않는다(2026-11-25: 장중엔 1초 넘은 캐시마다 뒤에서 다시 받고 늘 알려,
+        // 알림 → 카드 갱신 → 다시 받기가 0.5초마다 돌았다. 오늘 포함 구간 분봉에서 66초에 요청 1,785건, 더 불러오기 "조회 대기 시간 초과").
+        // 응답마다 바뀌는 fetched_at · server_time · 세션 cursor는 비교에서 뺀다.
+        async function network(background=false,previous){
             if(pending.has(key))return (await waitForShared(pending.get(key),options.signal)).clone();
             // A chart owns its subscription, not the shared network request.
             // History restoration in one card must not cancel its peer's read.
@@ -132,7 +137,7 @@
                         await storage('put',key,saved);void prune();
                     }
                 }else{memory.delete(key);await storage('delete',key);}
-                if(background&&r.ok){handoff.set(key,{data,at:Date.now()});while(handoff.size>MAX_ENTRIES)handoff.delete(handoff.keys().next().value);notify(url);}
+                if(background&&r.ok&&(previous===undefined||!sameData(previous,data))){handoff.set(key,{data,at:Date.now()});while(handoff.size>MAX_ENTRIES)handoff.delete(handoff.keys().next().value);notify(url);}
                 else if(revised)notify(url);
                 return r;
             })().finally(()=>{if(pending.get(key)===task)pending.delete(key);});pending.set(key,task);
@@ -152,7 +157,7 @@
             const isHistorical=method==='GET'&&historical(url)||pastPage;
             // Persisted POST responses deliberately have no reusable pagination cursor.
             const marketOpen=window.TradingRefresh?.allowsUrl(url)!==false;
-            if(!isHistorical && marketOpen && (Date.now()-entry.at>=1000||body&&!entry.data.cursor))void network(true).catch(()=>{});
+            if(!isHistorical && marketOpen && (Date.now()-entry.at>=1000||body&&!entry.data.cursor))void network(true,entry.data).catch(()=>{});
             // Closed market: a response saved while it was open stops partway through today, so replace
             // it once in the background. Responses saved after the close are complete and stay as they are.
             // closedAt is the latest close of this URL's market (futures also close after the night
@@ -161,7 +166,7 @@
             else if(!isHistorical && !marketOpen){
                 const closedAt=window.TradingRefresh?.closedAtUrl?.(url),mark=closedAt??'open';
                 const stale=closedAt!=null ? Date.now()>=closedAt+CLOSE_GRACE && entry.at<closedAt+CLOSE_GRACE : entry.open!==false;
-                if(stale && closedRefresh.get(key)!==mark){closedRefresh.set(key,mark);void network(true).catch(()=>{});}
+                if(stale && closedRefresh.get(key)!==mark){closedRefresh.set(key,mark);void network(true,entry.data).catch(()=>{});}
             }
             touch();
             return response(entry.data);

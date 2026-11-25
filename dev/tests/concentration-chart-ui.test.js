@@ -90,7 +90,8 @@ test('Rank table selection, timeframe controls, history, zoom, retries and stale
                     if (method === 'clearRect') window.candleDrawing = { wicks: [], bodies: [] };
                     if (method === 'beginPath') this.candlePath = [];
                     if (method === 'moveTo' || method === 'lineTo') (this.candlePath ||= []).push(args);
-                    if (method === 'stroke' && ['#e11d48','#2563eb'].includes(this.strokeStyle)) window.candleDrawing.wicks.push([...this.candlePath]);
+                    // 같은 색 꼬리는 한 경로로 모아 긋는다(479d1a7). 경로 안의 moveTo · lineTo 한 쌍을 꼬리 하나로 센다.
+                    if (method === 'stroke' && ['#e11d48','#2563eb'].includes(this.strokeStyle)) for (let k = 0; k + 1 < (this.candlePath || []).length; k += 2) window.candleDrawing.wicks.push(this.candlePath.slice(k, k + 2));
                     if (method === 'fillRect') window.candleDrawing.bodies.push({ color: this.fillStyle, rect: args });
                 }
                 return originals[method].apply(this, args);
