@@ -250,6 +250,10 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         assert.equal(await page.locator('#floatTip table.tt tbody tr').count(), 8);
         assert.match(await page.textContent('#floatTip'), /15:30~15:40: NXT로 미리 접수해 15:40 단일가로 체결/);
         assert.equal(await page.locator('#floatTip .mk-unk').count() > 0, true);
+        // 11/25 실계좌 시험 결과가 풍선 표와 설명에도 보인다(2026-11-26 사용자 요청)
+        const tipText = await page.textContent('#floatTip');
+        assert.match(tipText, /접수 × 장개시전 \(11\/25\)/); assert.match(tipText, /접수 ○ · 체결 ○ → NXT \(11\/25\)/);
+        assert.match(tipText, /2번 모두 NXT에서 체결/); assert.match(tipText, /NXT는 08:50~09:00 · 15:20~15:30에 신규 주문을 받지 않습니다/);
         assert.ok(await page.$eval('#floatTip', f => f.scrollWidth <= f.clientWidth + 1), '풍선 표가 가로로 넘치지 않음');
         await page.mouse.move(5, 5);
         // 정책 i
@@ -260,9 +264,9 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         const tt = page.locator('#policyBody table').nth(1);
         assert.deepEqual(await tt.locator('thead th').allTextContents(), ['시간', 'KRX', 'NXT', 'SOR', '판정(현재가)', '엔진 주문']);
         assert.equal(await tt.locator('tbody tr').count(), 8);
-        assert.deepEqual(await tt.locator('tbody tr').nth(5).locator('th, td').allTextContents(), ['15:40~16:00', '접수 × 장종료 (11/24)', '접수 ○ · 체결 ○', '접수 ○ (11/24) · 체결 ?', 'NXT 체결가', 'NXT (비대상은 16:00 대기)']);
+        assert.deepEqual(await tt.locator('tbody tr').nth(5).locator('th, td').allTextContents(), ['15:40~16:00', '접수 × 장종료 (11/24)', '접수 ○ · 체결 ○', '접수 ○ · 체결 ○ → NXT (11/25)', 'NXT 체결가', 'NXT (비대상은 16:00 대기)']);
         assert.deepEqual(await tt.locator('tbody tr').nth(4).locator('.mk').evaluateAll(n => n.map(x => [x.textContent, getComputedStyle(x).backgroundColor])),
-            [['×', 'rgb(138, 147, 163)'], ['×', 'rgb(138, 147, 163)'], ['○', 'rgb(31, 138, 76)'], ['△', 'rgb(242, 193, 78)'], ['?', 'rgb(228, 233, 241)']], '기호마다 색');
+            [['×', 'rgb(138, 147, 163)'], ['×', 'rgb(138, 147, 163)'], ['○', 'rgb(31, 138, 76)'], ['△', 'rgb(242, 193, 78)'], ['○', 'rgb(31, 138, 76)'], ['?', 'rgb(228, 233, 241)']], '기호마다 색');
         assert.ok(await page.$eval('#policyModal .modal-box', b => b.scrollWidth <= b.clientWidth), '시간표가 가로로 넘치지 않음');
         assert.match(await page.locator('#policyBody table').nth(2).textContent(), /주문 전에 꺼짐/); assert.equal(await page.locator('#policyBody table').nth(2).locator('tbody tr').count(), 5);
         assert.deepEqual(errors, []);
