@@ -155,6 +155,12 @@ async function runUntilDone(e, w, rounds = 40) { for (let i = 0; i < rounds; i++
         // 08:00 전 판정 결과 문구(2026-11-27 사용자 결정): '장 시간 아님' → '장 시작 전'
         { const k0 = fakeKiwoom(), z = engine(k0, { t: '2026-11-20T07:30:00' }); await z.e.loadLots(); await z.e.create(input('004980:20261123')); await z.e.step(); await settle();
           assert.equal(z.e._state().watches[0].lastCheck.text, '장 시작 전'); assert.equal(k0.orders.length, 0); }
+        // 수량 100%-1주(값 −1, 2026-11-27 사용자 요청): 가능수량 − 1주로 잡고, 남은 수량이 1주뿐이면 거부. 10% 단위가 아닌 값도 거부
+        { const k0 = fakeKiwoom(), z = engine(k0, { t: '2026-11-20T07:30:00' }); await z.e.loadLots();
+          await assert.rejects(z.e.create(input('004980:20261123', { qtyValue: 95 })), /10% 단위.*100%-1주/);
+          await assert.rejects(z.e.create(input('004980:20261123', { qtyValue: -1 })), /2주 이상/, '가능 1주면 1주를 남길 수 없음'); }
+        { const k5 = fakeKiwoom({ able: 5 }); k5.held = 5; const z = engine(k5, { t: '2026-11-20T07:30:00' }); await z.e.loadLots();
+          const w = await z.e.create(input('004980:20261123', { qtyValue: -1 })); assert.equal(w.shares, 4, '5주 중 100%-1주 = 4주'); }
         const k2 = fakeKiwoom({ volume: 0 }), b = engine(k2, { t: '2026-11-20T08:10:00' });
         await b.e.loadLots(); await b.e.create(input('004980:20261123')); await b.e.step(); await settle();
         assert.equal(k2.orders.length, 0);

@@ -11,7 +11,7 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
     const http = { post: async (url, body, { headers }) => {
         const api = headers['api-id'], r = data => ({ status: 200, data: { return_code: 0, ...data } });
         if (api === 'ka00001') return r({ acctNo: '3699577211' });
-        if (api === 'kt00018') return r({ acnt_evlt_remn_indv_tot: [{ stk_cd: 'A004980', stk_nm: '/성신양회', crd_tp: '05', crd_tp_nm: '대주', crd_loan_dt: '20261123', rmnd_qty: '1', trde_able_qty: '1', pur_pric: '7030', cur_prc: String(k.price), evltv_prft: String(7030 - k.price), prft_rt: '0.4' },
+        if (api === 'kt00018') return r({ acnt_evlt_remn_indv_tot: [{ stk_cd: 'A004980', stk_nm: '/성신양회', crd_tp: '05', crd_tp_nm: '대주', crd_loan_dt: '20261123', rmnd_qty: String(k.qty || 1), trde_able_qty: String(k.qty || 1), pur_pric: '7030', cur_prc: String(k.price), evltv_prft: String(7030 - k.price), prft_rt: '0.4' },
             { stk_cd: 'A003280', stk_nm: '/흥아해운', crd_tp: '05', crd_tp_nm: '대주', crd_loan_dt: '20261123', rmnd_qty: '1', trde_able_qty: '1', pur_pric: '1560', cur_prc: '1559', evltv_prft: '1', prft_rt: '0.06' },
             ...(k.many ? Array.from({ length: 20 }, (_, i) => ({ stk_cd: 'A003280', stk_nm: '/흥아해운', crd_tp: '05', crd_tp_nm: '대주', crd_loan_dt: String(20261001 + i), rmnd_qty: '1', trde_able_qty: '1', pur_pric: '1560', cur_prc: '1559', evltv_prft: '1', prft_rt: '0.06' })) : [])] });
         if (api === 'ka10085') return r({ acnt_prft_rt: [{ stk_cd: '004980', loan_dt: '20261123', expr_dt: '20270222' }, { stk_cd: '003280', loan_dt: '20261123', expr_dt: '20270222' }] });
@@ -47,7 +47,10 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         assert.ok((await page.$$eval('.acct-tag', t => t.map(x => x.textContent))).every(x => x === '3699-5772'), '계좌가 하나여도 계좌 앞 8자리 표시(2026-11-24)');
         assert.equal(await page.locator('#lotsTable tbody tr').nth(1).locator('.pill.none').count(), 1, '흥아해운 NXT 비대상 표시');
         assert.deepEqual(await page.$$eval('#ticks option', o => [o[0].textContent, o.at(-1).textContent]), ['+10틱', '+1틱']);
-        assert.deepEqual(await page.$$eval('#qtyPct option', o => [o[0].textContent, o.at(-1).textContent]), ['100%', '10%']);
+        // 체결가 줄(2026-11-27): "체결가 [+10틱] 지정가 또는 ☐상한가로 대주상환 i", i는 하나
+        assert.equal(await page.evaluate(() => { const r = document.getElementById('ticks').closest('.row'); return [...r.children].filter(c => !c.classList.contains('sr') && !c.classList.contains('tip')).map(c => c.tagName === 'SELECT' ? '[' + c.selectedOptions[0].textContent + ']' : (c.querySelector('input[type=checkbox]') ? '☐' : '') + c.textContent.trim()).join(' '); }), '체결가 [+10틱] 지정가 또는 ☐상한가로 대주상환');
+        assert.deepEqual([await page.locator('[aria-label="상한가 설명"]').count(), await page.evaluate(() => document.getElementById('ticks').closest('.row').querySelectorAll('button.i').length)], [0, 1], 'i는 하나로 합침');
+        assert.deepEqual(await page.$$eval('#qtyPct option', o => o.map(x => x.textContent).join(' ')), '100% 100%-1주 90% 80% 70% 60% 50% 40% 30% 20% 10%', '100%-1주는 100% 바로 아래(2026-11-27)');
         assert.deepEqual(await page.$$eval('#chasePct option', o => [o[0].textContent, o.at(-1).textContent]), ['+10%', '+1%']);
         assert.equal(await page.inputValue('#ticks'), '10');
         // 회귀(2026-11-21): 유효기간은 잔고 행을 고르기 전에도 비어 있지 않고 기본 1개월(서버 날짜 기준, 휴장일 → 직전 거래일)
@@ -108,9 +111,14 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         assert.equal(await page.textContent('.ge'), '≧');
         await page.fill('#trigger', '7300');
         assert.match(await page.textContent('#chaseNote'), /8,030/);
-        // 회귀(2026-11-24): 주 수는 남은 가능수량(1주)보다 많이 넣을 수 없다 — 조건 추가가 꺼지고 이유가 보이며, 서버도 거부한다
+        // 상한가로 체크(2026-11-27): 고르면 정정 · 추격 한도가 꺼지고 '상한가 주문', 다시 +10틱이면 돌아옴
+        await page.check('#upperLimit');
+        assert.deepEqual([await page.textContent('#chaseNote'), await page.isDisabled('#fix'), await page.isDisabled('#chasePct'), await page.evaluate(() => window.__ssFormValue?.().upperLimit ?? null)], ['상한가 주문', true, true, null]);
+        assert.equal(await page.isDisabled('#ticks'), true, '상한가로면 틱 칸 꺼짐');
+        await page.uncheck('#upperLimit'); assert.match(await page.textContent('#chaseNote'), /8,030/); assert.equal(await page.isDisabled('#fix'), false); assert.equal(await page.isDisabled('#ticks'), false);
+        // 주 수는 남은 가능수량(1주)보다 많이 넣을 수 없다. 2026-11-24에는 조건 추가를 끄고 이유를 보였고, 2026-11-27 사용자 요청으로 남은 수량으로 바꿔 넣는다. 서버는 여전히 거부한다
         await page.check('input[name="qtyMode"][value="shares"]'); await page.fill('#qtyShares', '2');
-        assert.equal(await page.isDisabled('#addBtn'), true); assert.equal(await page.textContent('#qtyNote'), '남은 가능수량 1주보다 많습니다'); assert.equal(await page.isVisible('#qtyNote'), true);
+        assert.equal(await page.inputValue('#qtyShares'), '1'); assert.equal(await page.isDisabled('#addBtn'), false); assert.equal(await page.isVisible('#qtyNote'), false);
         const over = await page.evaluate(async () => { const st = await (await fetch('/api/short-stoploss/state')).json(); const r = await fetch('/api/short-stoploss/watches', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lotKey: st.lots[0].key, trigger: 7300, ticks: 10, chasePct: 10, qtyMode: 'shares', qtyValue: 2 }) }); return [r.status, (await r.json()).error]; });
         assert.deepEqual(over, [400, '남은 가능수량(1주)보다 많이 설정할 수 없습니다']);
         await page.fill('#qtyShares', '1'); assert.equal(await page.isDisabled('#addBtn'), false); assert.equal(await page.isVisible('#qtyNote'), false);
@@ -148,6 +156,13 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         assert.equal(await page.textContent('#fLot'), '1주', '감시 건을 고르면 자기 수량은 가능수량에 들어감');
         // 파란 버튼(2026-11-27): 감시 건을 고르면 조건 추가는 무색 · 꺼짐, 조건 수정은 파랑 · 켜짐
         assert.deepEqual(await (async () => ({ add: [await page.isDisabled('#addBtn'), await page.$eval('#addBtn', n => n.classList.contains('primary'))], edit: [await page.isDisabled('#editBtn'), await page.$eval('#editBtn', n => n.classList.contains('primary'))] }))(), { add: [true, false], edit: [false, true] });
+        // 상한가로 체크해 조건 수정 → 서버에 상한가로 저장('상한가 지정가'), 다시 고르면 드롭다운이 상한가. 되돌려 둔다
+        const method = () => page.evaluate(async () => (await (await fetch('/api/short-stoploss/state')).json()).watches.find(w => w.status === '감시중'));
+        await page.check('#upperLimit'); await page.click('#editBtn'); await page.waitForFunction(() => /상한가 지정가/.test(document.querySelector('#watchTable tbody tr td:nth-child(6)')?.textContent || ''));
+        assert.equal((await method()).upperLimit, true);
+        await page.locator('#lotsTable tbody tr.pick').first().click(); await page.locator('#watchTable tbody tr.pick').first().click(); assert.equal(await page.isChecked('#upperLimit'), true);
+        await page.uncheck('#upperLimit'); await page.click('#editBtn'); await page.waitForFunction(() => /[+]10틱/.test(document.querySelector('#watchTable tbody tr td:nth-child(6)')?.textContent || ''));
+        assert.deepEqual([(await method()).upperLimit, (await method()).ticks], [false, 10]);
         const q = (w, able) => page.evaluate(([w, able]) => { const st = { lotKey: 'x', ...w }; const lots = able == null ? [] : [{ key: 'x', able, qty: Math.max(able, 10) }]; return window.__ssQtyTextWith(st, lots); }, [w, able]);
         assert.deepEqual([await q({ qtyMode: 'pct', qtyValue: 30 }, 10), await q({ qtyMode: 'pct', qtyValue: 10 }, 5), await q({ qtyMode: 'shares', qtyValue: 3 }, 10), await q({ qtyMode: 'shares', qtyValue: 10 }, 10),
             await q({ qtyMode: 'pct', qtyValue: 50 }, null), await q({ qtyMode: 'shares', qtyValue: 4 }, null), await q({ qtyMode: 'pct', qtyValue: 50, orders: [{ qty: 7 }] }, 0), await q({ qtyMode: 'pct', qtyValue: 100 }, 0),
@@ -304,6 +319,35 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
             [['×', 'rgb(138, 147, 163)'], ['×', 'rgb(138, 147, 163)'], ['○', 'rgb(31, 138, 76)'], ['△', 'rgb(242, 193, 78)'], ['○', 'rgb(31, 138, 76)'], ['?', 'rgb(228, 233, 241)']], '기호마다 색');
         assert.ok(await page.$eval('#policyModal .modal-box', b => b.scrollWidth <= b.clientWidth), '시간표가 가로로 넘치지 않음');
         assert.match(await page.locator('#policyBody table').nth(2).textContent(), /주문 전에 꺼짐/); assert.equal(await page.locator('#policyBody table').nth(2).locator('tbody tr').count(), 5);
+        // 회귀(2026-11-27 사용자 지적): 10주 중 9주를 감시 등록 → 그 감시 건을 본 뒤 같은 종목 잔고를 고르면 '주' 칸은 남은 1주, 조건 추가 켜짐
+        // (전: '주' 칸에 감시 건의 9주가 남아 "남은 가능수량 1주보다 많습니다"로 조건 추가가 꺼졌다)
+        await page.click('#policyClose').catch(() => {}); await page.keyboard.press('Escape');
+        k.qty = 10; k.many = false; await page.click('#refreshBtn'); await page.waitForFunction(() => /10/.test(document.querySelector('#lotsTable tbody tr td:nth-child(3)')?.textContent || ''));
+        assert.equal((await page.evaluate(async () => { const st = await (await fetch('/api/short-stoploss/state')).json(), key = st.lots.find(l => l.code === '004980').key; const r = await fetch('/api/short-stoploss/watches', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lotKey: key, trigger: 7300, ticks: 10, chasePct: 10, qtyMode: 'shares', qtyValue: 9 }) }); return r.status; })), 200);
+        await page.click('#refreshBtn'); await page.waitForFunction(() => [...document.querySelectorAll('#watchTable tbody tr.pick')].some(tr => /9주/.test(tr.textContent)));
+        await page.locator('#watchTable tbody tr.pick', { hasText: '9주' }).first().click(); assert.equal(await page.inputValue('#qtyShares'), '9');
+        await page.locator('#lotsTable tbody tr.pick').first().click();
+        assert.deepEqual([await page.inputValue('#qtyShares'), await page.inputValue('#qtyPct'), await page.textContent('#fLot'), await page.isVisible('#qtyNote'), await page.isDisabled('#addBtn')], ['1', '100', '1주 (감시 등록 9주 제외)', false, false]);
+        // 100%-1주: 남은 1주면 쓸 수 없다고 알리고 조건 추가 꺼짐
+        await page.check('input[name="qtyMode"][value="pct"]'); await page.selectOption('#qtyPct', '-1'); assert.deepEqual([await page.textContent('#qtyNote'), await page.isDisabled('#addBtn')], ['100%-1주는 남은 가능수량이 2주 이상일 때만 쓸 수 있습니다', true]);
+        await page.selectOption('#qtyPct', '100');
+        // 남은 수량보다 많이 치면 남은 수량으로 바뀐다(2026-11-27 사용자 요청)
+        await page.check('input[name="qtyMode"][value="shares"]'); await page.fill('#qtyShares', ''); await page.locator('#qtyShares').pressSequentially('5');
+        assert.deepEqual([await page.inputValue('#qtyShares'), await page.isVisible('#qtyNote'), await page.isDisabled('#addBtn')], ['1', false, false]);
+        // '주' 칸 위아래 화살표(2026-11-27): 남은 1주에서 ↑ 꺼짐 · ↓ 꺼짐(1주가 최소)
+        await page.check('input[name="qtyMode"][value="shares"]'); assert.deepEqual([await page.isDisabled('#sharesUp'), await page.isDisabled('#sharesDown')], [true, true]);
+        // 9주 감시 건을 지우면 남은 10주 → 100%-1주 = 9주
+        await page.evaluate(async () => { const st = await (await fetch('/api/short-stoploss/state')).json(); for (const w of st.watches.filter(w => w.status === '감시중')) await fetch('/api/short-stoploss/watches/' + w.id, { method: 'DELETE' }); });
+        await page.click('#refreshBtn'); await page.waitForTimeout(1500); await page.locator('#lotsTable tbody tr.pick').first().click();
+        await page.check('input[name="qtyMode"][value="pct"]'); await page.selectOption('#qtyPct', '-1');
+        assert.deepEqual([await page.textContent('#qtyBase'), await page.textContent('#qtyCalc'), await page.isDisabled('#addBtn')], ['남은 10주의', '9주', false]);
+        assert.ok(await page.$eval('#qtyPct', n => n.scrollWidth <= n.clientWidth + 1 && n.closest('.row').scrollWidth <= n.closest('.row').clientWidth + 1), '100%-1주가 칸 안에 보임');
+        assert.equal(await page.inputValue('#qtyPct'), '-1', '잔고를 고르면 기본 100%-1주');
+        // '주' 칸: 화살표 ↑ ↓ · 키보드, 1 ~ 남은 10주
+        await page.check('input[name="qtyMode"][value="shares"]'); await page.fill('#qtyShares', '9'); await page.click('#sharesUp'); assert.equal(await page.inputValue('#qtyShares'), '10'); assert.equal(await page.isDisabled('#sharesUp'), true);
+        await page.click('#sharesDown'); await page.locator('#qtyShares').press('ArrowDown'); assert.equal(await page.inputValue('#qtyShares'), '8');
+        await page.fill('#qtyShares', '1'); assert.equal(await page.isDisabled('#sharesDown'), true);
+        assert.ok(await page.evaluate(() => { const r = document.getElementById('sharesUp').closest('.row'), c = document.getElementById('formCard').getBoundingClientRect(); const mid = n => { const b = n.getBoundingClientRect(); return b.top + b.height / 2; }; return [...r.children].every(x => x.getBoundingClientRect().right <= c.right + 0.5 && x.getClientRects().length === 1) && Math.abs(mid(document.getElementById('qtyBase')) - mid(document.getElementById('qtyShares'))) <= 4 && document.querySelector('.qty-row > span').getClientRects().length === 1 && document.querySelector('.qty-row > span').getBoundingClientRect().height < 24; }), '수량 줄은 줄바꿈 없이 한 줄, 카드 안(2026-11-27: 줄바꿈 대신 칸 · 간격을 줄이고 모자라면 설정창이 넓어짐)');
         assert.deepEqual(errors, []);
         console.log('short-stoploss-browser: 모든 확인 통과');
     } finally { await browser.close(); server.close(); svc.stop(); }

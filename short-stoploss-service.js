@@ -234,9 +234,12 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
     // 새 건은 남은 가능수량 안에서만 정한다. %는 등록할 때 남은 수량 기준 주 수(w.shares)로 정하고, 그때 보유수량(w.baseQty)을 남긴다.
     // 주문이 나간 건은 그 수량이 가능수량에서 이미 빠지므로 할당으로 세지 않는다.
     const ALLOC = new Set(['감시중', '중지']);
+    // 수량 %: qtyValue −1은 "100%-1주"(2026-11-27 사용자 요청, 가능수량에서 1주를 남김). 그 밖에는 10~100%를 내림, 최소 1주
+    const pctShares = (base, v) => v === -1 ? Math.max(0, base - 1) : base >= 1 ? Math.max(1, Math.floor(base * v / 100)) : 0;
+    const pctLabel = v => v === -1 ? '100%-1주' : v + '%';
     function watchShares(w, lot) {
         if (w.shares > 0) return w.shares;
-        return w.qtyMode === 'pct' ? (lot.able >= 1 ? Math.max(1, Math.floor(lot.able * w.qtyValue / 100)) : 0) : Math.min(w.qtyValue, lot.able);
+        return w.qtyMode === 'pct' ? pctShares(lot.able, w.qtyValue) : Math.min(w.qtyValue, lot.able);
     }
     function remainingFor(lot, exceptId) {
         const used = state.watches.filter(w => w.lotKey === lot.key && w.id !== exceptId && ALLOC.has(w.status)).reduce((a, w) => a + watchShares(w, lot), 0);
@@ -248,14 +251,15 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
         if (!(t > 0)) throw Object.assign(Error('감시가를 입력하세요'), { status: 400 });
         if (!(ticks >= 1 && ticks <= 10)) throw Object.assign(Error('틱은 1~10입니다'), { status: 400 });
         if (!(chasePct >= 1 && chasePct <= 10)) throw Object.assign(Error('추격 한도는 1~10%입니다'), { status: 400 });
-        if (qtyMode === 'pct' && !(qtyValue >= 10 && qtyValue <= 100 && qtyValue % 10 === 0)) throw Object.assign(Error('수량 %는 10~100%입니다'), { status: 400 });
+        if (qtyMode === 'pct' && !(qtyValue === -1 || qtyValue >= 10 && qtyValue <= 100 && qtyValue % 10 === 0)) throw Object.assign(Error('수량 %는 10~100%(10% 단위)나 100%-1주입니다'), { status: 400 });
         if (qtyMode === 'shares' && !(qtyValue >= 1)) throw Object.assign(Error('주 수를 입력하세요'), { status: 400 });
         // 남은 가능수량까지만(2026-11-24). 잔고에서 행이 사라진 감시 건을 고칠 때(remaining null)는 검사하지 않는다
         let alloc = {};
         if (remaining != null) {
             if (remaining < 1) throw Object.assign(Error('남은 가능수량이 없습니다(다른 감시 건에 모두 할당)'), { status: 400 });
             if (qtyMode === 'shares' && qtyValue > remaining) throw Object.assign(Error(`남은 가능수량(${remaining}주)보다 많이 설정할 수 없습니다`), { status: 400 });
-            alloc = { shares: qtyMode === 'shares' ? qtyValue : Math.max(1, Math.floor(remaining * qtyValue / 100)), baseQty: lot.qty };
+            if (qtyMode === 'pct' && qtyValue === -1 && remaining < 2) throw Object.assign(Error('100%-1주는 남은 가능수량이 2주 이상일 때만 쓸 수 있습니다'), { status: 400 });
+            alloc = { shares: qtyMode === 'shares' ? qtyValue : pctShares(remaining, qtyValue), baseQty: lot.qty };
         } else if (qtyMode === 'shares') alloc = { shares: qtyValue };
         const until = adjustUntil(String(input.until || addMonth(today())), { today: today(), maturity: lot.maturity, openDate });
         return { trigger: t, ticks, upperLimit: !!input.upperLimit, fix: input.fix !== false, chasePct, qtyMode, qtyValue,
@@ -268,7 +272,7 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
         const w = { id: crypto.randomBytes(6).toString('hex'), lotKey: lot.key, code: lot.code, name: lot.name, loanDt: lot.loanDt, loanRaw: lot.loanRaw, maturity: lot.maturity, nxt: lot.nxt,
             ...validate(input, lot, remainingFor(lot)), enabled: input.enabled !== false, status: '감시중', createdAt: now(), lastCheck: null, note: '', orders: [], log: [] };
         if (!w.enabled) w.status = '중지';
-        event(w, '등록', `감시가 ${w.trigger.toLocaleString('ko-KR')} · +${w.ticks}틱${w.upperLimit ? ' · 상한가' : ''} · 정정 ${w.fix ? '켜짐(한도 ' + w.chasePct + '%)' : '꺼짐'} · ${w.qtyMode === 'pct' ? w.qtyValue + '%' : w.qtyValue + '주'} · ~${w.until}`);
+        event(w, '등록', `감시가 ${w.trigger.toLocaleString('ko-KR')} · +${w.ticks}틱${w.upperLimit ? ' · 상한가' : ''} · 정정 ${w.fix ? '켜짐(한도 ' + w.chasePct + '%)' : '꺼짐'} · ${w.qtyMode === 'pct' ? pctLabel(w.qtyValue) : w.qtyValue + '주'} · ~${w.until}`);
         state.watches.push(w); save();
         return publicWatch(w);
     }
@@ -377,7 +381,7 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
             w.orders = [];
             for (const lot of targets) {
                 // 이 건의 대출일 묶음은 등록 때 정한 주 수(그때 가능수량까지), 함께 상환하는 다른 묶음은 예전처럼 % · 주로 계산
-                const qty = w.shares > 0 && lot.key === w.lotKey ? Math.min(w.shares, lot.able) : w.qtyMode === 'pct' ? Math.max(1, Math.floor(lot.able * w.qtyValue / 100)) : Math.min(w.qtyValue, lot.able);
+                const qty = w.shares > 0 && lot.key === w.lotKey ? Math.min(w.shares, lot.able) : w.qtyMode === 'pct' ? pctShares(lot.able, w.qtyValue) : Math.min(w.qtyValue, lot.able);
                 if (!(lot.able >= 1) || !(qty >= 1)) { event(w, '잔고 확인', `대출일 ${lot.loanDt} 가능수량 0 · 주문하지 않음`); continue; }
                 event(w, '잔고 확인', `대출일 ${lot.loanDt} 가능수량 ${lot.able}주 → ${qty}주 상환`);
                 const o = { loanRaw: lot.loanRaw, qty, able: lot.able, ex: orderEx, seg: seg.id, ordNos: [], price: 0, filled: 0, attempts: 0, state: '주문', cap, upper };

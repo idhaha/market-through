@@ -52,7 +52,8 @@
     // ---- 드롭다운(큰 값이 위) ----
     for (let i = 10; i >= 1; i--) $('ticks').append(el('option', { value: i, selected: i === 10 }, `+${i}틱`));
     for (let i = 10; i >= 1; i--) $('chasePct').append(el('option', { value: i, selected: i === 10 }, `+${i}%`));
-    for (let i = 100; i >= 10; i -= 10) $('qtyPct').append(el('option', { value: i, selected: i === 100 }, `${i}%`));
+    // 100%-1주(값 −1, 2026-11-27 사용자 요청): 100% 바로 아래 한 칸이고 기본값. 나머지는 10% 단위
+    for (const i of [100, -1, 90, 80, 70, 60, 50, 40, 30, 20, 10]) $('qtyPct').append(el('option', { value: i, selected: i === -1 }, pctLabel(i)));
 
     // ---- 렌더링 ----
     const serverNow = () => Date.now() + offset;
@@ -137,10 +138,13 @@
     // 할당(2026-11-24): 같은 대출일 묶음에 감시 건을 여러 개 둘 수 있다. 주문 전(감시중 · 중지) 건의 수량은 그 묶음에 할당된 것으로 보고,
     // 새 건의 가능수량은 남은 수량이다(서버 short-stoploss-service.js와 같은 규칙). 등록 때 정한 주 수는 w.shares, 그때 보유수량은 w.baseQty
     const ALLOC = ['감시중', '중지'];
+    // 수량 %: −1은 "100%-1주"(가능수량에서 1주를 남김), 그 밖에는 내림 · 최소 1주(서버 pctShares와 같음)
+    function pctShares(base, v) { return v === -1 ? Math.max(0, base - 1) : base >= 1 ? Math.max(1, Math.floor(base * v / 100)) : 0; }
+    function pctLabel(v) { return v === -1 ? '100%-1주' : v + '%'; }
     function watchShares(w, lot) {
         if (w.shares > 0) return w.shares;
         if (!lot) return w.qtyMode === 'shares' ? w.qtyValue : null;
-        return w.qtyMode === 'pct' ? (lot.able >= 1 ? Math.max(1, Math.floor(lot.able * w.qtyValue / 100)) : 0) : Math.min(w.qtyValue, lot.able);
+        return w.qtyMode === 'pct' ? pctShares(lot.able, w.qtyValue) : Math.min(w.qtyValue, lot.able);
     }
     function remainingFor(lot, exceptId) {
         if (!lot || typeof lot.qty !== 'number') return null; // 잔고에서 사라진 건(보유 모름)
@@ -160,7 +164,7 @@
             n = watchShares(w, lot);
             if (!base) base = lot?.qty || 0;
         }
-        if (n == null) return w.qtyMode === 'pct' ? `- (${w.qtyValue}%)` : '-';
+        if (n == null) return w.qtyMode === 'pct' ? `- (${pctLabel(w.qtyValue)})` : '-';
         return `${fmt(n)}주${base > 0 ? ` (${Math.min(100, Math.round(n / base * 100))}%)` : ''}`;
     }
     function renderWatches() {
@@ -222,6 +226,9 @@
         selectedLot = key; selectedWatch = '';
         const lot = currentLot();
         fillLotInfo(lot);
+        // 수량은 남은 가능수량 기준으로 다시 채운다(2026-11-27 사용자 지적): 감시 건을 보다가 같은 종목 잔고를 고르면 '주' 칸에 그 감시 건 수량(예: 171주)이 남아
+        // 남은 1주보다 많다며 조건 추가가 꺼졌다. '주' 칸 = 남은 수량, % = 기본 100%-1주(남은 수량이 1주뿐이면 1주를 남길 수 없어 100%)
+        const rem = remainingFor(lot, ''); $('qtyPct').value = rem != null && rem < 2 ? 100 : -1; $('qtyShares').value = rem != null && rem >= 1 ? String(rem) : '';
         // 감시가 기본값(2026-11-23): 현재가를 넣어 두어 고치지 않고도 바로 조건 추가를 할 수 있다(청산이라 업틱룰과 무관, 사용자 결정).
         // 현재가 = 감시가라 등록하면 바로 발동할 수 있어, 조건 추가 때 확인을 받는다.
         // 칸을 직접 고치거나 화살표를 쓰기 전까지(triggerAuto)는 현재가가 바뀌면 따라간다. 칸을 비우면 회색 "현재 ○○"만 보인다
@@ -285,8 +292,10 @@
     }
     function updateForm() {
         const v = formValue(), lot = currentLot();
-        $('chasePct').disabled = !v.fix || v.upperLimit; $('fix').disabled = v.upperLimit;
+        $('chasePct').disabled = !v.fix || v.upperLimit; $('fix').disabled = v.upperLimit; $('ticks').disabled = v.upperLimit; // 상한가로면 틱은 안 씀
         $('qtyPct').disabled = v.qtyMode !== 'pct'; $('qtyShares').disabled = v.qtyMode !== 'shares';
+        { const rem = remainingFor(lot, selectedWatch), n = num($('qtyShares').value), off = v.qtyMode !== 'shares' || !lot || rem != null && rem < 1;
+          $('sharesUp').disabled = off || rem != null && n >= rem; $('sharesDown').disabled = off || n === 1; }
         // 감시가 범위(2026-11-23): 그날 하한가 ~ 상한가. 넘으면 조건 추가를 끄고 이유를 추격 한도 자리에 보인다
         const up = lot?.upper || 0, low = lot?.lower || 0;
         const range = !v.trigger ? '' : up && v.trigger > up ? `감시가가 상한가 ${fmt(up)}보다 높습니다` : low && v.trigger < low ? `감시가가 하한가 ${fmt(low)}보다 낮습니다` : '';
@@ -296,11 +305,11 @@
         const w = state?.watches.find(x => x.id === selectedWatch);
         // 수량은 남은 가능수량까지(2026-11-24): 다른 감시 건에 할당한 수량을 뺀 나머지. %는 남은 수량 기준으로 주 수를 보여 준다
         const rem = remainingFor(lot, selectedWatch);
-        const pctShares = rem == null ? null : rem >= 1 ? Math.max(1, Math.floor(rem * v.qtyValue / 100)) : 0;
-        const qtyErr = rem == null ? '' : rem < 1 ? '남은 가능수량이 없습니다(다른 감시 건에 모두 할당)' : v.qtyMode === 'shares' && v.qtyValue > rem ? `남은 가능수량 ${fmt(rem)}주보다 많습니다` : '';
+        const pctN = rem == null ? null : pctShares(rem, v.qtyValue);
+        const qtyErr = rem == null ? '' : rem < 1 ? '남은 가능수량이 없습니다(다른 감시 건에 모두 할당)' : v.qtyMode === 'shares' && v.qtyValue > rem ? `남은 가능수량 ${fmt(rem)}주보다 많습니다` : v.qtyMode === 'pct' && v.qtyValue === -1 && rem < 2 ? '100%-1주는 남은 가능수량이 2주 이상일 때만 쓸 수 있습니다' : '';
         // 설정란이 한 줄을 넘지 않게 짧게: "남은 4주의 [100%] = 4주"
         $('qtyBase').textContent = rem == null ? '가능수량의' : `남은 ${fmt(rem)}주의`;
-        $('qtyCalc').textContent = rem == null || qtyErr || v.qtyMode !== 'pct' ? '' : `${fmt(pctShares)}주`;
+        $('qtyCalc').textContent = rem == null || qtyErr || v.qtyMode !== 'pct' ? '' : `${fmt(pctN)}주`;
         $('qtyNote').textContent = qtyErr; $('qtyNote').hidden = !qtyErr;
         const ok = !!lot && v.trigger > 0 && !range && !qtyErr && (v.qtyMode === 'pct' || v.qtyValue >= 1) && !busy;
         $('addBtn').disabled = !ok || !!w; $('editBtn').disabled = !ok || !w || ACTIVE.includes(w.status) || ['체결완료', '부분체결', '잔고없음'].includes(w.status);
@@ -325,6 +334,19 @@
     $('trigUp').addEventListener('click', () => stepTrigger(1));
     $('trigDown').addEventListener('click', () => stepTrigger(-1));
     $('trigger').addEventListener('keydown', e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); stepTrigger(e.key === 'ArrowUp' ? 1 : -1); } });
+    // '주' 칸에 남은 가능수량보다 많이 치면 남은 수량으로 바꾼다(2026-11-27 사용자 요청). updateForm보다 먼저 돈다
+    $('qtyShares').addEventListener('input', () => { const rem = remainingFor(currentLot(), selectedWatch), n = num($('qtyShares').value); if (rem != null && rem >= 1 && n > rem) $('qtyShares').value = String(rem); });
+    // '주' 칸 1주씩(2026-11-27 사용자 요청): 화살표 버튼 · 칸에서 키보드 ↑ ↓. 1주 ~ 남은 가능수량. 빈 칸이면 ↑ 1주, ↓ 남은 수량
+    function stepShares(dir) {
+        if ($('qtyShares').disabled) return;
+        const rem = remainingFor(currentLot(), selectedWatch), max = rem == null ? Infinity : rem, v = num($('qtyShares').value);
+        if (!(max >= 1)) return;
+        const next = !v ? (dir > 0 ? 1 : max) : Math.min(max, Math.max(1, v + dir));
+        if (Number.isFinite(next)) $('qtyShares').value = String(next); updateForm();
+    }
+    $('sharesUp').addEventListener('click', () => stepShares(1));
+    $('sharesDown').addEventListener('click', () => stepShares(-1));
+    $('qtyShares').addEventListener('keydown', e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); stepShares(e.key === 'ArrowUp' ? 1 : -1); } });
     for (const id of ['trigger', 'ticks', 'upperLimit', 'fix', 'chasePct', 'qtyPct', 'qtyShares', 'allLots', 'cancelPending']) { $(id).addEventListener('input', updateForm); $(id).addEventListener('change', updateForm); }
     for (const r of document.querySelectorAll('input[name="qtyMode"]')) r.addEventListener('change', updateForm);
     $('trigger').addEventListener('blur', () => { const n = num($('trigger').value); if (n) $('trigger').value = fmt(n); });

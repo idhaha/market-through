@@ -187,3 +187,9 @@ table.tt thead th{background:#33476A}
 .tbl th.th2{white-space:normal;line-height:1.2}
 /* 미체결 추격 한도 한 줄(2026-11-27): 감시가 범위 안내처럼 긴 문구는 카드 안에서 줄바꿈 */
 .row.oneline #chaseNote{white-space:normal;min-width:0;flex:0 1 auto}
+/* 수량 줄(2026-11-27): % 묶음 · 주 묶음은 각각 한 덩어리로 한 줄에. 줄바꿈 대신 설정창 폭을 넓힘(사용자 결정) */
+.qty-row{gap:6px 8px;flex-wrap:nowrap}.qgrp{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}.qgrp label.row{flex-wrap:nowrap}
+.qty-row>*{flex:none}
+.qty-row #qtyPct{padding:4px 3px}.qty-row{gap:6px}
+/* 수량이 4자리여도 한 줄: 설정창은 줄바꿈 대신 내용만큼 넓어진다(2026-11-27 사용자 결정) */
+.ss-form{min-width:min-content}
