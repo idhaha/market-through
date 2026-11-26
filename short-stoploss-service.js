@@ -195,14 +195,14 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
     async function loadLots() {
         const [b, p] = [await call('acnt', 'kt00018', { qry_tp: '2', dmst_stex_tp: 'KRX' }), await call('acnt', 'ka10085', { stex_tp: '0' })];
         if (!Array.isArray(b.acnt_evlt_remn_indv_tot)) { lotsError = b.return_msg || b.error || '잔고 조회 실패'; return lots; }
-        const maturity = new Map();
-        for (const r of p.acnt_prft_rt || []) if (/^\d{8}$/.test(r.loan_dt) && r.loan_dt !== '00000000') maturity.set(code6(r.stk_cd) + ':' + r.loan_dt, r.expr_dt);
+        const maturity = new Map(), interest = new Map();
+        for (const r of p.acnt_prft_rt || []) if (/^\d{8}$/.test(r.loan_dt) && r.loan_dt !== '00000000') { maturity.set(code6(r.stk_cd) + ':' + r.loan_dt, r.expr_dt); interest.set(code6(r.stk_cd) + ':' + r.loan_dt, abs(r.crd_int)); }
         const next = [];
         for (const r of b.acnt_evlt_remn_indv_tot) {
             if (!/대주/.test(r.crd_tp_nm || '') || !/^\d{8}$/.test(r.crd_loan_dt || '')) continue;
             const code = code6(r.stk_cd);
             next.push({ key: code + ':' + r.crd_loan_dt, code, name: String(r.stk_nm || '').replace(/^\//, ''), loanDt: ymd(r.crd_loan_dt), loanRaw: r.crd_loan_dt,
-                maturity: ymd(maturity.get(code + ':' + r.crd_loan_dt) || ''), qty: abs(r.rmnd_qty), able: abs(r.trde_able_qty), sellPrice: abs(r.pur_pric), price: abs(r.cur_prc), pl: num(r.evltv_prft), rate: num(r.prft_rt) });
+                maturity: ymd(maturity.get(code + ':' + r.crd_loan_dt) || ''), qty: abs(r.rmnd_qty), able: abs(r.trde_able_qty), sellPrice: abs(r.pur_pric), price: abs(r.cur_prc), pl: num(r.evltv_prft), rate: num(r.prft_rt), purAmt: abs(r.pur_amt) });
         }
         for (const lot of next) { lot.nxt = await nxtEligible(lot.code); Object.assign(lot, await priceLimits(lot.code)); lot.priceEx = 'KRX'; }
         // 현재가 · 평가손익 · 수익률은 영웅문 0345(실시간잔고 통합)처럼 마지막 체결 시장 기준(2026-11-26 사용자 요청: 삼성E&A 대주창 1.50% · 0345 1.48%).
@@ -214,6 +214,9 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
             for (const r of Array.isArray(n.acnt_evlt_remn_indv_tot) ? n.acnt_evlt_remn_indv_tot : []) if (/대주/.test(r.crd_tp_nm || '')) byKey.set(code6(r.stk_cd) + ':' + r.crd_loan_dt, r);
             for (const lot of next) { const r = lot.nxt && byKey.get(lot.key); if (r && abs(r.cur_prc)) Object.assign(lot, { price: abs(r.cur_prc), pl: num(r.evltv_prft), rate: num(r.prft_rt), priceEx: 'NXT' }); }
         }
+        // 신용이자(대주 이용료)도 뺀다(2026-11-26 사용자 확인: 0345 삼성E&A 1.48% = (149,498 - 신용이자 2,049) / 신용금액 9,976,000).
+        // kt00018 평가손익은 수수료 · 세금만 뺀 값이고, 이자는 ka10085 crd_int에 따로 있다. 수익률은 0345처럼 매입(신용)금액 대비로 다시 계산한다.
+        for (const lot of next) { lot.interest = interest.get(lot.key) || 0; lot.pl -= lot.interest; if (lot.purAmt) lot.rate = Math.round(lot.pl / lot.purAmt * 10000) / 100; }
         lots = next; lotsAt = now(); lotsError = '';
         return lots;
     }

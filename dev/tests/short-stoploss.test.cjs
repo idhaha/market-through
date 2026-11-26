@@ -12,9 +12,9 @@ function fakeKiwoom({ price = 7350, volume = 1000, ask = 7360, nxt = true, io = 
         const r = data => ({ status: 200, data: { return_code: 0, ...data } });
         if (api === 'ka00001') return r({ acctNo: '3699577211' });
         if (api === 'kt00018') { k.balanceEx = [...(k.balanceEx || []), body.dmst_stex_tp]; const nx = body.dmst_stex_tp === 'NXT' && k.nxtBalance; return r({ acnt_evlt_remn_indv_tot: [
-            { stk_cd: 'A004980', stk_nm: '/성신양회', crd_tp: '05', crd_tp_nm: '대주', crd_loan_dt: '20261123', rmnd_qty: String(k.held || 1), trde_able_qty: String(k.able), pur_pric: '7030', cur_prc: String(nx ? nx.price : k.price), evltv_prft: nx ? nx.pl : '-10', prft_rt: nx ? nx.rate : '-0.1' },
+            { stk_cd: 'A004980', stk_nm: '/성신양회', crd_tp: '05', crd_tp_nm: '대주', crd_loan_dt: '20261123', rmnd_qty: String(k.held || 1), trde_able_qty: String(k.able), pur_pric: '7030', pur_amt: String(7030 * (k.held || 1)), cur_prc: String(nx ? nx.price : k.price), evltv_prft: nx ? nx.pl : '-10', prft_rt: nx ? nx.rate : '-0.1' },
             { stk_cd: 'A180640', stk_nm: '한진칼', crd_tp: '00', crd_tp_nm: '', crd_loan_dt: '', rmnd_qty: '1', trde_able_qty: '1' }] }); }
-        if (api === 'ka10085') return r({ acnt_prft_rt: [{ stk_cd: '004980', crd_tp: '07', loan_dt: '20261123', expr_dt: '20270222' }] });
+        if (api === 'ka10085') return r({ acnt_prft_rt: [{ stk_cd: '004980', crd_tp: '07', loan_dt: '20261123', expr_dt: '20270222', crd_int: String(k.interest || 0) }] });
         if (api === 'ka10001') {
             if (body.stk_cd.endsWith('_NX') && !k.nxt) return r({ cur_prc: '', base_pric: '' });
             return r({ cur_prc: '+' + (body.stk_cd.endsWith('_NX') && k.nxtPrice ? k.nxtPrice : k.price), trde_qty: String(k.volume), upl_pric: '+8900', base_pric: '6850', exp_cntr_pric: k.exp ? '+' + k.exp : '' });
@@ -367,6 +367,9 @@ async function runUntilDone(e, w, rounds = 40) { for (let i = 0; i < rounds; i++
         const k2 = fakeKiwoom({ nxt: false }); k2.nxtBalance = k.nxtBalance; const off = engine(k2, { t: '2026-11-20T21:00:00' }); const ol = await off.e.loadLots();
         assert.deepEqual([ol[0].pl, ol[0].priceEx], [-10, 'KRX'], 'NXT 비대상은 KRX 그대로'); assert.deepEqual(k2.balanceEx, ['KRX'], 'NXT 비대상뿐이면 NXT 조회 안 함');
         day.e.stop(); night.e.stop(); off.e.stop();
+        // 신용이자도 뺀다(0345 삼성E&A: (149,498 - 2,049) / 9,976,000 = 1.48%). 여기서는 (-10 - 5) / 7,030 = -0.21%
+        const k3 = fakeKiwoom(); k3.interest = 5; const i3 = engine(k3, { t: '2026-11-20T10:00:00' }); const il = await i3.e.loadLots();
+        assert.deepEqual([il[0].pl, il[0].rate, il[0].interest], [-15, -0.21, 5]); i3.e.stop();
     }
     console.log('short-stoploss: 모든 확인 통과');
 })().catch(error => { console.error(error); process.exit(1); });
