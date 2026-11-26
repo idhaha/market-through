@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>대주 StopLoss</title>
-<link rel="stylesheet" href="short-stoploss.css?v=20261126_avail">
-<script src="short-stoploss.js?v=20261126_avail" defer></script>
+<link rel="stylesheet" href="short-stoploss.css?v=20261127_chase2">
+<script src="short-stoploss.js?v=20261127_chase2" defer></script>
 </head>
 <body>
 <header class="ss-top">
@@ -104,17 +104,13 @@
           <label class="row"><input id="upperLimit" type="checkbox">상한가</label>
           <span class="tip"><button type="button" class="i" aria-label="상한가 설명">i</button><span class="tipbox" role="tooltip">켜면 틱 대신 처음부터 상한가 지정가로 내고 정정하지 않습니다. 실제 체결은 그때 쌓인 매도호가부터 되므로 체결이 가장 확실합니다.</span></span>
         </div>
-        <div class="box">
-          <div class="row">
-            <label class="row strong"><input id="fix" type="checkbox" checked>미체결 정정</label>
-            <span class="tip"><button type="button" class="i" aria-label="미체결 정정 설명">i</button><span class="tipbox" role="tooltip">주문 후 체결은 내 주문체결 실시간(00)으로 바로 확인하고 3초마다 조회로 한 번 더 봅니다. 3초마다 남은 수량을 최대 3회 정정합니다. 1회: 그때 매도1호가 + 고른 틱, 2회: 매도1호가 + 고른 틱의 2배, 3회: 추격 한도 가격. 처음 주문과 모든 정정가는 추격 한도와 상한가를 넘지 않습니다. 끄면 정정하지 않고 미체결을 알리기만 합니다.</span></span>
-          </div>
-          <div class="row oneline indent">
-            <label for="chasePct">추격 한도</label>
-            <select id="chasePct" class="inp"></select>
-            <span id="chaseNote" class="accent small"></span>
-            <span class="tip"><button type="button" class="i" aria-label="추격 한도 설명">i</button><span class="tipbox" role="tooltip">정정으로 따라 올라갈 최고 주문가입니다. 발동 순간의 체결가(발동가) × (1 + %)를 호가단위로 내림하고, 상한가보다 높으면 상한가입니다. 한도에 닿으면 더 올리지 않고 알립니다. 왼쪽 금액(○○원)은 고른 %를 더한 가격으로, 아직 발동 전이라 발동가 대신 위에 넣은 감시가로 미리 계산한 값입니다. 발동가가 감시가보다 높게 체결되면(급등) 실제 한도도 그만큼 높아집니다.</span></span>
-          </div>
+        <div class="row oneline">
+          <label class="row strong"><input id="fix" type="checkbox" checked>미체결 추격 한도는</label>
+          <span>발동가의</span>
+          <label for="chasePct" class="sr">추격 한도 %</label>
+          <select id="chasePct" class="inp"></select>
+          <span id="chaseNote" class="accent small"></span>
+          <span class="tip"><button type="button" class="i" aria-label="미체결 정정 설명">i</button><span class="tipbox" role="tooltip">켜면 덜 체결된 수량을 정정해 따라 올라갑니다. 체결은 내 주문체결 실시간(00)으로 바로 확인하고 3초마다 조회로 한 번 더 봅니다. 3초마다 남은 수량을 최대 3회 정정합니다. 1회: 그때 매도1호가 + 고른 틱, 2회: 매도1호가 + 고른 틱의 2배, 3회: 추격 한도 가격. 추격 한도는 정정으로 따라 올라갈 최고 주문가로, 발동 순간의 체결가(발동가) × (1 + 고른 %)를 호가단위로 내림하고 상한가보다 높으면 상한가입니다. 처음 주문과 모든 정정가는 이 한도와 상한가를 넘지 않고, 한도에 닿으면 더 올리지 않고 알립니다. 오른쪽 금액(○○원)은 아직 발동 전이라 발동가 대신 위에 넣은 감시가로 미리 계산한 값이며, 발동가가 감시가보다 높게 체결되면(급등) 실제 한도도 그만큼 높아집니다. 끄면 정정하지 않고 미체결을 알리기만 합니다.</span></span>
         </div>
       </div>
 

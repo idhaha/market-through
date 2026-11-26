@@ -48,7 +48,7 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         assert.equal(await page.locator('#lotsTable tbody tr').nth(1).locator('.pill.none').count(), 1, '흥아해운 NXT 비대상 표시');
         assert.deepEqual(await page.$$eval('#ticks option', o => [o[0].textContent, o.at(-1).textContent]), ['+10틱', '+1틱']);
         assert.deepEqual(await page.$$eval('#qtyPct option', o => [o[0].textContent, o.at(-1).textContent]), ['100%', '10%']);
-        assert.deepEqual(await page.$$eval('#chasePct option', o => [o[0].textContent, o.at(-1).textContent]), ['10%', '1%']);
+        assert.deepEqual(await page.$$eval('#chasePct option', o => [o[0].textContent, o.at(-1).textContent]), ['+10%', '+1%']);
         assert.equal(await page.inputValue('#ticks'), '10');
         // 회귀(2026-11-21): 유효기간은 잔고 행을 고르기 전에도 비어 있지 않고 기본 1개월(서버 날짜 기준, 휴장일 → 직전 거래일)
         await page.waitForFunction(() => document.querySelector('#until').value === '2026-12-18');
@@ -76,6 +76,12 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         await page.locator('#trigger').focus(); await page.keyboard.insertText('７３００');
         assert.equal(await page.isDisabled('#addBtn'), false); assert.match(await page.textContent('#chaseNote'), /8,030원/);
         await page.locator('#ticks').focus(); assert.equal(await page.inputValue('#trigger'), '7,300', '칸을 떠나면 보통 숫자로 바꿈');
+        // 미체결 추격 한도(2026-11-27): 선택칸 · % · 금액 · i가 박스 없이 한 줄에 있고 i는 하나, 설정 카드 밖으로 넘치지 않는다
+        const chaseRow = await page.evaluate(() => { const row = document.getElementById('fix').closest('.row.oneline'), card = document.getElementById('formCard').getBoundingClientRect();
+            const tops = ['fix', 'chasePct', 'chaseNote'].map(id => Math.round(document.getElementById(id).getBoundingClientRect().top + document.getElementById(id).getBoundingClientRect().height / 2));
+            const ib = row.querySelectorAll('button.i'); return { same: Math.max(...tops) - Math.min(...tops) <= 4, iCount: ib.length, box: !!row.closest('.box'), fits: [...row.children].every(c => c.getBoundingClientRect().right <= card.right + 0.5), text: row.textContent.replace(/s+/g, ' ').slice(0, 40) }; });
+        assert.deepEqual([chaseRow.same, chaseRow.iCount, chaseRow.box, chaseRow.fits], [true, 1, false, true], JSON.stringify(chaseRow));
+        assert.equal(await page.evaluate(() => { const sel = document.getElementById('chasePct'), row = sel.closest('.row.oneline'); return [...row.children].filter(c => !c.classList.contains('sr') && !c.classList.contains('tip')).map(c => c === sel ? sel.selectedOptions[0].textContent : c.textContent.trim()).join(' '); }), '미체결 추격 한도는 발동가의 +10% 8,030원');
         // 한 호가씩: 빈 칸이면 현재가 기준(↑ 7,010 · ↓ 7,000), 가격대 경계에서 단위가 바뀐다, 호가 단위에 안 맞는 값은 맞는 호가로
         const step = async (v, how) => { await page.fill('#trigger', v); if (how === 'up' || how === 'down') await page.click(how === 'up' ? '#trigUp' : '#trigDown'); else { await page.locator('#trigger').focus(); await page.keyboard.press(how); } return page.inputValue('#trigger'); };
         assert.deepEqual([await step('', 'up'), await step('', 'down'), await step('', 'ArrowUp')], ['7,010', '7,000', '7,010']);
@@ -87,6 +93,7 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         assert.equal(await step('29,950', 'up'), '30,000'); assert.equal(await page.isDisabled('#trigUp'), true, '상한가 위는 없음');
         await page.keyboard.press('ArrowUp'); assert.equal(await page.inputValue('#trigger'), '30,000');
         await page.fill('#trigger', '31,000'); assert.equal(await page.isDisabled('#addBtn'), true); assert.match(await page.textContent('#chaseNote'), /상한가 30,000보다 높습니다/);
+        assert.ok(await page.evaluate(() => { const row = document.getElementById('fix').closest('.row.oneline'), right = document.getElementById('formCard').getBoundingClientRect().right; return [...row.children].every(c => c.getBoundingClientRect().right <= right + 0.5); }), '범위 안내 문구도 설정 카드 안에');
         assert.equal(await step('31,000', 'down'), '30,000', '범위 밖에서 누르면 가까운 끝으로');
         await page.fill('#trigger', '900'); assert.equal(await page.isDisabled('#addBtn'), true); assert.match(await page.textContent('#chaseNote'), /하한가 1,000보다 낮습니다/);
         await page.fill('#trigger', '28,000'); assert.equal(await page.textContent('#chaseNote'), '30,000원(상한가)', '추격 한도도 상한가를 넘지 않음'); assert.equal(await page.isDisabled('#addBtn'), false);

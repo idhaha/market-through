@@ -185,3 +185,5 @@ table.tt thead th{background:#33476A}
 /* 감시 목록(2026-11-24): 열이 10개라 칸 안쪽 여백을 줄이고, 수량 머리글은 두 줄까지 */
 #watchTable td,#watchTable th{padding-left:5px;padding-right:5px}
 .tbl th.th2{white-space:normal;line-height:1.2}
+/* 미체결 추격 한도 한 줄(2026-11-27): 감시가 범위 안내처럼 긴 문구는 카드 안에서 줄바꿈 */
+.row.oneline #chaseNote{white-space:normal;min-width:0;flex:0 1 auto}
