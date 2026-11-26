@@ -63,7 +63,7 @@
         $('autoState').textContent = state.enabled ? (offAccts.length ? '자동 주문 켜짐(일부 계좌)' : '자동 주문 켜짐') : '자동 주문 꺼짐';
         $('autoState').className = 'ss-pill ' + (state.enabled ? 'on' : 'off');
         $('autoState').title = !state.enabled ? '자동 주문이 꺼져 있어 주문을 내지 않습니다(서버 설정 SHORT_STOPLOSS=on으로 켭니다). 장 시간과는 관계없습니다.' : offAccts.length ? '자동 주문 꺼진 계좌: ' + offAccts.join(', ') : '';
-        $('segment').textContent = state.segment ? state.segment.label : '장 시간 아님';
+        $('segment').textContent = state.segment ? state.segment.label : '장 시작 전';
         // 실시간 연결은 계좌마다 따로 보인다(2026-11-21): 기본 계좌는 VI 모니터와 공용 연결, 추가 계좌는 그 계좌 앱키의 연결
         const rts = (state.accounts?.length ? state.accounts : [{ account: state.account, realtime: state.realtime }]).filter(a => a.realtime), box = $('rtStates');
         const pills = rts.map(a => { const r = a.realtime, name = multi() ? acctShort(a) + ' ' : ''; return el('span', { class: 'ss-pill ' + (r.connected ? 'on' : 'off'), title: `계좌 ${a.account || ''} 키움 웹소켓: ${r.state || ''}${r.connected ? '' : ' · 끊긴 동안은 1초 조회로 감시'}` }, name + (r.connected ? '실시간 연결' : '실시간 끊김')); });
@@ -300,10 +300,12 @@
         const qtyErr = rem == null ? '' : rem < 1 ? '남은 가능수량이 없습니다(다른 감시 건에 모두 할당)' : v.qtyMode === 'shares' && v.qtyValue > rem ? `남은 가능수량 ${fmt(rem)}주보다 많습니다` : '';
         // 설정란이 한 줄을 넘지 않게 짧게: "남은 4주의 [100%] = 4주"
         $('qtyBase').textContent = rem == null ? '가능수량의' : `남은 ${fmt(rem)}주의`;
-        $('qtyCalc').textContent = rem == null || qtyErr || v.qtyMode !== 'pct' ? '' : `= ${fmt(pctShares)}주`;
+        $('qtyCalc').textContent = rem == null || qtyErr || v.qtyMode !== 'pct' ? '' : `${fmt(pctShares)}주`;
         $('qtyNote').textContent = qtyErr; $('qtyNote').hidden = !qtyErr;
         const ok = !!lot && v.trigger > 0 && !range && !qtyErr && (v.qtyMode === 'pct' || v.qtyValue >= 1) && !busy;
         $('addBtn').disabled = !ok || !!w; $('editBtn').disabled = !ok || !w || ACTIVE.includes(w.status) || ['체결완료', '부분체결', '잔고없음'].includes(w.status);
+        // 파란 버튼(2026-11-27 사용자 결정): 새로 설정할 때는 조건 추가, 감시 목록의 건을 고르면 조건 수정
+        $('addBtn').classList.toggle('primary', !w); $('editBtn').classList.toggle('primary', !!w);
         $('fromDay').textContent = kstDay(serverNow()) + ' ~';
         // 화살표: 상한가에 닿으면 ↑, 하한가(없으면 1원)에 닿으면 ↓를 더 누를 수 없다
         const base = v.trigger || lot?.price || 0, floor = Math.max(1, low);

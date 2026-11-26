@@ -152,6 +152,9 @@ async function runUntilDone(e, w, rounds = 40) { for (let i = 0; i < rounds; i++
         await e.loadLots(); await e.create(input('004980:20261123')); await e.step(); await settle();
         assert.equal(k.orders.length, 0);
         assert.match(e._state().watches[0].lastCheck.text, /NXT 비대상/);
+        // 08:00 전 판정 결과 문구(2026-11-27 사용자 결정): '장 시간 아님' → '장 시작 전'
+        { const k0 = fakeKiwoom(), z = engine(k0, { t: '2026-11-20T07:30:00' }); await z.e.loadLots(); await z.e.create(input('004980:20261123')); await z.e.step(); await settle();
+          assert.equal(z.e._state().watches[0].lastCheck.text, '장 시작 전'); assert.equal(k0.orders.length, 0); }
         const k2 = fakeKiwoom({ volume: 0 }), b = engine(k2, { t: '2026-11-20T08:10:00' });
         await b.e.loadLots(); await b.e.create(input('004980:20261123')); await b.e.step(); await settle();
         assert.equal(k2.orders.length, 0);

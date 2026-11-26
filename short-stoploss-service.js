@@ -474,7 +474,7 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
             if (!enabled() || state.halted) return;
             const seg = segmentAt(t, openDate);
             const watching = state.watches.filter(w => w.status === '감시중' && w.enabled && !running.has(w.id));
-            if (!seg || !seg.ex) { for (const w of watching) w.lastCheck = { at: t, text: seg ? seg.label + ' · 판정 안 함' : '장 시간 아님' }; return; }
+            if (!seg || !seg.ex) { for (const w of watching) w.lastCheck = { at: t, text: seg ? seg.label + ' · 판정 안 함' : '장 시작 전' }; return; }
             // 공용 실시간이 붙어 있으면 0B가 바로 판정하므로 조회는 5초 간격 보조(종가 단일가 15:20~15:30은 0B가 없어 1초 조회).
             if (realtime?.connected() && !seg.auction && now() - lastPollAt < 5000) return;
             lastPollAt = now();

@@ -81,6 +81,7 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
             const tops = ['fix', 'chasePct', 'chaseNote'].map(id => Math.round(document.getElementById(id).getBoundingClientRect().top + document.getElementById(id).getBoundingClientRect().height / 2));
             const ib = row.querySelectorAll('button.i'); return { same: Math.max(...tops) - Math.min(...tops) <= 4, iCount: ib.length, box: !!row.closest('.box'), fits: [...row.children].every(c => c.getBoundingClientRect().right <= card.right + 0.5), text: row.textContent.replace(/s+/g, ' ').slice(0, 40) }; });
         assert.deepEqual([chaseRow.same, chaseRow.iCount, chaseRow.box, chaseRow.fits], [true, 1, false, true], JSON.stringify(chaseRow));
+        assert.equal(await page.textContent('#qtyCalc'), '1주', '수량 % 계산은 "=" 없이 주식 수만(2026-11-27)');
         assert.equal(await page.evaluate(() => { const sel = document.getElementById('chasePct'), row = sel.closest('.row.oneline'); return [...row.children].filter(c => !c.classList.contains('sr') && !c.classList.contains('tip')).map(c => c === sel ? sel.selectedOptions[0].textContent : c.textContent.trim()).join(' '); }), '미체결 추격 한도는 발동가의 +10% 8,030원');
         // 한 호가씩: 빈 칸이면 현재가 기준(↑ 7,010 · ↓ 7,000), 가격대 경계에서 단위가 바뀐다, 호가 단위에 안 맞는 값은 맞는 호가로
         const step = async (v, how) => { await page.fill('#trigger', v); if (how === 'up' || how === 'down') await page.click(how === 'up' ? '#trigUp' : '#trigDown'); else { await page.locator('#trigger').focus(); await page.keyboard.press(how); } return page.inputValue('#trigger'); };
@@ -137,6 +138,7 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         assert.equal(await page.textContent('#watchTable tbody tr td:nth-child(4)'), '1주 (100%)');
         // 회귀(2026-11-24): 같은 묶음을 다시 고르면 남은 가능수량 0(1주 모두 할당) → 조건 추가 꺼짐
         await page.locator('#lotsTable tbody tr.pick').first().click();
+        assert.deepEqual(await (async () => ({ add: [await page.isDisabled('#addBtn'), await page.$eval('#addBtn', n => n.classList.contains('primary'))], edit: [await page.isDisabled('#editBtn'), await page.$eval('#editBtn', n => n.classList.contains('primary'))] }))(), { add: [true, true], edit: [true, false] }, '잔고 행을 고르면(새 설정) 조건 추가가 파랑, 조건 수정은 무색 · 꺼짐');
         assert.equal(await page.textContent('#qtyNote'), '남은 가능수량이 없습니다(다른 감시 건에 모두 할당)'); assert.equal(await page.isDisabled('#addBtn'), true);
         // 회귀(2026-11-26 사용자 지적): 설정란 대출일 줄의 가능수량도 감시 등록 수량을 뺀 남은 수량(전에는 1주 그대로 보였음), 한 줄에 다 보임
         assert.equal(await page.textContent('#fLot'), '0주 (감시 등록 1주 제외)');
@@ -144,6 +146,8 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         assert.ok(await page.$eval('#fLot', n => n.scrollWidth <= n.clientWidth + 1 && n.getClientRects().length === 1), '가능수량 줄이 잘리지 않음');
         await page.locator('#watchTable tbody tr.pick').first().click(); assert.equal(await page.isVisible('#qtyNote'), false, '그 감시 건을 고를 때는 자기 수량을 빼지 않음');
         assert.equal(await page.textContent('#fLot'), '1주', '감시 건을 고르면 자기 수량은 가능수량에 들어감');
+        // 파란 버튼(2026-11-27): 감시 건을 고르면 조건 추가는 무색 · 꺼짐, 조건 수정은 파랑 · 켜짐
+        assert.deepEqual(await (async () => ({ add: [await page.isDisabled('#addBtn'), await page.$eval('#addBtn', n => n.classList.contains('primary'))], edit: [await page.isDisabled('#editBtn'), await page.$eval('#editBtn', n => n.classList.contains('primary'))] }))(), { add: [true, false], edit: [false, true] });
         const q = (w, able) => page.evaluate(([w, able]) => { const st = { lotKey: 'x', ...w }; const lots = able == null ? [] : [{ key: 'x', able, qty: Math.max(able, 10) }]; return window.__ssQtyTextWith(st, lots); }, [w, able]);
         assert.deepEqual([await q({ qtyMode: 'pct', qtyValue: 30 }, 10), await q({ qtyMode: 'pct', qtyValue: 10 }, 5), await q({ qtyMode: 'shares', qtyValue: 3 }, 10), await q({ qtyMode: 'shares', qtyValue: 10 }, 10),
             await q({ qtyMode: 'pct', qtyValue: 50 }, null), await q({ qtyMode: 'shares', qtyValue: 4 }, null), await q({ qtyMode: 'pct', qtyValue: 50, orders: [{ qty: 7 }] }, 0), await q({ qtyMode: 'pct', qtyValue: 100 }, 0),
