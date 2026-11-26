@@ -552,12 +552,21 @@
                     // Closed days (weekends, holidays) have no flow: skip them (2026-11-12: one browser asked 11/7 · 11/8 4,775 times each on 11/11).
                     const calendar=window.TradingRefresh?.state?.days || {},open=day=>![0,6].includes(new Date(day+'T00:00:00Z').getUTCDay()) && calendar[day]!==false;
                     const days=restoreWindow.days.filter(day=>day>=restoreWindow.first.slice(0,10) && day<=restoreWindow.last.slice(0,10) && open(day));
+                    // 구간의 날짜들을 3개씩 함께 받는다(2026-11-26 오라클 측정 6: 10거래일을 하루씩 차례로 받아 종목 수급이 12.6초에 끝났다).
+                    // 합치는 순서는 날짜 순서 그대로다.
+                    const pastDays=[];
                     for(const day of days){
                         minuteDays.add(day);
                         if(day===result.date)continue;
                         if(flowDates?.length && day<flowDates[0]){const first=day+' 00:00';if(!flowCoverageFirst || first<flowCoverageFirst)flowCoverageFirst=first;continue;}
-                        const params=new URLSearchParams({code:selected,mode:'minute',date:day});
-                        const past=await request(`${(combined || window.rankIndependentClient) && mode === 'minute' ? '/api/kis-supply/chart' : endpoint}?${params}`,{signal:current.signal});
+                        pastDays.push(day);
+                    }
+                    const pastJobs=new Map();let nextPast=0,runningPast=0;
+                    const startPast=()=>{while(nextPast<pastDays.length && runningPast<3){const day=pastDays[nextPast++],params=new URLSearchParams({code:selected,mode:'minute',date:day});runningPast++;const task=request(`${(combined || window.rankIndependentClient) && mode === 'minute' ? '/api/kis-supply/chart' : endpoint}?${params}`,{signal:current.signal}).finally(()=>{runningPast--;startPast();});task.catch(()=>{});pastJobs.set(day,task);}};
+                    startPast();
+                    for(const day of pastDays){
+                        while(!pastJobs.has(day))await new Promise(r=>setTimeout(r,10));
+                        const past=await pastJobs.get(day);
                         if(id!==revision)return;
                         const first=day+' 00:00';if(!flowCoverageFirst || first<flowCoverageFirst)flowCoverageFirst=first;
                         points=mergeFlow(points,futures?contractShares(past):(past.points || []).filter(p=>Number.isFinite(p.t)));

@@ -90,11 +90,18 @@ async function main(){
         // The launcher passes the main browser's pixel ratio; the window asks the native host to match it once.
         // The URL must stay '#token=<hex>' only: the native app rejects any other fragment.
         await page.goto(origin+'/vi-monitor.html#token='+grant.token);
+        // 2026-11-26: '메인창과 보기배율 동기화'는 기본 끔 — 메인 배율을 받아도 따라가지 않는다(이 창에서 Ctrl+로 바꾼 배율 유지). 켜면 받아 둔 배율로 바로 맞춘다.
+        await page.waitForTimeout(1500);assert.equal(await page.isChecked('#viScaleSync'),false);
+        assert.deepEqual(await page.evaluate(()=>window.__native.filter(m=>m.startsWith('page-scale:'))),[],'sync off: main zoom is not followed');
+        await page.check('#viScaleSync');
         await page.waitForFunction(()=>window.__native.some(m=>m.startsWith('page-scale:')));
         assert.deepEqual(await page.evaluate(()=>window.__native.filter(m=>m.startsWith('page-scale:'))),['page-scale:0.8']);
         // A later zoom change pushes through the stream to the open window right away.
         assert.equal((await fetch(origin+'/api/vi-monitor/window-scale',{method:'POST',headers:{cookie:'login=valid','Content-Type':'application/json'},body:JSON.stringify({token:grant.token,scale:1.25})})).status,200);
         await page.waitForFunction(()=>window.__native.includes('page-scale:1.25'));
+        // Turned off again: later zoom changes are ignored.
+        await page.uncheck('#viScaleSync');assert.equal((await fetch(origin+'/api/vi-monitor/window-scale',{method:'POST',headers:{cookie:'login=valid','Content-Type':'application/json'},body:JSON.stringify({token:grant.token,scale:1.1})})).status,200);
+        await page.waitForTimeout(800);assert.equal(await page.evaluate(()=>window.__native.includes('page-scale:1.1')),false,'sync off again');
         assert.equal((await fetch(origin+'/api/vi-monitor/window-scale',{method:'POST',headers:{cookie:'login=valid','Content-Type':'application/json'},body:JSON.stringify({token:'0'.repeat(64),scale:1})})).status,404);
         assert.equal((await fetch(origin+'/api/vi-monitor/window-scale',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:grant.token,scale:1})})).status,401);await page.waitForFunction(()=>document.getElementById('viStatus').textContent.includes('VI 실시간 수신 중'));
         const socket=FakeSocket.instances[0];

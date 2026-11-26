@@ -31,6 +31,7 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
     // 독립창 앱의 여는 토큰 → 창 토큰 바꾸기(실제 규칙은 short-stoploss-window.test.cjs): 한 번만 바꿔 준다
     const usedLaunch = new Set();
     app.post('/api/short-stoploss/window-exchange', (req, res) => { const l = req.headers['x-ss-launch']; if (usedLaunch.has(l)) return res.status(401).json({ error: '이미 쓴 연결입니다. 메인 화면에서 대주StopLoss 버튼을 다시 누르세요.' }); usedLaunch.add(l); res.json({ token: 'S' + l.slice(0, 8) }); });
+    app.get('/api/short-stoploss/window-info', (req, res) => res.json({ scale: 2 })); // 메인 화면 배율 200%(보기배율 동기화 시험)
     app.get('/api/trading-session/calendar', (req, res) => res.json({ days: { '2026-12-25': false } }));
     // 서버와 같이 계좌 묶음으로 붙인다(계좌 하나, 2026-11-21)
     createShortStopLossAccounts([{ id: 'main', svc }]).mount(app, { allowed: () => true });
@@ -130,7 +131,11 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         // 회귀(2026-11-24): 같은 묶음을 다시 고르면 남은 가능수량 0(1주 모두 할당) → 조건 추가 꺼짐
         await page.locator('#lotsTable tbody tr.pick').first().click();
         assert.equal(await page.textContent('#qtyNote'), '남은 가능수량이 없습니다(다른 감시 건에 모두 할당)'); assert.equal(await page.isDisabled('#addBtn'), true);
+        // 회귀(2026-11-26 사용자 지적): 설정란 대출일 줄의 가능수량도 감시 등록 수량을 뺀 남은 수량(전에는 1주 그대로 보였음), 한 줄에 다 보임
+        assert.match(await page.textContent('#fLot'), / · 가능수량 0주\(감시 등록 1주 제외\) · 만기 /);
+        assert.ok(await page.$eval('#fLot', n => n.scrollWidth <= n.clientWidth + 1 && n.getClientRects().length === 1), '가능수량 줄이 잘리지 않음');
         await page.locator('#watchTable tbody tr.pick').first().click(); assert.equal(await page.isVisible('#qtyNote'), false, '그 감시 건을 고를 때는 자기 수량을 빼지 않음');
+        assert.match(await page.textContent('#fLot'), / · 가능수량 1주 · 만기 /, '감시 건을 고르면 자기 수량은 가능수량에 들어감');
         const q = (w, able) => page.evaluate(([w, able]) => { const st = { lotKey: 'x', ...w }; const lots = able == null ? [] : [{ key: 'x', able, qty: Math.max(able, 10) }]; return window.__ssQtyTextWith(st, lots); }, [w, able]);
         assert.deepEqual([await q({ qtyMode: 'pct', qtyValue: 30 }, 10), await q({ qtyMode: 'pct', qtyValue: 10 }, 5), await q({ qtyMode: 'shares', qtyValue: 3 }, 10), await q({ qtyMode: 'shares', qtyValue: 10 }, 10),
             await q({ qtyMode: 'pct', qtyValue: 50 }, null), await q({ qtyMode: 'shares', qtyValue: 4 }, null), await q({ qtyMode: 'pct', qtyValue: 50, orders: [{ qty: 7 }] }, 0), await q({ qtyMode: 'pct', qtyValue: 100 }, 0),
@@ -221,6 +226,14 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         // 항상 위 체크박스(2026-11-26 사용자 요청): 독립창 앱에서만 보이고, 켜고 끄면 앱에 topmost 메시지를 보낸다. 머리줄이 넘치지 않는다.
         assert.equal(await page.isVisible('#topmostWrap'), false, '브라우저에서는 항상 위를 감춤'); assert.equal(await np.isVisible('#topmostWrap'), true, '앱에서는 항상 위가 보임');
         await np.check('#topmost'); await np.uncheck('#topmost');
+        // 메인창과 보기배율 동기화(2026-11-26 사용자 요청): 기본 끔이면 메인 배율(200%)을 따라가지 않아 Ctrl+로 키운 배율이 유지되고, 켜면 바로 따라간다. 시계 오른쪽 → 동기화 → 항상 위 순서
+        await np.waitForTimeout(2600); assert.equal(await np.isChecked('#scaleSync'), false, '기본 끔');
+        assert.deepEqual((await np.evaluate(() => window.__msgs || [])).filter(m => m.startsWith('page-scale:')), [], '끔: 메인 배율을 따라가지 않음');
+        await np.check('#scaleSync'); await np.waitForFunction(() => (window.__msgs || []).includes('page-scale:2'));
+        assert.equal(await np.evaluate(() => localStorage.getItem('ss-scale-sync')), 'true', '이 창에 저장');
+        await np.uncheck('#scaleSync'); const nScale = (await np.evaluate(() => window.__msgs)).filter(m => m.startsWith('page-scale:')).length; await np.waitForTimeout(5600);
+        assert.equal((await np.evaluate(() => window.__msgs)).filter(m => m.startsWith('page-scale:')).length, nScale, '다시 끄면 더 따라가지 않음');
+        assert.ok(await np.evaluate(() => { const r = id => document.getElementById(id).getBoundingClientRect(); return r('clock').right <= r('scaleSync').left && r('scaleSync').right <= r('topmost').left && Math.abs(r('clock').top + r('clock').height / 2 - (r('topmost').top + r('topmost').height / 2)) < 4; }), '시계 → 동기화 → 항상 위, 한 줄');
         assert.deepEqual((await np.evaluate(() => window.__msgs || [])).filter(m => m.startsWith('topmost:')), ['topmost:true', 'topmost:false']);
         assert.ok(await np.$eval('.ss-top', h => h.scrollWidth <= h.clientWidth && document.querySelector('.ss-topmost').getBoundingClientRect().right <= h.getBoundingClientRect().right), '1200 폭 머리줄에 항상 위가 다 보임');
         const nInfo = () => np.evaluate(() => ({ msgs: window.__msgs || [], leftW: Math.round(document.querySelector('.ss-left').getBoundingClientRect().width), closed: document.body.classList.contains('form-closed'), fold: JSON.parse(localStorage.getItem('short-stoploss-fold') || 'null'), need: Math.ceil(document.querySelector('.ss-fold').getBoundingClientRect().right) + 12 }));

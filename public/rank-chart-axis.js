@@ -266,7 +266,7 @@
         if(mode==='minute')todayPinned=false;
         historyBusy=true;scheduleHistoryButtons();
         const participants=[...minuteCharts.entries()].filter(([id,c])=>c.mode===mode && historyLoaders.has(id)).sort(([a],[b])=>(refreshOrder.indexOf(a)<0?99:refreshOrder.indexOf(a))-(refreshOrder.indexOf(b)<0?99:refreshOrder.indexOf(b)));
-        const failures=[], exhausted=[];
+        const failures=[], exhausted=[], noMore=[];
         // 실패 이유를 카드별로 남겨 안내 문구와 rankHistoryMetrics.errors에 보인다(2026-11-24: 장중 "일부 차트 조회 실패"가 떴는데 어느 카드가 왜 실패했는지 알 수 없었다).
         const errors={},fail=(id,error)=>{failures.push(id);errors[id] ||= String(error?.message || error || '실패');};
         metrics.errors=errors;
@@ -338,7 +338,7 @@
                         const loader=historyLoaders.get(id);let pages=0;
                         try{
                             while(!coverageFirst(id) || coverageFirst(id)>target){
-                                if(!loader.state?.().hasMore){exhausted.push(id);break;}
+                                if(!loader.state?.().hasMore){noMore.push(id);break;}
                                 if(++pages>80)throw new Error('과거 조회 페이지 한도 도달');
                                 await step(id);
                             }
@@ -352,6 +352,10 @@
                         if(ensure)try{await ensureReady(loader);await timed(id,'rangeMs',()=>ensure(target));await ensureReady(loader);if(loader.state?.().error)throw new Error(loader.state().error);}catch(error){fail(id,error);}
                     });
                 }
+                // 원천 자료 끝(2026-11-26): 더 받을 쪽이 없다고 바로 '결측'으로 치지 않는다. 구간 캔들(ensureRange)까지 받은 뒤에도
+                // 그 카드의 첫 자료가 목표 날짜보다 늦을 때만 끝난 것으로 본다. 예전엔 쪽 없이 구간으로 받는 카드(ADR · 지수 선물)까지
+                // 끝난 것으로 쳐 "일부 차트는 원천 과거 자료가 끝나…"가 모든 카드에 일곱 번 붙었다(오라클 측정 4 · 9).
+                for(const id of noMore){const first=historyLoaders.get(id)?.state?.().coverageFirst || minuteCharts.get(id)?.first;if(!failures.includes(id) && first && target && first>target)exhausted.push(id);}
                 if(failures.length && target && !cancelled)pendingHistoryTargets.set(mode,target);
                 else pendingHistoryTargets.delete(mode);
             }else for(const [id] of participants){
@@ -366,7 +370,7 @@
         } finally {
             metrics.totalMs=Date.now()-metrics.startedAt;
             metrics.cancelled=epoch!==historyEpoch || cancelled;
-            metrics.failures=[...new Set(failures)];
+            metrics.failures=[...new Set(failures)];metrics.exhausted=[...new Set(exhausted)];
             window.rankHistoryMetrics=metrics;
             if(epoch!==historyEpoch)return {advanced:false,failures:[],cancelled:true};
             historyBusy=false;
@@ -406,7 +410,11 @@
             let notice=panel.querySelector('.rank-history-notice');
             if(!notice){notice=document.createElement('p');notice.className='rank-history-notice';notice.setAttribute('role','status');panel.append(notice);}
             const failed=[...new Set(failures)].map(f=>`${cardNames[f] || f}: ${errors[f] || '실패'}`).join(', ');
-            notice.textContent=showAvailable?`일부 차트 조회 실패(${failed}) · 확보한 과거 자료를 표시합니다.`:advanced && !exhausted.length?'':failures.length?`일부 차트의 과거 조회가 완료되지 않아(${failed}) 기존 표시 기간을 유지합니다.`:exhausted.length?'일부 차트는 원천 과거 자료가 끝나 해당 구간을 결측으로 표시합니다.':'공통으로 표시할 더 이전 자료가 없어 기존 표시 기간을 유지합니다.';
+            const ended=[...new Set(exhausted)].map(f=>cardNames[f] || f).join(', ');
+            // 원천 자료가 끝난 안내는 그 카드에만, 카드 이름과 함께 붙인다(2026-11-26).
+            const onlyEnded=!showAvailable && !(advanced && !exhausted.length) && !failures.length && exhausted.length;
+            if(onlyEnded && !exhausted.includes(id)){notice.textContent='';notice.hidden=true;continue;}
+            notice.textContent=showAvailable?`일부 차트 조회 실패(${failed}) · 확보한 과거 자료를 표시합니다.`:advanced && !exhausted.length?'':failures.length?`일부 차트의 과거 조회가 완료되지 않아(${failed}) 기존 표시 기간을 유지합니다.`:exhausted.length?`${ended}: 원천 과거 자료가 끝나 해당 구간을 결측으로 표시합니다.`:'공통으로 표시할 더 이전 자료가 없어 기존 표시 기간을 유지합니다.';
             notice.hidden=advanced && !failures.length && !exhausted.length;
         }
         return {advanced,failures,exhausted,target,partial:showAvailable,metrics};

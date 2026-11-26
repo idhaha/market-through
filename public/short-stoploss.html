@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>대주 StopLoss</title>
-<link rel="stylesheet" href="short-stoploss.css?v=20261126_top">
-<script src="short-stoploss.js?v=20261126_top" defer></script>
+<link rel="stylesheet" href="short-stoploss.css?v=20261126_scale">
+<script src="short-stoploss.js?v=20261126_scale" defer></script>
 </head>
 <body>
 <header class="ss-top">
@@ -14,12 +14,15 @@
     <span class="tip"><button type="button" class="i" id="policyBtn" aria-label="대주 StopLoss 정책 전체 보기" aria-haspopup="dialog">i</button></span>
     <span class="ss-sub">키움 전용 · 대주상환 자동 주문</span>
     <span id="clock"></span>
+    <span class="ss-wincontrols" id="topmostWrap">
+      <label class="ss-topmost" title="켜면 메인 화면의 확대 · 축소 배율을 따라갑니다. 끄면 이 창에서 Ctrl+ · Ctrl- 로 바꾼 배율을 그대로 둡니다"><input id="scaleSync" type="checkbox"> 메인창과 보기배율 동기화</label>
+      <label class="ss-topmost" title="다른 창보다 항상 위에 둡니다"><input id="topmost" type="checkbox"> 항상 위</label>
+    </span>
   </div>
   <div class="ss-top-right">
     <span id="autoState" class="ss-pill off">확인 중</span>
     <span id="rtStates" class="ss-rt"></span>
     <span id="segment" class="ss-pill seg"></span>
-    <label class="ss-topmost" id="topmostWrap" title="다른 창보다 항상 위에 둡니다(독립창 앱에서만)"><input id="topmost" type="checkbox"> 항상 위</label>
   </div>
 </header>
 <div id="haltBanner" class="ss-halt" hidden>

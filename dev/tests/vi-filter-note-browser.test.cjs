@@ -19,8 +19,8 @@ const assert=require('node:assert/strict'),express=require('express'),{chromium}
   assert.ok(l.note.x>=l.clock.x+l.clock.width,'right of the clock');assert.ok(Math.abs(l.note.y-l.clock.y)<8,'on the title line');
   assert.ok(l.note.x+l.note.width<=l.controls.x+1,'left of the filters');assert.equal(l.cut,false,'wide window: the whole text');
   assert.equal(l.title,'값 확인 전이라 빠진 행 12건');
-  // Narrow (1100px: title, clock and controls still fit on one line): cut with …, left of the controls. Below about 950px the controls wrap as before.
-  await page.setViewportSize({width:1100,height:600});await page.waitForTimeout(100);l=await layout();
+  // Narrow (1300px: title, clock, 보기배율 동기화 · 항상 위 and controls still fit on one line): cut with …, left of the controls. Below about 1240px the controls wrap (2026-11-26: the two window checkboxes moved next to the clock).
+  await page.setViewportSize({width:1300,height:600});await page.waitForTimeout(100);l=await layout();
   assert.equal(l.ellipsis,'ellipsis');assert.equal(l.cut,true,'narrow window: cut');
   assert.ok(l.note.x+l.note.width<=l.controls.x+1,'does not run into the filters · checkboxes');
   assert.ok(Math.abs(l.gap.y-l.clock.y)<12,'the checkbox stays on the title line');

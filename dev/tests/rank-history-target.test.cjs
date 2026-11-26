@@ -178,3 +178,13 @@ test('automatic minute refresh skips cards while history is in flight, resumes a
  release();await pending;f.flush();calls.length=0;
  await f.api.refreshCharts({automatic:true});assert.deepEqual(calls,['concentration','combinedSupply'],'끝나면 다시 갱신');
 });
+// 2026-11-26 오라클 측정 4 · 9: 쪽 없이 구간(ensureRange)으로 받는 카드까지 '원천 자료 끝'으로 쳐 안내가 모든 카드에 붙었다.
+// 구간을 채운 뒤에도 첫 자료가 목표보다 늦은 카드만 끝난 것으로 본다.
+test('minute: a card filled by its range read is not exhausted; a card still short of the target is',async()=>{
+ const f=fixture('minute','2026-10-23T12:00:00+09:00');f.add('concentration',22,[18]);f.add('marketSupply',22,[]);
+ const breadth={first:22};f.add('breadth',22,[]);
+ f.api.registerHistoryLoader('breadth',async()=>{},()=>false,()=>({hasMore:false,coverageFirst:f.date(breadth.first),ensureRange:async()=>{breadth.first=18;f.states.breadth.first=18;f.states.breadth.draw();}}));
+ f.flush();const r=await f.api.requestHistory('minute');f.flush();
+ assert.equal(r.target,f.date(18));assert.ok(!r.exhausted.includes('breadth'),'range-filled card is not exhausted');
+ assert.ok(r.exhausted.includes('marketSupply'));assert.equal(JSON.stringify(r.metrics.exhausted),'["marketSupply"]');
+});

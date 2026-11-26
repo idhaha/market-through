@@ -1,6 +1,6 @@
 const fs=require('fs'),assert=require('node:assert/strict'),{chromium}=require('playwright');
 (async()=>{const browser=await chromium.launch({headless:true,channel:'chrome'});try{
- const page=await browser.newPage({viewport:{width:1900,height:1100}}),errors=[],requests=[];page.on('pageerror',e=>errors.push(e.message));
+ const page=await browser.newPage({viewport:{width:1900,height:1100}}),errors=[],requests=[];let kisActive=0,kisMax=0;page.on('pageerror',e=>errors.push(e.message));
  const weekend=process.env.MINUTE_TEST_WEEKEND==='1';await page.clock.install({time:new Date(weekend?'2026-10-25T01:00:00+09:00':'2026-10-23T12:00:00+09:00')});
  await page.addInitScript(()=>{window.candleRects={};const old=CanvasRenderingContext2D.prototype.fillRect,clear=CanvasRenderingContext2D.prototype.clearRect;CanvasRenderingContext2D.prototype.clearRect=function(...a){if(this.canvas.closest('.rank-adr-candle-area,.concentration-candle-area'))window.candleRects[this.canvas.closest('section')?.id]=[];return clear.apply(this,a);};CanvasRenderingContext2D.prototype.fillRect=function(...a){if(this.canvas.closest('.rank-adr-candle-area,.concentration-candle-area'))(window.candleRects[this.canvas.closest('section')?.id]||=[]).push(a);return old.apply(this,a);};});
  const html=fs.readFileSync('public/index.html','utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'').replace(/<link\b[^>]*>/gi,'');
@@ -29,6 +29,8 @@ const fs=require('fs'),assert=require('node:assert/strict'),{chromium}=require('
  else if(u.pathname==='/api/adr/today')data={intraday:[],lastClosed:{date:'20261023',adr:75.5}};
  else if(u.pathname==='/api/risk/breadth')data={dates:prices(market).slice(-5).map(p=>p.date),series:Object.fromEntries(['highs','lows'].map(id=>[id,{points:prices(market).slice(-5).map(p=>({date:p.date,value:null}))}])),has_more:false};
  else if(u.pathname.startsWith('/api/'))data={success:true,series:[],points:[],has_more:false};
+ // 종목 수급 지난날(date=) 응답은 0.15초 늦게 준다: 구간 날짜를 함께(최대 3개) 묻는지 본다(2026-11-26 오라클 측정 6).
+ if(data && u.pathname==='/api/kis-supply/chart' && u.searchParams.get('date')){kisActive++;kisMax=Math.max(kisMax,kisActive);return new Promise(r=>setTimeout(r,150)).then(()=>{kisActive--;return route.fulfill({json:data});});}
  if(data)return route.fulfill({json:data});return route.fulfill({contentType:'text/html',body:html});});
  await page.goto('http://minute.test/');await page.addStyleTag({content:fs.readFileSync('public/style.css','utf8')+'#loginOverlay{display:none!important}#tabContents,#tab_rank{display:block!important}'});
  for(const f of ['rank-chart-axis.js','concentration-chart.js','rank-turnover-chart.js','rank-volatility-chart.js','rank-supply-chart.js','rank-market-supply-chart.js'])await page.addScriptTag({path:'public/'+f});
@@ -49,10 +51,11 @@ const fs=require('fs'),assert=require('node:assert/strict'),{chromium}=require('
  assert.equal(history.candleFirst,times[0]);
  assert.ok(requests.some(u=>u.includes('mode=minute&from=20261019&to=20261023')),'full common history must be requested even when market response contains only latest 5 candles');
  for(const code of ['000660','005930']){
-  const mark=requests.length;
+  const mark=requests.length;kisMax=0;
   await page.locator('#rankCombinedSupplyChartPanel .supply-stock-select').selectOption(code);
   await page.waitForFunction(()=>!document.querySelector('#rankCombinedSupplyChartPanel .supply-stock-select').disabled);
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(700);
+  assert.ok(kisMax>=2 && kisMax<=3,'past days of the period are fetched together, at most 3 at once: '+kisMax);
   for(const day of ['2026-10-19','2026-10-20','2026-10-21','2026-10-22'])assert.ok(requests.slice(mark).some(u=>u.includes('/api/kis-supply/chart?')&&u.includes('code='+code)&&u.includes('date='+day)),code+' '+day);
   assert.ok(await page.evaluate(()=>window.candleRects.rankCombinedSupplyChartPanel?.length>=99),'new symbol must preserve five days of price candles');
   assert.equal(await page.locator('#rankCombinedSupplyChartPanel .rank-candle-label').textContent(),code==='000660'?'SK하이닉스':'삼성전자');

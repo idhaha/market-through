@@ -195,7 +195,9 @@
         const name = $('fName'); name.textContent = '';
         if (!lot) { name.textContent = '-'; $('fLot').textContent = '-'; $('fAcct').textContent = '-'; return; }
         name.append(lot.name, ' ', el('span', { class: 'code' }, lot.code), badges(lot.nxt), el('span', { class: 'dae' }, '대주'));
-        $('fLot').textContent = `${lot.loanDt} · 가능수량 ${fmt(lot.able)}주 · 만기 ${lot.maturity || '-'}`;
+        // 가능수량은 다른 감시 건(감시중 · 중지)에 할당한 수량을 뺀 남은 수량(2026-11-26 사용자 지적: 등록한 수량까지 다 가능으로 보였음)
+        const rem = remainingFor(lot, selectedWatch), held = rem == null ? lot.able : rem;
+        $('fLot').textContent = `${lot.loanDt} · 가능수량 ${fmt(held)}주${rem != null && rem < lot.able ? `(감시 등록 ${fmt(lot.able - rem)}주 제외)` : ''} · 만기 ${lot.maturity || '-'}`;
         $('fAcct').textContent = acct8(lot.account || state?.account) || '-'; // 계좌는 대출일 아래 따로, 앞 8자리(2026-11-24)
     }
     function defaultUntil(lot) { const d = new Date(kstDay(serverNow()) + 'T00:00:00Z'); d.setUTCMonth(d.getUTCMonth() + 1); return adjust(d.toISOString().slice(0, 10), lot).value; }
@@ -455,8 +457,11 @@
         }
     }
     // 항상 위(2026-11-26 사용자 요청): 독립창 앱(WebView2)에 topmost 메시지를 보낸다. 브라우저에서는 감춘다.
-    if (window.chrome?.webview) $('topmost').addEventListener('change', e => window.chrome.webview.postMessage('topmost:' + e.target.checked));
-    else $('topmostWrap').hidden = true;
+    if (window.chrome?.webview) {
+        $('topmost').addEventListener('change', e => window.chrome.webview.postMessage('topmost:' + e.target.checked));
+        try { $('scaleSync').checked = localStorage.getItem('ss-scale-sync') === 'true'; } catch {}
+        $('scaleSync').addEventListener('change', e => { try { localStorage.setItem('ss-scale-sync', String(e.target.checked)); } catch {} if (e.target.checked) { scaleAt = 0; followScale(); } });
+    } else $('topmostWrap').hidden = true;
     $('policyBtn').addEventListener('click', () => { renderPolicy(); $('policyModal').hidden = false; $('policyModal').querySelector('[data-close]').focus(); });
     for (const m of document.querySelectorAll('.modal')) {
         m.addEventListener('click', e => { if (e.target === m || e.target.closest('[data-close]')) m.hidden = true; });
@@ -491,10 +496,10 @@
         autoUntil(); autoTrigger();
         followScale();
     }
-    // 독립창 앱: 메인 화면의 확대 · 축소 배율을 따라간다(VI 창과 같음). 메인 화면이 바꾼 배율을 5초마다 확인한다
+    // 독립창 앱: '메인창과 보기배율 동기화'를 켰을 때만 메인 화면의 확대 · 축소 배율을 따라간다(2026-11-26, 기본 끔, 이 창에 저장). 메인 화면이 바꾼 배율을 5초마다 확인한다
     let scaleAt = 0;
     async function followScale() {
-        if (!native || !token || Date.now() - scaleAt < 5000) return; scaleAt = Date.now();
+        if (!native || !token || !$('scaleSync')?.checked || Date.now() - scaleAt < 5000) return; scaleAt = Date.now();
         try {
             const r = await fetch('/api/short-stoploss/window-info', { headers: auth() }); if (!r.ok) return;
             const ratio = Number((await r.json()).scale) / devicePixelRatio;

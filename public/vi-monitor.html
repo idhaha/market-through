@@ -2,16 +2,16 @@
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MarketThrough VI 모니터링</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261108_tabular_nums"><link rel="stylesheet" href="data-collection-info.css?v=20261112_table_border"><link rel="stylesheet" href="vi-monitor.css?v=20261116_dir">
-<script src="vi-monitor.js?v=20261120_launch" defer></script><script src="vi-monitor-chart.js?v=20261115_pre" defer></script>
+<link rel="stylesheet" href="style.css?v=20261108_tabular_nums"><link rel="stylesheet" href="data-collection-info.css?v=20261112_table_border"><link rel="stylesheet" href="vi-monitor.css?v=20261126_scale">
+<script src="vi-monitor.js?v=20261126_scale" defer></script><script src="vi-monitor-chart.js?v=20261115_pre" defer></script>
 <script src="data-collection-info.js?v=20261120_shared_ws" defer></script><script src="vi-monitor-info.js?v=20261120_shared_ws" defer></script></head>
 <body class="vi-monitor"><main class="panel vi-panel">
-<header class="panel-header"><h1>VI 실시간 모니터링</h1><span id="viClock" class="vi-clock"></span><span id="viFilterNote" class="vi-filter-note"></span>
+<header class="panel-header"><h1>VI 실시간 모니터링</h1><span id="viClock" class="vi-clock"></span><span class="vi-window-controls"><label title="켜면 메인 화면의 확대 · 축소 배율을 따라갑니다. 끄면 이 창에서 Ctrl+ · Ctrl- 로 바꾼 배율을 그대로 둡니다"><input id="viScaleSync" type="checkbox"> 메인창과 보기배율 동기화</label><label><input id="viTopmost" type="checkbox"> 항상 위</label></span><span id="viFilterNote" class="vi-filter-note"></span>
 <div class="vi-controls">
 <button id="viLive" type="button" class="vi-live" hidden>실시간으로</button><input id="viDate" type="date" class="vi-date" aria-label="VI 기록 날짜" title="날짜를 고르면 그날 VI 창 기록(해제 때 값)을 봅니다. 기록은 이 서버가 VI를 받은 날부터 쌓입니다">
 <label>거래대금(전일기준) <select id="viPrevAmount" class="vi-filter-select" aria-label="전일 거래대금 필터"><option value="0">전체</option><option value="2e10">200억 이상</option><option value="5e10">500억 이상</option><option value="1e11">1천억 이상</option><option value="3e11">3천억 이상</option><option value="5e11">5천억 이상</option><option value="1e12">1조 이상</option><option value="2e12">2조 이상</option></select></label>
 <label>시가총액 <select id="viMarketCap" class="vi-filter-select" aria-label="시가총액 필터"><option value="0">전체</option><option value="2e11">2천억 이상</option><option value="5e11">5천억 이상</option><option value="1e12">1조 이상</option><option value="2e12">2조 이상</option><option value="5e12">5조 이상</option><option value="1e13">10조 이상</option></select></label>
-<label title="발동부터 해제 전까지 Base 대비 다른 시장(KRX · NXT · 선물 감시 월물) 괴리율의 절댓값이 한 번이라도 1% 이상이었던 행만 봅니다 (마지막 체결이 1분 안인 시장만 판정)"><input id="viGapOnly" type="checkbox" checked> 괴리율 1% 이상 보기</label><label><input id="viTopmost" type="checkbox"> 항상 위</label></div></header>
+<label title="발동부터 해제 전까지 Base 대비 다른 시장(KRX · NXT · 선물 감시 월물) 괴리율의 절댓값이 한 번이라도 1% 이상이었던 행만 봅니다 (마지막 체결이 1분 안인 시장만 판정)"><input id="viGapOnly" type="checkbox" checked> 괴리율 1% 이상 보기</label></div></header>
 <div class="table-wrapper"><table aria-label="당일 VI 발동·해제와 선물 가격제한 이벤트">
 <thead><tr>
 <th rowspan="2" scope="col">순위</th><th rowspan="2" scope="col"><button data-sort="market">시장</button></th><th rowspan="2" scope="col"><button data-sort="name">종목명</button></th>

@@ -64,6 +64,10 @@
 .vi-panel .vi-clock, .vi-panel .vi-controls { line-height:16px; }
 .vi-panel .vi-controls label { display:inline-flex; align-items:center; gap:4px; color:var(--text-muted); cursor:pointer; }
 .vi-panel .vi-controls input[type="checkbox"] { margin:0; width:13px; height:13px; }
+/* 2026-11-26: 보기배율 동기화 · 항상 위는 시계 바로 오른쪽. */
+.vi-panel .vi-window-controls { display:flex; align-items:center; gap:10px; margin-left:12px; font-size:12px; line-height:16px; flex-shrink:0; white-space:nowrap; }
+.vi-panel .vi-window-controls label { display:inline-flex; align-items:center; gap:4px; color:var(--text-muted); cursor:pointer; }
+.vi-panel .vi-window-controls input[type="checkbox"] { margin:0; width:13px; height:13px; }
 /* Sort icons (preview.html style): muted arrows, active direction darker; dot for inactive columns. */
 .vi-panel th button { display:inline-flex; align-items:center; gap:3px; }
 /* Long title on two lines (KRX 매수10호가 / 평균). */

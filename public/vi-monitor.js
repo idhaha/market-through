@@ -13,7 +13,9 @@
     }
     let ready=launch?exchange(launch):Promise.resolve();
     // Follow the main browser's zoom (sent by the server). The ratio uses the current zoom, so repeats are harmless.
-    const applyScale=scale=>{const ratio=Number(scale)/devicePixelRatio;if(Number.isFinite(ratio)&&ratio>=0.25&&ratio<=4&&Math.abs(ratio-1)>0.02)window.chrome?.webview?.postMessage('page-scale:'+ratio);};
+    // 2026-11-26: '메인창과 보기배율 동기화'를 켰을 때만 따라간다(기본 끔, 이 창에 저장). 끄면 이 창에서 Ctrl+로 바꾼 배율을 그대로 둔다.
+    let mainScale=NaN;const scaleSync=()=>document.getElementById('viScaleSync')?.checked;
+    const applyScale=scale=>{mainScale=Number(scale);if(!scaleSync())return;const ratio=Number(scale)/devicePixelRatio;if(Number.isFinite(ratio)&&ratio>=0.25&&ratio<=4&&Math.abs(ratio-1)>0.02)window.chrome?.webview?.postMessage('page-scale:'+ratio);};
     history.replaceState(null,'',location.pathname);
     const body=document.getElementById('viBody'),status=document.getElementById('viStatus'),summary=document.getElementById('viSummary');
     // liveData: the server stream. historyData: a past day chosen with the date picker (2026-11-14); shown instead of the stream.
@@ -207,6 +209,8 @@
             .catch(()=>{dismissing.delete(key);status.textContent='깜박임 해제 저장 실패 · 다시 클릭해 주세요';render();});
     });
     document.getElementById('viTopmost').addEventListener('change',e=>window.chrome?.webview?.postMessage('topmost:'+e.target.checked));
+    {const sync=document.getElementById('viScaleSync');try{sync.checked=localStorage.getItem('viScaleSync')==='true';}catch{}
+     sync.addEventListener('change',()=>{try{localStorage.setItem('viScaleSync',String(sync.checked));}catch{}if(sync.checked&&Number.isFinite(mainScale))applyScale(mainScale);});}
     // 날짜 선택(2026-11-14): 지난 날짜는 서버의 날짜별 기록을 읽어 보여 주고, '실시간으로'나 오늘 날짜를 고르면 스트림으로 돌아간다.
     const dateInput=document.getElementById('viDate'),liveButton=document.getElementById('viLive');
     function liveStatus(){
@@ -264,7 +268,7 @@
             retryTimer=setTimeout(connect,3000);
         }
     }
-    window.refreshNativeViCredentials=newLaunch=>{ready=exchange(newLaunch);clearTimeout(retryTimer);void connect();};
+    window.refreshNativeViCredentials=newLaunch=>{if(document.getElementById('viTopmost').checked)window.chrome?.webview?.postMessage('topmost:true');/* 앱이 다시 열면서 항상 위를 끄므로 체크 상태대로 되돌린다 */ready=exchange(newLaunch);clearTimeout(retryTimer);void connect();};
     window.addEventListener('pagehide',()=>{closed=true;clearTimeout(retryTimer);controller?.abort();});
     setInterval(tickClock,1000);tickClock();requestAnimationFrame(frame);void connect();void sendRecordFilter();
 })();

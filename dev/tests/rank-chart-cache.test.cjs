@@ -288,3 +288,44 @@ test('쏠림율 1분봉 지난 날짜 커서(day:YYYYMMDD)와 과거 구간 첫 
  await read({...past,cursor:'opaque'});await read({...past,cursor:'opaque'});assert.equal(calls.length,6,'세션 커서는 저장하지 않는다');
  }finally{await browser.close();}
 });
+// 2026-11-26 오라클 측정 5(같은 과거 구간 다시): 저장분 읽기가 건당 0.4~1.5초. 저장할 때마다 정리(prune)가 responses 저장소 전체를
+// 커서로 읽어(본문까지 최대 160MB) 그동안 읽기가 줄을 섰다. 정리는 meta(시각 · 크기)만 읽고, 꺼내 쓴 시각도 meta에만 적는다.
+// 장중(자동 갱신 · 뒤에서 다시 받기)과 장 종료 뒤(저장분만) 두 조건 모두에서 확인한다(2026-11-26 AGENTS.md: 장중 · 장후 수정 상충 점검).
+for(const open of [false,true])test(`${open?'market open':'market closed'}: prune and touch never scan or rewrite stored response bodies; v1 database is upgraded`,async()=>{
+ const browser=await chromium.launch({headless:true,channel:'msedge'});
+ try{
+  const page=await browser.newPage();
+  await page.route('https://prune-meta.test/**',route=>{
+   const u=new URL(route.request().url());
+   if(u.pathname==='/')return route.fulfill({contentType:'text/html',body:'<html></html>'});
+   if(u.pathname==='/api/chart-revisions')return route.fulfill({json:{success:true,revisions:{}}});if(u.pathname==='/api/auth/session')return route.fulfill({json:{authenticated:true,user:{email:'prune@example.test'}}});
+   return route.fulfill({json:{success:true,points:[{t:1793059200000,value:Number(u.searchParams.get('cursor'))}],cursor:'20260801',has_more:true}});
+  });
+  await page.goto('https://prune-meta.test/');
+  // 1판 저장소(responses만, 본문에 시각 포함)를 만들어 둔다.
+  await page.evaluate(()=>new Promise(resolve=>{const r=indexedDB.open('marketthrough-chart-cache-v1',1);r.onupgradeneeded=()=>r.result.createObjectStore('responses',{keyPath:'key'});r.onsuccess=()=>{const tx=r.result.transaction('responses','readwrite');tx.objectStore('responses').put({key:'old',at:Date.now(),data:{success:true}});tx.oncomplete=()=>{r.result.close();resolve();};};}));
+  await page.evaluate(open=>{window.__open=open;},open);
+  await page.evaluate(()=>{
+   window.TradingRefresh={allowsUrl:()=>window.__open};window.__scans=[];window.__bodyWrites=0;
+   for(const name of ['openCursor','getAll']){const original=IDBObjectStore.prototype[name];IDBObjectStore.prototype[name]=function(...a){window.__scans.push(this.name+'.'+name);return original.apply(this,a);};}
+   const put=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(v){if(this.name==='responses'&&!v?.meta)window.__bodyWrites++;return put.call(this,v);};
+  });
+  await page.addScriptTag({path:'public/rank-chart-cache.js'});
+  const read=cursor=>page.evaluate(async c=>(await (await RankChartCache.fetch('/api/ls-turnover/chart?mode=minute&cursor='+c)).json()).points[0].value,cursor);
+  for(let i=0;i<5;i++)assert.equal(await read(20260810+i),20260810+i);
+  await page.waitForTimeout(300);
+  const state=await page.evaluate(()=>new Promise(resolve=>{const r=indexedDB.open('marketthrough-chart-cache-v1');r.onsuccess=()=>{const d=r.result,tx=d.transaction(['responses','meta']);const a=tx.objectStore('responses').getAllKeys(),b=tx.objectStore('meta').getAll();tx.oncomplete=()=>{const out={version:d.version,stores:[...d.objectStoreNames],responses:a.result.length,old:a.result.includes('old'),meta:b.result.map(m=>({bytes:m.bytes>0,used:m.used}))};d.close();resolve(out);};};}));
+  assert.equal(state.version,2);assert.deepEqual(state.stores.sort(),['meta','responses']);
+  assert.equal(state.old,false,'v1 entries without meta are dropped on upgrade');
+  assert.equal(state.meta.filter(m=>m.bytes).length,5,'each saved page has its size in meta');
+  const scans=await page.evaluate(()=>window.__scans);
+  assert.ok(!scans.some(s=>s.startsWith('responses.')),'prune never scans response bodies: '+scans.join(','));
+  assert.ok(scans.includes('meta.getAll'),'prune reads meta');
+  // 1분 넘게 지난 저장분을 다시 꺼내 써도 본문은 다시 쓰지 않고 meta의 used만 바뀐다.
+  const writes=await page.evaluate(()=>window.__bodyWrites);
+  await page.evaluate(()=>{const now=Date.now;Date.now=()=>now()+120000;});
+  await page.addScriptTag({path:'public/rank-chart-cache.js'});
+  assert.equal(await read(20260810),20260810);await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(()=>window.__bodyWrites),writes,'touch writes meta only');
+ }finally{await browser.close();}
+});

@@ -518,10 +518,13 @@
                 if (updateHistory) { cursor = result.cursor; hasMore = result.has_more === true; historyLoaded = true; }
                 if(firstResponse && restoreRange && mode==='minute'){
                     const older=[];
-                    for(const day of restoreRange.days){
-                        minuteDays.add(day);if(day===result.date)continue;
-                        const params=new URLSearchParams({code:selected,mode:'minute',cursor:day.replaceAll('-',''),...((queryEndpoint==='/api/market-supply/chart'||queryEndpoint==='/api/ls-futures-test/chart')?{prices:'0'}:{})});
-                        const past=await request(`${queryEndpoint}?${params}`,{signal:current.signal});
+                    // 구간의 날짜들을 3개씩 함께 받는다(2026-11-26 오라클 측정 6). 합치는 순서는 날짜 순서 그대로다.
+                    const pastDays=restoreRange.days.filter(day=>{minuteDays.add(day);return day!==result.date;}),pastJobs=new Map();let nextPast=0,runningPast=0;
+                    const startPast=()=>{while(nextPast<pastDays.length && runningPast<3){const day=pastDays[nextPast++],params=new URLSearchParams({code:selected,mode:'minute',cursor:day.replaceAll('-',''),...((queryEndpoint==='/api/market-supply/chart'||queryEndpoint==='/api/ls-futures-test/chart')?{prices:'0'}:{})});runningPast++;const task=request(`${queryEndpoint}?${params}`,{signal:current.signal}).finally(()=>{runningPast--;startPast();});task.catch(()=>{});pastJobs.set(day,task);}};
+                    startPast();
+                    for(const day of pastDays){
+                        while(!pastJobs.has(day))await new Promise(r=>setTimeout(r,10));
+                        const past=await pastJobs.get(day);
                         if(id!==revision)return;
                         recordCoverage(past,day.replaceAll('-',''));
                         points=mergeFlow(points,(past.points || []).filter(p=>Number.isFinite(p.t)));

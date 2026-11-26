@@ -15,7 +15,7 @@ h2{font-size:14px;margin:0}
 .ss-top .i{background:transparent;color:#FFFFFF;border-color:#C9D3E3}
 .ss-pill{padding:3px 10px;border-radius:10px;font-size:12px;font-weight:500}
 .ss-rt{display:inline-flex;gap:6px}
-.ss-topmost{display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer}.ss-topmost input{margin:0;cursor:pointer}.ss-topmost[hidden]{display:none}
+.ss-topmost{display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer}.ss-topmost input{margin:0;cursor:pointer}.ss-wincontrols{display:inline-flex;align-items:center;gap:10px;margin-left:6px}.ss-wincontrols[hidden]{display:none}
 .ss-pill.seg{background:#2F6FD6}
 .ss-pill.on{background:#1B6B3A}
 .ss-pill.off{background:#6B7484}

@@ -72,12 +72,12 @@ const assert=require('node:assert/strict'),express=require('express'),{chromium}
   // Header controls: dropdowns left of 괴리율 1% 이상 보기, same 12px font, vertically centered with it.
   const geometry=await page.evaluate(()=>{
    const r=el=>el.getBoundingClientRect(),mid=el=>{const b=r(el);return b.top+b.height/2;};
-   const prev=document.getElementById('viPrevAmount'),cap=document.getElementById('viMarketCap'),gap=document.getElementById('viGapOnly').closest('label'),top=document.getElementById('viTopmost').closest('label');
-   return {order:r(prev).right<=r(cap).left&&r(cap).right<=r(gap).left&&r(gap).right<=r(top).left,
+   const prev=document.getElementById('viPrevAmount'),cap=document.getElementById('viMarketCap'),gap=document.getElementById('viGapOnly').closest('label'),top=document.getElementById('viTopmost').closest('label'),sync=document.getElementById('viScaleSync').closest('label'),clock=document.getElementById('viClock');
+   return {order:r(prev).right<=r(cap).left&&r(cap).right<=r(gap).left&&r(clock).right<=r(sync).left&&r(sync).right<=r(top).left,
     fonts:[prev,cap,prev.closest('label'),gap].map(el=>getComputedStyle(el).fontSize),
-    centers:[prev,cap,gap,top].map(el=>Math.round(mid(el)))};
+    centers:[prev,cap,gap,top,sync].map(el=>Math.round(mid(el)))};
   });
-  assert.equal(geometry.order,true,'거래대금 · 시가총액 · 괴리율 1% 이상 보기 · 항상 위');
+  assert.equal(geometry.order,true,'거래대금 · 시가총액 · 괴리율 1% 이상 보기, 시계 오른쪽에 보기배율 동기화 · 항상 위(2026-11-26)');
   assert.deepEqual([...new Set(geometry.fonts)],['12px']);
   assert.ok(Math.max(...geometry.centers)-Math.min(...geometry.centers)<=1,'vertical centers '+geometry.centers);
   assert.match(await page.locator('#viStatus').textContent(),/선물 이벤트 꺼짐/);

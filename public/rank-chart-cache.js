@@ -15,17 +15,28 @@
     async function hash(value){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))].map(n=>n.toString(16).padStart(2,'0')).join('');}
     function db(){
         if(!window.indexedDB)return Promise.resolve(null);
-        if(!database)database=new Promise(resolve=>{try{const r=indexedDB.open('marketthrough-chart-cache-v1',1);r.onupgradeneeded=()=>r.result.createObjectStore('responses',{keyPath:'key'});r.onsuccess=()=>resolve(r.result);r.onerror=()=>resolve(null);r.onblocked=()=>resolve(null);}catch{resolve(null);}});
+        // 2판(2026-11-26): 정리(prune)가 저장분 전체(최대 160MB)를 읽지 않도록 시각 · 크기만 담은 meta 저장소를 따로 둔다.
+        // 1판에서는 저장할 때마다 정리가 모든 응답 본문을 꺼내 읽어(readwrite) 그동안 저장분 읽기가 줄을 섰다(오라클 측정 5:
+        // 같은 과거 구간을 다시 열 때 저장분 한 건이 0.4~1.5초, 로컬 재현 200건에서 건당 약 0.3초). 1판 저장분에는 meta가 없어 비운다.
+        if(!database)database=new Promise(resolve=>{try{const r=indexedDB.open('marketthrough-chart-cache-v1',2);r.onupgradeneeded=event=>{const d=r.result;if(!d.objectStoreNames.contains('responses'))d.createObjectStore('responses',{keyPath:'key'});else if(event.oldVersion<2)r.transaction.objectStore('responses').clear();if(!d.objectStoreNames.contains('meta'))d.createObjectStore('meta',{keyPath:'key'});};r.onsuccess=()=>{r.result.onversionchange=()=>{r.result.close();database=null;};resolve(r.result);};r.onerror=()=>resolve(null);r.onblocked=()=>resolve(null);}catch{resolve(null);}});
         return database;
     }
     async function storage(action,key,value){
         const d=await db();if(!d)return null;
-        return new Promise(resolve=>{try{const tx=d.transaction('responses',action==='get'?'readonly':'readwrite'),store=tx.objectStore('responses');const r=action==='get'?store.get(key):action==='put'?store.put(value):store.delete(key);let result=null;r.onsuccess=()=>{result=r.result;};tx.oncomplete=()=>resolve(result);tx.onerror=tx.onabort=()=>resolve(null);}catch{resolve(null);}});
+        // touch: 꺼내 쓴 시각(used)만 meta에 적는다(예전엔 쓴 시각 하나 때문에 0.7MB 응답을 통째로 다시 썼다).
+        const stores=action==='get'?['responses']:action==='touch'?['meta']:['responses','meta'];
+        return new Promise(resolve=>{try{const tx=d.transaction(stores,action==='get'?'readonly':'readwrite'),store=tx.objectStore(stores[0]);let r;
+            if(action==='get')r=store.get(key);
+            else if(action==='touch')r=store.put(value);
+            else if(action==='put'){r=store.put(value);if(!value.meta)tx.objectStore('meta').put(metaOf(value));}
+            else{r=store.delete(key);tx.objectStore('meta').delete(key);}
+            let result=null;r.onsuccess=()=>{result=r.result;};tx.oncomplete=()=>resolve(result);tx.onerror=tx.onabort=()=>resolve(null);}catch{resolve(null);}});
     }
+    function metaOf(entry){return {key:entry.key,at:entry.at,used:entry.used||entry.at,bytes:entry.bytes||0,ttl:entry.ttl||TTL,scope:entry.scope,path:entry.path};}
     let pruneJob;
     async function prune(){
         if(pruneJob)return pruneJob;
-        pruneJob=(async()=>{const d=await db();if(!d)return;await new Promise(resolve=>{try{const tx=d.transaction('responses','readwrite'),store=tx.objectStore('responses'),r=store.openCursor(),items=[];r.onsuccess=()=>{const c=r.result;if(c){if(!c.value.meta)items.push({key:c.key,at:c.value.at,used:c.value.used||c.value.at,bytes:c.value.bytes||0,ttl:c.value.ttl||TTL});c.continue();return;}let size=0,count=0;for(const item of items.sort((a,b)=>b.used-a.used)){size+=item.bytes;count++;if(Date.now()-item.at>=item.ttl||count>DB_MAX_ENTRIES||size>DB_MAX_BYTES)store.delete(item.key);}};tx.oncomplete=tx.onerror=tx.onabort=()=>resolve();}catch{resolve();}});})().finally(()=>pruneJob=null);return pruneJob;
+        pruneJob=(async()=>{const d=await db();if(!d)return;await new Promise(resolve=>{try{const tx=d.transaction(['responses','meta'],'readwrite'),store=tx.objectStore('responses'),metas=tx.objectStore('meta'),r=metas.getAll();r.onsuccess=()=>{const items=r.result||[];let size=0,count=0;for(const item of items.sort((a,b)=>b.used-a.used)){size+=item.bytes;count++;if(Date.now()-item.at>=item.ttl||count>DB_MAX_ENTRIES||size>DB_MAX_BYTES){store.delete(item.key);metas.delete(item.key);}}};tx.oncomplete=tx.onerror=tx.onabort=()=>resolve();}catch{resolve();}});})().finally(()=>pruneJob=null);return pruneJob;
     }
     async function account(){
         // Native views authenticate by relay capability, not browser login cookies.
@@ -43,7 +54,8 @@
     async function purge(owner,match){
         for(const [key,entry] of memory)if(entry.scope===owner&&match(entry))memory.delete(key);
         const d=await db();if(!d)return;
-        await new Promise(resolve=>{try{const tx=d.transaction('responses','readwrite'),r=tx.objectStore('responses').openCursor();r.onsuccess=()=>{const c=r.result;if(!c)return;if(!c.value.meta&&c.value.scope===owner&&match(c.value))c.delete();c.continue();};tx.oncomplete=tx.onerror=tx.onabort=()=>resolve();}catch{resolve();}});
+        // 본문은 읽지 않고 meta(scope · path)로 고른다(2026-11-26).
+        await new Promise(resolve=>{try{const tx=d.transaction(['responses','meta'],'readwrite'),store=tx.objectStore('responses'),metas=tx.objectStore('meta'),r=metas.getAll();r.onsuccess=()=>{for(const m of r.result||[])if(m.scope===owner&&match(m)){store.delete(m.key);metas.delete(m.key);}};tx.oncomplete=tx.onerror=tx.onabort=()=>resolve();}catch{resolve();}});
     }
     function syncRevisions(owner){
         if(syncJobs.has(owner))return syncJobs.get(owner);
@@ -146,7 +158,7 @@
         if(blocked.has(key))return network();
         const entry=memory.get(key)||await storage('get',key);throwIfAborted(options.signal);
         // 꺼내 쓴 응답은 최근에 쓴 것으로 옮긴다(메모리 순서 · 저장분 used). 저장분은 1분에 한 번만 다시 적는다.
-        const touch=()=>{if(memory.has(key)){memory.delete(key);memory.set(key,entry);}if((!body||pastDayCursor||pastBase&&dayCursorOf(entry.data))&&!(Date.now()-(entry.used||entry.at)<TOUCH_MS)){entry.used=Date.now();void storage('put',key,entry);}};
+        const touch=()=>{if(memory.has(key)){memory.delete(key);memory.set(key,entry);}if((!body||pastDayCursor||pastBase&&dayCursorOf(entry.data))&&!(Date.now()-(entry.used||entry.at)<TOUCH_MS)){entry.used=Date.now();void storage('touch',key,metaOf(entry));}};
         if(entry&&entry.scope===owner&&Date.now()>=entry.at&&(Date.now()-entry.at<(entry.ttl||TTL) || window.TradingRefresh?.allowsUrl(url)===false)){
             // Persisted concentration responses have no reusable server cursor.
             // A user-initiated initial read must restore pagination even while
