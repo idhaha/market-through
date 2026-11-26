@@ -132,10 +132,11 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         await page.locator('#lotsTable tbody tr.pick').first().click();
         assert.equal(await page.textContent('#qtyNote'), '남은 가능수량이 없습니다(다른 감시 건에 모두 할당)'); assert.equal(await page.isDisabled('#addBtn'), true);
         // 회귀(2026-11-26 사용자 지적): 설정란 대출일 줄의 가능수량도 감시 등록 수량을 뺀 남은 수량(전에는 1주 그대로 보였음), 한 줄에 다 보임
-        assert.match(await page.textContent('#fLot'), / · 가능수량 0주\(감시 등록 1주 제외\) · 만기 /);
+        assert.equal(await page.textContent('#fLot'), '0주 (감시 등록 1주 제외)');
+        assert.equal(await page.evaluate(() => document.getElementById('fLot').previousElementSibling.textContent), '가능수량', '제목은 가능수량(대출일 · 만기는 설정란에 안 보임, 2026-11-26)');
         assert.ok(await page.$eval('#fLot', n => n.scrollWidth <= n.clientWidth + 1 && n.getClientRects().length === 1), '가능수량 줄이 잘리지 않음');
         await page.locator('#watchTable tbody tr.pick').first().click(); assert.equal(await page.isVisible('#qtyNote'), false, '그 감시 건을 고를 때는 자기 수량을 빼지 않음');
-        assert.match(await page.textContent('#fLot'), / · 가능수량 1주 · 만기 /, '감시 건을 고르면 자기 수량은 가능수량에 들어감');
+        assert.equal(await page.textContent('#fLot'), '1주', '감시 건을 고르면 자기 수량은 가능수량에 들어감');
         const q = (w, able) => page.evaluate(([w, able]) => { const st = { lotKey: 'x', ...w }; const lots = able == null ? [] : [{ key: 'x', able, qty: Math.max(able, 10) }]; return window.__ssQtyTextWith(st, lots); }, [w, able]);
         assert.deepEqual([await q({ qtyMode: 'pct', qtyValue: 30 }, 10), await q({ qtyMode: 'pct', qtyValue: 10 }, 5), await q({ qtyMode: 'shares', qtyValue: 3 }, 10), await q({ qtyMode: 'shares', qtyValue: 10 }, 10),
             await q({ qtyMode: 'pct', qtyValue: 50 }, null), await q({ qtyMode: 'shares', qtyValue: 4 }, null), await q({ qtyMode: 'pct', qtyValue: 50, orders: [{ qty: 7 }] }, 0), await q({ qtyMode: 'pct', qtyValue: 100 }, 0),
@@ -174,7 +175,10 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         k.price = 7350; await svc.step();
         assert.equal(k.orders.length, 0);
         // 켜면 발동 → 대주상환(77) → 체결완료
-        on = true; await svc.step();
+        // 회귀(2026-11-26 사용자 지적): 꺼진 서버는 위 표시 · 판정 칸이 '꺼짐', 켜면 화면도 '자동 주문 켜짐'(예전엔 켜진 서버에서도 늘 꺼짐)
+        assert.equal(await page.textContent('#autoState'), '자동 주문 꺼짐');
+        on = true; await page.waitForFunction(() => document.getElementById('autoState').textContent === '자동 주문 켜짐', null, { timeout: 5000 });
+        await svc.step();
         for (let i = 0; i < 50 && svc._state().watches[0].status !== '체결완료'; i++) await new Promise(r => setTimeout(r, 10));
         assert.equal(k.orders.length, 1); assert.equal(k.orders[0].crd_deal_tp, '77'); assert.equal(k.orders[0].ord_uv, '7450');
         await page.waitForFunction(() => document.querySelector('#watchTable tbody .st').textContent === '체결완료', null, { timeout: 5000 });

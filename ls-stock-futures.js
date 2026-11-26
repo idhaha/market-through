@@ -13,6 +13,7 @@ const dayKey = t => new Date(t + 9 * 3600000).toISOString().slice(0, 10);
 const compact = day => day.replaceAll('-', '');
 const dashed = ymd => `${ymd.slice(0, 4)}-${ymd.slice(4, 6)}-${ymd.slice(6, 8)}`;
 const at = (ymd, hhmmss = '000000') => Date.parse(`${dashed(ymd)}T${hhmmss.slice(0, 2)}:${hhmmss.slice(2, 4)}:${hhmmss.slice(4, 6)}+09:00`);
+const { openDelay, closeDelay, shiftClock } = require('./market-open-delay');
 const num = v => v == null || String(v).trim() === '' || !Number.isFinite(Number(v)) ? null : Number(v);
 const failure = (message, status = 400) => Object.assign(new Error(message), { status });
 const validCode = code => /^[0-9A-Z]{6}$/.test(String(code || ''));
@@ -299,7 +300,9 @@ function createLsStockFutures({ http, getToken, directory, supply, now = Date.no
         }
     }
     // Bars of one day from 'hour' back (all pages down to 08:45, or only the newest page to top up today's bars).
+    // 마감이 늦은 날(수능일 16:45 등)은 그만큼 늦은 시각부터 거슬러 받는다(2026-11-26: 15:46부터 받아 11/19 16:45까지의 봉이 빠졌다).
     async function fetchKisDay(item, day, { hour = '154600', pages = 8 } = {}) {
+        hour = shiftClock(hour, closeDelay(day, policy()?.openDate));
         const contract = kisContract(item, day), ymd = compact(day), bars = new Map();
         for (let page = 0; page < pages; page++) {
             const rows = await askKis({ code: contract, date: ymd, hour });
@@ -366,6 +369,8 @@ function createLsStockFutures({ http, getToken, directory, supply, now = Date.no
     // 지난날 분봉 파일(2026-11-22): <directory>/candles/<code>/<YYYY-MM-DD>.json.gz. 한투 FHKIF03020200은 하루에 여러 쪽(한 쪽 102봉)이라
     // 지난날 하나에 7~20초 걸리고 끊기기도 해(socket hang up) 끝난 날은 한 번 받아 둔다. 다시 쓰지 않는다(한 벌).
     // 저장 조건: 오늘보다 이전, 08:45~09:00 사이에 시작해 15:19 이후까지 이어진 날(한투가 그날을 다 준 날).
+    // 개장이 늦은 날(수능일 등, market-open-delay.js)은 그만큼 늦춘 시각으로 본다(2026-11-26 오라클 측정: 11/19 수능일은 09:45에
+    // 시작해 저장되지 않아, 그날을 볼 때마다 한투에서 다시 받느라 4.5초 걸렸다).
     const candleFile = (code, date) => path.join(directory, 'candles', code, `${date}.json.gz`);
     function readCandleDay(code, date) {
         try { const v = JSON.parse(zlib.gunzipSync(fs.readFileSync(candleFile(code, date)))); return v?.v === 1 && Array.isArray(v.candles) ? v : null; }
@@ -373,7 +378,9 @@ function createLsStockFutures({ http, getToken, directory, supply, now = Date.no
     }
     function saveCandleDay(code, date, value) {
         const file = candleFile(code, date), bars = value.candles, clock = t => new Date(t + 9 * 3600000).toISOString().slice(11, 16);
-        if (fs.existsSync(file) || !bars.length || clock(bars[0].t) > '09:00' || clock(bars.at(-1).t) < '15:19') return;
+        const openDate = policy()?.openDate, hm = hhmmss => hhmmss.slice(0, 2) + ':' + hhmmss.slice(2, 4);
+        const startBy = hm(shiftClock('090000', openDelay(date, openDate))), endFrom = hm(shiftClock('151900', closeDelay(date, openDate)));
+        if (fs.existsSync(file) || !bars.length || clock(bars[0].t) > startBy || clock(bars.at(-1).t) < endFrom) return;
         const json = JSON.stringify({ v: 1, contract: value.contract, next: value.next || null, candles: bars }), packed = zlib.gzipSync(json);
         if (zlib.gunzipSync(packed).toString() !== json) return;
         try { fs.mkdirSync(path.dirname(file), { recursive: true }); const temp = `${file}.${process.pid}.tmp`; fs.writeFileSync(temp, packed); if (fs.existsSync(file)) fs.rmSync(temp, { force: true }); else fs.renameSync(temp, file); }

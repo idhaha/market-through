@@ -232,3 +232,21 @@ test('장이 끝난 밤에 오늘을 물으면 저장한 오늘 분봉을 그대
  const partial=await svc.query({code:'005930',mode:'minute'});
  assert.equal(calls.filter(c=>c==='t8463').length,1);assert.equal(partial.points.length,1,'빈 응답으로 저장분을 버리지 않는다');
 });
+// 2026-11-26 오라클 측정 2: 11/19(수능일, 주식 파생 09:45~16:45)는 09:00 전에 시작하지 않아 저장되지 않았고, 그날을 볼 때마다 한투에서 다시 받아 4.5초.
+// 개장이 늦은 날은 늦춘 시각(market-open-delay.js)으로 다 받은 날인지 본다.
+test('개장이 늦은 날(수능일)도 늦춘 시각 기준으로 다 받았으면 선물 분봉을 저장한다',async()=>{
+ const saturday=Date.parse('2026-11-21T21:00:00+09:00'),directory=fs.mkdtempSync(path.join(os.tmpdir(),'lsf-test-'));
+ const kisMinute=async({date,hour})=>{const d=date.slice(0,4)+'-'+date.slice(4,6)+'-'+date.slice(6),end=Math.min(Date.parse(d+'T'+hour.slice(0,2)+':'+hour.slice(2,4)+':00+09:00'),Date.parse(d+'T16:44:00+09:00')),rows=[];
+  for(let i=0;i<102;i++){const t=end-i*60000,hh=new Date(t+9*3600000).toISOString().slice(11,16).replace(':','');
+   rows.push(hh<'0945'?{stck_bsop_date:'20000101',stck_cntg_hour:'150000',futs_oprc:1,futs_hgpr:1,futs_lwpr:1,futs_prpr:1}:{stck_bsop_date:date,stck_cntg_hour:hh+'00',futs_oprc:200000,futs_hgpr:200500,futs_lwpr:199500,futs_prpr:200100});}
+  return rows;};
+ const make=k=>createLsStockFutures({http:fakeLs([],{previous:'20261120'}),getToken:async()=>'t',directory,supply:{summary:()=>({stocks:[]})},now:()=>saturday,policy:()=>({openDate:()=>null}),pause:async()=>{},kisMinute:k});
+ try{
+  await make(kisMinute).candles({code:'005930',mode:'minute',date:'2026-11-19'});
+  assert.ok(fs.existsSync(path.join(directory,'candles','005930','2026-11-19.json.gz')),'수능일 09:45~16:44 분봉 저장');
+  // 늦은 날이라도 오후만 받은 날은 저장하지 않는다.
+  fs.rmSync(path.join(directory,'candles'),{recursive:true,force:true});
+  await make(async o=>(await kisMinute(o)).filter(r=>r.stck_cntg_hour>='130000')).candles({code:'005930',mode:'minute',date:'2026-11-19'});
+  assert.ok(!fs.existsSync(path.join(directory,'candles','005930','2026-11-19.json.gz')));
+ }finally{fs.rmSync(directory,{recursive:true,force:true});}
+});

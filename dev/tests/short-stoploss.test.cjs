@@ -11,9 +11,9 @@ function fakeKiwoom({ price = 7350, volume = 1000, ask = 7360, nxt = true, io = 
         const api = headers['api-id']; k.calls.push(api);
         const r = data => ({ status: 200, data: { return_code: 0, ...data } });
         if (api === 'ka00001') return r({ acctNo: '3699577211' });
-        if (api === 'kt00018') return r({ acnt_evlt_remn_indv_tot: [
-            { stk_cd: 'A004980', stk_nm: '/성신양회', crd_tp: '05', crd_tp_nm: '대주', crd_loan_dt: '20261123', rmnd_qty: String(k.held || 1), trde_able_qty: String(k.able), pur_pric: '7030', cur_prc: String(k.price), evltv_prft: '-10', prft_rt: '-0.1' },
-            { stk_cd: 'A180640', stk_nm: '한진칼', crd_tp: '00', crd_tp_nm: '', crd_loan_dt: '', rmnd_qty: '1', trde_able_qty: '1' }] });
+        if (api === 'kt00018') { k.balanceEx = [...(k.balanceEx || []), body.dmst_stex_tp]; const nx = body.dmst_stex_tp === 'NXT' && k.nxtBalance; return r({ acnt_evlt_remn_indv_tot: [
+            { stk_cd: 'A004980', stk_nm: '/성신양회', crd_tp: '05', crd_tp_nm: '대주', crd_loan_dt: '20261123', rmnd_qty: String(k.held || 1), trde_able_qty: String(k.able), pur_pric: '7030', cur_prc: String(nx ? nx.price : k.price), evltv_prft: nx ? nx.pl : '-10', prft_rt: nx ? nx.rate : '-0.1' },
+            { stk_cd: 'A180640', stk_nm: '한진칼', crd_tp: '00', crd_tp_nm: '', crd_loan_dt: '', rmnd_qty: '1', trde_able_qty: '1' }] }); }
         if (api === 'ka10085') return r({ acnt_prft_rt: [{ stk_cd: '004980', crd_tp: '07', loan_dt: '20261123', expr_dt: '20270222' }] });
         if (api === 'ka10001') {
             if (body.stk_cd.endsWith('_NX') && !k.nxt) return r({ cur_prc: '', base_pric: '' });
@@ -356,6 +356,17 @@ async function runUntilDone(e, w, rounds = 40) { for (let i = 0; i < rounds; i++
             assert.ok(sentAt[1] >= at('2026-11-20T' + notBefore), `${wantEx} 재주문 시각 ${new Date(sentAt[1] + 9 * 3600000).toISOString().slice(11, 19)}`);
             assert.equal(done.status, '체결완료'); e.stop();
         }
+    }
+    // 평가손익 · 현재가는 영웅문 0345(통합)처럼 마지막 체결 시장 기준(2026-11-26): 정규장은 KRX, 그 밖(밤 · NXT 애프터 · 프리마켓)은 NXT 대상이면 NXT 행
+    {
+        const k = fakeKiwoom(); k.nxtBalance = { price: 7400, pl: '-00000000000390', rate: '-5.55' };
+        const day = engine(k, { t: '2026-11-20T10:00:00' }); const dl = await day.e.loadLots();
+        assert.deepEqual([dl[0].price, dl[0].pl, dl[0].priceEx], [k.price, -10, 'KRX'], '정규장: KRX'); assert.deepEqual(k.balanceEx, ['KRX']);
+        k.balanceEx = []; const night = engine(k, { t: '2026-11-20T21:00:00' }); const nl = await night.e.loadLots();
+        assert.deepEqual([nl[0].price, nl[0].pl, nl[0].rate, nl[0].priceEx], [7400, -390, -5.55, 'NXT'], '밤: NXT 기준'); assert.deepEqual(k.balanceEx, ['KRX', 'NXT']);
+        const k2 = fakeKiwoom({ nxt: false }); k2.nxtBalance = k.nxtBalance; const off = engine(k2, { t: '2026-11-20T21:00:00' }); const ol = await off.e.loadLots();
+        assert.deepEqual([ol[0].pl, ol[0].priceEx], [-10, 'KRX'], 'NXT 비대상은 KRX 그대로'); assert.deepEqual(k2.balanceEx, ['KRX'], 'NXT 비대상뿐이면 NXT 조회 안 함');
+        day.e.stop(); night.e.stop(); off.e.stop();
     }
     console.log('short-stoploss: 모든 확인 통과');
 })().catch(error => { console.error(error); process.exit(1); });

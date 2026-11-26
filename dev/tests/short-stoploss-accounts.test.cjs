@@ -55,6 +55,13 @@ function fakeKiwoom(token, acctNo, pur) {
         assert.deepEqual(st.lots.map(l => [l.key, l.account, l.sellPrice]), [['main|004980:20261124', '3699-5772-11', 6960], ['28|004980:20261124', '5641-0328-10', 6920]]);
         assert.deepEqual(st.accounts.map(a => [a.id, a.account, a.realtime.state]), [['main', '3699-5772-11', 'VI 실시간 수신 중'], ['28', '5641-0328-10', '실시간 수신 중']]);
         assert.deepEqual(st.realtime, { connected: true, state: '3699-5772-11 VI 실시간 수신 중 · 5641-0328-10 실시간 수신 중' });
+        // 회귀(2026-11-26 사용자 지적): 합친 상태에 enabled가 빠져 자동 주문이 켜진 서버에서도 화면 위가 '자동 주문 꺼짐'이었다
+        assert.equal(st.enabled, false, '꺼진 서버'); on = true; const stOn = await all.state(); assert.equal(stOn.enabled, true, '켜진 서버(SHORT_STOPLOSS=on)');
+        assert.deepEqual(stOn.accounts.map(a => a.enabled), [true, true]); on = false;
+        // 한 계좌만 켜져 있어도 켜짐(2026-11-26 사용자 요청), 계좌별 값으로 판정 칸을 정한다
+        const fakeSvc = en => ({ ensure: async () => {}, snapshot: () => ({ enabled: en, account: en ? '1111111111' : '2222222222', lots: [], watches: [], segment: null, now: 0, realtime: null }) });
+        const mixed = await createShortStopLossAccounts([{ id: 'main', svc: fakeSvc(false) }, { id: '28', svc: fakeSvc(true) }]).state();
+        assert.equal(mixed.enabled, true); assert.deepEqual(mixed.accounts.map(a => [a.id, a.enabled]), [['main', false], ['28', true]]);
 
         // 2) 화면: 계좌 끝자리 표시, 계좌 고르기
         await page.goto(`http://127.0.0.1:${port}/short-stoploss.html`);

@@ -27,8 +27,10 @@ function createShortStopLossAccounts(accounts) {
         return {
             // 실시간: 계좌마다 자기 앱키 웹소켓(기본 계좌는 VI 공용 연결). 하나라도 끊기면 끊김으로 보이고, 풍선에 계좌별 상태
             realtime: rts.length ? { connected: rts.every(([, r]) => r.connected), state: rts.map(([a, r]) => (snaps.length > 1 ? a + ' ' : '') + (r.state || (r.connected ? '연결' : '끊김'))).join(' · ') } : null,
-            segment: first.segment, now: first.now,
-            accounts: snaps.map(([a, s]) => ({ id: a.id, account: tag(a, s), lotsAt: s.lotsAt, lotsError: s.lotsError, halted: s.halted, realtime: s.realtime })),
+            // 자동 주문 켜짐(2026-11-26 사용자 지적): 계좌를 합친 상태에 enabled가 빠져 오라클(SHORT_STOPLOSS=on)에서도 늘 '자동 주문 꺼짐'이었고
+            // 감시 건 판정 칸도 '자동 주문 꺼짐 · 판정 안 함'으로 보였다(11/21 추가 계좌부터, 실제 판정은 돌고 있었음). 한 계좌라도 켜져 있으면 켜짐, 계좌별 값은 accounts[].enabled.
+            enabled: snaps.some(([, s]) => s.enabled), segment: first.segment, now: first.now,
+            accounts: snaps.map(([a, s]) => ({ id: a.id, account: tag(a, s), enabled: !!s.enabled, lotsAt: s.lotsAt, lotsError: s.lotsError, halted: s.halted, realtime: s.realtime })),
             account: snaps.map(([a, s]) => tag(a, s)).join(' · '),
             halted: halted.length > 0, haltedReason: halted.map(([a, s]) => (snaps.length > 1 ? tag(a, s) + ': ' : '') + s.haltedReason).join(' / '), haltedAt: Math.max(0, ...halted.map(([, s]) => s.haltedAt || 0)),
             lotsAt: Math.min(...snaps.map(([, s]) => s.lotsAt || 0)) || 0,

@@ -58,9 +58,11 @@
     const serverNow = () => Date.now() + offset;
     const kstDay = t => new Date(t + 9 * 3600000).toISOString().slice(0, 10);
     function renderTop() {
-        $('autoState').textContent = state.enabled ? '자동 주문 켜짐' : '자동 주문 꺼짐(이 서버)';
+        // 한 계좌라도 켜져 있으면 켜짐(2026-11-26). 꺼진 계좌가 섞이면 풍선에 그 계좌를 적는다.
+        const offAccts = (state.accounts || []).filter(a => a.enabled === false).map(a => a.account);
+        $('autoState').textContent = state.enabled ? (offAccts.length ? '자동 주문 켜짐(일부 계좌)' : '자동 주문 켜짐') : '자동 주문 꺼짐';
         $('autoState').className = 'ss-pill ' + (state.enabled ? 'on' : 'off');
-        $('autoState').title = state.enabled ? '' : '이 서버는 주문을 내지 않습니다. 서버 설정 SHORT_STOPLOSS=on으로 켭니다.';
+        $('autoState').title = !state.enabled ? '자동 주문이 꺼져 있어 주문을 내지 않습니다(서버 설정 SHORT_STOPLOSS=on으로 켭니다). 장 시간과는 관계없습니다.' : offAccts.length ? '자동 주문 꺼진 계좌: ' + offAccts.join(', ') : '';
         $('segment').textContent = state.segment ? state.segment.label : '장 시간 아님';
         // 실시간 연결은 계좌마다 따로 보인다(2026-11-21): 기본 계좌는 VI 모니터와 공용 연결, 추가 계좌는 그 계좌 앱키의 연결
         const rts = (state.accounts?.length ? state.accounts : [{ account: state.account, realtime: state.realtime }]).filter(a => a.realtime), box = $('rtStates');
@@ -116,7 +118,7 @@
     function methodText(w) { return w.upperLimit ? '상한가 지정가' : `+${w.ticks}틱` + (w.fix ? ` · 정정(한도 ${w.chasePct}%)` : ' · 정정 안 함') + (w.cancelPending ? ' · 미체결 취소' : '') + (w.allLots ? ' · 전체 대출일' : ''); }
     function lastText(w) {
         if (w.status === '감시중') {
-            if (!state.enabled) return '자동 주문 꺼짐 · 판정 안 함';
+            if (!(state.accounts?.find(a => a.id === w.acct)?.enabled ?? state.enabled)) return '자동 주문 꺼짐 · 판정 안 함'; // 그 감시 건 계좌 기준(2026-11-26)
             if (!w.lastCheck) return '판정 대기';
             return new Date(w.lastCheck.at + 9 * 3600000).toISOString().slice(11, 19) + ' ' + w.lastCheck.text;
         }
@@ -197,7 +199,8 @@
         name.append(lot.name, ' ', el('span', { class: 'code' }, lot.code), badges(lot.nxt), el('span', { class: 'dae' }, '대주'));
         // 가능수량은 다른 감시 건(감시중 · 중지)에 할당한 수량을 뺀 남은 수량(2026-11-26 사용자 지적: 등록한 수량까지 다 가능으로 보였음)
         const rem = remainingFor(lot, selectedWatch), held = rem == null ? lot.able : rem;
-        $('fLot').textContent = `${lot.loanDt} · 가능수량 ${fmt(held)}주${rem != null && rem < lot.able ? `(감시 등록 ${fmt(lot.able - rem)}주 제외)` : ''} · 만기 ${lot.maturity || '-'}`;
+        // 대출일 · 만기일은 잔고 표에 있어 설정란에서는 가능수량만 보인다(2026-11-26 사용자 요청: 제목 '대출일' → '가능수량').
+        $('fLot').textContent = `${fmt(held)}주${rem != null && rem < lot.able ? ` (감시 등록 ${fmt(lot.able - rem)}주 제외)` : ''}`;
         $('fAcct').textContent = acct8(lot.account || state?.account) || '-'; // 계좌는 대출일 아래 따로, 앞 8자리(2026-11-24)
     }
     function defaultUntil(lot) { const d = new Date(kstDay(serverNow()) + 'T00:00:00Z'); d.setUTCMonth(d.getUTCMonth() + 1); return adjust(d.toISOString().slice(0, 10), lot).value; }

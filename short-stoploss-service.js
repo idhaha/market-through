@@ -204,7 +204,16 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
             next.push({ key: code + ':' + r.crd_loan_dt, code, name: String(r.stk_nm || '').replace(/^\//, ''), loanDt: ymd(r.crd_loan_dt), loanRaw: r.crd_loan_dt,
                 maturity: ymd(maturity.get(code + ':' + r.crd_loan_dt) || ''), qty: abs(r.rmnd_qty), able: abs(r.trde_able_qty), sellPrice: abs(r.pur_pric), price: abs(r.cur_prc), pl: num(r.evltv_prft), rate: num(r.prft_rt) });
         }
-        for (const lot of next) { lot.nxt = await nxtEligible(lot.code); Object.assign(lot, await priceLimits(lot.code)); }
+        for (const lot of next) { lot.nxt = await nxtEligible(lot.code); Object.assign(lot, await priceLimits(lot.code)); lot.priceEx = 'KRX'; }
+        // 현재가 · 평가손익 · 수익률은 영웅문 0345(실시간잔고 통합)처럼 마지막 체결 시장 기준(2026-11-26 사용자 요청: 삼성E&A 대주창 1.50% · 0345 1.48%).
+        // kt00018은 시장구분이 KRX · NXT뿐이고(통합 없음, 2026-11-26 확인) 평가손익에 수수료 · 세금이 이미 빠져 있다(28 계좌 삼성SDI: 500 - 840 - 840 - 1,684 = -2,864).
+        // KRX 정규장(09:00~15:30) 밖은 NXT 체결이 마지막이라 NXT 대상 종목은 NXT 기준 행으로 바꾼다(밤 21시 삼성SDI KRX 421,000 · NXT 421,500).
+        const seg = segmentAt(now(), openDate), regular = seg && (seg.id === 'KRX' || seg.id === 'KRX_CLOSE');
+        if (!regular && next.some(l => l.nxt)) {
+            const n = await call('acnt', 'kt00018', { qry_tp: '2', dmst_stex_tp: 'NXT' }), byKey = new Map();
+            for (const r of Array.isArray(n.acnt_evlt_remn_indv_tot) ? n.acnt_evlt_remn_indv_tot : []) if (/대주/.test(r.crd_tp_nm || '')) byKey.set(code6(r.stk_cd) + ':' + r.crd_loan_dt, r);
+            for (const lot of next) { const r = lot.nxt && byKey.get(lot.key); if (r && abs(r.cur_prc)) Object.assign(lot, { price: abs(r.cur_prc), pl: num(r.evltv_prft), rate: num(r.prft_rt), priceEx: 'NXT' }); }
+        }
         lots = next; lotsAt = now(); lotsError = '';
         return lots;
     }
