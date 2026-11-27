@@ -23,7 +23,7 @@ function createBrokerTurnoverData({ broker, directory, transport, http, getToken
     const store = createSupplyStore({ directory, now, fields: ['amount'] });
     const pending = new Map(), owners = new Map(), cache = new Map(), latest = new Map();
     let backgroundStocks=[];
-    let queue = Promise.resolve(), timer, archiveMinute = -1, warnedLate = '';
+    let queue = Promise.resolve(), timer, archiveMinute = -1, warnedLate = '', loggedExclusive = '';
     function flush() {
         const minute = Math.floor(now()/60000)*60000;
         for (const [key, value] of pending) if (value.t < minute) { store.merge(value.code, value); pending.delete(key); }
@@ -79,7 +79,7 @@ function createBrokerTurnoverData({ broker, directory, transport, http, getToken
     async function lsBars(instrument, mode, from, to) {
         const stock=!Object.hasOwn(marketCodes,instrument), daily=mode==='day';
         const tr=stock ? daily?'t8451':'t8452' : daily?'t8429':'t8409';
-        const rows=new Map(); let cts_date='',cts_time='',continuationKey=''; const seen=new Set();
+        const rows=new Map(); let cts_date='',cts_time='',continuationKey='',cursor=''; const seen=new Set();
         for(let page=0;page<40;page++) {
             const params={shcode:stock?instrument:lsIndices[instrument],qrycnt:500,sdate:from,edate:to,cts_date,comp_yn:'N',
                 ...(daily?{gubun:'2'}:{ncnt:1,nday:'0',stime:'',etime:'',cts_time}),
@@ -88,17 +88,27 @@ function createBrokerTurnoverData({ broker, directory, transport, http, getToken
             const data=response.data;continuationKey=String(response.headers.tr_cont_key || '');
             const values=data[`${tr}OutBlock1`];
             if(!Array.isArray(values))throw failure(`LS ${tr} 거래대금 응답 형식 오류`,502);
-            let earliest=to;
+            let earliest=to,oldest='';
             for(const row of values){
                 const date=String(row.date || ''), clock=daily?'000000':String(row.time || '').slice(0,6);
                 if(!/^\d{8}$/.test(date) || !/^\d{6}$/.test(clock))continue;
                 if(date<earliest)earliest=date;
+                if(!oldest||`${date}${clock}`<oldest)oldest=`${date}${clock}`;
                 const t=daily?timestamp(date,clock):lsMinuteTime(date,clock),amount=million(row.value);
                 if(date>=from&&date<=to&&Number.isFinite(t)&&t<=now()&&amount!==null)rows.set(t,{t,amount});
             }
             const out=data[`${tr}OutBlock`] || {}, nextDate=String(out.cts_date || '').trim(),nextTime=String(out.cts_time || '').trim();
+            // 분봉 연속조회 경계에서 한 분이 빠졌다(2026-11-27 확인): 오라클 ls-turnover에 11/20 · 11/23 · 11/24 · 11/25 · 11/26의 11:20
+            // (하루 700행을 500행씩 받을 때 두 쪽의 경계)이 거래대금 0으로 굳어 있었고, 같은 날을 지금 다시 받으면 11:20 값이 있다.
+            // 낮에는 다음 쪽이 cts_time 분을 포함해 빠지지 않았고, 빠진 날은 모두 자정 무렵 · 일요일 밤에 저장됐다.
+            // 그래서 다음 쪽 기준을 LS가 준 cts_time 대신 이번 쪽에서 가장 이른 분으로 보내 한 분씩 겹쳐 받는다.
+            // 겹친 분은 시각 키(rows)로 한 번만 남는다. 다음 쪽이 그 기준 분을 빼고 주면 그때의 응답 모양을 로그로 남긴다.
+            if(page&&!daily&&cursor&&values.length&&!values.some(row=>`${String(row.date || '')}${String(row.time || '').slice(0,6)}`===cursor)&&loggedExclusive!==from){
+                loggedExclusive=from;log(`[LS 거래대금] ${tr} ${instrument} ${from} 연속조회 응답에 기준 분 ${cursor.slice(8)}이 없어 한 분 겹쳐 받았습니다(LS 다음 기준 ${nextTime || '-'}).`);
+            }
             if(!values.length||earliest<from||!nextDate||!daily&&nextDate===from&&nextTime<='080000')break;
-            const key=`${nextDate}:${nextTime}`;if(seen.has(key))break;seen.add(key);cts_date=nextDate;cts_time=nextTime;
+            const [nextCtsDate,nextCtsTime]=!daily&&oldest?[oldest.slice(0,8),oldest.slice(8)]:[nextDate,nextTime];
+            const key=`${nextCtsDate}:${nextCtsTime}`;if(seen.has(key))break;seen.add(key);cts_date=nextCtsDate;cts_time=nextCtsTime;cursor=`${nextCtsDate}${nextCtsTime}`;
             if(page===39)throw failure('LS 거래대금 과거 조회 한도 도달',502);
         }
         return [...rows.values()].sort((a,b)=>a.t-b.t);

@@ -316,7 +316,10 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         assert.equal(await tt.locator('tbody tr').count(), 8);
         assert.deepEqual(await tt.locator('tbody tr').nth(5).locator('th, td').allTextContents(), ['15:40~16:00', '접수 × 장종료 (11/24)', '접수 ○ · 체결 ○', '접수 ○ · 체결 ○ → NXT (11/25)', 'NXT 체결가', 'NXT (비대상은 16:00 대기)']);
         assert.deepEqual(await tt.locator('tbody tr').nth(4).locator('.mk').evaluateAll(n => n.map(x => [x.textContent, getComputedStyle(x).backgroundColor])),
-            [['×', 'rgb(138, 147, 163)'], ['×', 'rgb(138, 147, 163)'], ['○', 'rgb(31, 138, 76)'], ['△', 'rgb(242, 193, 78)'], ['○', 'rgb(31, 138, 76)'], ['?', 'rgb(228, 233, 241)']], '기호마다 색');
+            [['×', 'rgb(138, 147, 163)'], ['×', 'rgb(138, 147, 163)'], ['○', 'rgb(31, 138, 76)'], ['△', 'rgb(242, 193, 78)'], ['○', 'rgb(31, 138, 76)'], ['△', 'rgb(242, 193, 78)']], '기호마다 색');
+        // 15:30~15:40 SOR은 11/27 실계좌로 NXT 15:40 단일가 체결 확인. 남은 ?는 08:00~08:50 SOR 체결 거래소(11/30 시험)
+        assert.equal((await tt.locator('tbody tr').nth(4).locator('td').nth(2).textContent()), '접수 ○ (11/25) · 체결 △ 15:40 → NXT (11/27)');
+        assert.deepEqual(await tt.locator('tbody tr').nth(0).locator('.mk').evaluateAll(n => n.filter(x => x.textContent === '?').map(x => getComputedStyle(x).backgroundColor)), ['rgb(228, 233, 241)'], '남은 ? 칸은 08:00~08:50 SOR 하나');
         assert.ok(await page.$eval('#policyModal .modal-box', b => b.scrollWidth <= b.clientWidth), '시간표가 가로로 넘치지 않음');
         assert.match(await page.locator('#policyBody table').nth(2).textContent(), /주문 전에 꺼짐/); assert.equal(await page.locator('#policyBody table').nth(2).locator('tbody tr').count(), 5);
         // 회귀(2026-11-27 사용자 지적): 10주 중 9주를 감시 등록 → 그 감시 건을 본 뒤 같은 종목 잔고를 고르면 '주' 칸은 남은 1주, 조건 추가 켜짐
