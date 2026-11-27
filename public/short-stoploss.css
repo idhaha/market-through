@@ -197,3 +197,9 @@ table.tt thead th{background:#33476A}
 label.row{gap:4px}label.row>input[type=checkbox],label.row>input[type=radio]{margin:0}
 /* % 뒤 주 수 자리(2026-11-27): 비어 있거나 자릿수가 달라도 수량 줄 너비가 덜 흔들리게 최소 폭 */
 #qtyCalc{display:inline-block;min-width:4ch}
+/* 설정란 종목 줄(2026-11-27 사용자 지적): 잔고를 고르면 KRX · NXT 표시(두 줄, 23px)가 들어와 줄이 17px → 23px로 늘며 아래가 밀렸다. 처음부터 그 높이로 둔다 */
+#fName{min-height:23px}
+/* 수량 줄(2026-11-27 사용자 요청): % 쪽과 주 쪽 사이를 벌리고, % 뒤 주 수 자리는 9,999주까지 미리 잡아 둔다 */
+.qty-row .qgrp+.qgrp{margin-left:10px}#qtyCalc{min-width:6ch}
+/* 체크박스 · 라디오 세로 정렬(2026-11-27 사용자 지적): 상자 가운데가 한글 글자 가운데보다 0.5~0.8px 위에 그려져(100~150% 배율 실측) 1px 내린다 */
+label.row>input[type=checkbox],label.row>input[type=radio]{position:relative;top:1px}
