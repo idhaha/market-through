@@ -15,7 +15,7 @@ h2{font-size:14px;margin:0}
 .ss-top .i{background:transparent;color:#FFFFFF;border-color:#C9D3E3}
 .ss-pill{padding:3px 10px;border-radius:10px;font-size:12px;font-weight:500}
 .ss-rt{display:inline-flex;gap:6px}
-.ss-topmost{display:inline-flex;align-items:center;gap:4px;font-size:12px;cursor:pointer}.ss-topmost input{margin:0;cursor:pointer}.ss-wincontrols{display:inline-flex;align-items:center;gap:10px;margin-left:6px}.ss-wincontrols[hidden]{display:none}
+.ss-topmost{display:inline-flex;align-items:center;gap:3px;font-size:12px;cursor:pointer}.ss-topmost input{margin:0;cursor:pointer}.ss-wincontrols{display:inline-flex;align-items:center;gap:10px;margin-left:6px}.ss-wincontrols[hidden]{display:none}
 .ss-pill.seg{background:#2F6FD6}
 .ss-pill.on{background:#1B6B3A}
 .ss-pill.off{background:#6B7484}
@@ -193,3 +193,7 @@ table.tt thead th{background:#33476A}
 .qty-row #qtyPct{padding:4px 3px}.qty-row{gap:6px}
 /* 수량이 4자리여도 한 줄: 설정창은 줄바꿈 대신 내용만큼 넓어진다(2026-11-27 사용자 결정) */
 .ss-form{min-width:min-content}
+/* 체크박스 · 라디오와 글자 사이(2026-11-27 사용자 요청: 공간 낭비라 줄임). 전: 줄 간격 8px + 기본 여백 3~4px로 약 11px → 4px */
+label.row{gap:4px}label.row>input[type=checkbox],label.row>input[type=radio]{margin:0}
+/* % 뒤 주 수 자리(2026-11-27): 비어 있거나 자릿수가 달라도 수량 줄 너비가 덜 흔들리게 최소 폭 */
+#qtyCalc{display:inline-block;min-width:4ch}

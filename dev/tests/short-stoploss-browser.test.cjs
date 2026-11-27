@@ -79,6 +79,11 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         await page.locator('#trigger').focus(); await page.keyboard.insertText('７３００');
         assert.equal(await page.isDisabled('#addBtn'), false); assert.match(await page.textContent('#chaseNote'), /8,030원/);
         await page.locator('#ticks').focus(); assert.equal(await page.inputValue('#trigger'), '7,300', '칸을 떠나면 보통 숫자로 바꿈');
+        // 체크박스 · 라디오와 글자 사이(2026-11-27 사용자 요청: 공간 낭비, 전 약 11px): 5px 이하
+        const boxGaps = await page.evaluate(() => [...document.querySelectorAll('label.row > input[type=checkbox], label.row > input[type=radio], .ss-topmost > input')].filter(i => i.offsetParent).map(i => {
+            const r = document.createRange(), n = i.nextSibling; if (!n) return null; r.selectNodeContents(n); const t = r.getClientRects()[0] || (n.getBoundingClientRect && n.getBoundingClientRect());
+            return t ? Math.round(t.left - i.getBoundingClientRect().right) : null; }).filter(v => v !== null));
+        assert.ok(boxGaps.length >= 6 && boxGaps.every(g => g >= 0 && g <= 5), '체크박스 · 라디오와 글자 사이 5px 이하: ' + boxGaps.join(','));
         // 미체결 추격 한도(2026-11-27): 선택칸 · % · 금액 · i가 박스 없이 한 줄에 있고 i는 하나, 설정 카드 밖으로 넘치지 않는다
         const chaseRow = await page.evaluate(() => { const row = document.getElementById('fix').closest('.row.oneline'), card = document.getElementById('formCard').getBoundingClientRect();
             const tops = ['fix', 'chasePct', 'chaseNote'].map(id => Math.round(document.getElementById(id).getBoundingClientRect().top + document.getElementById(id).getBoundingClientRect().height / 2));
@@ -343,14 +348,20 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         await page.evaluate(async () => { const st = await (await fetch('/api/short-stoploss/state')).json(); for (const w of st.watches.filter(w => w.status === '감시중')) await fetch('/api/short-stoploss/watches/' + w.id, { method: 'DELETE' }); });
         await page.click('#refreshBtn'); await page.waitForTimeout(1500); await page.locator('#lotsTable tbody tr.pick').first().click();
         await page.check('input[name="qtyMode"][value="pct"]'); await page.selectOption('#qtyPct', '-1');
-        assert.deepEqual([await page.textContent('#qtyBase'), await page.textContent('#qtyCalc'), await page.isDisabled('#addBtn')], ['남은 10주의', '9주', false]);
+        assert.deepEqual([await page.textContent('#qtyCalc'), await page.isDisabled('#addBtn')], ['9주', false]);
+        // 수량 줄(2026-11-27 사용자 결정): "남은 N주의" 문구 없음, '주'를 골라도 % 뒤 주 수가 그대로 보이고 줄 · 설정창 너비가 변하지 않는다
+        const qtyBox = () => page.evaluate(() => [[...document.querySelector('.qty-row').querySelectorAll('span, label')].filter(n => !n.closest('.tip')).some(n => /남은 [0-9,]+주의/.test(n.textContent)), document.getElementById('qtyCalc').textContent, Math.round(document.querySelector('.qty-row').getBoundingClientRect().width), Math.round(document.getElementById('formCard').getBoundingClientRect().width), document.querySelector('.qty-row').getBoundingClientRect().height < 30]);
+        const qtyPctMode = await qtyBox(); await page.check('input[name="qtyMode"][value="shares"]'); const qtySharesMode = await qtyBox();
+        assert.deepEqual(qtySharesMode, qtyPctMode, '수량 % ↔ 주 전환에도 같은 모양: ' + JSON.stringify([qtyPctMode, qtySharesMode]));
+        assert.deepEqual(qtyPctMode.slice(0, 2), [false, '9주']);
+        await page.check('input[name="qtyMode"][value="pct"]');
         assert.ok(await page.$eval('#qtyPct', n => n.scrollWidth <= n.clientWidth + 1 && n.closest('.row').scrollWidth <= n.closest('.row').clientWidth + 1), '100%-1주가 칸 안에 보임');
         assert.equal(await page.inputValue('#qtyPct'), '-1', '잔고를 고르면 기본 100%-1주');
         // '주' 칸: 화살표 ↑ ↓ · 키보드, 1 ~ 남은 10주
         await page.check('input[name="qtyMode"][value="shares"]'); await page.fill('#qtyShares', '9'); await page.click('#sharesUp'); assert.equal(await page.inputValue('#qtyShares'), '10'); assert.equal(await page.isDisabled('#sharesUp'), true);
         await page.click('#sharesDown'); await page.locator('#qtyShares').press('ArrowDown'); assert.equal(await page.inputValue('#qtyShares'), '8');
         await page.fill('#qtyShares', '1'); assert.equal(await page.isDisabled('#sharesDown'), true);
-        assert.ok(await page.evaluate(() => { const r = document.getElementById('sharesUp').closest('.row'), c = document.getElementById('formCard').getBoundingClientRect(); const mid = n => { const b = n.getBoundingClientRect(); return b.top + b.height / 2; }; return [...r.children].every(x => x.getBoundingClientRect().right <= c.right + 0.5 && x.getClientRects().length === 1) && Math.abs(mid(document.getElementById('qtyBase')) - mid(document.getElementById('qtyShares'))) <= 4 && document.querySelector('.qty-row > span').getClientRects().length === 1 && document.querySelector('.qty-row > span').getBoundingClientRect().height < 24; }), '수량 줄은 줄바꿈 없이 한 줄, 카드 안(2026-11-27: 줄바꿈 대신 칸 · 간격을 줄이고 모자라면 설정창이 넓어짐)');
+        assert.ok(await page.evaluate(() => { const r = document.getElementById('sharesUp').closest('.row'), c = document.getElementById('formCard').getBoundingClientRect(); const mid = n => { const b = n.getBoundingClientRect(); return b.top + b.height / 2; }; return [...r.children].every(x => x.getBoundingClientRect().right <= c.right + 0.5 && x.getClientRects().length === 1) && Math.abs(mid(document.querySelector('input[name="qtyMode"][value="pct"]')) - mid(document.getElementById('qtyShares'))) <= 4 && document.querySelector('.qty-row > span').getClientRects().length === 1 && document.querySelector('.qty-row > span').getBoundingClientRect().height < 24; }), '수량 줄은 줄바꿈 없이 한 줄, 카드 안(2026-11-27: 줄바꿈 대신 칸 · 간격을 줄이고 모자라면 설정창이 넓어짐)');
         assert.deepEqual(errors, []);
         console.log('short-stoploss-browser: 모든 확인 통과');
     } finally { await browser.close(); server.close(); svc.stop(); }
