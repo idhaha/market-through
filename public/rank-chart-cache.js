@@ -106,7 +106,8 @@
     }
     const VOLATILE=new Set(['fetched_at','server_time','cursor']);
     function sameData(a,b){const text=v=>JSON.stringify(v,(k,x)=>VOLATILE.has(k)?undefined:x);try{return text(a)===text(b);}catch{return false;}}
-    function notify(url){document.dispatchEvent(new CustomEvent('rank-chart-cache-updated',{detail:{path:url.pathname,mode:url.searchParams.get('mode')}}));}
+    // live: 뒤에서 다시 받은 오늘 자료가 바뀐 알림(서버 과거 자료 수정 revision 알림은 live가 아니다). 쏠림율처럼 POST 본문에 mode가 있으면 그것을 쓴다.
+    function notify(url,{live=false,mode}={}){document.dispatchEvent(new CustomEvent('rank-chart-cache-updated',{detail:{path:url.pathname,mode:url.searchParams.get('mode')||mode||null,live}}));}
     async function request(input,options={}){
         const url=new URL(typeof input==='string'?input:input.url,location.href),method=(options.method||'GET').toUpperCase();
         if(url.origin!==location.origin||!routes.test(url.pathname)||!['GET','POST'].includes(method))return nativeFetch(input,options);
@@ -138,7 +139,7 @@
                 if(epoch!==revision)return r;
                 if(r.status===401||r.status===403){memory.delete(key);await storage('delete',key);identityAt=0;return r;}
                 const revised=r.ok&&await checkRevision(owner,url,r);
-                if(r.ok&&data.pending){blocked.add(key);if(background){handoff.set(key,{data,at:Date.now()});while(handoff.size>MAX_ENTRIES)handoff.delete(handoff.keys().next().value);notify(url);}return r;}
+                if(r.ok&&data.pending){blocked.add(key);if(background){handoff.set(key,{data,at:Date.now()});while(handoff.size>MAX_ENTRIES)handoff.delete(handoff.keys().next().value);notify(url,{live:true,mode:body?.mode});}return r;}
                 blocked.delete(key);
                 if(r.ok&&safe(data)&&hasValues(data)){
                     // open: fetched while the market was open, so today's data may still be growing.
@@ -149,8 +150,8 @@
                         await storage('put',key,saved);void prune();
                     }
                 }else{memory.delete(key);await storage('delete',key);}
-                if(background&&r.ok&&(previous===undefined||!sameData(previous,data))){handoff.set(key,{data,at:Date.now()});while(handoff.size>MAX_ENTRIES)handoff.delete(handoff.keys().next().value);notify(url);}
-                else if(revised)notify(url);
+                if(background&&r.ok&&(previous===undefined||!sameData(previous,data))){handoff.set(key,{data,at:Date.now()});while(handoff.size>MAX_ENTRIES)handoff.delete(handoff.keys().next().value);notify(url,{live:!revised,mode:body?.mode});}
+                else if(revised)notify(url,{mode:body?.mode});
                 return r;
             })().finally(()=>{if(pending.get(key)===task)pending.delete(key);});pending.set(key,task);
             return (await waitForShared(task,signal)).clone();
@@ -199,6 +200,11 @@
         '/api/risk/breadth':'refreshRankBreadthChart','/api/risk/sentiment':'refreshRankSentimentChart','/api/risk/volatility':'refreshRankVolatilityChart'
     };
     const timers=new Map();document.addEventListener('rank-chart-cache-updated',event=>{
+        // 과거 분봉 구간을 보는 동안에는 오늘 자료가 바뀌었다는 알림으로 종목 수급 · 종목 선물 수급 분봉 카드를 다시 받지 않는다
+        // (2026-11-27 오라클 장중 측정 3 · 4 · 5). 장중엔 오늘 자료가 늘 바뀌어 알림이 오고, 카드가 구간 끝 날짜로 가던 조회(seek)를 끊고
+        // 오늘부터 다시 받았다. 그 뒤 더 불러오기가 오늘부터 하루씩 거슬러 40쪽을 받았다. 이 카드들의 갱신은 구간을 모르고 오늘부터 받는다.
+        // 30초 자동 갱신도 구간 보기 중에는 분봉 카드를 건너뛴다(RankChartAxis.refreshCharts). 쏠림율 등 다른 카드는 그대로 알린다.
+        if(event.detail.live && event.detail.mode==='minute' && ['/api/supply/chart','/api/kis-supply/chart','/api/ls-stock-futures/chart'].includes(event.detail.path) && window.RankChartAxis?.minuteWindow?.())return;
         const name=(window.rankIndependentClient || !window.refreshLsConcentrationChart) && event.detail.path==='/api/ls-concentration-chart'?'refreshConcentrationChart':window.rankIndependentClient && event.detail.path==='/api/kis-supply/chart'?'refreshRankSupplyChart':refreshers[event.detail.path];
         if(!window.rankIndependentClient && ['/api/turnover/chart','/api/ls-turnover/chart'].includes(event.detail.path)){
             const state=window.getRankCombinedTurnoverState?.(),combinedKey='combinedTurnover';

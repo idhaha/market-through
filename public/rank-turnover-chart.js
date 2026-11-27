@@ -35,7 +35,7 @@
         async function loadPrices(){
             if(candleArea.hidden)return;
             const domain=mode==='minute'?window.RankChartAxis.minuteDomain():window.RankChartAxis.dailyDomain();
-            const from=(domain?.first || dateKey(Date.now()-180*86400000)).slice(0,10).replaceAll('-','');
+            const from=((mode==='minute' && domain && window.RankChartAxis.minuteRequestFirst?.(domain.first)) || domain?.first || dateKey(Date.now()-180*86400000)).slice(0,10).replaceAll('-','');
             const to=(domain?.last || dateKey(Date.now())).slice(0,10).replaceAll('-','');
             const identity=`${selectedMarket}:${mode}`,key=`${identity}:${from}:${to}`;
             if(key===priceKey || key===pricePending)return;

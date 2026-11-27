@@ -389,7 +389,7 @@ tip.hidden=false;}
             const priceMarket=breadth && breadthMarket==='kosdaq'?'kosdaq':'kospi';
             const priceName=priceMarket==='kosdaq'?'KOSDAQ':'KOSPI';
             const domain=breadth && breadthMode==='minute'?window.RankChartAxis.minuteDomain():null;
-            const first=(target || domain?.first || dates[0] || dateKey(Date.now()-180*86400000)).slice(0,10),last=(domain?.last || dates.at(-1) || dateKey(Date.now())).slice(0,10);
+            const first=(target || (domain && window.RankChartAxis.minuteRequestFirst?.(domain.first)) || dates[0] || dateKey(Date.now()-180*86400000)).slice(0,10),last=(domain?.last || dates.at(-1) || dateKey(Date.now())).slice(0,10);
             const key = `${priceMarket}:${breadth ? breadthMode : 'day'}:${first}:${last}`;
             if(target && breadthPriceError)candleKey='';
             if(key===candleKey || key===breadthPricePending)return;

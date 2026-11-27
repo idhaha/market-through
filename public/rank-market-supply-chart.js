@@ -435,7 +435,7 @@
             if(candleEnsureActive && !requestedRange)return;
             if(!showCandles)return;
             const domain=(mode==='minute'?window.RankChartAxis.minuteDomain():window.RankChartAxis.dailyDomain()) || {first:dayKey(Date.now()-180*86400000),last:dayKey(Date.now())};
-            const from=(requestedRange?.first || domain.first).slice(0,10).replaceAll('-',''),to=(requestedRange?.last || domain.last).slice(0,10).replaceAll('-','');
+            const from=(requestedRange?.first || (mode==='minute' && window.RankChartAxis.minuteRequestFirst?.(domain.first)) || domain.first).slice(0,10).replaceAll('-',''),to=(requestedRange?.last || domain.last).slice(0,10).replaceAll('-','');
             if(!/^\d{8}$/.test(from) || !/^\d{8}$/.test(to) || from>to)return;
             const market=selected==='kosdaq'||selected==='futuresKosdaq'?'kosdaq':'kospi';
             const futuresTest=isTest && selected.startsWith('futures');

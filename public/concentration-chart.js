@@ -581,9 +581,13 @@
                 const loadNotice = notices.join(' · ');
                 // 누락은 정규장 분만 센다(2026-11-24). 서버가 NXT 시간대 봉에 regular_session:false를 붙인다(그 시간엔 시장 거래대금이 원래 없음).
                 // 어느 쪽이 비었는지 나눠 적는다(2026-11-25 오라클 측정: 오늘 11:20은 종목 거래대금이 비었는데 "시장 거래대금 1개 누락"으로 보였다).
-                const gaps = state.points.filter(point => point.value == null && point.regular_session !== false);
-                const stockMissing = gaps.filter(point => point.stock_turnover == null && point.market_turnover != null).length, marketMissing = gaps.length - stockMissing;
-                const missingText = [marketMissing ? `시장 거래대금 ${marketMissing.toLocaleString()}개` : '', stockMissing ? `종목 거래대금 ${stockMissing.toLocaleString()}개` : ''].filter(Boolean).join(' · ');
+                // 최근 3분은 아직 거래대금을 모으는 중이라 세지 않는다(2026-11-27 오라클 장중 측정: 09:57에 09:55 · 09:56 두 분이 비어 "시장 거래대금 2개 시점 누락"이
+                // 계속 떠 있었다). 둘 다 빈 분은 "종목 · 시장 거래대금"으로 적는다(예전엔 시장 쪽으로만 셌다).
+                const recent = new Date(Date.now() + 9 * 3600000 - 3 * 60000).toISOString().replace(/\D/g, '').slice(0, 12) + '00';
+                const gaps = state.points.filter(point => point.value == null && point.regular_session !== false && String(point.time) < recent);
+                const bothMissing = gaps.filter(point => point.stock_turnover === null && point.market_turnover === null).length;
+                const stockMissing = gaps.filter(point => point.stock_turnover == null && point.market_turnover != null).length, marketMissing = gaps.length - stockMissing - bothMissing;
+                const missingText = [bothMissing ? `종목 · 시장 거래대금 ${bothMissing.toLocaleString()}개` : '', marketMissing ? `시장 거래대금 ${marketMissing.toLocaleString()}개` : '', stockMissing ? `종목 거래대금 ${stockMissing.toLocaleString()}개` : ''].filter(Boolean).join(' · ');
                 status.textContent = result.history_pending ? '시장 과거 데이터가 더 필요합니다. 추가 조회 버튼을 눌러 주세요.'
                     : result.partial && loadNotice ? loadNotice : !state.points.length ? '표시할 데이터가 없습니다.' : !valid ? '같은 날짜·시간의 시장 거래대금이 없어 계산할 수 없습니다.'
                     : loadNotice || (missingText ? `${missingText} 시점 누락 · 쏠림율 계산 불가` : '');

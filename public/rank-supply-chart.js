@@ -27,6 +27,8 @@
     }
     // Minute y range shared between 종목 수급 (combined) and 종목 선물 수급 (futures) for the same stock.
     const yPeers = new Map();
+    // 다 받은 응답: 조회 중 · 일부 · 오류가 아니다. 이런 지난날만 flowDone에 넣는다.
+    const settled = result => !!result?.date && !result.pending && !result.partial && !result.status?.error && !(result.warnings || []).some(text => /실패|오류/.test(text));
     function mergeFlow(previous, incoming) {
         const points = new Map(previous.map(point => [point.t, point]));
         for (const point of incoming) {
@@ -103,7 +105,8 @@
         addButton?.addEventListener('click', openPicker);
         let multiplier = 10, config = { stocks: [], archive: [], revision: 0 }, selected = '', mode = 'day', cursor = null, hasMore = false, loading = false, historyLoaded = false, flowDates = null;
         let flowLoading=false, flowCoverageFirst='', candleError='';
-        const minuteDays = new Set(), candleCache = new Map(), priceHistory = new Map(); const candleInflight = new Map(), candleFetchedAt = new Map();
+        // flowDone(2026-11-27): 이미 받은 지난날 수급(끝난 날). 자동 갱신이 구간을 다시 채울 때 다시 묻지 않는다.
+        const flowDone = new Set(), minuteDays = new Set(), candleCache = new Map(), priceHistory = new Map(); const candleInflight = new Map(), candleFetchedAt = new Map();
         let priceCursor = null, candleLoading = false;
         // The candle cursor only counts while it points at a day not requested yet: while that day's candles are
         // still loading, reusing it would ask the same day again (2026-11-07 Oracle: "과거 조회가 진행되지 않았습니다").
@@ -179,7 +182,7 @@
             todayOnly=true;
             points = []; candles = []; start = 0; count = null; hover = null; info.hidden = true;
             cursor = null; hasMore = false; historyLoaded = false; flowDates = null; flowCoverageFirst=''; candleError='';
-            minuteDays.clear();
+            minuteDays.clear(); flowDone.clear();
             priceHistory.clear(); priceCursor = null;
             dailyCandleCoverage = null; dailyCandleAttempt = '';
             candleMessage = ''; chartMessage = ''; draw();
@@ -436,7 +439,10 @@
                 const requestedDays=new Set(minuteDays);
                 // 주말 · 휴장일 캔들은 묻지 않는다(2026-11-23: 과거 구간에서 빈 날 11번을 0.3~0.5초씩 차례로 물었다).
                 if(target && mode==='minute'){const domain=window.RankChartAxis.minuteDomain();for(const day of domain.days || [])if(day>=target.slice(0,10) && (!domain.openDate || domain.openDate(day)))requestedDays.add(day);requestedDays.add(target.slice(0,10));}
-                const days = dailyRange?['']:[...requestedDays].sort(); if (!days.length) days.push(mode==='minute' && window.RankChartAxis.minuteWindow?.()?.to || ''); // 과거 구간 보기 중에는 오늘 캔들을 받지 않는다
+                // 과거 구간 보기 중에는 구간 끝 날 뒤(오늘 포함)의 캔들을 받지 않는다(2026-11-27 오라클 장중 측정 3 · 4 · 5: 구간에 들어갈 때 먼저 받은
+                // 오늘 수급 봉이 minuteDays에 오늘을 넣어, 과거 구간인데 오늘 분봉을 증권사에서 1~3.3초씩 받았다).
+                const pastWindow = mode==='minute' ? window.RankChartAxis.minuteWindow?.() : null;
+                const days = dailyRange?['']:[...requestedDays].filter(day => !pastWindow || day <= pastWindow.to).sort(); if (!days.length) days.push(pastWindow?.to || '');
                 const merged = new Map(candles.map(point => [point.t, point])); let partial = false;
                 const keyOf = day => `${selected}:${mode}:${dailyRange?(dailyRange.from || '600bars')+':'+dailyRange.to:day || dayKey(Date.now())}`;
                 // 지난날 캔들은 끝난 날이라 받은 것을 그대로 쓴다: 취소하지 않고(다음 조회가 이어 받음) 같은 날을 두 번 묻지 않는다.
@@ -513,7 +519,16 @@
         }
         async function load(append = false, restoreWindow = null) {
             if(window.rankManagedChartRefresh && !window.rankChartRefreshStarted)return;
-            const nextCursor = append ? [hasMore ? cursor : null, mode === 'minute' ? nextPriceCursor() : null].filter(Boolean).sort().at(-1) : null;
+            let nextCursor = append ? [hasMore ? cursor : null, mode === 'minute' ? nextPriceCursor() : null].filter(Boolean).sort().at(-1) : null;
+            // 과거 구간 보기 중 커서가 구간 끝 날 뒤(오늘 쪽)를 가리키면 구간 안에서 이어 받는다(2026-11-27 오라클 장중 측정 4: 종목 선물 수급이
+            // 구간 07/31~09/14에서 더 불러오기로 11/26부터 하루씩 40쪽을 거슬러 갔다). 받은 첫날이 구간 안이면 그 전날, 아니면 구간 끝 날부터.
+            const pastWindow = append && mode === 'minute' ? window.RankChartAxis.minuteWindow?.() : null;
+            if (pastWindow && nextCursor && nextCursor > pastWindow.to.replaceAll('-', '')) {
+                const covered = flowCoverageFirst.slice(0, 10), calendar = window.TradingRefresh?.state?.days || {};
+                let day = covered && covered <= pastWindow.to ? covered : '';
+                if (day) for (let i = 0; i < 14; i++) { day = new Date(Date.parse(day + 'T00:00:00Z') - 86400000).toISOString().slice(0, 10); if (![0, 6].includes(new Date(day + 'T00:00:00Z').getUTCDay()) && calendar[day] !== false) break; }
+                nextCursor = (day || pastWindow.to).replaceAll('-', '');
+            }
             if (append && (loading || !nextCursor)) return;
             controller?.abort(); const current = controller = new AbortController(), id = ++revision;
 
@@ -536,6 +551,7 @@
                     : await request(`${(combined || window.rankIndependentClient) && mode === 'minute' ? '/api/kis-supply/chart' : endpoint}?${params}`, { signal: current.signal });
                 if (mode === 'minute' && Array.isArray(result.available_dates) && result.available_dates.length) flowDates = [...result.available_dates].sort();
                 if (id !== revision) return;
+                if (mode === 'minute' && append && settled(result) && result.date < window.RankChartAxis.sessionDay()) flowDone.add(result.date);
                 const followLatest = start + Math.min(points.length, count ?? points.length) >= points.length, oldAnchor = points[start]?.t;
                 const coverageDate=result.date || (append && nextCursor ? `${nextCursor.slice(0,4)}-${nextCursor.slice(4,6)}-${nextCursor.slice(6,8)}` : '');
                 const coverage=mode==='minute' && coverageDate ? coverageDate+' 00:00' : (result.points || []).filter(p=>Number.isFinite(p.t)).map(p=>new Date(p.t+9*3600000).toISOString().slice(0,mode==='minute'?16:10).replace('T',' ')).sort()[0];
@@ -558,6 +574,8 @@
                     for(const day of days){
                         minuteDays.add(day);
                         if(day===result.date)continue;
+                        // 10거래일 실시간 구간(2026-11-27 오라클 장중 측정 7): 1분마다 갱신할 때 지난 10일 수급을 다시 받았다(한 번에 약 0.9MB). 받은 날은 건너뛴다.
+                        if(flowDone.has(day)){const first=day+' 00:00';if(!flowCoverageFirst || first<flowCoverageFirst)flowCoverageFirst=first;continue;}
                         if(flowDates?.length && day<flowDates[0]){const first=day+' 00:00';if(!flowCoverageFirst || first<flowCoverageFirst)flowCoverageFirst=first;continue;}
                         pastDays.push(day);
                     }
@@ -570,6 +588,7 @@
                         if(id!==revision)return;
                         const first=day+' 00:00';if(!flowCoverageFirst || first<flowCoverageFirst)flowCoverageFirst=first;
                         points=mergeFlow(points,futures?contractShares(past):(past.points || []).filter(p=>Number.isFinite(p.t)));
+                        if(settled(past) && day<window.RankChartAxis.sessionDay())flowDone.add(day);
                     }
                     const previous=(result.available_dates || []).filter(day=>day<restoreWindow.first.slice(0,10)).sort().at(-1);
                     cursor=previous?previous.replaceAll('-',''):null;hasMore=!!previous;historyLoaded=true;

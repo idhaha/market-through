@@ -560,6 +560,12 @@
         notifyCharts();scheduleVisibleHistory();
     }
     const minuteWindow=()=>windowEnd?{from:windowFirstDay,to:windowEnd.slice(0,10)}:null;
+    // 구간으로 받는 분봉 캔들(ADR · 지수 · 지수 선물)의 첫 날(2026-11-27 오라클 장중 측정 1): 당일 보기에서 공통 축은 처음엔 오늘만이다가
+    // 야간 선물 봉이 들어오면 전날까지 넓어진다. 오늘만 물은 요청 3~4건이 취소되고 전날부터 다시 나갔다. 당일 보기면 처음부터 전날부터 묻는다.
+    function minuteRequestFirst(first){
+        const day=String(first || '').slice(0,10);
+        return day && !historyMode && !windowEnd && !windowLive && day===sessionDay()?previousOpenDay(day):day;
+    }
     function minuteDomain(values=[],getDate=v=>v,useViewport=true) {
         const active=[...minuteCharts.values()].filter(c=>c.mode==='minute');
         // 카드가 넘긴 값은 시각순이라 처음 · 끝만 글자로 바꾼다(2026-11-22: 그릴 때마다 1만 5천 봉을 모두 바꾸고 정렬해 느렸다).
@@ -984,5 +990,5 @@
     // 화면 복귀(visibilitychange) 새로고침도 자동 갱신과 같이 건너뛸지(2026-11-25): 더 불러오기가 도는 동안이나 과거 분봉 구간을 보는 동안.
     // 측정 4)에서 80초 과거 조회 도중 탭으로 돌아오자 수급 카드 넷이 오늘 분봉을 다시 받았다.
     const skipMinuteRefresh=()=>historyBusy || !!windowEnd;
-    window.RankChartAxis={skipMinuteRefresh,kstDay,sharedFetch,drawOhlc,kstMinute,dayBoundaryPositions,showWindow,minuteWindow,dailyWindow,openPositions,drawDayBoundaries,concentrationCumulative,loadingBar,intradayGap,restoreHistoryRange,marketChoice,validCandle,candleLabel,selectViewport,plotBounds,registerHover,synchronizeHover,matchesHover,updateSlider,scrollViewport,synchronizeViewport,refreshOrder,refreshCharts,registerHistoryLoader,requestHistory,showHistory,showToday,sessionDay,sharedRange,dailyDomain,minuteDomain,ticks,todayRange,limitToday,sessionRange,limitSessions,sessionX,eightTick,sessionStartLabel,candleLayout,todayButton};
+    window.RankChartAxis={skipMinuteRefresh,minuteRequestFirst,kstDay,sharedFetch,drawOhlc,kstMinute,dayBoundaryPositions,showWindow,minuteWindow,dailyWindow,openPositions,drawDayBoundaries,concentrationCumulative,loadingBar,intradayGap,restoreHistoryRange,marketChoice,validCandle,candleLabel,selectViewport,plotBounds,registerHover,synchronizeHover,matchesHover,updateSlider,scrollViewport,synchronizeViewport,refreshOrder,refreshCharts,registerHistoryLoader,requestHistory,showHistory,showToday,sessionDay,sharedRange,dailyDomain,minuteDomain,ticks,todayRange,limitToday,sessionRange,limitSessions,sessionX,eightTick,sessionStartLabel,candleLayout,todayButton};
 })();
