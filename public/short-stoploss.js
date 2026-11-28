@@ -605,7 +605,7 @@
              ['꺼진 사이 유효기간이 지남', '첫 판정에서 "만료"로 바뀝니다.']],
             ['꺼져 있던 동안의 시세는 볼 수 없습니다. 그사이 감시가를 넘었다가 다시 내려왔다면 발동하지 않습니다.']],
         ['안전장치 · 기록', ['발동은 한 번만: 주문 전에 "발동"을 파일에 기록합니다', '주문 직전에 잔고를 다시 조회합니다', '접수 3초 안에 "+상환대주"가 확인되지 않으면 즉시 취소하고 전체 감시를 멈춥니다(빨간 띠, "확인했습니다"를 눌러야 닫힘)', '발동 · 주문 · 정정 · 체결 · 감시 켬/끔은 바로 저장하고, 30초마다 감시 건의 마지막 판정 · 실시간 수신 건수를 확인용으로 따로 남깁니다(발동 시점과는 무관)', '자동 주문은 SHORT_STOPLOSS=on인 서버에서만 냅니다(지금은 로컬 PC만). 관리자 계정만 이 창을 쓸 수 있습니다']],
-        ['화면', ['창 크기는 고정(메인 화면 버튼으로 1200×660). 잔고 · 감시 건이 늘면 각 칸 안에서만 스크롤되고, 열 너비도 고정입니다', '안내 문구(주황)와 전체 중지 띠(빨강)는 맨 위 띠 아래에 겹쳐 뜨고 "확인"을 눌러야 닫힙니다. 아래 칸을 밀지 않습니다', '감시 체크박스: 켜면 감시, 끄면 중지(실시간 등록도 해지) · 전체 감시 체크박스', '판정 · 결과: 감시 중이면 마지막 판정 시세, 주의가 필요하면 그 이유, 끝났으면 한 줄 결과 · 기록: 처리 과정 전체']],
+        ['화면', ['처음 창 크기는 1220×840(2026-11-28, 열 때 설정란이 넘치면 그만큼 창을 늘림). 잔고 · 감시 건이 늘면 각 칸 안에서만 스크롤되고, 열 너비도 고정입니다', '안내 문구(주황)와 전체 중지 띠(빨강)는 맨 위 띠 아래에 겹쳐 뜨고 "확인"을 눌러야 닫힙니다. 아래 칸을 밀지 않습니다', '감시 체크박스: 켜면 감시, 끄면 중지(실시간 등록도 해지) · 전체 감시 체크박스', '판정 · 결과: 감시 중이면 마지막 판정 시세, 주의가 필요하면 그 이유, 끝났으면 한 줄 결과 · 기록: 처리 과정 전체']],
         ['아직 시험하지 않은 것', ['시간표의 ? 칸(장 전 08:00~08:50 SOR 체결 거래소), SOR 정정, 여러 대출일 동시 상환, VI 중 접수, ETF · ETN 호가단위, 대주 우선으로 VI 등록을 해지하는 경우']]
     ];
     // 항목: [제목, 목록] 또는 [제목, 목록, 표(첫 줄이 머리글), 표 아래 목록]
@@ -669,7 +669,16 @@
     }
     setInterval(() => { $('clock').textContent = new Date(serverNow() + 9 * 3600000).toISOString().slice(0, 19).replace('T', ' '); }, 500);
     let timer;
-    async function loop() { clearTimeout(timer); try { await poll(); } catch (error) { say(error.message); } timer = setTimeout(loop, document.hidden ? 10000 : 2000); }
+    // 창 크기 맞추기(2026-11-28 사용자 요청: 설정란에 스크롤이 생기지 않게): 독립창 앱에서 열 때 한 번, 설정란이 넘치는 만큼 창 높이를,
+    // 폭이 1220보다 좁으면 그만큼 폭을 늘려 달라고 앱에 알린다. 줄이지는 않고, 설정란을 접어 둔 상태에서는 건드리지 않는다
+    // (앱은 화면 아래 끝을 넘으면 창을 위로 올리고, 화면보다 크면 화면 높이까지만 늘린다)
+    const WINDOW_WIDTH = 1220; let sized = false;
+    function fitWindow() {
+        if (sized || !native || document.body.classList.contains('form-closed')) return; sized = true;
+        const f = $('formCard'), dh = Math.max(0, f.scrollHeight - f.clientHeight), dw = Math.max(0, WINDOW_WIDTH - window.innerWidth);
+        if (dw || dh) native.postMessage(`resize-window:${Math.ceil(dw)},${Math.ceil(dh)},${window.innerWidth},${window.innerHeight}`);
+    }
+    async function loop() { clearTimeout(timer); try { await poll(); fitWindow(); } catch (error) { say(error.message); } timer = setTimeout(loop, document.hidden ? 10000 : 2000); }
     document.addEventListener('visibilitychange', () => { if (!document.hidden) loop(); });
     // 열 폭 조절: 머리글 오른쪽 경계를 끌면 그 열의 폭이 바뀐다. 폭은 이 PC 브라우저에 저장하고, 경계를 두 번 누르면 처음 폭으로 돌아간다.
     // 열 폭: 날짜 · 수량 · 체크 · 버튼 같은 열은 기본 폭 그대로(data-base), 종목 · 가격 · 문구 열(data-flex)만 남는 폭을 기본 폭 비율로 나눠 가진다.

@@ -138,6 +138,12 @@ internal sealed class IndependentForm : Form {
                         if (pagePath == "/short-stoploss.html") {
                             // 대주창 접기 · 펴기(2026-11-20): 창 위치(왼쪽 위)는 옮기지 않고 폭만 바꾼다. 화면 오른쪽 끝을 넘으면 거기까지만 늘린다
                             Width = Math.Max(MinimumSize.Width, Math.Min(Math.Max(area.Right - Left, MinimumSize.Width), previousSize.Width + (int)Math.Round(dw * (double)previousClientSize.Width / vw)));
+                            // 높이(2026-11-28): 설정란이 넘치면 화면이 그만큼 늘려 달라고 한다. 아래 끝을 넘으면 창을 위로 올리고, 화면 높이까지만
+                            if (dh != 0) {
+                                int h = Math.Max(MinimumSize.Height, Math.Min(area.Height, previousSize.Height + (int)Math.Round(dh * (double)previousClientSize.Height / vh)));
+                                if (Top + h > area.Bottom) Top = Math.Max(area.Top, area.Bottom - h);
+                                Height = h;
+                            }
                         } else {
                         Width = Math.Max(MinimumSize.Width, Math.Min(area.Width, previousSize.Width + (int)Math.Round(dw * (double)previousClientSize.Width / vw)));
                         Height = Math.Max(MinimumSize.Height, Math.Min(area.Height, previousSize.Height + (int)Math.Round(dh * (double)previousClientSize.Height / vh)));
@@ -200,10 +206,10 @@ internal sealed class IndependentForm : Form {
         var area = Screen.PrimaryScreen.WorkingArea;
         int width = 1250, height = 800;
         if (pagePath == "/short-stoploss.html") {
-            // 대주창 처음 크기: 화면 안쪽 1200×660(웹 화면 단위). 이 앱은 화면 배율을 인식하므로 배율만큼 키우고 테두리 · 제목 표시줄을 더한다
+            // 대주창 처음 크기: 화면 안쪽 1220×840(웹 화면 단위, 2026-11-28 청산 조건 박스로 설정란이 길어져 1200×660에서 늘림). 이 앱은 화면 배율을 인식하므로 배율만큼 키우고 테두리 · 제목 표시줄을 더한다
             float dpi = 96; using (var g = CreateGraphics()) dpi = g.DpiX;
-            width = (int)Math.Round(1200 * dpi / 96) + SystemInformation.FrameBorderSize.Width * 2;
-            height = (int)Math.Round(660 * dpi / 96) + SystemInformation.CaptionHeight + SystemInformation.FrameBorderSize.Height * 2;
+            width = (int)Math.Round(1220 * dpi / 96) + SystemInformation.FrameBorderSize.Width * 2;
+            height = (int)Math.Round(840 * dpi / 96) + SystemInformation.CaptionHeight + SystemInformation.FrameBorderSize.Height * 2;
         }
         Bounds = new Rectangle(area.Left + 30, area.Top + 30, Math.Min(width, area.Width), Math.Min(height, area.Height));
         preferredBounds = Bounds;

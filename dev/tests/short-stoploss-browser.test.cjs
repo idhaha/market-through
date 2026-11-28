@@ -240,7 +240,7 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         await page.evaluate(() => { document.getElementById('messageText').textContent = '시험'; document.getElementById('message').hidden = false; });
         await page.waitForTimeout(300); assert.equal(await page.isVisible('#message'), true);
         await page.click('#messageOk'); assert.equal(await page.isVisible('#message'), false);
-        // 메인 화면 버튼이 여는 크기(1200×660)에서 창 전체 스크롤은 없다
+        // 메인 화면 버튼이 여는 크기(2026-11-28부터 1220×840)에서 창 전체 스크롤도, 설정란 안 스크롤도 없다
         // 넓은 창: 남는 폭을 모든 열이 기본 폭 비율대로 나눠 가진다(한 열만 크게 늘어나지 않음, 2026-11-20 사용자 지적)
         await page.setViewportSize({ width: 1700, height: 900 });
         await page.waitForTimeout(200);
@@ -248,26 +248,25 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         // 날짜 · 보유 · 가능수량은 기본 폭 그대로, 종목 · 가격 · 평가손익만 기본 폭 비율로 넓어짐(2026-11-20 사용자 요청: 날짜는 딱 맞게)
         assert.deepEqual([wide[1], wide[2], wide[6], wide[7]], [60, 70, 72, 72], JSON.stringify(wide)); // 열 순서 2026-11-24: 종목 · 보유수량 · 가능수량 · 공매도단가 · 현재가 · 평가손익 · 대출일 · 만기일
         assert.ok(Math.abs(wide[0] / wide[5] - 150 / 120) < 0.05, JSON.stringify(wide));
-        await page.setViewportSize({ width: 1200, height: 660 });
+        await page.setViewportSize({ width: 1220, height: 840 });
         const fit = await page.evaluate(() => { const f = document.querySelector('.ss-form'); return { page: document.documentElement.scrollHeight - innerHeight, form: f.scrollHeight - f.clientHeight, wrapped: f.getBoundingClientRect().top > 100 }; });
-        // 2026-11-28부터 청산 조건 박스(익절 · 손절 · 주문)로 설정란이 길어져 설정란 안에서만 세로 스크롤된다(창 전체는 스크롤 없음)
-        assert.deepEqual([fit.page, fit.wrapped, fit.form > 0], [0, false, true], JSON.stringify(fit));
-        // 설정란 폭은 440px 고정, 감시 목록(청산 조건 열)은 1200 창에서 가로 스크롤 없이 들어간다(2026-11-28)
+        assert.deepEqual(fit, { page: 0, form: 0, wrapped: false }, JSON.stringify(fit));
+        // 설정란 폭은 460px 고정, 감시 목록(청산 조건 열)은 1220 창에서 가로 스크롤 없이 들어간다(2026-11-28)
         await page.waitForTimeout(300); const fitW = await page.evaluate(() => [Math.round(document.getElementById('formCard').getBoundingClientRect().width), ...['#watchTable', '#lotsTable'].map(t => { const w = document.querySelector(t).parentElement; return w.scrollWidth - w.clientWidth; })]);
-        assert.deepEqual(fitW, [440, 0, 0], '설정란 폭 · 표 가로 넘침 ' + JSON.stringify(fitW));
+        assert.deepEqual(fitW, [460, 0, 0], '설정란 폭 · 표 가로 넘침 ' + JSON.stringify(fitW));
         // 가운데 화살표로 청산 조건 설정을 접고 편다(기본 펼침). 접어도 왼쪽 가로폭 · 높이는 그대로이고(2026-11-20 사용자 지시), 위쪽 띠의 상태 · 시각 · 시간대는 그대로 보인다
         const foldInfo = () => page.evaluate(() => { const f = document.querySelector('.ss-form'), l = document.querySelector('.ss-left').getBoundingClientRect(), top = id => { const r = document.getElementById(id).getBoundingClientRect(); return r.width > 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= 44; };
             return { formShown: f.offsetWidth > 0, leftW: Math.round(l.width), leftH: Math.round(l.height), expanded: document.getElementById('foldBtn').getAttribute('aria-expanded'), page: document.documentElement.scrollHeight - innerHeight, header: ['autoState', 'clock', 'segment'].every(top) }; });
         const open0 = await foldInfo(); assert.equal(open0.formShown, true); assert.equal(open0.expanded, 'true');
         await page.click('#foldBtn');
         const closed = await foldInfo(); assert.equal(closed.formShown, false); assert.equal(closed.expanded, 'false'); assert.ok(closed.leftW === open0.leftW && closed.leftH === open0.leftH && closed.page === 0 && closed.header, JSON.stringify([open0, closed]));
-        await page.setViewportSize({ width: 640, height: 660 });
+        await page.setViewportSize({ width: 640, height: 840 });
         const narrow = await foldInfo(); assert.ok(narrow.leftW <= 640 - 24 && narrow.leftH === open0.leftH && narrow.page === 0 && narrow.header && !narrow.formShown, '좁은 창에서 접은 상태 ' + JSON.stringify(narrow));
-        await page.setViewportSize({ width: 1200, height: 660 });
+        await page.setViewportSize({ width: 1220, height: 840 });
         await page.click('#foldBtn'); const open1 = await foldInfo(); assert.deepEqual([open1.formShown, open1.leftW, open1.expanded], [true, open0.leftW, 'true']);
         // 독립창 앱(2026-11-20): 앱이 주는 window.chrome.webview를 흉내 낸다. 주소의 토큰을 X-SS-Token으로 보내고,
         // 접으면 창 폭을 화살표 옆까지 줄이라고(resize-window:-N), 펴면 다시 N만큼 늘리라고 앱에 알린다. 접힘 상태는 다시 열어도 그대로
-        const np = await browser.newPage({ viewport: { width: 1200, height: 660 } }); np.on('pageerror', e => errors.push(String(e)));
+        const np = await browser.newPage({ viewport: { width: 1220, height: 840 } }); np.on('pageerror', e => errors.push(String(e)));
         await np.addInitScript(() => { window.chrome = window.chrome || {}; window.chrome.webview = { postMessage: m => { (window.__msgs = window.__msgs || []).push(m); } }; });
         const tok = 'a'.repeat(64); seenTokens.clear();
         await np.goto(`http://127.0.0.1:${port}/short-stoploss.html#token=${tok}`); await np.waitForSelector('#lotsTable tbody tr.pick');
@@ -288,16 +287,16 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         const nInfo = () => np.evaluate(() => ({ msgs: window.__msgs || [], leftW: Math.round(document.querySelector('.ss-left').getBoundingClientRect().width), closed: document.body.classList.contains('form-closed'), fold: JSON.parse(localStorage.getItem('short-stoploss-fold') || 'null'), need: Math.ceil(document.querySelector('.ss-fold').getBoundingClientRect().right) + 12 }));
         const n0 = await nInfo(); assert.deepEqual(n0.msgs.filter(m => m.startsWith('resize-window')), [], '처음에는 창 크기를 바꾸지 않는다');
         await np.click('#foldBtn'); const n1 = await nInfo();
-        const cut = 1200 - n1.need; assert.ok(cut > 400, JSON.stringify(n1));
-        assert.deepEqual(n1.msgs.filter(m => m.startsWith('resize-window')), [`resize-window:${-cut},0,1200,660`], JSON.stringify(n1));
-        assert.equal(n1.leftW, n0.leftW, '접어도 잔고 · 감시 목록 폭 그대로'); assert.deepEqual(n1.fold, { closed: true, left: n1.fold.left, openWidth: 1200 });
+        const cut = 1220 - n1.need; assert.ok(cut > 400, JSON.stringify(n1));
+        assert.deepEqual(n1.msgs.filter(m => m.startsWith('resize-window')), [`resize-window:${-cut},0,1220,840`], JSON.stringify(n1));
+        assert.equal(n1.leftW, n0.leftW, '접어도 잔고 · 감시 목록 폭 그대로'); assert.deepEqual(n1.fold, { closed: true, left: n1.fold.left, openWidth: 1220 });
         // 앱이 창을 줄인 것처럼 화면 폭을 맞춘다. 접은 채로 닫았다 다시 열면(앱이 접은 크기로 창을 연다) 접힌 상태로 열리고 창 크기는 건드리지 않는다
-        await np.setViewportSize({ width: n1.need, height: 660 });
+        await np.setViewportSize({ width: n1.need, height: 840 });
         await np.reload(); await np.waitForSelector('#lotsTable tbody tr.pick'); const n2 = await nInfo();
         assert.equal(n2.closed, true); assert.equal(n2.leftW, n0.leftW); assert.deepEqual(n2.msgs.filter(m => m.startsWith('resize-window')), [], JSON.stringify(n2));
         assert.ok(seenTokens.size === 1 && usedLaunch.size === 1, '새로고침 뒤에도 같은 창 토큰(다시 바꾸지 않음)');
         await np.click('#foldBtn'); const n3 = await nInfo();
-        assert.deepEqual(n3.msgs.filter(m => m.startsWith('resize-window')), [`resize-window:${cut},0,${n1.need},660`], JSON.stringify(n3));
+        assert.deepEqual(n3.msgs.filter(m => m.startsWith('resize-window')), [`resize-window:${cut},0,${n1.need},840`], JSON.stringify(n3));
         assert.equal(n3.closed, false); assert.deepEqual(n3.fold, { closed: false });
         // 메인 화면 버튼을 다시 누르면 앱이 새 토큰을 넘긴다(서버 재시작 뒤 이어 쓰기)
         await np.check('#topmost'); const topBefore = (await np.evaluate(() => window.__msgs)).filter(m => m === 'topmost:true').length;
@@ -308,6 +307,17 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         seenTokens.clear(); await np.evaluate(t => window.refreshNativeShortStopLossCredentials(t), tok); await np.waitForTimeout(2600);
         assert.match(await np.textContent('#messageText'), /이미 쓴 연결/); assert.ok(seenTokens.has('S' + tok2.slice(0, 8)), '쓰던 창 토큰 유지');
         await np.close();
+        // 예전 크기(1200×660)로 기억된 창(2026-11-28 사용자 요청: 스크롤이 생기지 않게): 열 때 한 번만 폭 20 · 설정란이 넘치는 높이만큼 늘려 달라고 앱에 알린다
+        {
+            const op = await browser.newPage({ viewport: { width: 1200, height: 660 } }); op.on('pageerror', e => errors.push(String(e)));
+            await op.addInitScript(() => { window.chrome = window.chrome || {}; window.chrome.webview = { postMessage: m => { (window.__msgs = window.__msgs || []).push(m); } }; });
+            await op.goto(`http://127.0.0.1:${port}/short-stoploss.html#token=${'c'.repeat(64)}`); await op.waitForSelector('#lotsTable tbody tr.pick');
+            await op.evaluate(() => { localStorage.removeItem('short-stoploss-fold'); }); await op.reload(); await op.waitForSelector('#lotsTable tbody tr.pick'); await op.waitForTimeout(2600);
+            const over = await op.evaluate(() => { const f = document.getElementById('formCard'); return f.scrollHeight - f.clientHeight; });
+            const sent = (await op.evaluate(() => window.__msgs || [])).filter(m => m.startsWith('resize-window'));
+            assert.ok(over > 100 && sent.length === 1 && sent[0] === `resize-window:20,${over},1200,660`, '예전 크기 창 늘리기 ' + JSON.stringify({ over, sent }));
+            await op.close();
+        }
         // 설정란 i 풍선은 왼쪽 칸 경계에 잘리지 않고 창 안에 다 보인다(2026-11-20 사용자 지적)
         for (const label of ['미체결 정정 설명', '수량 설명', '주문 거래소 설명']) {
             // 설정란이 세로로 스크롤되므로(2026-11-28) 먼저 보이게 스크롤한 뒤 올린다(스크롤하면 풍선이 닫힌다)
@@ -316,7 +326,7 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
             const b = await page.evaluate(() => { const r = document.getElementById('floatTip').getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom, vis: getComputedStyle(document.getElementById('floatTip')).display, w: innerWidth, h: innerHeight }; });
             assert.ok(b.vis === 'block' && b.l >= 0 && b.r <= b.w && b.t >= 0 && b.b <= b.h, label + ' ' + JSON.stringify(b));
         }
-        // 주문 거래소 i 풍선에 엔진 시간표(8줄)와 장 마감 뒤 정리(2026-11-24 사용자 요청), 창(1200×660) 안에 다 보임
+        // 주문 거래소 i 풍선에 엔진 시간표(8줄)와 장 마감 뒤 정리(2026-11-24 사용자 요청), 창(1220×840) 안에 다 보임
         await page.hover('.ss-form [aria-label="주문 거래소 설명"]');
         assert.equal(await page.locator('#floatTip table.tt tbody tr').count(), 8);
         assert.match(await page.textContent('#floatTip'), /15:30~15:40: NXT로 미리 접수해 15:40 단일가로 체결/);
@@ -393,6 +403,9 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         // 기본: 손절 · 원(현재가)만 켜짐(예전과 같음), 익절 꺼짐
         assert.deepEqual([await page.isChecked('#stopOn'), await page.isChecked('#profitOn'), await page.isDisabled('#targetPct'), await page.isDisabled('#trailMin'), await page.$eval('#tpBox', b => b.classList.contains('dis'))], [true, false, true, true, true]);
         // 익절을 켜면 목표가 % 기본 -5.0 → 7,030 × 0.95 = 6,678.5 → 호가 내림 6,670원
+        // 목표가 아래 라디오는 '목표가' 글자 첫 위치에서 시작(2026-11-28 사용자 요청, 1px 이내)
+        assert.ok(await page.evaluate(() => { const lab = document.getElementById('targetOn').parentElement, r = document.createRange(); r.selectNodeContents(lab.lastChild);
+            return [...document.querySelectorAll('input[name=targetMode]')].every(x => Math.abs(x.getBoundingClientRect().left - r.getBoundingClientRect().left) <= 1); }), '목표가 라디오 들여쓰기');
         await page.check('#profitOn'); assert.deepEqual([await page.textContent('#targetCalc'), await page.isDisabled('#targetPct'), await page.isDisabled('#targetPrice')], ['(6,670원)', false, true]);
         // 손절 % → 7,030 × 1.03 = 7,240.9 → 호가 올림 7,250원, 원 칸은 잠김. 화살표는 0.5%p씩
         await page.check('input[name="stopMode"][value="pct"]'); assert.deepEqual([await page.textContent('#stopCalc'), await page.isDisabled('#trigger')], ['(7,250원)', true]);

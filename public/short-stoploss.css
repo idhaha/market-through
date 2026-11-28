@@ -213,7 +213,7 @@ label.row>input[type=checkbox],label.row>input[type=radio]{position:relative;top
 .box.dis>*:not(:first-child),.box .sub.dis>*:not(:first-child){opacity:.5}
 .box.dis>.row:first-child .tag{opacity:.5}
 .mode-row.off{opacity:.5}
-.indent2{padding-left:20px}
+.indent2{padding-left:39px}
 .form-body .box .row{flex-wrap:nowrap;white-space:nowrap;gap:6px}.form-body .box label.row{gap:4px}
 .le{font-weight:700;font-size:16px;padding:0 2px}
 .inp.basis{width:auto;padding:4px 2px}.inp.pct{width:52px}
@@ -229,5 +229,8 @@ label.row>input[type=checkbox],label.row>input[type=radio]{position:relative;top
 .cond-tags{display:flex;flex-wrap:wrap;gap:2px}
 .cond-tags .tag{display:inline-block;font-size:11px;padding:0 4px;border-radius:3px;border:1px solid;line-height:15px;white-space:nowrap}
 /* 설정란 폭 고정(2026-11-28): 청산 조건 박스의 괄호 금액 · 가능수량 줄 길이에 따라 설정란(최소 내용 폭)이 바뀌어 왼쪽 표 폭이 흔들리지 않게 460px로 둔다 */
-.ss-form{flex:0 0 440px;max-height:100%}
+.ss-form{flex:0 0 460px;max-height:100%}
 .exit-sec .box{padding:8px 6px 8px 8px;gap:6px}
+/* 2026-11-28: 창 안에서 설정란이 스크롤되지 않게 세로 간격을 조금 줄인다 */
+.form-body{gap:10px;padding:12px 14px}
+.exit-sec .box{gap:4px}.box .sub{gap:4px}.exit-sec{gap:6px}

@@ -28,7 +28,7 @@ Windows x64와 .NET Framework 4.6.2 이상을 사용한다. WebView2 Runtime이 
 
 ## 대주 StopLoss 창(2026-11-20)
 
-트레이딩 탭의 "대주StopLoss" 버튼도 같은 앱으로 연다(`/short-stoploss.html#token=<64자리>`, 창 제목 "MarketThrough 대주 StopLoss", 상태 폴더 `StateShortStopLoss`). 처음 크기는 화면 안쪽 1200×660(화면 배율 반영)이고 이후에는 마지막 위치 · 크기로 연다. 화면의 접기 · 펴기는 `resize-window` 메시지로 창 폭만 바꾸며, 다른 창과 달리 창 위치는 옮기지 않고 화면 오른쪽 끝까지만 늘린다. 새 설치 파일로 덮어 설치해야 적용된다. 자세한 내용은 [대주 StopLoss](../docs/KIWOOM_SHORT_STOPLOSS.md).
+트레이딩 탭의 "대주StopLoss" 버튼도 같은 앱으로 연다(`/short-stoploss.html#token=<64자리>`, 창 제목 "MarketThrough 대주 StopLoss", 상태 폴더 `StateShortStopLoss`). 처음 크기는 화면 안쪽 1220×840(화면 배율 반영, 2026-11-28)이고 이후에는 마지막 위치 · 크기로 연다. 열 때 설정란이 넘치거나 폭이 1220보다 좁으면 화면이 `resize-window`로 그만큼 늘려 달라고 하고, 앱은 아래 끝을 넘으면 창을 위로 올린다. 화면의 접기 · 펴기는 `resize-window` 메시지로 창 폭만 바꾸며, 다른 창과 달리 창 위치는 옮기지 않고 화면 오른쪽 끝까지만 늘린다. 새 설치 파일로 덮어 설치해야 적용된다. 자세한 내용은 [대주 StopLoss](../docs/KIWOOM_SHORT_STOPLOSS.md).
 
 ## 여는 토큰과 창 토큰(2026-11-20)
 
