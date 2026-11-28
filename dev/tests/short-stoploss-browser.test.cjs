@@ -93,11 +93,11 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
             const r = document.createRange(), n = i.nextSibling; if (!n) return null; r.selectNodeContents(n); const t = r.getClientRects()[0] || (n.getBoundingClientRect && n.getBoundingClientRect());
             return t ? Math.round(t.left - i.getBoundingClientRect().right) : null; }).filter(v => v !== null));
         assert.ok(boxGaps.length >= 6 && boxGaps.every(g => g >= 0 && g <= 5), '체크박스 · 라디오와 글자 사이 5px 이하: ' + boxGaps.join(','));
-        // 미체결 추격 한도(2026-11-27): 선택칸 · % · 금액 · i가 박스 없이 한 줄에 있고 i는 하나, 설정 카드 밖으로 넘치지 않는다
+        // 미체결 추격 한도(2026-11-27): 선택칸 · % · 금액 · i가 한 줄에 있고 i는 하나, 설정 카드 밖으로 넘치지 않는다
         const chaseRow = await page.evaluate(() => { const row = document.getElementById('fix').closest('.row.oneline'), card = document.getElementById('formCard').getBoundingClientRect();
             const tops = ['fix', 'chasePct', 'chaseNote'].map(id => Math.round(document.getElementById(id).getBoundingClientRect().top + document.getElementById(id).getBoundingClientRect().height / 2));
             const ib = row.querySelectorAll('button.i'); return { same: Math.max(...tops) - Math.min(...tops) <= 4, iCount: ib.length, box: !!row.closest('.box'), fits: [...row.children].every(c => c.getBoundingClientRect().right <= card.right + 0.5), text: row.textContent.replace(/s+/g, ' ').slice(0, 40) }; });
-        assert.deepEqual([chaseRow.same, chaseRow.iCount, chaseRow.box, chaseRow.fits], [true, 1, false, true], JSON.stringify(chaseRow));
+        assert.deepEqual([chaseRow.same, chaseRow.iCount, chaseRow.box, chaseRow.fits], [true, 1, true, true], JSON.stringify(chaseRow)); // 2026-11-28부터 주문 박스 안
         assert.equal(await page.textContent('#qtyCalc'), '1주', '수량 % 계산은 "=" 없이 주식 수만(2026-11-27)');
         assert.equal(await page.evaluate(() => { const sel = document.getElementById('chasePct'), row = sel.closest('.row.oneline'); return [...row.children].filter(c => !c.classList.contains('sr') && !c.classList.contains('tip')).map(c => c === sel ? sel.selectedOptions[0].textContent : c.textContent.trim()).join(' '); }), '미체결 추격 한도는 발동가의 +10% 8,030원');
         // 한 호가씩: 빈 칸이면 현재가 기준(↑ 7,010 · ↓ 7,000), 가격대 경계에서 단위가 바뀐다, 호가 단위에 안 맞는 값은 맞는 호가로
@@ -156,18 +156,19 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         await page.waitForSelector('#watchTable tbody .st');
         assert.equal(await page.textContent('#watchTable tbody .st'), '감시중');
         // 회귀(2026-11-23): 수량 칸은 설정(주 · %)과 상관없이 주 수 먼저, %는 괄호. 값은 설정한 그대로(주 설정은 그 주 수, % 설정은 가능수량 × % 내림 · 최소 1주)
-        assert.deepEqual(await page.$$eval('#watchTable thead th', t => t.map(x => x.textContent)), ['감시', '상태', '종목', '감시 · 청산수량', '감시가', '주문 방식', '판정 · 결과', '대출일', '유효기간', '조작']);
+        assert.deepEqual(await page.$$eval('#watchTable thead th', t => t.map(x => x.textContent)), ['감시', '상태', '종목', '감시 · 청산수량', '청산 조건', '주문 방식', '판정 · 결과', '대출일', '유효기간', '조작']);
+        assert.equal(await page.textContent('#watchTable tbody tr td:nth-child(5)'), '≥ 7,300', '청산 조건 열: 켠 조건만 꼬리표(2026-11-28)');
         assert.equal(await page.textContent('#watchTable tbody tr td:nth-child(4)'), '1주 (100%)');
         // 회귀(2026-11-24): 같은 묶음을 다시 고르면 남은 가능수량 0(1주 모두 할당) → 조건 추가 꺼짐
         await page.locator('#lotsTable tbody tr.pick').first().click();
         assert.deepEqual(await (async () => ({ add: [await page.isDisabled('#addBtn'), await page.$eval('#addBtn', n => n.classList.contains('primary'))], edit: [await page.isDisabled('#editBtn'), await page.$eval('#editBtn', n => n.classList.contains('primary'))] }))(), { add: [true, true], edit: [true, false] }, '잔고 행을 고르면(새 설정) 조건 추가가 파랑, 조건 수정은 무색 · 꺼짐');
         assert.equal(await page.textContent('#qtyNote'), '남은 가능수량이 없습니다(다른 감시 건에 모두 할당)'); assert.equal(await page.isDisabled('#addBtn'), true);
         // 회귀(2026-11-26 사용자 지적): 설정란 대출일 줄의 가능수량도 감시 등록 수량을 뺀 남은 수량(전에는 1주 그대로 보였음), 한 줄에 다 보임
-        assert.equal(await page.textContent('#fLot'), '0주 (감시 등록 1주 제외)');
+        assert.equal(await page.textContent('#fLot'), '0주 (감시 등록 1주 제외) · 매입단가 7,030', '가능수량 줄에 매입단가(2026-11-28)');
         assert.equal(await page.evaluate(() => document.getElementById('fLot').previousElementSibling.textContent), '가능수량', '제목은 가능수량(대출일 · 만기는 설정란에 안 보임, 2026-11-26)');
         assert.ok(await page.$eval('#fLot', n => n.scrollWidth <= n.clientWidth + 1 && n.getClientRects().length === 1), '가능수량 줄이 잘리지 않음');
         await page.locator('#watchTable tbody tr.pick').first().click(); assert.equal(await page.isVisible('#qtyNote'), false, '그 감시 건을 고를 때는 자기 수량을 빼지 않음');
-        assert.equal(await page.textContent('#fLot'), '1주', '감시 건을 고르면 자기 수량은 가능수량에 들어감');
+        assert.equal(await page.textContent('#fLot'), '1주 · 매입단가 7,030', '감시 건을 고르면 자기 수량은 가능수량에 들어감');
         // 파란 버튼(2026-11-27): 감시 건을 고르면 조건 추가는 무색 · 꺼짐, 조건 수정은 파랑 · 켜짐
         assert.deepEqual(await (async () => ({ add: [await page.isDisabled('#addBtn'), await page.$eval('#addBtn', n => n.classList.contains('primary'))], edit: [await page.isDisabled('#editBtn'), await page.$eval('#editBtn', n => n.classList.contains('primary'))] }))(), { add: [true, false], edit: [false, true] });
         // 상한가로 체크해 조건 수정 → 서버에 상한가로 저장('상한가 지정가'), 다시 고르면 드롭다운이 상한가. 되돌려 둔다
@@ -198,7 +199,7 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         await page.reload(); await page.waitForSelector('#watchTable tbody .st');
         assert.ok(Math.abs(await colW() - w1) <= 2, '다시 열어도 폭 유지');
         await page.locator('#watchTable thead th').nth(2).locator('.col-grip').dblclick();
-        assert.ok(Math.abs(await colW() - w0) <= 2, '두 번 누르면 처음 폭');
+        { const w2 = await colW(); assert.ok(Math.abs(w2 - w0) <= 2, '두 번 누르면 처음 폭 ' + JSON.stringify({ w0, w1, w2 })); }
         await page.locator('#lotsTable tbody tr.pick').first().click(); await page.fill('#trigger', '7300');
         // 감시 체크 끄기/켜기
         const cols = () => page.evaluate(() => [...document.querySelectorAll('#watchTable thead th, #lotsTable thead th')].map(th => Math.round(th.getBoundingClientRect().left)));
@@ -239,7 +240,7 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         await page.evaluate(() => { document.getElementById('messageText').textContent = '시험'; document.getElementById('message').hidden = false; });
         await page.waitForTimeout(300); assert.equal(await page.isVisible('#message'), true);
         await page.click('#messageOk'); assert.equal(await page.isVisible('#message'), false);
-        // 메인 화면 버튼이 여는 크기(1200×660)에서 창 전체 스크롤도, 설정란 안 스크롤도 없다
+        // 메인 화면 버튼이 여는 크기(1200×660)에서 창 전체 스크롤은 없다
         // 넓은 창: 남는 폭을 모든 열이 기본 폭 비율대로 나눠 가진다(한 열만 크게 늘어나지 않음, 2026-11-20 사용자 지적)
         await page.setViewportSize({ width: 1700, height: 900 });
         await page.waitForTimeout(200);
@@ -249,7 +250,11 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         assert.ok(Math.abs(wide[0] / wide[5] - 150 / 120) < 0.05, JSON.stringify(wide));
         await page.setViewportSize({ width: 1200, height: 660 });
         const fit = await page.evaluate(() => { const f = document.querySelector('.ss-form'); return { page: document.documentElement.scrollHeight - innerHeight, form: f.scrollHeight - f.clientHeight, wrapped: f.getBoundingClientRect().top > 100 }; });
-        assert.deepEqual(fit, { page: 0, form: 0, wrapped: false }, JSON.stringify(fit));
+        // 2026-11-28부터 청산 조건 박스(익절 · 손절 · 주문)로 설정란이 길어져 설정란 안에서만 세로 스크롤된다(창 전체는 스크롤 없음)
+        assert.deepEqual([fit.page, fit.wrapped, fit.form > 0], [0, false, true], JSON.stringify(fit));
+        // 설정란 폭은 440px 고정, 감시 목록(청산 조건 열)은 1200 창에서 가로 스크롤 없이 들어간다(2026-11-28)
+        await page.waitForTimeout(300); const fitW = await page.evaluate(() => [Math.round(document.getElementById('formCard').getBoundingClientRect().width), ...['#watchTable', '#lotsTable'].map(t => { const w = document.querySelector(t).parentElement; return w.scrollWidth - w.clientWidth; })]);
+        assert.deepEqual(fitW, [440, 0, 0], '설정란 폭 · 표 가로 넘침 ' + JSON.stringify(fitW));
         // 가운데 화살표로 청산 조건 설정을 접고 편다(기본 펼침). 접어도 왼쪽 가로폭 · 높이는 그대로이고(2026-11-20 사용자 지시), 위쪽 띠의 상태 · 시각 · 시간대는 그대로 보인다
         const foldInfo = () => page.evaluate(() => { const f = document.querySelector('.ss-form'), l = document.querySelector('.ss-left').getBoundingClientRect(), top = id => { const r = document.getElementById(id).getBoundingClientRect(); return r.width > 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= 44; };
             return { formShown: f.offsetWidth > 0, leftW: Math.round(l.width), leftH: Math.round(l.height), expanded: document.getElementById('foldBtn').getAttribute('aria-expanded'), page: document.documentElement.scrollHeight - innerHeight, header: ['autoState', 'clock', 'segment'].every(top) }; });
@@ -305,6 +310,8 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         await np.close();
         // 설정란 i 풍선은 왼쪽 칸 경계에 잘리지 않고 창 안에 다 보인다(2026-11-20 사용자 지적)
         for (const label of ['미체결 정정 설명', '수량 설명', '주문 거래소 설명']) {
+            // 설정란이 세로로 스크롤되므로(2026-11-28) 먼저 보이게 스크롤한 뒤 올린다(스크롤하면 풍선이 닫힌다)
+            await page.locator(`.ss-form [aria-label="${label}"]`).scrollIntoViewIfNeeded(); await page.waitForTimeout(150);
             await page.hover(`.ss-form [aria-label="${label}"]`);
             const b = await page.evaluate(() => { const r = document.getElementById('floatTip').getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom, vis: getComputedStyle(document.getElementById('floatTip')).display, w: innerWidth, h: innerHeight }; });
             assert.ok(b.vis === 'block' && b.l >= 0 && b.r <= b.w && b.t >= 0 && b.b <= b.h, label + ' ' + JSON.stringify(b));
@@ -344,7 +351,7 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         await page.click('#refreshBtn'); await page.waitForFunction(() => [...document.querySelectorAll('#watchTable tbody tr.pick')].some(tr => /9주/.test(tr.textContent)));
         await page.locator('#watchTable tbody tr.pick', { hasText: '9주' }).first().click(); assert.equal(await page.inputValue('#qtyShares'), '9');
         await page.locator('#lotsTable tbody tr.pick').first().click();
-        assert.deepEqual([await page.inputValue('#qtyShares'), await page.inputValue('#qtyPct'), await page.textContent('#fLot'), await page.isVisible('#qtyNote'), await page.isDisabled('#addBtn')], ['1', '100', '1주 (감시 등록 9주 제외)', false, false]);
+        assert.deepEqual([await page.inputValue('#qtyShares'), await page.inputValue('#qtyPct'), await page.textContent('#fLot'), await page.isVisible('#qtyNote'), await page.isDisabled('#addBtn')], ['1', '100', '1주 (감시 등록 9주 제외) · 매입단가 7,030', false, false]);
         // 100%-1주: 남은 1주면 쓸 수 없다고 알리고 조건 추가 꺼짐
         await page.check('input[name="qtyMode"][value="pct"]'); await page.selectOption('#qtyPct', '-1'); assert.deepEqual([await page.textContent('#qtyNote'), await page.isDisabled('#addBtn')], ['100%-1주는 남은 가능수량이 2주 이상일 때만 쓸 수 있습니다', true]);
         await page.selectOption('#qtyPct', '100');
@@ -378,6 +385,42 @@ const { createShortStopLossAccounts } = require('../../short-stoploss-accounts')
         const bigQty = await page.evaluate(() => { const row = document.querySelector('.qty-row'), card = document.getElementById('formCard').getBoundingClientRect(), calc = document.getElementById('qtyCalc').getBoundingClientRect(), radio = document.querySelector('input[name="qtyMode"][value="shares"]').getBoundingClientRect();
             return { calc: document.getElementById('qtyCalc').textContent, gap: Math.round(radio.left - calc.right), oneLine: row.getBoundingClientRect().height < 30, inCard: [...row.querySelectorAll('*')].filter(n => n.offsetParent && !n.closest('.tipbox')).every(n => n.getBoundingClientRect().right <= card.right + 0.5) }; });
         assert.ok(bigQty.calc === '12,344주' && bigQty.gap >= 14 && bigQty.oneLine && bigQty.inCard, JSON.stringify(bigQty));
+        // 청산 조건 박스(2026-11-28 사용자 결정): 익절(목표가 · 트레일링) · 손절 · 주문. 매입단가 7,030
+        await page.setViewportSize({ width: 1500, height: 1000 });
+        k.price = 7000; await page.click('#refreshBtn'); await page.waitForTimeout(1500);
+        await page.locator('#lotsTable tbody tr.pick').first().click();
+        assert.match(await page.textContent('#fLot'), / · 매입단가 7,030$/);
+        // 기본: 손절 · 원(현재가)만 켜짐(예전과 같음), 익절 꺼짐
+        assert.deepEqual([await page.isChecked('#stopOn'), await page.isChecked('#profitOn'), await page.isDisabled('#targetPct'), await page.isDisabled('#trailMin'), await page.$eval('#tpBox', b => b.classList.contains('dis'))], [true, false, true, true, true]);
+        // 익절을 켜면 목표가 % 기본 -5.0 → 7,030 × 0.95 = 6,678.5 → 호가 내림 6,670원
+        await page.check('#profitOn'); assert.deepEqual([await page.textContent('#targetCalc'), await page.isDisabled('#targetPct'), await page.isDisabled('#targetPrice')], ['(6,670원)', false, true]);
+        // 손절 % → 7,030 × 1.03 = 7,240.9 → 호가 올림 7,250원, 원 칸은 잠김. 화살표는 0.5%p씩
+        await page.check('input[name="stopMode"][value="pct"]'); assert.deepEqual([await page.textContent('#stopCalc'), await page.isDisabled('#trigger')], ['(7,250원)', true]);
+        await page.click('#slPctUp'); assert.deepEqual([await page.inputValue('#stopPct'), await page.textContent('#stopCalc')], ['+3.5', '(7,280원)']);
+        await page.click('#tpPctDown'); assert.deepEqual([await page.inputValue('#targetPct'), await page.textContent('#targetCalc')], ['-5.5', '(6,640원)']);
+        await page.fill('#targetPct', '-5.0'); await page.check('input[name="stopMode"][value="price"]');
+        // 아무 조건도 켜지 않으면 조건 추가 꺼짐
+        await page.uncheck('#stopOn'); await page.uncheck('#profitOn'); assert.equal(await page.isDisabled('#addBtn'), true);
+        await page.check('#profitOn'); assert.equal(await page.isDisabled('#addBtn'), false);
+        // 손절을 끈 채 조건 추가 → 확인 창(익절 박스 자리, 창 오른쪽 경계 안). '손절 켜기'는 창을 닫고 손절을 켠다
+        await page.click('#addBtn'); await page.waitForSelector('#stopOffDlg:not([hidden])');
+        const dlg = await page.evaluate(() => { const c = document.querySelector('#stopOffDlg .cf').getBoundingClientRect(), t = document.getElementById('tpBox').getBoundingClientRect(); return { dl: Math.round(c.left - t.left), dt: Math.round(c.top - t.top), right: c.right <= innerWidth - 7, text: document.getElementById('stopOffText').textContent }; });
+        assert.ok(dlg.right && dlg.dl <= 0 && dlg.dt === 0 && /매입단가 7,030원/.test(dlg.text), JSON.stringify(dlg));
+        await page.click('#stopOffNo'); assert.deepEqual([await page.isHidden('#stopOffDlg'), await page.isChecked('#stopOn')], [true, true]);
+        // 그대로 등록: 손절 없이 익절 목표가(-5%) · 트레일링(15분 10이평)
+        await page.check('#trailOn'); await page.uncheck('#stopOn'); await page.click('#addBtn'); await page.click('#stopOffOk');
+        await page.waitForFunction(() => /≤ 6,670/.test(document.querySelector('#watchTable tbody')?.textContent || ''));
+        assert.equal(await page.locator('#watchTable tbody tr', { hasText: '6,670' }).locator('td').nth(4).textContent(), '≤ 6,67015분 10이평');
+        assert.deepEqual(await page.locator('#watchTable tbody tr', { hasText: '6,670' }).locator('.cond-tags .tag').evaluateAll(t => t.map(x => x.title)), ['익절 목표가 ≤ 6,670 (매입단가 -5%)', '익절 트레일링 15분봉 종가 ≥ 10이평']);
+        const saved = svc._state().watches.find(w => w.target === 6670);
+        assert.deepEqual([saved.stopOn, saved.profitOn, saved.targetMode, saved.trailOn, saved.trailMin, saved.trailMa, saved.avgPrice], [false, true, 'pct', true, 15, 10, 7030]);
+        // 트레일링 현재 줄: 감시 건을 고르면 마지막 판정 봉. '<'가 위 줄 '≧'와 같은 가로 위치(1px 이내)
+        saved.trail = { bar: Date.parse('2026-11-20T10:30:00+09:00'), close: 7020, ma: 7045, at: clock.t, text: '시험' };
+        await page.click('#refreshBtn'); await page.waitForTimeout(1500);
+        await page.locator('#watchTable tbody tr', { hasText: '6,670' }).locator('td').nth(2).click();
+        const trl = await page.evaluate(() => { const c = id => { const r = document.getElementById(id).getBoundingClientRect(); return r.left + r.width / 2; }; return { text: document.getElementById('trNow').textContent, d: Math.round(Math.abs(c('trOp') - c('trLt')) * 10) / 10 }; });
+        assert.ok(trl.text === '10:30 현재 7,020<7,045(-0.35%)' && trl.d <= 1, JSON.stringify(trl));
+        assert.deepEqual([await page.isChecked('#stopOn'), await page.isChecked('#trailOn'), await page.inputValue('#targetPct')], [false, true, '-5.0'], '고른 감시 건의 설정이 칸에 채워짐');
         assert.deepEqual(errors, []);
         console.log('short-stoploss-browser: 모든 확인 통과');
     } finally { await browser.close(); server.close(); svc.stop(); }

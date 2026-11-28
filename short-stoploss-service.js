@@ -21,6 +21,30 @@ const ymd = s => String(s || '').replace(/^(\d{4})(\d{2})(\d{2})$/, '$1-$2-$3');
 function tick(p) { return p < 2000 ? 1 : p < 5000 ? 5 : p < 20000 ? 10 : p < 50000 ? 50 : p < 200000 ? 100 : p < 500000 ? 500 : 1000; }
 function addTicks(price, n) { let p = price; for (let i = 0; i < n; i++) p += tick(p); return p; }
 function floorTick(p) { const t = tick(p); return Math.floor(p / t) * t; }
+// 호가단위로 올림(가격대 경계를 넘으면 위 가격대의 단위로 다시 올림)
+function ceilTick(p) { const t = tick(p), c = Math.ceil(p / t) * t; return tick(c) === t ? c : Math.ceil(p / tick(c)) * tick(c); }
+// 청산 조건(2026-11-28 사용자 결정, docs/KIWOOM_SHORT_STOPLOSS.md): 손절(현재가 ≥ 감시가) · 익절 목표가(현재가 ≤ 목표가) · 익절 트레일링(N분봉 종가 ≥ M이평).
+// 켠 것 중 먼저 맞는 쪽으로 같은 주문 방식(체결가 +틱 지정가 · 추격 정정)으로 상환한다. 각자 자기 조건만 본다(손절을 끄면 오르는 쪽은 아무도 안 봄).
+// 예전 건(2026-11-28 이전)은 stopOn이 없어 손절 · 원만 켠 건으로 본다.
+const stopActive = w => w.stopOn !== false && w.trigger > 0;
+const targetActive = w => !!(w.profitOn && w.targetOn && w.target > 0);
+const trailActive = w => !!(w.profitOn && w.trailOn && w.trailMin > 0 && w.trailMa > 0);
+const TRAIL_MINUTES = [1, 3, 5, 10, 15, 30, 60];
+const won = n => Number(n || 0).toLocaleString('ko-KR');
+// 판정 문구: 손절만 켠 건은 예전과 같은 "KRX 7,290 < 7,300"
+function condText(w, hi, lo = hi) {
+    const parts = [];
+    if (stopActive(w)) parts.push(`${hi >= w.trigger ? '≥' : '<'} ${won(w.trigger)}`);
+    if (targetActive(w)) parts.push(`목표 ${lo <= w.target ? '≤' : '>'} ${won(w.target)}`);
+    return parts.join(' · ');
+}
+// 키움 ka10080 분봉 행 → [{ t(봉 시작 ms), close }] 오래된 것부터. cntr_tm은 봉 시작 시각(docs/CONCENTRATION_CHART.md)
+function minuteBars(rows) {
+    return (Array.isArray(rows) ? rows : []).map(r => {
+        const c = String(r.cntr_tm || '');
+        return { t: /^\d{14}$/.test(c) ? Date.parse(`${c.slice(0, 4)}-${c.slice(4, 6)}-${c.slice(6, 8)}T${c.slice(8, 10)}:${c.slice(10, 12)}:${c.slice(12, 14)}+09:00`) : NaN, close: Math.abs(Number(String(r.cur_prc || '').replace(/[^0-9.-]/g, '')) || 0) };
+    }).filter(b => Number.isFinite(b.t) && b.close > 0).sort((a, b) => a.t - b.t);
+}
 // 추격 한도 가격: 발동가 × (1 + %)를 호가단위로 내림, 상한가 이하.
 function chaseCap(firePrice, pct, upper) { const cap = floorTick(firePrice * (1 + pct / 100)); return upper ? Math.min(upper, cap) : cap; }
 // 정정 차례별 가격(1회: 매도1호가 + N틱, 2회: + 2N틱, 3회: 한도). 항상 한도 이하.
@@ -100,8 +124,10 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
         if (seg.ex !== ex && !(seg.dual && ex === 'NXT')) return;
         for (const w of state.watches) {
             if (w.code !== code || w.status !== '감시중' || !w.enabled || running.has(w.id) || (ex === 'NXT' && !w.nxt)) continue;
-            w.lastCheck = { at: now(), ex, price, live: true, text: `${ex} ${price.toLocaleString('ko-KR')} ${price >= w.trigger ? '≥' : '<'} ${w.trigger.toLocaleString('ko-KR')} · 실시간` };
-            if (price >= w.trigger) void fire(w, price, seg, ex, '실시간');
+            if (!stopActive(w) && !targetActive(w)) continue; // 트레일링만 켠 건은 봉이 끝날 때 판정
+            w.lastCheck = { at: now(), ex, price, live: true, text: `${ex} ${price.toLocaleString('ko-KR')} ${condText(w, price)} · 실시간` };
+            const reason = stopActive(w) && price >= w.trigger ? '손절' : targetActive(w) && price <= w.target ? '목표가' : '';
+            if (reason) void fire(w, price, seg, ex, '실시간', false, reason);
         }
     }
     // 00 이벤트(내 주문 접수 · 체결 · 정정 · 취소)를 주문번호별로 모아 둔다. 체결량은 '체결' 이벤트의 단위체결량(915, 없으면 911)을 더한다.
@@ -131,7 +157,7 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
         rtLogAt = now();
         const line = { at: new Date(now()).toISOString(), connected: !!realtime.connected(), viState: realtime.state?.(), status: realtime.status?.(), items: rtItems ? rtItems.split(',') : [], counts: rtCounts, orders00: rtOrders.splice(0),
             // 감시 건별 상태 · 마지막 판정(파일에는 사건 때만 저장되므로 여기서 1분마다 남겨 감시가 실제로 도는지 확인한다)
-            watches: state.watches.filter(w => !ENDED.has(w.status)).map(w => ({ id: w.id, name: w.name, status: w.status, enabled: w.enabled, trigger: w.trigger, lastCheck: w.lastCheck ? { at: new Date(w.lastCheck.at).toISOString(), text: w.lastCheck.text, live: !!w.lastCheck.live } : null })) };
+            watches: state.watches.filter(w => !ENDED.has(w.status)).map(w => ({ id: w.id, name: w.name, status: w.status, enabled: w.enabled, trigger: stopActive(w) ? w.trigger : 0, target: targetActive(w) ? w.target : 0, trail: trailActive(w) ? `${w.trailMin}분 ${w.trailMa}이평` : '', lastCheck: w.lastCheck ? { at: new Date(w.lastCheck.at).toISOString(), text: w.lastCheck.text, live: !!w.lastCheck.live } : null })) };
         rtCounts = {};
         try { fs.appendFileSync(path.join(directory, 'realtime-' + kstParts(now()).day + '.jsonl'), JSON.stringify(line) + '\n'); } catch {}
     }
@@ -142,6 +168,8 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
     for (const w of state.watches) {
         if (w.status === '발동' && !(w.orders || []).some(o => o.ordNos?.length)) { w.status = '확인 필요'; w.enabled = false; event(w, '재시작', '주문 전에 서버가 멈췄습니다. 영웅문에서 주문 여부를 확인하세요.'); }
     }
+    // 예전 건(2026-11-28 이전): 손절 · 원만 켠 건
+    for (const w of state.watches) if (w.stopOn === undefined) Object.assign(w, { stopOn: w.trigger > 0, stopMode: 'price', profitOn: false, targetOn: false, trailOn: false });
     save();
 
     // 키움 REST: 조회는 한도 오류 때 다시 시도, 주문(order=true)은 절대 다시 보내지 않는다.
@@ -245,10 +273,41 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
         const used = state.watches.filter(w => w.lotKey === lot.key && w.id !== exceptId && ALLOC.has(w.status)).reduce((a, w) => a + watchShares(w, lot), 0);
         return Math.max(0, lot.able - used);
     }
-    function validate(input, lot, remaining = null) {
-        const t = Math.round(num(input.trigger)), ticks = Math.round(num(input.ticks)), chasePct = Math.round(num(input.chasePct));
+    // 청산 조건 읽기. prev는 고치는 건(등록 시 현재가 · 매입단가를 그대로 쓴다)
+    function exitConditions(input, lot, prev = {}) {
+        const bad = m => { throw Object.assign(Error(m), { status: 400 }); };
+        const legacy = input.stopOn === undefined && input.profitOn === undefined;
+        const avgPrice = abs(lot?.sellPrice) || abs(prev.avgPrice), regPrice = abs(prev.regPrice) || abs(lot?.price);
+        const basisOf = b => b === 'reg' ? regPrice : avgPrice;
+        const pct = v => Math.round(Math.abs(num(String(v ?? '').normalize('NFKC'))) * 10) / 10;
+        const stopOn = legacy ? true : !!input.stopOn, stopMode = input.stopMode === 'pct' ? 'pct' : 'price', stopBasis = input.stopBasis === 'reg' ? 'reg' : 'avg';
+        let trigger = Math.round(num(input.trigger)); const stopPct = pct(input.stopPct);
+        if (stopOn && stopMode === 'pct') {
+            if (!(stopPct >= 0.1 && stopPct <= 50)) bad('손절 %는 0.1~50%입니다');
+            if (!basisOf(stopBasis)) bad('손절 % 기준가(매입단가 · 등록 시 현재가)를 알 수 없습니다');
+            trigger = ceilTick(basisOf(stopBasis) * (1 + stopPct / 100));
+        }
+        if (stopOn && !(trigger > 0)) bad('감시가를 입력하세요');
+        const profitOn = !legacy && !!input.profitOn, targetOn = !!input.targetOn, trailOn = !!input.trailOn;
+        const targetMode = input.targetMode === 'price' ? 'price' : 'pct', targetBasis = input.targetBasis === 'reg' ? 'reg' : 'avg';
+        let target = Math.round(num(input.target)); const targetPct = pct(input.targetPct);
+        if (profitOn && targetOn && targetMode === 'pct') {
+            if (!(targetPct >= 0.1 && targetPct <= 50)) bad('목표가 %는 0.1~50%입니다');
+            if (!basisOf(targetBasis)) bad('목표가 % 기준가(매입단가 · 등록 시 현재가)를 알 수 없습니다');
+            target = floorTick(basisOf(targetBasis) * (1 - targetPct / 100));
+        }
+        if (profitOn && targetOn && !(target > 0)) bad('목표가를 입력하세요');
+        const trailMin = Math.round(num(input.trailMin)) || 15, trailMa = Math.round(num(input.trailMa)) || 10;
+        if (profitOn && trailOn && !TRAIL_MINUTES.includes(trailMin)) bad('트레일링 분봉은 ' + TRAIL_MINUTES.join(' · ') + '분입니다');
+        if (profitOn && trailOn && !(trailMa >= 2 && trailMa <= 120)) bad('트레일링 이평은 2~120입니다');
+        const out = { stopOn, stopMode, stopPct, stopBasis, trigger: Math.max(0, trigger || 0), profitOn, targetOn, targetMode, targetPct, targetBasis, target: Math.max(0, target || 0), trailOn, trailMin, trailMa, avgPrice, regPrice };
+        if (!stopActive(out) && !targetActive(out) && !trailActive(out)) bad('손절 · 익절(목표가 · 트레일링) 중 하나 이상 켜세요');
+        return out;
+    }
+    function validate(input, lot, remaining = null, prev = {}) {
+        const exit = exitConditions(input, lot, prev);
+        const ticks = Math.round(num(input.ticks)), chasePct = Math.round(num(input.chasePct));
         const qtyMode = input.qtyMode === 'shares' ? 'shares' : 'pct', qtyValue = Math.round(num(input.qtyValue));
-        if (!(t > 0)) throw Object.assign(Error('감시가를 입력하세요'), { status: 400 });
         if (!(ticks >= 1 && ticks <= 10)) throw Object.assign(Error('틱은 1~10입니다'), { status: 400 });
         if (!(chasePct >= 1 && chasePct <= 10)) throw Object.assign(Error('추격 한도는 1~10%입니다'), { status: 400 });
         if (qtyMode === 'pct' && !(qtyValue === -1 || qtyValue >= 10 && qtyValue <= 100 && qtyValue % 10 === 0)) throw Object.assign(Error('수량 %는 10~100%(10% 단위)나 100%-1주입니다'), { status: 400 });
@@ -262,7 +321,7 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
             alloc = { shares: qtyMode === 'shares' ? qtyValue : pctShares(remaining, qtyValue), baseQty: lot.qty };
         } else if (qtyMode === 'shares') alloc = { shares: qtyValue };
         const until = adjustUntil(String(input.until || addMonth(today())), { today: today(), maturity: lot.maturity, openDate });
-        return { trigger: t, ticks, upperLimit: !!input.upperLimit, fix: input.fix !== false, chasePct, qtyMode, qtyValue,
+        return { ...exit, ticks, upperLimit: !!input.upperLimit, fix: input.fix !== false, chasePct, qtyMode, qtyValue,
             allLots: !!input.allLots, cancelPending: input.cancelPending !== false, until: until.value, untilNote: until.note, ...alloc };
     }
     async function create(input) {
@@ -270,11 +329,18 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
         const lot = lots.find(l => l.key === input.lotKey);
         if (!lot) throw Object.assign(Error('대주 잔고에서 그 행을 찾지 못했습니다'), { status: 404 });
         const w = { id: crypto.randomBytes(6).toString('hex'), lotKey: lot.key, code: lot.code, name: lot.name, loanDt: lot.loanDt, loanRaw: lot.loanRaw, maturity: lot.maturity, nxt: lot.nxt,
-            ...validate(input, lot, remainingFor(lot)), enabled: input.enabled !== false, status: '감시중', createdAt: now(), lastCheck: null, note: '', orders: [], log: [] };
+            ...validate(input, lot, remainingFor(lot)), enabled: input.enabled !== false, status: '감시중', createdAt: now(), trailFrom: now(), trailLast: 0, lastCheck: null, note: '', orders: [], log: [] };
         if (!w.enabled) w.status = '중지';
-        event(w, '등록', `감시가 ${w.trigger.toLocaleString('ko-KR')} · +${w.ticks}틱${w.upperLimit ? ' · 상한가' : ''} · 정정 ${w.fix ? '켜짐(한도 ' + w.chasePct + '%)' : '꺼짐'} · ${w.qtyMode === 'pct' ? pctLabel(w.qtyValue) : w.qtyValue + '주'} · ~${w.until}`);
+        event(w, '등록', `${exitLabel(w)} · +${w.ticks}틱${w.upperLimit ? ' · 상한가' : ''} · 정정 ${w.fix ? '켜짐(한도 ' + w.chasePct + '%)' : '꺼짐'} · ${w.qtyMode === 'pct' ? pctLabel(w.qtyValue) : w.qtyValue + '주'} · ~${w.until}`);
         state.watches.push(w); save();
         return publicWatch(w);
+    }
+    // 기록용 조건 문구: "손절 ≥ 7,300 · 목표 ≤ 6,700(매입단가 -5%) · 트레일링 15분 10이평"
+    function exitLabel(w) {
+        const basis = b => b === 'reg' ? '등록 시 현재가' : '매입단가';
+        return [stopActive(w) && `손절 ≥ ${won(w.trigger)}${w.stopMode === 'pct' ? `(${basis(w.stopBasis)} +${w.stopPct}%)` : ''}`,
+            targetActive(w) && `목표 ≤ ${won(w.target)}${w.targetMode === 'pct' ? `(${basis(w.targetBasis)} -${w.targetPct}%)` : ''}`,
+            trailActive(w) && `트레일링 ${w.trailMin}분 ${w.trailMa}이평`].filter(Boolean).join(' · ');
     }
     function find(id) { const w = state.watches.find(x => x.id === id); if (!w) throw Object.assign(Error('감시 건을 찾지 못했습니다'), { status: 404 }); return w; }
     function update(id, input) {
@@ -282,19 +348,19 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
         if (ACTIVE.has(w.status) || running.has(w.id)) throw Object.assign(Error('주문 처리 중에는 고칠 수 없습니다'), { status: 409 });
         if (['체결완료', '부분체결', '잔고없음'].includes(w.status)) throw Object.assign(Error('끝난 건은 고칠 수 없습니다'), { status: 409 });
         const lot = lots.find(l => l.key === w.lotKey);
-        Object.assign(w, validate(input, lot ? { ...lot, maturity: w.maturity } : { maturity: w.maturity }, lot ? remainingFor(lot, w.id) : null));
+        Object.assign(w, validate(input, lot ? { ...lot, maturity: w.maturity } : { maturity: w.maturity }, lot ? remainingFor(lot, w.id) : null, w), { trailFrom: now(), trailLast: 0, trail: null });
         if (w.status === '만료' || w.status === '실패' || w.status === '확인 필요') { w.status = w.enabled ? '감시중' : '중지'; }
-        event(w, '수정', `감시가 ${w.trigger.toLocaleString('ko-KR')} · +${w.ticks}틱 · ~${w.until}`);
+        event(w, '수정', `${exitLabel(w)} · +${w.ticks}틱 · ~${w.until}`);
         save(); return publicWatch(w);
     }
     function setEnabled(id, on) {
         const w = find(id);
         if (ACTIVE.has(w.status) || ENDED.has(w.status) && w.status !== '만료') throw Object.assign(Error('이 건은 감시를 켜고 끌 수 없습니다'), { status: 409 });
         if (w.status === '만료') throw Object.assign(Error('만료된 건은 유효기간을 연장한 뒤 켜세요'), { status: 409 });
-        w.enabled = !!on; w.status = on ? '감시중' : '중지'; event(w, on ? '감시' : '중지', on ? '감시를 켰습니다' : '감시를 껐습니다'); save();
+        w.enabled = !!on; w.status = on ? '감시중' : '중지'; if (on) { w.trailFrom = now(); w.trailLast = 0; } event(w, on ? '감시' : '중지', on ? '감시를 켰습니다' : '감시를 껐습니다'); save();
         return publicWatch(w);
     }
-    function setAll(on) { for (const w of state.watches) if (['감시중', '중지'].includes(w.status)) { w.enabled = !!on; w.status = on ? '감시중' : '중지'; } save(); return snapshot(); }
+    function setAll(on) { for (const w of state.watches) if (['감시중', '중지'].includes(w.status)) { if (on && w.status === '중지') { w.trailFrom = now(); w.trailLast = 0; } w.enabled = !!on; w.status = on ? '감시중' : '중지'; } save(); return snapshot(); }
     function remove(id) { const w = find(id); if (ACTIVE.has(w.status) || running.has(w.id)) throw Object.assign(Error('주문 처리 중에는 지울 수 없습니다'), { status: 409 }); state.watches = state.watches.filter(x => x !== w); save(); }
     function history(id) { const w = find(id); return { watch: publicWatch(w), log: w.log || [] }; }
     function resume() { state.halted = false; state.haltedReason = ''; save(); return snapshot(); }
@@ -365,13 +431,16 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
         return r.ord_no;
     }
 
-    async function fire(w, firePrice, seg, srcEx = seg.ex, via = '조회', expected = !!seg.auction) {
+    async function fire(w, firePrice, seg, srcEx = seg.ex, via = '조회', expected = !!seg.auction, reason = '손절', why = '') {
         running.add(w.id);
         try {
             const orderEx = orderExFor(seg, w);
             w.status = '발동'; w.firedAt = now(); w.firePrice = firePrice; w.fireEx = orderEx; w.enabled = false;
-            w.fireSrc = srcEx; w.fireVia = via;
-            event(w, '발동', `${srcEx} ${expected ? '예상체결가' : '체결가'} ${firePrice.toLocaleString('ko-KR')} ≥ 감시가 ${w.trigger.toLocaleString('ko-KR')} · ${via} 판정 · 주문 거래소 ${orderEx}`);
+            w.fireSrc = srcEx; w.fireVia = via; w.fireReason = reason;
+            const seen = `${srcEx} ${expected ? '예상체결가' : '체결가'} ${firePrice.toLocaleString('ko-KR')}`;
+            event(w, '발동', reason === '목표가' ? `익절 목표가: ${seen} ≤ 목표가 ${won(w.target)} · ${via} 판정 · 주문 거래소 ${orderEx}`
+                : reason === '트레일링' ? `익절 트레일링: ${why} · 주문 거래소 ${orderEx}`
+                : `${seen} ≥ 감시가 ${w.trigger.toLocaleString('ko-KR')} · ${via} 판정 · 주문 거래소 ${orderEx}`);
             save();
             await loadLots();
             let targets = lots.filter(l => l.code === w.code && (w.allLots || l.key === w.lotKey)).sort((a, b) => String(a.maturity).localeCompare(String(b.maturity)));
@@ -459,7 +528,7 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
         const total = w.orders.reduce((s, o) => s + o.qty, 0), filled = w.orders.reduce((s, o) => s + o.filled, 0);
         w.status = filled >= total && total > 0 ? '체결완료' : filled > 0 ? '부분체결' : '실패';
         const prices = w.orders.flatMap(o => o.fillPrices || []);
-        w.note = filled ? `${w.firePrice.toLocaleString('ko-KR')} 발동 → ${filled}/${total}주 체결${prices.length ? ' · ' + [...new Set(prices)].map(p => p.toLocaleString('ko-KR')).join(', ') : ''}` : '체결 없음';
+        w.note = filled ? `${w.fireReason && w.fireReason !== '손절' ? '익절(' + w.fireReason + ') ' : ''}${w.firePrice.toLocaleString('ko-KR')} 발동 → ${filled}/${total}주 체결${prices.length ? ' · ' + [...new Set(prices)].map(p => p.toLocaleString('ko-KR')).join(', ') : ''}` : '체결 없음';
         event(w, '결과', w.note); save();
         void loadLots().catch(() => {});
     }
@@ -478,14 +547,16 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
             if (!enabled() || state.halted) return;
             const seg = segmentAt(t, openDate);
             const watching = state.watches.filter(w => w.status === '감시중' && w.enabled && !running.has(w.id));
-            if (!seg || !seg.ex) { for (const w of watching) w.lastCheck = { at: t, text: seg ? seg.label + ' · 판정 안 함' : '장 시작 전' }; return; }
+            await trailStep(t, seg, watching);
+            if (!seg || !seg.ex) { for (const w of watching) if (stopActive(w) || targetActive(w)) w.lastCheck = { at: t, text: seg ? seg.label + ' · 판정 안 함' : '장 시작 전' }; return; }
             // 공용 실시간이 붙어 있으면 0B가 바로 판정하므로 조회는 5초 간격 보조(종가 단일가 15:20~15:30은 0B가 없어 1초 조회).
             if (realtime?.connected() && !seg.auction && now() - lastPollAt < 5000) return;
             lastPollAt = now();
-            const codes = [...new Set(watching.filter(w => seg.ex === 'KRX' || w.nxt).map(w => w.code))];
-            for (const w of watching) if (seg.ex === 'NXT' && !w.nxt) w.lastCheck = { at: t, text: `NXT 비대상 · ${seg.id === 'NXT_PRE' ? '09:00' : '16:00'} KRX 대기` };
+            const priced = watching.filter(w => stopActive(w) || targetActive(w));
+            const codes = [...new Set(priced.filter(w => seg.ex === 'KRX' || w.nxt).map(w => w.code))];
+            for (const w of priced) if (seg.ex === 'NXT' && !w.nxt) w.lastCheck = { at: t, text: `NXT 비대상 · ${seg.id === 'NXT_PRE' ? '09:00' : '16:00'} KRX 대기` };
             for (const code of codes) {
-                const group = watching.filter(x => x.code === code);
+                const group = priced.filter(x => x.code === code);
                 // KRX 정규장 · 애프터마켓에는 NXT 체결도 본다(실시간이 끊겨 조회로 감시할 때). 오늘 체결이 있는 쪽만 쓴다.
                 const sources = [seg.ex];
                 if (seg.dual && group.some(w => w.nxt)) sources.push('NXT');
@@ -500,13 +571,48 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
                 for (const w of group) {
                     const usable = seen.filter(s => s.ex === seg.ex || w.nxt);
                     if (!usable.length) { w.lastCheck = { at: now(), ex: seg.ex, text: `${seg.ex} 오늘 체결 없음` }; continue; }
-                    const best = usable.reduce((a, b) => (b.price > a.price ? b : a));
-                    w.lastCheck = { at: now(), ex: best.ex, price: best.price, text: usable.map(s => `${s.ex} ${s.price.toLocaleString('ko-KR')}`).join(' · ') + ` ${best.price >= w.trigger ? '≥' : '<'} ${w.trigger.toLocaleString('ko-KR')}` };
-                    if (best.price >= w.trigger && !state.halted) void fire(w, best.price, seg, best.ex, '조회', !!best.expected);
+                    // 손절은 가장 높은 체결, 목표가는 가장 낮은 체결로 판정(어느 거래소든 조건에 닿으면 발동)
+                    const best = usable.reduce((a, b) => (b.price > a.price ? b : a)), low = usable.reduce((a, b) => (b.price < a.price ? b : a));
+                    w.lastCheck = { at: now(), ex: best.ex, price: best.price, text: usable.map(s => `${s.ex} ${s.price.toLocaleString('ko-KR')}`).join(' · ') + ` ${condText(w, best.price, low.price)}` };
+                    if (state.halted) continue;
+                    if (stopActive(w) && best.price >= w.trigger) void fire(w, best.price, seg, best.ex, '조회', !!best.expected, '손절');
+                    else if (targetActive(w) && low.price <= w.target) void fire(w, low.price, seg, low.ex, '조회', !!low.expected, '목표가');
                 }
             }
         } catch (error) { log('대주 StopLoss 감시 오류: ' + (error.stack || error)); }
         finally { ticking = false; }
+    }
+    // 트레일링(2026-11-28 사용자 결정): KRX+NXT 통합 분봉(ka10080 _AL)이 끝날 때마다 한 번 판정. 등록(또는 다시 켠) 뒤 처음 끝나는 봉부터.
+    // 봉이 끝나고 3초 뒤부터 5초 간격으로 그 봉을 찾고, 90초 안에 없으면(거래 없음) 그 봉은 넘어간다.
+    // 종가 ≥ 이평이고 종가 < 매입단가일 때만 상환한다(매입단가 이상은 손절 조건에 맡김). 주문은 그때 현재가 기준으로 손절과 같은 방식.
+    const trailTry = new Map();
+    const hm = t => new Date(t + 9 * 3600000).toISOString().slice(11, 16);
+    async function trailStep(t, seg, watching) {
+        const fetched = new Map();
+        for (const w of watching) {
+            if (!trailActive(w) || running.has(w.id)) continue;
+            const N = w.trailMin * 60000, end = Math.floor(t / N) * N, bar = end - N;
+            if (t - end < 3000 || end <= (w.trailFrom || w.createdAt || 0) || (w.trailLast || 0) >= bar) continue;
+            if (now() - (trailTry.get(w.id) || 0) < 5000) continue;
+            trailTry.set(w.id, now());
+            const giveUp = t - end > 90000, judged = (text, extra = {}) => { w.trailLast = bar; w.trail = { bar, at: now(), text, ...extra }; save(); };
+            const key = w.code + ':' + w.trailMin;
+            if (!fetched.has(key)) { const r = await call('chart', 'ka10080', { stk_cd: w.code + '_AL', tic_scope: String(w.trailMin), upd_stkpc_tp: '0' }); fetched.set(key, Array.isArray(r.stk_min_pole_chart_qry) ? minuteBars(r.stk_min_pole_chart_qry) : { error: r.return_msg || r.error || r.networkError || '응답 없음' }); }
+            const bars = fetched.get(key);
+            if (bars.error) { if (giveUp) { judged(`${hm(bar)}봉 분봉 조회 실패: ${bars.error}`); event(w, '트레일링', `${hm(bar)}봉 분봉 조회 실패(${bars.error}) · 이 봉은 판정하지 못했습니다`); } continue; }
+            const i = bars.findIndex(b => b.t === bar);
+            if (i < 0) { if (giveUp) judged(`${hm(bar)}봉 없음(거래 없음)`); continue; }
+            if (i + 1 < w.trailMa) { judged(`이평 ${w.trailMa}개 봉이 모자람`); continue; }
+            const close = bars[i].close, ma = Math.round(bars.slice(i + 1 - w.trailMa, i + 1).reduce((a, b) => a + b.close, 0) / w.trailMa * 100) / 100;
+            const info = { close, ma }, maText = `${w.trailMin}분봉 ${hm(bar)} 종가 ${won(close)} ${close >= ma ? '≥' : '<'} ${w.trailMa}이평 ${won(ma)}`;
+            if (close < ma) { judged(maText, info); continue; }
+            if (w.avgPrice && close >= w.avgPrice) { judged(maText + ` · 매입단가 ${won(w.avgPrice)} 이상이라 상환 안 함`, info); event(w, '트레일링', maText + ` · 매입단가 ${won(w.avgPrice)} 이상이라 상환하지 않습니다(손절 조건에 맡김)`); continue; }
+            if (!seg || !seg.ex || seg.id === 'HOLD' || seg.ex === 'NXT' && !w.nxt) { const why = seg ? seg.label : '장 마감'; judged(maText + ` · ${why}이라 주문 안 함`, info); event(w, '트레일링', maText + ` · ${why}이라 주문하지 않았습니다`); continue; }
+            judged(maText, info);
+            const q = await quote(w.code, seg.ex), expected = !!seg.auction && !!q.exp;
+            const price = expected ? q.exp : q.ok && q.cur && q.volume ? q.cur : close;
+            if (!state.halted && !running.has(w.id) && w.status === '감시중') void fire(w, price, seg, seg.ex, '분봉', expected, '트레일링', `${maText} · 매입단가 ${won(w.avgPrice)} 미만 → ${seg.ex} ${expected ? '예상체결가' : '현재가'} ${won(price)} 기준`);
+        }
     }
     function resumeTracking() { for (const w of state.watches) if (ACTIVE.has(w.status) && w.status !== '발동' && !running.has(w.id)) { running.add(w.id); event(w, '재시작', '서버 재시작 뒤 체결 추적을 이어 갑니다'); track(w).catch(e => log('대주 StopLoss 추적 오류: ' + e)).finally(() => running.delete(w.id)); } }
     function start() { if (timer) return; resumeTracking(); loadAccount().catch(() => {}); timer = setInterval(() => void step(), tickMs); timer.unref?.(); }
@@ -532,4 +638,4 @@ function createShortStopLoss({ directory, http, getToken, rejectToken = () => {}
     return { start, stop, step, mount, ensure, snapshot, create, update, setEnabled, setAll, remove, history, resume, loadLots, _state: () => state };
 }
 
-module.exports = { createShortStopLoss, tick, addTicks, floorTick, chaseCap, repriceFor, segmentAt, adjustUntil, addMonth };
+module.exports = { createShortStopLoss, tick, addTicks, floorTick, ceilTick, minuteBars, chaseCap, repriceFor, segmentAt, adjustUntil, addMonth };

@@ -34,6 +34,7 @@ function fakeKiwoom({ price = 7350, volume = 1000, ask = 7360, nxt = true, io = 
         if (api === 'kt10009') { k.cancels.push(body); const o = k.book.get(body.orig_ord_no); if (o) o.open = 0; return r({ ord_no: String(++k.seq).padStart(7, '0') }); }
         if (api === 'ka10075') return r({ oso: [...k.book].filter(([, o]) => o.open > 0).map(([ord, o]) => ({ ord_no: ord, oso_qty: String(o.open), io_tp_nm: k.io, stk_cd: '004980', stex_tp: '1' })) });
         if (api === 'kt00009') return r({ acnt_ord_cntr_prst_array: [...k.book].map(([ord, o]) => ({ ord_no: ord, cntr_qty: String(o.filled), cntr_uv: String(o.filled ? o.price : 0), io_tp_nm: k.io === '+상환대주' ? '대주매수상환' : '현금매수', crd_deal_tp: k.io === '+상환대주' ? '유통대주매수상환' : '자기융자매수' })) });
+        if (api === 'ka10080') { (k.chart = k.chart || []).push(body); return r({ stk_min_pole_chart_qry: k.bars || [] }); }
         return r({});
     } };
     return k;
@@ -379,6 +380,171 @@ async function runUntilDone(e, w, rounds = 40) { for (let i = 0; i < rounds; i++
         // 신용이자도 뺀다(0345 삼성E&A: (149,498 - 2,049) / 9,976,000 = 1.48%). 여기서는 (-10 - 5) / 7,030 = -0.21%
         const k3 = fakeKiwoom(); k3.interest = 5; const i3 = engine(k3, { t: '2026-11-20T10:00:00' }); const il = await i3.e.loadLots();
         assert.deepEqual([il[0].pl, il[0].rate, il[0].interest], [-15, -0.21, 5]); i3.e.stop();
+    }
+    // 청산 조건(2026-11-28 사용자 결정): 손절 · 익절 목표가 · 트레일링. 매입단가(공매도단가) 7,030 · 현재가 7,350
+    {
+        const exit = (extra = {}) => input('004980:20261123', { stopOn: true, stopMode: 'price', trigger: 8000, profitOn: false, targetOn: false, trailOn: false, ...extra });
+        // % → 원: 손절은 기준가 × (1 + %)를 호가단위로 올림, 목표가는 × (1 − %)를 내림. 기준은 매입단가 또는 등록 시 현재가
+        {
+            const k = fakeKiwoom(), { e } = engine(k); await e.loadLots();
+            const a = await e.create(exit({ stopMode: 'pct', stopPct: '+3.0', profitOn: true, targetOn: true, targetMode: 'pct', targetPct: '-5.0' }));
+            assert.deepEqual([a.trigger, a.target, a.avgPrice, a.regPrice], [7250, 6670, 7030, 7350], '7,030 × 1.03 = 7,240.9 → 7,250 · × 0.95 = 6,678.5 → 6,670');
+            e.remove(a.id);
+            const b = await e.create(exit({ stopMode: 'pct', stopPct: '3', stopBasis: 'reg', profitOn: true, targetOn: true, targetPct: '5', targetBasis: 'reg' }));
+            assert.deepEqual([b.trigger, b.target], [7580, 6980], '등록 시 현재가 7,350 기준');
+            e.remove(b.id);
+            assert.equal(S.ceilTick(4999), 5000); assert.equal(S.ceilTick(4996), 5000); assert.equal(S.ceilTick(1999.5), 2000);
+            await assert.rejects(e.create(exit({ stopOn: false })), /하나 이상 켜세요/, '아무 조건도 없으면 거부');
+            await assert.rejects(e.create(exit({ stopOn: false, profitOn: false, targetOn: true, target: 7000 })), /하나 이상 켜세요/, '익절을 끄면 목표가도 안 봄');
+            await assert.rejects(e.create(exit({ profitOn: true, trailOn: true, trailMin: 45 })), /분봉은/);
+            e.stop();
+        }
+        // 예전 건(stopOn 없음)은 손절 · 원으로 읽는다
+        {
+            const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'short-stoploss-'));
+            fs.writeFileSync(path.join(dir, 'state.json'), JSON.stringify({ watches: [{ id: 'old', lotKey: '004980:20261123', code: '004980', trigger: 7300, status: '중지', enabled: false, orders: [], log: [] }] }));
+            const { e } = engine(fakeKiwoom(), { dir });
+            assert.deepEqual((({ stopOn, stopMode, profitOn }) => ({ stopOn, stopMode, profitOn }))(e._state().watches[0]), { stopOn: true, stopMode: 'price', profitOn: false });
+            e.stop();
+        }
+        // 목표가: 현재가 7,350 ≤ 목표 7,400 → 같은 주문 방식(체결가 +10틱)으로 상환, 기록에 익절 목표가
+        {
+            const k = fakeKiwoom(), { e } = engine(k); await e.loadLots();
+            const w = await e.create(exit({ profitOn: true, targetOn: true, targetMode: 'price', target: 7400 }));
+            await e.step(); const done = await runUntilDone(e, w);
+            assert.equal(k.orders.length, 1); assert.equal(k.orders[0].ord_uv, '7450');
+            assert.equal(done.status, '체결완료'); assert.match(done.note, /^익절\(목표가\) 7,350 발동/);
+            assert.match(e.history(w.id).log.find(x => x.kind === '발동').text, /^익절 목표가: (KRX|NXT) 체결가 7,350 ≤ 목표가 7,400/);
+            e.stop();
+        }
+        // 손절을 끄면 감시가를 넘어도 보지 않는다(각자 자기 조건만)
+        {
+            const k = fakeKiwoom(), { e } = engine(k); await e.loadLots();
+            await e.create(exit({ stopOn: false, trigger: 7300, profitOn: true, targetOn: true, targetMode: 'price', target: 6000 }));
+            await e.step(); await settle();
+            assert.equal(k.orders.length, 0, '현재가 7,350 ≥ 7,300이어도 손절이 꺼져 있으면 주문 안 함');
+            assert.match(e._state().watches[0].lastCheck.text, /목표 > 6,000$/);
+            e.stop();
+        }
+        // 트레일링: 15분봉이 끝나고 3초 뒤 판정. 종가 ≥ 10이평이고 종가 < 매입단가일 때만 상환
+        const bars = closes => closes.map((c, i) => ({ cntr_tm: new Date(at('2026-11-20T10:00:00') - i * 900000 + 9 * 3600000).toISOString().replace(/\D/g, '').slice(0, 14), cur_prc: '-' + c }));
+        const trailCase = async (last, { t0 = '2026-11-20T10:02:00', price = 7020 } = {}) => {
+            const k = fakeKiwoom({ price }); k.bars = bars([last, ...Array(9).fill(7000)]);
+            const { e, clock } = engine(k, { t: t0 }); await e.loadLots();
+            const w = await e.create(exit({ trigger: 7300, profitOn: true, trailOn: true, trailMin: 15, trailMa: 10 }));
+            clock.t = at('2026-11-20T10:14:59'); await e.step(); await settle();
+            const early = (k.chart || []).length;
+            clock.t = at('2026-11-20T10:15:04'); await e.step();
+            const done = await runUntilDone(e, w);
+            e.stop(); return { k, w: done, early, log: e.history(w.id).log };
+        };
+        {
+            // 10:00봉 종가 7,020 ≥ 이평 7,002, 7,020 < 매입단가 7,030 → 현재가 7,020 기준 +10틱 = 7,120
+            const r = await trailCase(7020);
+            assert.equal(r.early, 0, '봉이 끝나기 전에는 분봉을 묻지 않음');
+            assert.deepEqual(r.k.chart[0], { stk_cd: '004980_AL', tic_scope: '15', upd_stkpc_tp: '0' }, 'KRX+NXT 통합 분봉');
+            assert.equal(r.k.orders.length, 1); assert.equal(r.k.orders[0].ord_uv, '7120');
+            assert.match(r.log.find(x => x.kind === '발동').text, /^익절 트레일링: 15분봉 10:00 종가 7,020 ≥ 10이평 7,002 · 매입단가 7,030 미만 → KRX 현재가 7,020 기준/);
+            assert.match(r.w.note, /^익절\(트레일링\)/);
+        }
+        {
+            const r = await trailCase(7040); // 종가 7,040 ≥ 이평 7,004이지만 매입단가 7,030 이상 → 상환 안 함(손절 조건에 맡김)
+            assert.equal(r.k.orders.length, 0); assert.match(r.w.trail.text, /매입단가 7,030 이상이라 상환 안 함/); assert.equal(r.w.status, '감시중');
+        }
+        {
+            const r = await trailCase(6990); // 종가 6,990 < 이평 6,999 → 그대로 감시
+            assert.equal(r.k.orders.length, 0); assert.deepEqual([r.w.trail.close, r.w.trail.ma], [6990, 6999]); assert.equal(r.w.trailLast, at('2026-11-20T10:00:00'));
+        }
+        {
+            const r = await trailCase(7020, { t0: '2026-11-20T10:15:01' }); // 10:15:01에 등록하면 10:00봉(등록 전에 끝남)은 보지 않는다
+            assert.equal((r.k.chart || []).length, 0); assert.equal(r.k.orders.length, 0);
+        }
+        {
+            // 그 봉이 아직 없으면(거래 없음 · 늦게 옴) 5초 간격으로 다시 찾고, 봉이 끝나고 90초가 지나면 그 봉은 넘어간다
+            const k = fakeKiwoom({ price: 7020 }); k.bars = bars(Array(10).fill(7000)).slice(1); // 10:00봉 없음
+            const { e, clock } = engine(k, { t: '2026-11-20T10:02:00' }); await e.loadLots();
+            const w = await e.create(exit({ trigger: 7300, profitOn: true, trailOn: true }));
+            clock.t = at('2026-11-20T10:15:04'); await e.step(); clock.t = at('2026-11-20T10:15:06'); await e.step();
+            assert.equal(k.chart.length, 1, '5초 안에는 다시 묻지 않음'); assert.equal(e._state().watches[0].trailLast, 0);
+            clock.t = at('2026-11-20T10:16:35'); await e.step();
+            assert.match(e._state().watches[0].trail.text, /^10:00봉 없음/); assert.equal(k.orders.length, 0);
+            // 분봉 조회가 실패하면 "봉 없음"이 아니라 조회 실패로 남긴다
+            k.http.post = (orig => async (url, body, o) => o.headers['api-id'] === 'ka10080' ? { status: 200, data: { return_code: 1, return_msg: '시험 실패' } } : orig(url, body, o))(k.http.post);
+            clock.t = at('2026-11-20T10:31:35'); await e.step();
+            assert.match(e._state().watches[0].trail.text, /^10:15봉 분봉 조회 실패: 시험 실패/); assert.ok(e.history(w.id).log.some(x => x.kind === '트레일링' && /조회 실패/.test(x.text)));
+            e.stop();
+        }
+    }
+    {
+        const exit = (extra = {}) => input('004980:20261123', { stopOn: true, stopMode: 'price', trigger: 8000, profitOn: false, targetOn: false, trailOn: false, ...extra });
+        // 장 마감 전후 · 단일가 시간대(2026-11-28 사용자 요청): 목표가는 손절과 같은 시간표로 판정하고, 트레일링은 봉이 끝난 시각의 시간대로 주문한다
+        {
+            const target = async (t, opts = {}) => {
+                const k = fakeKiwoom({ price: 7350, ...opts }); Object.assign(k, opts.set || {});
+                const { e } = engine(k, { t }); await e.loadLots();
+                const w = await e.create(exit({ profitOn: true, targetOn: true, targetMode: 'price', target: 7000 }));
+                await e.step(); const done = await runUntilDone(e, w, 400); e.stop();
+                return { k, w: done, fired: (e.history(w.id).log.find(x => x.kind === '발동') || {}).text || '' };
+            };
+            // 15:20~15:30 KRX 종가 단일가: 예상체결가 6,900 ≤ 7,000 → KRX로 6,900 + 10틱 = 7,000
+            let r = await target('2026-11-20T15:25:00', { set: { exp: 6900 } });
+            assert.deepEqual([r.k.orders.length, r.k.orders[0]?.dmst_stex_tp, r.k.orders[0]?.ord_uv], [1, 'KRX', '7000']); assert.match(r.fired, /KRX 예상체결가 6,900 ≤ 목표가 7,000/);
+            // 15:30~15:40 NXT 애프터 단일가: NXT 예상체결가로 판정, NXT로 미리 접수
+            r = await target('2026-11-20T15:35:00', { set: { exp: 6900 } });
+            assert.deepEqual([r.k.orders[0]?.dmst_stex_tp, r.k.orders[0]?.ord_uv], ['NXT', '7000']); assert.match(r.fired, /NXT 예상체결가 6,900/);
+            // 단일가에 예상체결가가 목표가보다 높으면 주문 안 함(현재가 7,350이 아니라 예상체결가 7,100으로 판정)
+            r = await target('2026-11-20T15:25:00', { set: { exp: 7100 } }); assert.equal(r.k.orders.length, 0);
+            // 15:40~16:00 NXT만: NXT 체결가로 판정 · NXT 주문
+            r = await target('2026-11-20T15:45:00', { set: { nxtPrice: 6950 } });
+            assert.deepEqual([r.k.orders[0]?.dmst_stex_tp, r.k.orders[0]?.ord_uv], ['NXT', '7050']);
+            // 16:00~20:00 애프터마켓: KRX 7,350 · NXT 6,950 중 낮은 NXT로 판정, SOR 주문
+            r = await target('2026-11-20T16:30:00', { set: { nxtPrice: 6950 } });
+            assert.deepEqual([r.k.orders[0]?.dmst_stex_tp, r.k.orders[0]?.ord_uv], ['SOR', '7050']); assert.match(r.fired, /NXT 체결가 6,950 ≤ 목표가/);
+            // NXT 비대상 종목은 NXT 시간(15:40~16:00)에 판정 · 주문하지 않고 16:00 KRX를 기다린다
+            r = await target('2026-11-20T15:45:00', { nxt: false, price: 6900 });
+            assert.equal(r.k.orders.length, 0); assert.match(r.w.lastCheck.text, /NXT 비대상 · 16:00 KRX 대기/);
+            // 20:00 뒤 · 08:50~09:00은 판정 안 함
+            r = await target('2026-11-20T20:10:00', { price: 6900 }); assert.equal(r.k.orders.length, 0); assert.equal(r.w.lastCheck.text, '장 시작 전');
+            r = await target('2026-11-20T08:55:00', { price: 6900 }); assert.equal(r.k.orders.length, 0); assert.match(r.w.lastCheck.text, /보류/);
+            // 08:00~08:50 NXT 프리마켓: NXT 체결가로 판정 · NXT 주문
+            r = await target('2026-11-20T08:10:00', { set: { nxtPrice: 6950 } });
+            assert.deepEqual([r.k.orders[0]?.dmst_stex_tp, r.k.orders[0]?.ord_uv], ['NXT', '7050']);
+        }
+        {
+            // 트레일링: 봉이 끝난 시각의 시간대로 판정 · 주문. 단일가에는 예상체결가 기준
+            const barsAt = (start, min, closes) => closes.map((c, i) => ({ cntr_tm: new Date(at(start) - i * min * 60000 + 9 * 3600000).toISOString().replace(/\D/g, '').slice(0, 14), cur_prc: '-' + c }));
+            const trail = async (t0, judge, barStart, min, opts = {}) => {
+                const k = fakeKiwoom({ price: 7020, ...opts }); Object.assign(k, opts.set || {}); k.bars = barsAt(barStart, min, [7020, ...Array(9).fill(7000)]);
+                const { e, clock } = engine(k, { t: t0 }); await e.loadLots();
+                const w = await e.create(exit({ trigger: 7300, profitOn: true, trailOn: true, trailMin: min, trailMa: 10 }));
+                clock.t = at(judge); await e.step(); const done = await runUntilDone(e, w, 400); e.stop();
+                return { k, w: done, fired: (e.history(w.id).log.find(x => x.kind === '발동') || {}).text || '' };
+            };
+            // 15:15~15:20 5분봉 → 15:20:03 KRX 종가 단일가: KRX 예상체결가 7,010 기준 KRX 주문 7,110
+            let r = await trail('2026-11-20T15:16:00', '2026-11-20T15:20:04', '2026-11-20T15:15:00', 5, { set: { exp: 7010 } });
+            assert.deepEqual([r.k.orders[0]?.dmst_stex_tp, r.k.orders[0]?.ord_uv], ['KRX', '7110']); assert.match(r.fired, /KRX 예상체결가 7,010 기준/);
+            // 15:15~15:30 15분봉 → 15:30:03 NXT 애프터 단일가: NXT 예상체결가 기준 NXT 미리 접수
+            r = await trail('2026-11-20T15:16:00', '2026-11-20T15:30:04', '2026-11-20T15:15:00', 15, { set: { exp: 7010 } });
+            assert.deepEqual([r.k.orders[0]?.dmst_stex_tp, r.k.orders[0]?.ord_uv], ['NXT', '7110']);
+            // 같은 봉이 NXT 비대상 종목이면 15:30에 주문하지 않고 기록만 남긴다(다음 봉부터 다시 봄)
+            r = await trail('2026-11-20T15:16:00', '2026-11-20T15:30:04', '2026-11-20T15:15:00', 15, { nxt: false, set: { exp: 7010 } });
+            assert.equal(r.k.orders.length, 0); assert.match(r.w.trail.text, /NXT 애프터 단일가\(15:40 체결\)이라 주문 안 함/); assert.equal(r.w.status, '감시중');
+            // 15:45~16:00 15분봉 → 16:00:03 애프터마켓: KRX 현재가 기준 SOR
+            r = await trail('2026-11-20T15:50:00', '2026-11-20T16:00:04', '2026-11-20T15:45:00', 15);
+            assert.deepEqual([r.k.orders[0]?.dmst_stex_tp, r.k.orders[0]?.ord_uv], ['SOR', '7120']);
+            // 15:30~15:45 15분봉 → 15:45:03 NXT만: NXT 현재가 기준 NXT
+            r = await trail('2026-11-20T15:31:00', '2026-11-20T15:45:04', '2026-11-20T15:30:00', 15, { set: { nxtPrice: 7020 } });
+            assert.deepEqual([r.k.orders[0]?.dmst_stex_tp, r.k.orders[0]?.ord_uv], ['NXT', '7120']);
+            // 19:45~20:00 봉 → 20:00:03은 장 마감: 주문 안 함
+            r = await trail('2026-11-20T19:50:00', '2026-11-20T20:00:04', '2026-11-20T19:45:00', 15);
+            assert.equal(r.k.orders.length, 0); assert.match(r.w.trail.text, /장 마감이라 주문 안 함/);
+            // 08:45~08:50 5분봉 → 08:50:03은 보류 시간: 주문 안 함
+            r = await trail('2026-11-20T08:46:00', '2026-11-20T08:50:04', '2026-11-20T08:45:00', 5);
+            assert.equal(r.k.orders.length, 0); assert.match(r.w.trail.text, /보류\(08:50~09:00\)이라 주문 안 함/);
+            // 08:00~08:15 15분봉 → 08:15:03 NXT 프리마켓: NXT 주문
+            r = await trail('2026-11-20T08:01:00', '2026-11-20T08:15:04', '2026-11-20T08:00:00', 15, { set: { nxtPrice: 7020 } });
+            assert.deepEqual([r.k.orders[0]?.dmst_stex_tp, r.k.orders[0]?.ord_uv], ['NXT', '7120']);
+        }
     }
     console.log('short-stoploss: 모든 확인 통과');
 })().catch(error => { console.error(error); process.exit(1); });

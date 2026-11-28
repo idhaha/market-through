@@ -203,3 +203,31 @@ label.row{gap:4px}label.row>input[type=checkbox],label.row>input[type=radio]{mar
 .qty-row .qgrp+.qgrp{margin-left:10px}#qtyCalc{min-width:6ch}
 /* 체크박스 · 라디오 세로 정렬(2026-11-27 사용자 지적): 상자 가운데가 한글 글자 가운데보다 0.5~0.8px 위에 그려져(100~150% 배율 실측) 1px 내린다 */
 label.row>input[type=checkbox],label.row>input[type=radio]{position:relative;top:1px}
+/* 청산 조건 박스(2026-11-28): 익절(빨강 띠) · 손절(파랑 띠) · 주문(회색 띠). 체크를 끈 박스 · 고르지 않은 방식 줄은 흐리게 */
+.exit-sec{border-top:none;padding-top:0;margin-top:-4px;gap:8px}
+.box.tp{border-left:3px solid #E6B2AD}.box.sl{border-left:3px solid #9DB8E3}.box.od{border-left:3px solid #B9C2D0}
+.box-t{font-weight:700;font-size:13px}
+.box .tag{display:inline-block;font-size:11px;padding:0 5px;border-radius:3px;border:1px solid;line-height:16px}
+.tag.sl{color:#1557B0;border-color:#9DB8E3;background:#EEF4FC}.tag.tp{color:#9C2A22;border-color:#E6B2AD;background:#FCEFEE}.tag.tr{color:#4B3590;border-color:#C4B6EA;background:#F4F0FC}
+.box .sub{display:flex;flex-direction:column;gap:6px}
+.box.dis>*:not(:first-child),.box .sub.dis>*:not(:first-child){opacity:.5}
+.box.dis>.row:first-child .tag{opacity:.5}
+.mode-row.off{opacity:.5}
+.indent2{padding-left:20px}
+.form-body .box .row{flex-wrap:nowrap;white-space:nowrap;gap:6px}.form-body .box label.row{gap:4px}
+.le{font-weight:700;font-size:16px;padding:0 2px}
+.inp.basis{width:auto;padding:4px 2px}.inp.pct{width:52px}
+#trNow{min-height:18px;color:var(--muted)}#trNow b{color:var(--text)}
+#trLead{display:inline-block;text-align:right}
+.od-div{border-top:1px solid var(--line2);margin:0 0 0 22px}
+
+.cf-back{position:fixed;inset:0;background:rgba(20,30,50,.35);z-index:60}
+.cf-back[hidden]{display:none}
+.cf{position:fixed;width:380px;max-width:calc(100vw - 16px);background:#FFFFFF;border-radius:8px;box-shadow:0 10px 30px rgba(20,30,50,.3);padding:16px 18px;display:flex;flex-direction:column;gap:10px;font-size:13px;line-height:1.55;white-space:normal}
+.cf h3{margin:0;font-size:14px;color:var(--warn,#A4471A)}
+.cf .buttons .btn{flex:1;padding:8px}
+.cond-tags{display:flex;flex-wrap:wrap;gap:2px}
+.cond-tags .tag{display:inline-block;font-size:11px;padding:0 4px;border-radius:3px;border:1px solid;line-height:15px;white-space:nowrap}
+/* 설정란 폭 고정(2026-11-28): 청산 조건 박스의 괄호 금액 · 가능수량 줄 길이에 따라 설정란(최소 내용 폭)이 바뀌어 왼쪽 표 폭이 흔들리지 않게 460px로 둔다 */
+.ss-form{flex:0 0 440px;max-height:100%}
+.exit-sec .box{padding:8px 6px 8px 8px;gap:6px}

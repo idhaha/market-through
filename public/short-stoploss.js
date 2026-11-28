@@ -5,6 +5,12 @@
     const fmt = n => Number(n || 0).toLocaleString('ko-KR');
     const tick = p => p < 2000 ? 1 : p < 5000 ? 5 : p < 20000 ? 10 : p < 50000 ? 50 : p < 200000 ? 100 : p < 500000 ? 500 : 1000;
     const floorTick = p => Math.floor(p / tick(p)) * tick(p);
+    const ceilTick = p => { const t = tick(p), c = Math.ceil(p / t) * t; return tick(c) === t ? c : Math.ceil(p / tick(c)) * tick(c); };
+    // 청산 조건(2026-11-28, 서버 short-stoploss-service.js와 같은 규칙): 손절 · 익절 목표가 · 익절 트레일링. 예전 건은 손절 · 원만 켠 건
+    const stopActive = w => w.stopOn !== false && w.trigger > 0;
+    const targetActive = w => !!(w.profitOn && w.targetOn && w.target > 0);
+    const trailActive = w => !!(w.profitOn && w.trailOn && w.trailMin > 0 && w.trailMa > 0);
+    const pctNum = s => { const v = Math.abs(Number(String(s ?? '').normalize('NFKC').replace(/[^0-9.]/g, ''))); return Number.isFinite(v) ? Math.round(v * 10) / 10 : 0; };
     // 한 호가 위 · 아래(2026-11-23): 가격대 경계에서는 단위가 바뀐다(1,999 ↑ 2,000 ↑ 2,005 / 5,000 ↓ 4,995). 호가 단위에 안 맞는 값은 먼저 맞는 호가로 간다
     const tickUp = p => { const a = floorTick(p); return a + tick(a); };
     const tickDown = p => { const a = floorTick(p); return Math.max(1, a < p ? a : p - tick(p - 1)); };
@@ -53,6 +59,8 @@
     for (let i = 10; i >= 1; i--) $('ticks').append(el('option', { value: i, selected: i === 10 }, `+${i}틱`));
     for (let i = 10; i >= 1; i--) $('chasePct').append(el('option', { value: i, selected: i === 10 }, `+${i}%`));
     // 100%-1주(값 −1, 2026-11-27 사용자 요청): 100% 바로 아래 한 칸이고 기본값. 나머지는 10% 단위
+    for (const i of [60, 30, 15, 10, 5, 3, 1]) $('trailMin').append(el('option', { value: i, selected: i === 15 }, String(i)));
+    for (const i of [60, 20, 10, 5, 3]) $('trailMa').append(el('option', { value: i, selected: i === 10 }, String(i)));
     for (const i of [100, -1, 90, 80, 70, 60, 50, 40, 30, 20, 10]) $('qtyPct').append(el('option', { value: i, selected: i === -1 }, pctLabel(i)));
 
     // ---- 렌더링 ----
@@ -116,12 +124,23 @@
         }
     }
     function statusClass(s) { return s === '감시중' ? 'on' : s === '중지' || s === '만료' ? 'off' : ACTIVE.includes(s) ? 'busy' : s === '체결완료' ? 'done' : 'bad'; }
+    // 청산 조건 꼬리표(2026-11-28): 익절 목표가(빨강 ≤) · 트레일링(보라) · 손절(파랑 ≥) 중 켠 것만. 좁은 열이라 가격만 보이고 자세한 내용은 풍선
+    function condParts(w) {
+        const basis = b => b === 'reg' ? '등록 시 현재가' : '매입단가';
+        return [targetActive(w) && ['tp', `≤ ${fmt(w.target)}`, `익절 목표가 ≤ ${fmt(w.target)}${w.targetMode === 'pct' ? ` (${basis(w.targetBasis)} -${w.targetPct}%)` : ''}`],
+            trailActive(w) && ['tr', `${w.trailMin}분 ${w.trailMa}이평`, `익절 트레일링 ${w.trailMin}분봉 종가 ≥ ${w.trailMa}이평`],
+            stopActive(w) && ['sl', `≥ ${fmt(w.trigger)}`, `손절 ≥ ${fmt(w.trigger)}${w.stopMode === 'pct' ? ` (${basis(w.stopBasis)} +${w.stopPct}%)` : ''}`]].filter(Boolean);
+    }
+    const condLabel = w => condParts(w).map(p => p[2]).join(' · ') || '-';
+    const condTags = w => el('span', { class: 'cond-tags' }, condParts(w).map(([c, t, title]) => el('span', { class: 'tag ' + c, title }, t)));
     function methodText(w) { return w.upperLimit ? '상한가 지정가' : `+${w.ticks}틱` + (w.fix ? ` · 정정(한도 ${w.chasePct}%)` : ' · 정정 안 함') + (w.cancelPending ? ' · 미체결 취소' : '') + (w.allLots ? ' · 전체 대출일' : ''); }
     function lastText(w) {
         if (w.status === '감시중') {
             if (!(state.accounts?.find(a => a.id === w.acct)?.enabled ?? state.enabled)) return '자동 주문 꺼짐 · 판정 안 함'; // 그 감시 건 계좌 기준(2026-11-26)
-            if (!w.lastCheck) return '판정 대기';
-            return new Date(w.lastCheck.at + 9 * 3600000).toISOString().slice(11, 19) + ' ' + w.lastCheck.text;
+            const parts = [];
+            if (w.lastCheck && (stopActive(w) || targetActive(w))) parts.push(new Date(w.lastCheck.at + 9 * 3600000).toISOString().slice(11, 19) + ' ' + w.lastCheck.text);
+            if (trailActive(w)) parts.push(w.trail ? w.trail.text : `트레일링 ${w.trailMin}분봉이 끝나면 판정`);
+            return parts.join(' · ') || '판정 대기';
         }
         // 주문 처리 중(발동 · 주문접수 · 정정중 · 미체결): 지금 주문 가격 · 정정 횟수 · 체결 수량
         if (ACTIVE.includes(w.status)) {
@@ -189,7 +208,7 @@
             body.append(el('tr', { class: 'pick' + (w.id === selectedWatch ? ' sel' : ''), onclick: () => pickWatch(w.id) },
                 el('td', {}, box), el('td', {}, el('span', { class: 'st ' + statusClass(w.status) }, w.status)),
                 el('td', { title: `${w.name} ${w.code}` }, el('span', { class: 'namecell' }, badges(w.nxt), el('span', { class: 'nm' }, el('span', { class: 'name' }, w.name), el('span', { class: 'code' }, w.code, acctTag(w))))),
-                el('td', { class: 'r' }, qtyText(w)), el('td', { class: 'r' }, fmt(w.trigger)), el('td', { class: 'wrap', title: methodText(w) }, methodText(w)),
+                el('td', { class: 'r' }, qtyText(w)), el('td', { class: 'wrap', title: condLabel(w) }, condTags(w)), el('td', { class: 'wrap', title: methodText(w) }, methodText(w)),
                 el('td', { class: 'wrap ' + (['실패', '확인 필요', '부분체결'].includes(w.status) ? 'loss' : 'muted') }, lastText(w)),
                 el('td', { title: w.loanDt }, short(w.loanDt)), el('td', { title: '~' + w.until }, '~' + short(w.until)), el('td', {}, buttons)));
         }
@@ -204,9 +223,15 @@
         // 가능수량은 다른 감시 건(감시중 · 중지)에 할당한 수량을 뺀 남은 수량(2026-11-26 사용자 지적: 등록한 수량까지 다 가능으로 보였음)
         const rem = remainingFor(lot, selectedWatch), held = rem == null ? lot.able : rem;
         // 대출일 · 만기일은 잔고 표에 있어 설정란에서는 가능수량만 보인다(2026-11-26 사용자 요청: 제목 '대출일' → '가능수량').
-        $('fLot').textContent = `${fmt(held)}주${rem != null && rem < lot.able ? ` (감시 등록 ${fmt(lot.able - rem)}주 제외)` : ''}`;
+        // 매입단가(2026-11-28): 잔고의 공매도단가. 손절 · 익절 %의 기준
+        const avg = avgOf(lot);
+        $('fLot').textContent = `${fmt(held)}주${rem != null && rem < lot.able ? ` (감시 등록 ${fmt(lot.able - rem)}주 제외)` : ''}${avg ? ` · 매입단가 ${fmt(avg)}` : ''}`;
         $('fAcct').textContent = acct8(lot.account || state?.account) || '-'; // 계좌는 대출일 아래 따로, 앞 8자리(2026-11-24)
     }
+    // 매입단가 · 등록 시 현재가: 고친 건은 등록 때 값, 새 건은 지금 잔고 값
+    const selWatch = () => state?.watches.find(x => x.id === selectedWatch);
+    const avgOf = lot => lot?.sellPrice || selWatch()?.avgPrice || 0;
+    const regOf = lot => selWatch()?.regPrice || lot?.price || 0;
     function defaultUntil(lot) { const d = new Date(kstDay(serverNow()) + 'T00:00:00Z'); d.setUTCMonth(d.getUTCMonth() + 1); return adjust(d.toISOString().slice(0, 10), lot).value; }
     // 유효기간 칸은 비워 두지 않고 처음부터 기본값(오늘 + 1개월)을 넣는다(2026-11-21). 사용자가 직접 고르기 전까지(untilAuto)는
     // 서버 시각 · 휴장일 달력 · 고른 잔고의 만기일을 받은 뒤와 날짜가 바뀐 뒤에도 기본값을 다시 맞춘다. 칸을 지우면 기본값으로 돌아간다.
@@ -233,6 +258,8 @@
         // 현재가 = 감시가라 등록하면 바로 발동할 수 있어, 조건 추가 때 확인을 받는다.
         // 칸을 직접 고치거나 화살표를 쓰기 전까지(triggerAuto)는 현재가가 바뀌면 따라간다. 칸을 비우면 회색 "현재 ○○"만 보인다
         $('trigger').value = ''; $('trigger').placeholder = lot?.price ? '현재 ' + fmt(lot.price) : ''; triggerAuto = true; autoTrigger();
+        // 청산 조건 기본값(2026-11-28): 손절 · 원(현재가)만 켜짐 = 예전과 같음. 익절은 꺼 두고, 켜면 목표가 매입단가 -5% · 트레일링 15분 10이평
+        setExit({ stopOn: true, stopMode: 'price', stopPct: 3, stopBasis: 'avg', profitOn: false, targetOn: true, targetMode: 'pct', targetPct: 5, targetBasis: 'avg', target: 0, trailOn: false, trailMin: 15, trailMa: 10 });
         $('until').value = defaultUntil(lot); untilAuto = true; $('calNote').hidden = true;
         $('formMode').textContent = '새 조건';
         renderAll(); updateForm();
@@ -277,16 +304,30 @@
         const w = state.watches.find(x => x.id === id); if (!w) return;
         selectedWatch = id; selectedLot = w.lotKey; triggerAuto = false;
         fillLotInfo(currentLot());
-        $('trigger').value = fmt(w.trigger); $('ticks').value = w.ticks; $('upperLimit').checked = w.upperLimit; $('fix').checked = w.fix; $('chasePct').value = w.chasePct;
+        $('trigger').value = w.trigger ? fmt(w.trigger) : ''; setExit(w); $('ticks').value = w.ticks; $('upperLimit').checked = w.upperLimit; $('fix').checked = w.fix; $('chasePct').value = w.chasePct;
         document.querySelector(`input[name="qtyMode"][value="${w.qtyMode}"]`).checked = true;
         if (w.qtyMode === 'pct') $('qtyPct').value = w.qtyValue; else $('qtyShares').value = w.qtyValue;
         $('allLots').checked = w.allLots; $('cancelPending').checked = w.cancelPending; $('until').value = w.until; $('calNote').hidden = true;
         $('formMode').textContent = `감시 건 수정 (${w.status})`;
         renderAll(); updateForm();
     }
+    // 청산 조건 칸 채우기(새 건 기본값 · 고르는 감시 건). 예전 건(stopOn 없음)은 손절 · 원
+    function setExit(w) {
+        const radio = (name, v) => { const r = document.querySelector(`input[name="${name}"][value="${v}"]`); if (r) r.checked = true; };
+        $('stopOn').checked = w.stopOn !== false; radio('stopMode', w.stopMode === 'pct' ? 'pct' : 'price');
+        $('stopPct').value = '+' + (Number(w.stopPct) || 3).toFixed(1); $('stopBasis').value = w.stopBasis === 'reg' ? 'reg' : 'avg';
+        $('profitOn').checked = !!w.profitOn; $('targetOn').checked = w.targetOn !== false; radio('targetMode', w.targetMode === 'price' ? 'price' : 'pct');
+        $('targetPct').value = '-' + (Number(w.targetPct) || 5).toFixed(1); $('targetBasis').value = w.targetBasis === 'reg' ? 'reg' : 'avg';
+        $('targetPrice').value = w.target ? fmt(w.target) : '';
+        $('trailOn').checked = !!w.trailOn; $('trailMin').value = String(w.trailMin || 15); $('trailMa').value = String(w.trailMa || 10);
+    }
     function formValue() {
         const mode = document.querySelector('input[name="qtyMode"]:checked').value;
-        return { trigger: num($('trigger').value), ticks: +$('ticks').value, upperLimit: $('upperLimit').checked, fix: $('fix').checked, chasePct: +$('chasePct').value,
+        const radio = name => document.querySelector(`input[name="${name}"]:checked`)?.value;
+        return { stopOn: $('stopOn').checked, stopMode: radio('stopMode'), stopPct: pctNum($('stopPct').value), stopBasis: $('stopBasis').value,
+            profitOn: $('profitOn').checked, targetOn: $('targetOn').checked, targetMode: radio('targetMode'), target: num($('targetPrice').value), targetPct: pctNum($('targetPct').value), targetBasis: $('targetBasis').value,
+            trailOn: $('trailOn').checked, trailMin: +$('trailMin').value, trailMa: +$('trailMa').value,
+            trigger: num($('trigger').value), ticks: +$('ticks').value, upperLimit: $('upperLimit').checked, fix: $('fix').checked, chasePct: +$('chasePct').value,
             qtyMode: mode, qtyValue: mode === 'pct' ? +$('qtyPct').value : num($('qtyShares').value),
             allLots: $('allLots').checked, cancelPending: $('cancelPending').checked, until: $('until').value };
     }
@@ -296,10 +337,15 @@
         $('qtyPct').disabled = v.qtyMode !== 'pct'; $('qtyShares').disabled = v.qtyMode !== 'shares';
         { const rem = remainingFor(lot, selectedWatch), n = num($('qtyShares').value), off = v.qtyMode !== 'shares' || !lot || rem != null && rem < 1;
           $('sharesUp').disabled = off || rem != null && n >= rem; $('sharesDown').disabled = off || n === 1; }
-        // 감시가 범위(2026-11-23): 그날 하한가 ~ 상한가. 넘으면 조건 추가를 끄고 이유를 추격 한도 자리에 보인다
+        // 청산 조건(2026-11-28): 켠 것만 판정. %는 기준가(매입단가 · 등록 시 현재가)로 원 단위 값을 미리 계산해 괄호에 보인다(서버도 같은 계산으로 저장)
+        const ex = exitState(v, lot);
+        // 감시가 · 목표가 범위(2026-11-23): 그날 하한가 ~ 상한가. 넘으면 조건 추가를 끄고 이유를 추격 한도 자리에 보인다
         const up = lot?.upper || 0, low = lot?.lower || 0;
-        const range = !v.trigger ? '' : up && v.trigger > up ? `감시가가 상한가 ${fmt(up)}보다 높습니다` : low && v.trigger < low ? `감시가가 하한가 ${fmt(low)}보다 낮습니다` : '';
-        const cap = v.trigger ? floorTick(v.trigger * (1 + v.chasePct / 100)) : 0; // 고른 %를 감시가에 더한 가격, 상한가를 넘으면 상한가(서버 주문도 같음)
+        const outOf = (p, name) => !p ? '' : up && p > up ? `${name}가 상한가 ${fmt(up)}보다 높습니다` : low && p < low ? `${name}가 하한가 ${fmt(low)}보다 낮습니다` : '';
+        const range = (ex.stop && outOf(ex.stopPrice, '감시가')) || (ex.target && outOf(ex.targetPrice, '목표가')) || '';
+        // 추격 한도 미리보기: 손절 감시가, 손절을 껐으면 목표가, 둘 다 없으면 현재가로 계산
+        const capBase = ex.stop ? ex.stopPrice : ex.target ? ex.targetPrice : ex.trail ? lot?.price || 0 : 0;
+        const cap = capBase ? floorTick(capBase * (1 + v.chasePct / 100)) : 0; // 고른 %를 기준가에 더한 가격, 상한가를 넘으면 상한가(서버 주문도 같음)
         $('chaseNote').textContent = range || (!v.fix || v.upperLimit ? (v.upperLimit ? '상한가 주문' : '정정 안 함') : !cap ? '-원' : up && cap >= up ? `${fmt(up)}원(상한가)` : `${fmt(cap)}원`);
         $('chaseNote').classList.toggle('warn', !!range);
         const w = state?.watches.find(x => x.id === selectedWatch);
@@ -312,16 +358,61 @@
         const pctCalc = rem == null || rem < 1 ? 0 : pctShares(rem, Number($('qtyPct').value));
         $('qtyCalc').textContent = pctCalc >= 1 ? `${fmt(pctCalc)}주` : '';
         $('qtyNote').textContent = qtyErr; $('qtyNote').hidden = !qtyErr;
-        const ok = !!lot && v.trigger > 0 && !range && !qtyErr && (v.qtyMode === 'pct' || v.qtyValue >= 1) && !busy;
+        const ok = !!lot && ex.valid && !range && !qtyErr && (v.qtyMode === 'pct' || v.qtyValue >= 1) && !busy;
         $('addBtn').disabled = !ok || !!w; $('editBtn').disabled = !ok || !w || ACTIVE.includes(w.status) || ['체결완료', '부분체결', '잔고없음'].includes(w.status);
         // 파란 버튼(2026-11-27 사용자 결정): 새로 설정할 때는 조건 추가, 감시 목록의 건을 고르면 조건 수정
         $('addBtn').classList.toggle('primary', !w); $('editBtn').classList.toggle('primary', !!w);
         $('fromDay').textContent = kstDay(serverNow()) + ' ~';
         // 화살표: 상한가에 닿으면 ↑, 하한가(없으면 1원)에 닿으면 ↓를 더 누를 수 없다
-        const base = v.trigger || lot?.price || 0, floor = Math.max(1, low);
-        $('trigUp').disabled = !lot || !base || (up > 0 && base >= up);
-        $('trigDown').disabled = !lot || !base || (v.trigger ? v.trigger <= floor : floorTick(base) < floor);
+        const base = v.trigger || lot?.price || 0, floor = Math.max(1, low), stopPriceOn = v.stopOn && v.stopMode === 'price';
+        $('trigUp').disabled = !stopPriceOn || !lot || !base || (up > 0 && base >= up);
+        $('trigDown').disabled = !stopPriceOn || !lot || !base || (v.trigger ? v.trigger <= floor : floorTick(base) < floor);
+        const tBase = v.target || lot?.price || 0, targetPriceOn = v.profitOn && v.targetOn && v.targetMode === 'price';
+        $('tgUp').disabled = !targetPriceOn || !lot || !tBase || (up > 0 && tBase >= up);
+        $('tgDown').disabled = !targetPriceOn || !lot || !tBase || (v.target ? v.target <= floor : floorTick(tBase) < floor);
+        renderExit(v, lot, ex);
     }
+    // 켠 조건 · 원 단위 값 · 등록 가능 여부
+    function exitState(v, lot) {
+        const basis = b => b === 'reg' ? regOf(lot) : avgOf(lot);
+        const stopPrice = v.stopMode === 'pct' ? (basis(v.stopBasis) && v.stopPct >= 0.1 && v.stopPct <= 50 ? ceilTick(basis(v.stopBasis) * (1 + v.stopPct / 100)) : 0) : v.trigger;
+        const targetPrice = v.targetMode === 'pct' ? (basis(v.targetBasis) && v.targetPct >= 0.1 && v.targetPct <= 50 ? floorTick(basis(v.targetBasis) * (1 - v.targetPct / 100)) : 0) : v.target;
+        const stop = v.stopOn && stopPrice > 0, target = v.profitOn && v.targetOn && targetPrice > 0, trail = v.profitOn && v.trailOn;
+        // 켠 조건은 값이 있어야 하고, 하나 이상 켜져 있어야 한다
+        const valid = (!v.stopOn || stop) && (!(v.profitOn && v.targetOn) || target) && (stop || target || trail);
+        return { stopPrice, targetPrice, stop, target, trail, valid };
+    }
+    // 박스 흐림 · 입력 잠금 · 괄호 금액 · 트레일링 현재 줄
+    function renderExit(v, lot, ex) {
+        const lockBox = (box, on) => { box.classList.toggle('dis', !on); };
+        const lockRow = (row, on, chosen) => { row.classList.toggle('off', on && !chosen); for (const n of row.querySelectorAll('input:not([type=radio]),select,button.step-btn')) if (n.id !== 'trigUp' && n.id !== 'trigDown' && n.id !== 'tgUp' && n.id !== 'tgDown') n.disabled = !(on && chosen); for (const r of row.querySelectorAll('input[type=radio]')) r.disabled = !on; };
+        lockBox($('slBox'), v.stopOn);
+        const [sp, spc] = $('slBox').querySelectorAll('.mode-row'); lockRow(sp, v.stopOn, v.stopMode === 'price'); lockRow(spc, v.stopOn, v.stopMode === 'pct');
+        lockBox($('tpBox'), v.profitOn); $('targetOn').disabled = !v.profitOn; $('trailOn').disabled = !v.profitOn;
+        const tOn = v.profitOn && v.targetOn; $('targetSub').classList.toggle('dis', v.profitOn && !v.targetOn);
+        const [tp, tpc] = $('targetSub').querySelectorAll('.mode-row'); lockRow(tp, tOn, v.targetMode === 'price'); lockRow(tpc, tOn, v.targetMode === 'pct');
+        const trOn = v.profitOn && v.trailOn; $('trailSub').classList.toggle('dis', v.profitOn && !v.trailOn); $('trailMin').disabled = !trOn; $('trailMa').disabled = !trOn;
+        const avg = avgOf(lot), vsAvg = p => avg && p ? `(매입단가 ${p >= avg ? '+' : ''}${((p / avg - 1) * 100).toFixed(2)}%)` : '';
+        $('stopPriceNote').textContent = v.stopMode === 'price' ? vsAvg(v.trigger) : '';
+        $('stopCalc').textContent = v.stopMode === 'pct' && ex.stopPrice ? `(${fmt(ex.stopPrice)}원)` : '';
+        $('targetPriceNote').textContent = v.targetMode === 'price' ? vsAvg(v.target) : '';
+        $('targetCalc').textContent = v.targetMode === 'pct' && ex.targetPrice ? `(${fmt(ex.targetPrice)}원)` : '';
+        // 트레일링 현재 줄: 고른 감시 건의 마지막 판정 봉(봉 종가 · 이평). '<' · '≧'는 위 줄 '≧'와 같은 가로 위치
+        const w = selWatch(), tr = w && trailActive(w) && w.trail && w.trail.ma ? w.trail : null;
+        if (tr) {
+            $('trLead').textContent = ''; $('trLead').append(`${new Date(tr.bar + 9 * 3600000).toISOString().slice(11, 16)} 현재 `, el('b', {}, fmt(tr.close)));
+            $('trLt').textContent = tr.close >= tr.ma ? '≧' : '<'; $('trMa').textContent = fmt(tr.ma);
+            const d = (tr.close / tr.ma - 1) * 100; $('trDiff').textContent = `(${d >= 0 ? '+' : ''}${d.toFixed(2)}%)`; $('trDiff').className = d >= 0 ? 'loss' : 'gain';
+        } else { $('trLead').textContent = trOn ? '등록 뒤 처음 끝나는 봉부터 판정' : ''; $('trLt').textContent = ''; $('trMa').textContent = ''; $('trDiff').textContent = ''; }
+        alignTrail();
+    }
+    function alignTrail() {
+        const lead = $('trLead'), lt = $('trLt'); lead.style.width = '';
+        if (!lt.textContent || !lead.offsetParent) return;
+        const a = $('trOp').getBoundingClientRect(), b = lt.getBoundingClientRect();
+        lead.style.width = Math.max(0, lead.getBoundingClientRect().width + (a.left + a.width / 2) - (b.left + b.width / 2)) + 'px';
+    }
+    addEventListener('resize', alignTrail);
     // 감시가 한 호가씩(2026-11-23): 화살표 버튼 · 칸에서 키보드 ↑ ↓. 빈 칸이면 현재가 기준(↑ 현재가 위 첫 호가, ↓ 현재가)
     function stepTrigger(dir) {
         const lot = currentLot(), v = num($('trigger').value), p = v || lot?.price || 0; if (!p) return; triggerAuto = false;
@@ -332,6 +423,28 @@
         updateForm();
     }
     $('trigger').addEventListener('input', () => { triggerAuto = false; });
+    // 목표가 한 호가씩(감시가와 같은 규칙, 빈 칸이면 현재가 기준) · % 0.5%p씩
+    function stepTarget(dir) {
+        const lot = currentLot(), v = num($('targetPrice').value), p = v || lot?.price || 0; if (!p || $('targetPrice').disabled) return;
+        const up = lot?.upper || 0, floor = Math.max(1, lot?.lower || 0);
+        let next = v ? (dir > 0 ? tickUp(v) : tickDown(v)) : (dir > 0 ? tickUp(p) : floorTick(p));
+        if (up && next > up) next = up; if (next < floor) next = floor;
+        $('targetPrice').value = fmt(next); updateForm();
+    }
+    $('tgUp').addEventListener('click', () => stepTarget(1)); $('tgDown').addEventListener('click', () => stepTarget(-1));
+    $('targetPrice').addEventListener('keydown', e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); stepTarget(e.key === 'ArrowUp' ? 1 : -1); } });
+    $('targetPrice').addEventListener('blur', () => { const n = num($('targetPrice').value); if (n) $('targetPrice').value = fmt(n); });
+    // %: 손절은 +, 목표가는 −로 보인다(0.1~50%). 화살표 ↑는 값을 0.5%p 크게(손절 +3.0 → +3.5, 목표가 -5.0 → -5.5가 아니라 화면 숫자 기준 -4.5)
+    function stepPct(id, dir) {
+        const inp = $(id); if (inp.disabled) return; const sign = id === 'stopPct' ? 1 : -1;
+        const shown = sign * (pctNum(inp.value) || (sign > 0 ? 3 : 5)), next = Math.round((shown + dir * 0.5) * 10) / 10;
+        const mag = Math.min(50, Math.max(0.5, sign * next)); inp.value = (sign > 0 ? '+' : '-') + mag.toFixed(1); updateForm();
+    }
+    for (const [id, upId, downId] of [['stopPct', 'slPctUp', 'slPctDown'], ['targetPct', 'tpPctUp', 'tpPctDown']]) {
+        $(upId).addEventListener('click', () => stepPct(id, 1)); $(downId).addEventListener('click', () => stepPct(id, -1));
+        $(id).addEventListener('keydown', e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); stepPct(id, e.key === 'ArrowUp' ? 1 : -1); } });
+        $(id).addEventListener('blur', () => { const n = pctNum($(id).value); if (n) $(id).value = (id === 'stopPct' ? '+' : '-') + n.toFixed(1); });
+    }
     $('trigUp').addEventListener('click', () => stepTrigger(1));
     $('trigDown').addEventListener('click', () => stepTrigger(-1));
     $('trigger').addEventListener('keydown', e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); stepTrigger(e.key === 'ArrowUp' ? 1 : -1); } });
@@ -348,13 +461,33 @@
     $('sharesUp').addEventListener('click', () => stepShares(1));
     $('sharesDown').addEventListener('click', () => stepShares(-1));
     $('qtyShares').addEventListener('keydown', e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); stepShares(e.key === 'ArrowUp' ? 1 : -1); } });
-    for (const id of ['trigger', 'ticks', 'upperLimit', 'fix', 'chasePct', 'qtyPct', 'qtyShares', 'allLots', 'cancelPending']) { $(id).addEventListener('input', updateForm); $(id).addEventListener('change', updateForm); }
+    for (const id of ['trigger', 'ticks', 'upperLimit', 'fix', 'chasePct', 'qtyPct', 'qtyShares', 'allLots', 'cancelPending', 'stopOn', 'stopPct', 'stopBasis', 'profitOn', 'targetOn', 'targetPrice', 'targetPct', 'targetBasis', 'trailOn', 'trailMin', 'trailMa']) { $(id).addEventListener('input', updateForm); $(id).addEventListener('change', updateForm); }
+    for (const r of document.querySelectorAll('input[name="stopMode"], input[name="targetMode"]')) r.addEventListener('change', updateForm);
     for (const r of document.querySelectorAll('input[name="qtyMode"]')) r.addEventListener('change', updateForm);
     $('trigger').addEventListener('blur', () => { const n = num($('trigger').value); if (n) $('trigger').value = fmt(n); });
     $('qtyShares').addEventListener('blur', () => { const n = num($('qtyShares').value); if (n) $('qtyShares').value = String(n); });
-    $('addBtn').addEventListener('click', () => {
-        const lot = currentLot(), v = formValue();
-        if (lot.price && lot.price >= v.trigger && !confirm(`현재가 ${fmt(lot.price)}이 감시가 ${fmt(v.trigger)} 이상입니다. 등록하면 바로 발동해 대주상환 주문이 나갈 수 있습니다. 계속할까요?`)) return;
+    // 손절을 끈 채 조건 추가(2026-11-28 사용자 결정): 오르는 쪽 보호가 없다는 확인 창을 익절 박스 자리에 띄운다(대주창 오른쪽 · 아래 경계 안)
+    function askStopOff(lot) {
+        const dlg = $('stopOffDlg'), box = dlg.querySelector('.cf'), avg = avgOf(lot);
+        $('stopOffText').textContent = `이 조건은 값이 오르는 쪽을 감시하지 않습니다.${avg ? ` 매입단가 ${fmt(avg)}원 위로 올라가도 상환하지 않고, 목표가 · 트레일링은 매입단가 아래에서만 상환합니다.` : ''}`;
+        dlg.hidden = false;
+        const t = $('tpBox').getBoundingClientRect(), f = $('formCard').getBoundingClientRect(), hd = $('formCard').querySelector('.card-hd').offsetHeight, w = box.offsetWidth, h = box.offsetHeight;
+        box.style.left = Math.max(8, Math.min(t.left, innerWidth - w - 8)) + 'px';
+        box.style.top = Math.max(8, Math.min(Math.max(t.top, f.top + hd + 8), innerHeight - h - 8)) + 'px';
+        $('stopOffOk').focus();
+        return new Promise(resolve => {
+            const done = ok => { dlg.hidden = true; $('stopOffOk').onclick = $('stopOffNo').onclick = dlg.onkeydown = null; resolve(ok); };
+            $('stopOffOk').onclick = () => done(true);
+            $('stopOffNo').onclick = () => { $('stopOn').checked = true; updateForm(); done(false); $('stopOn').focus(); };
+            dlg.onkeydown = e => { if (e.key === 'Escape') done(false); };
+        });
+    }
+    window.__ssExitState = () => exitState(formValue(), currentLot()); // 화면 시험용
+    $('addBtn').addEventListener('click', async () => {
+        const lot = currentLot(), v = formValue(), ex = exitState(v, lot);
+        if (!v.stopOn && !await askStopOff(lot)) return;
+        if (ex.stop && lot.price && lot.price >= ex.stopPrice && !confirm(`현재가 ${fmt(lot.price)}이 감시가 ${fmt(ex.stopPrice)} 이상입니다. 등록하면 바로 발동해 대주상환 주문이 나갈 수 있습니다. 계속할까요?`)) return;
+        if (ex.target && lot.price && lot.price <= ex.targetPrice && !confirm(`현재가 ${fmt(lot.price)}이 목표가 ${fmt(ex.targetPrice)} 이하입니다. 등록하면 바로 발동해 대주상환 주문이 나갈 수 있습니다. 계속할까요?`)) return;
         act(async () => { const w = await api('POST', '/watches', { lotKey: lot.key, ...v }); selectedWatch = w.id; if (w.untilNote) say(w.untilNote); });
     });
     $('editBtn').addEventListener('click', () => act(async () => { const w = await api('PUT', `/watches/${selectedWatch}`, formValue()); if (w.untilNote) say(w.untilNote); }));
@@ -412,7 +545,7 @@
         try {
             const { watch: w, log } = await api('GET', `/watches/${id}/log`);
             $('logTitle').textContent = `처리 기록 · ${w.name} ${w.code}`;
-            $('logSub').textContent = `대출일 ${w.loanDt} · 감시가 ${fmt(w.trigger)} · ${methodText(w)} · ~${w.until} · 상태 ${w.status}`;
+            $('logSub').textContent = `대출일 ${w.loanDt} · ${condLabel(w)} · ${methodText(w)} · ~${w.until} · 상태 ${w.status}`;
             const list = $('logList'); list.textContent = '';
             for (const e of log) list.append(el('div', { class: 'lr' }, el('span', { class: 't' }, new Date(e.at + 9 * 3600000).toISOString().slice(5, 19).replace('T', ' ')), el('span', { class: 'k' }, e.kind), el('span', {}, e.text)));
             if (!log.length) list.append(el('div', { class: 'lr' }, el('span'), el('span'), el('span', { class: 'muted' }, '기록이 없습니다')));
@@ -455,7 +588,7 @@
              ['30초 기록', '확인용 기록 파일 남기기(감시 건의 마지막 판정 · 실시간 수신 건수). 판정 · 주문과는 무관. 파일은 당일 것만 두고 지난 날짜는 지웁니다', '감시 건이 있을 때만']]],
         ['계좌 (2026-11-21)', ['키움 계좌마다 앱키를 따로 둡니다(기본 앱키 계좌 · 끝자리 28 계좌). 두 계좌의 대주 잔고 · 감시 건을 한 화면에 함께 보여 주고, 계좌가 둘 이상이면 종목 코드 옆에 계좌번호 뒤 4자리(예: 0328)를 붙입니다', '잔고 조회 · 대주상환 주문 · 정정 · 취소 · 미체결 확인은 그 잔고 행(감시 건)의 계좌 앱키로 합니다. 다른 계좌로 주문이 나가지 않습니다', '실시간도 계좌마다 그 계좌 앱키의 웹소켓으로 받습니다(웹소켓은 앱키당 하나). 기본 계좌는 VI 모니터와 공용 연결, 끝자리 28 계좌는 자기 연결로 감시 종목 체결(0B)과 그 계좌의 주문체결(00)을 받아 바로 판정 · 확인합니다. 위쪽 "실시간 연결"은 두 계좌가 모두 붙어 있을 때 켜집니다', '잔고 칸의 계좌 고르기는 보기만 바꿉니다. 전체 감시 체크는 지금 보고 있는 계좌(전체 계좌면 모두)에 적용됩니다', '안전장치로 감시가 멈추면 그 계좌만 멈춥니다']],
         ['감시 단위', ['잔고에서 고른 한 행(종목 + 대출일)만 감시합니다', '"다른 대출일 묶음도 함께 상환"(기본 꺼짐)을 켜면 같은 종목의 모든 대출일을 대출일별로, 만기가 가까운 것부터 상환합니다']],
-        ['발동 조건', ['현재가 ≧ 감시가 하나입니다. 어느 거래소 체결가로 판정하는지는 아래 시간표의 "판정" 칸', '오늘 체결이 없는 값으로는 판정하지 않습니다. 등록할 때 이미 조건을 만족하면 확인을 받습니다']],
+        ['발동 조건 (2026-11-28)', ['익절 · 손절 중 켠 것이 먼저 맞는 쪽으로 상환합니다. 각자 자기 조건만 봅니다', '손절: 현재가 ≧ 감시가. 원으로 넣거나, 매입단가(공매도단가) · 등록 시 현재가 대비 +%로 넣습니다(호가단위로 올림해 저장)', '익절 목표가: 현재가 ≦ 목표가. 원 또는 매입단가 · 등록 시 현재가 대비 −%(호가단위로 내림해 저장)', '익절 트레일링 스탑: KRX+NXT 통합 N분봉이 끝난 순간 종가 ≧ M이평(단순)이면 그때 현재가 기준으로 상환. 등록(다시 켠) 뒤 처음 끝나는 봉부터 보고, 봉 종가가 매입단가 이상이면 상환하지 않습니다(그 구간은 손절 조건만, 손절을 껐으면 아무것도 안 함)', '어느 조건으로 발동해도 주문은 같습니다(체결가 +틱 지정가 · 미체결 추격 정정 · 수량)', '현재가를 어느 거래소 체결가로 판정하는지는 아래 시간표의 "판정" 칸. 오늘 체결이 없는 값으로는 판정하지 않습니다', '등록할 때 이미 조건을 만족하면 확인을 받고, 손절을 끈 채 등록하면 오르는 쪽 보호가 없다는 확인을 받습니다', '예전에 등록한 건은 손절 · 원만 켠 건으로 이어집니다']],
         ['엔진 시간표 (평일, 대주상환 기준)', ['○ 됨 · △ 접수만 받고 정해진 시각에 한꺼번에 체결 · × 안 됨 · ? 아직 시험 안 함. 괄호는 실계좌로 확인한 날짜', '2026-09-14 KRX 시간 개편(KRX 애프터마켓 16:00~20:00, 대주 09:00~20:00) 기준입니다'],
             TIMETABLE,
             ['SOR: 키움이 KRX · NXT 중 유리한 곳으로 보냅니다. 장 마감 뒤 SOR 주문이 실제로 어느 거래소로 갔는지는 체결 전이라 아직 모릅니다(조회에 "SOR"로만 나옴). SOR 정정은 아직 실제로 해 보지 않았습니다', '정규장 · 종가 단일가 주문이 15:30에 남아 없어지면 NXT 종목은 NXT로(15:30~15:40은 미리 접수), NXT 비대상은 16:00에 KRX로 다시 냅니다', 'ETF · ETN은 KRX 애프터마켓 대상이 아닙니다. 수능일 같은 특수 시간표는 아직 반영하지 않습니다']],
@@ -572,6 +705,6 @@
         });
         new ResizeObserver(autoFit).observe(wrap); autoFit();
     }
-    resizable($('lotsTable'), 'short-stoploss-cols-lots-v2'); resizable($('watchTable'), 'short-stoploss-cols-watch-v2'); // 열 순서가 바뀌어(2026-11-24) 예전에 저장한 폭은 쓰지 않는다
+    resizable($('lotsTable'), 'short-stoploss-cols-lots-v2'); resizable($('watchTable'), 'short-stoploss-cols-watch-v3'); // 열 순서가 바뀌어(2026-11-24) · 감시가 열이 청산 조건 열로 넓어져(2026-11-28) 예전에 저장한 폭은 쓰지 않는다
     autoUntil(); loadCalendar(); loop();
 })();

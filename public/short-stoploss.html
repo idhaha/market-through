@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>대주 StopLoss</title>
-<link rel="stylesheet" href="short-stoploss.css?v=20261127_h">
-<script src="short-stoploss.js?v=20261127_qty" defer></script>
+<link rel="stylesheet" href="short-stoploss.css?v=20261128_exit">
+<script src="short-stoploss.js?v=20261128_exit" defer></script>
 </head>
 <body>
 <header class="ss-top">
@@ -66,8 +66,8 @@
       </div>
       <div class="tbl-wrap">
         <table class="tbl" id="watchTable">
-          <colgroup><col data-base="34" style="width: 34px"><col data-base="62" style="width: 62px"><col data-base="140" data-flex style="width: 140px"><col data-base="76" style="width: 76px"><col data-base="54" data-flex style="width: 54px"><col data-base="80" data-flex style="width: 80px"><col data-base="82" data-flex style="width: 82px"><col data-base="68" style="width: 68px"><col data-base="76" style="width: 76px"><col data-base="48" style="width: 48px"></colgroup>
-          <thead><tr><th>감시</th><th>상태</th><th>종목</th><th class="r th2" title="청산 전에는 감시수량, 청산 뒤에는 청산수량 (보유수량 대비 %)">감시 · 청산수량</th><th class="r">감시가</th><th>주문 방식</th><th title="최근 판정 · 결과">판정 · 결과</th><th>대출일</th><th>유효기간</th><th>조작</th></tr></thead>
+          <colgroup><col data-base="34" style="width: 34px"><col data-base="62" style="width: 62px"><col data-base="125" data-flex style="width: 125px"><col data-base="76" style="width: 76px"><col data-base="80" data-flex style="width: 80px"><col data-base="72" data-flex style="width: 72px"><col data-base="78" data-flex style="width: 78px"><col data-base="68" style="width: 68px"><col data-base="76" style="width: 76px"><col data-base="48" style="width: 48px"></colgroup>
+          <thead><tr><th>감시</th><th>상태</th><th>종목</th><th class="r th2" title="청산 전에는 감시수량, 청산 뒤에는 청산수량 (보유수량 대비 %)">감시 · 청산수량</th><th title="빨강 ≤ 익절 목표가 · 보라 트레일링 · 파랑 ≥ 손절">청산 조건</th><th>주문 방식</th><th title="최근 판정 · 결과">판정 · 결과</th><th>대출일</th><th>유효기간</th><th>조작</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -86,56 +86,103 @@
         <span class="muted">계좌</span><span id="fAcct">-</span>
       </div>
 
-      <div class="sec">
-        <div class="row">
-          <span>현재가</span><span class="ge">≧</span>
-          <label for="trigger">감시가</label>
-          <input id="trigger" class="inp num" inputmode="numeric" autocomplete="off" style="width: 96px">
-          <span class="stepper"><button type="button" id="trigUp" class="step-btn" aria-label="감시가 한 호가 올리기" title="한 호가 올리기(키보드 ↑)"><svg aria-hidden="true" width="9" height="6" viewBox="0 0 9 6"><path d="M4.5 0.5L8.5 5.5H0.5Z" fill="currentColor"></path></svg></button><button type="button" id="trigDown" class="step-btn" aria-label="감시가 한 호가 내리기" title="한 호가 내리기(키보드 ↓)"><svg aria-hidden="true" width="9" height="6" viewBox="0 0 9 6"><path d="M4.5 5.5L8.5 0.5H0.5Z" fill="currentColor"></path></svg></button></span>
-          <span>원 이면</span>
-          <span class="tip"><button type="button" class="i" aria-label="현재가 조건 설명">i</button><span class="tipbox" role="tooltip">현재가는 체결가입니다. 09:00~15:20에는 KRX와 NXT 체결 중 어느 쪽이든 감시가 이상이면 발동하고(주문은 SOR, NXT 비대상은 KRX), 08:00~08:50 · 15:30~20:00에는 NXT 체결, 15:20~15:30에는 KRX 예상체결가로 판정합니다. 체결은 VI 모니터와 함께 쓰는 키움 실시간(0B)으로 바로 받고, 5초마다 조회로 한 번 더 봅니다(실시간이 끊기면 1초 조회). 오늘 체결이 없는 값으로는 판정하지 않습니다. 등록할 때 이미 조건을 만족하면 확인을 받습니다. 옆 위아래 화살표(또는 칸에서 키보드 ↑ ↓)는 가격대별 호가 단위로 한 호가씩 올리고 내립니다(예: 1,999 → 2,000 → 2,005). 그날 상한가 · 하한가에 닿으면 그 방향 화살표는 더 눌리지 않고, 범위 밖 값을 직접 넣으면 조건 추가가 꺼집니다. 잔고 행을 고르면 감시가에 현재가가 미리 들어가 있어 그대로 조건 추가를 누를 수 있고(현재가 이상이면 바로 발동하므로 확인을 받습니다), 직접 고치기 전까지는 현재가를 따라갑니다. 칸을 비우면 현재가 기준으로 다시 시작합니다. 전각 숫자로 쳐도 그대로 받습니다.</span></span>
+      <!-- 청산 조건(2026-11-28 사용자 결정): 익절 · 손절 · 주문 박스. 익절 · 손절은 켠 것 중 먼저 맞는 쪽으로, 각자 자기 조건만 본다 -->
+      <div class="sec exit-sec">
+        <div class="box tp" id="tpBox">
+          <div class="row">
+            <label class="row box-t"><input id="profitOn" type="checkbox">익절</label><span class="tag tp">내리면</span>
+            <span class="tip"><button type="button" class="i" aria-label="익절 설명">i</button><span class="tipbox" role="tooltip">목표가와 트레일링 스탑을 각각 켜고 끕니다. 둘 다 켜면 먼저 오는 쪽으로 상환합니다. 손절과 함께 켜도 되고, 각자 자기 조건만 봅니다. 익절을 끄면 목표가 · 트레일링을 모두 보지 않습니다.</span></span>
+          </div>
+          <div class="sub" id="targetSub">
+            <div class="row indent"><label class="row"><input id="targetOn" type="checkbox" checked>목표가</label>
+              <span class="tip"><button type="button" class="i" aria-label="목표가 설명">i</button><span class="tipbox" role="tooltip">현재가가 목표가 이하로 체결되면 발동합니다(현재가 판정은 손절과 같은 시간표). 두 방식 중 하나를 고릅니다. 원은 그 가격 그대로, %는 고른 기준가 × (1 − %)를 호가단위로 내림한 가격으로 등록할 때 바꿔 저장합니다(괄호에 미리 보여 줌). 매입단가는 잔고의 공매도단가이고, 등록 시 현재가는 등록하는 순간의 현재가입니다. 하한가보다 낮은 값은 넣을 수 없습니다.</span></span></div>
+            <div class="row indent2 mode-row">
+              <label class="row"><input type="radio" name="targetMode" value="price" aria-label="목표가 원으로">현재가</label><span class="le">≦</span>
+              <input id="targetPrice" class="inp num" inputmode="numeric" autocomplete="off" aria-label="목표가(원)" style="width: 84px">
+              <span class="stepper"><button type="button" id="tgUp" class="step-btn" aria-label="목표가 한 호가 올리기" title="한 호가 올리기(키보드 ↑)"><svg aria-hidden="true" width="9" height="6" viewBox="0 0 9 6"><path d="M4.5 0.5L8.5 5.5H0.5Z" fill="currentColor"></path></svg></button><button type="button" id="tgDown" class="step-btn" aria-label="목표가 한 호가 내리기" title="한 호가 내리기(키보드 ↓)"><svg aria-hidden="true" width="9" height="6" viewBox="0 0 9 6"><path d="M4.5 5.5L8.5 0.5H0.5Z" fill="currentColor"></path></svg></button></span>
+              <span>원</span><span id="targetPriceNote" class="small muted"></span>
+            </div>
+            <div class="row indent2 mode-row">
+              <label class="row"><input type="radio" name="targetMode" value="pct" checked aria-label="목표가 %로">현재가</label><span class="le">≦</span>
+              <select id="targetBasis" class="inp basis" aria-label="목표가 % 기준"><option value="avg">매입단가</option><option value="reg">등록 시 현재가</option></select>
+              <input id="targetPct" class="inp num pct" inputmode="decimal" autocomplete="off" aria-label="목표가 %" value="-5.0">
+              <span class="stepper"><button type="button" id="tpPctUp" class="step-btn" aria-label="목표가 % 0.5%p 올리기" title="0.5%p 올리기(키보드 ↑)"><svg aria-hidden="true" width="9" height="6" viewBox="0 0 9 6"><path d="M4.5 0.5L8.5 5.5H0.5Z" fill="currentColor"></path></svg></button><button type="button" id="tpPctDown" class="step-btn" aria-label="목표가 % 0.5%p 내리기" title="0.5%p 내리기(키보드 ↓)"><svg aria-hidden="true" width="9" height="6" viewBox="0 0 9 6"><path d="M4.5 5.5L8.5 0.5H0.5Z" fill="currentColor"></path></svg></button></span>
+              <span>%</span><span id="targetCalc" class="small accent"></span>
+            </div>
+          </div>
+          <div class="sub" id="trailSub">
+            <div class="row indent">
+              <label class="row"><input id="trailOn" type="checkbox">트레일링 스탑</label>
+              <select id="trailMin" class="inp" aria-label="분봉"></select><span>분봉 종가</span><span id="trOp" class="le">≧</span>
+              <select id="trailMa" class="inp" aria-label="이평"></select><span>이평</span>
+              <span class="tip"><button type="button" class="i" aria-label="트레일링 스탑 설명">i</button><span class="tipbox" role="tooltip">내려가던 값이 다시 오르는 것을 이평으로 잡습니다. KRX+NXT 통합 분봉(키움 ka10080)이 끝난 순간의 종가로만 판정하고(봉 안에서 잠깐 오른 것은 무시), 등록 직후 처음 끝나는 봉부터 봅니다. 종가 ≧ 이평이면(같아도 포함) 그때 현재가 기준으로 아래 주문 박스의 방식대로 대주상환합니다. 이평은 단순이동평균입니다. 봉 종가가 매입단가 이상이면 손실 상환이 되므로 트레일링으로는 상환하지 않습니다(그 구간은 손절 조건만 보고, 손절을 꺼 두었으면 아무것도 상환하지 않음).</span></span>
+            </div>
+            <div class="row indent small" id="trNow"><span id="trLead"></span><span id="trLt"></span><b id="trMa"></b><span id="trDiff"></span></div>
+          </div>
         </div>
-        <div class="row">
-          <span>체결가</span>
-          <label for="ticks" class="sr">틱</label>
-          <select id="ticks" class="inp"></select>
-          <span>지정가 또는</span>
-          <label class="row"><input id="upperLimit" type="checkbox">상한가로</label>
-          <span>대주상환</span>
-          <span class="tip"><button type="button" class="i" aria-label="주문 가격 설명">i</button><span class="tipbox" role="tooltip">+틱을 고르면 발동 체결가에 그 틱 수를 더한 지정가로 주문합니다. 기본 +10틱. 예: 7,300 발동 → 7,400 주문(10원 단위 10틱). NXT 체결로 발동해도 그 가격 기준입니다. 청산은 업틱룰이 없어 매도호가보다 높게 내도 됩니다. 상한가를 넘으면 상한가로 맞춥니다. 상한가로를 켜면 틱 대신 처음부터 상한가 지정가로 내고 정정하지 않습니다(틱 · 미체결 추격 한도는 꺼짐). 실제 체결은 그때 쌓인 매도호가부터 되므로 체결이 가장 확실합니다.</span></span>
+
+        <div class="box sl" id="slBox">
+          <div class="row">
+            <label class="row box-t"><input id="stopOn" type="checkbox" checked>손절</label><span class="tag sl">오르면</span>
+            <span class="tip"><button type="button" class="i" aria-label="현재가 조건 설명">i</button><span class="tipbox" role="tooltip">현재가가 감시가 이상이면 발동합니다. 현재가는 체결가입니다. 09:00~15:20에는 KRX와 NXT 체결 중 어느 쪽이든 감시가 이상이면 발동하고(주문은 SOR, NXT 비대상은 KRX), 08:00~08:50 · 15:30~20:00에는 NXT 체결, 15:20~15:30에는 KRX 예상체결가로 판정합니다. 체결은 VI 모니터와 함께 쓰는 키움 실시간(0B)으로 바로 받고, 5초마다 조회로 한 번 더 봅니다(실시간이 끊기면 1초 조회). 오늘 체결이 없는 값으로는 판정하지 않습니다. 두 방식 중 하나를 고릅니다. 원: 옆 위아래 화살표(또는 칸에서 키보드 ↑ ↓)로 가격대별 호가 단위씩 바꾸고, 그날 상한가 · 하한가 밖으로는 못 갑니다. 잔고 행을 고르면 현재가가 미리 들어가 있고(바로 발동할 수 있어 등록 때 확인을 받음), 직접 고치기 전까지는 현재가를 따라갑니다. %: 고른 기준가 × (1 + %)를 호가단위로 올림한 감시가로 바꿔 저장합니다. 손절을 끄면 오르는 쪽은 아무도 보지 않습니다(조건 추가 때 확인을 받음).</span></span>
+          </div>
+          <div class="row indent mode-row">
+            <label class="row"><input type="radio" name="stopMode" value="price" checked aria-label="손절 원으로">현재가</label><span class="ge">≧</span>
+            <label for="trigger" class="sr">감시가</label>
+            <input id="trigger" class="inp num" inputmode="numeric" autocomplete="off" style="width: 84px">
+            <span class="stepper"><button type="button" id="trigUp" class="step-btn" aria-label="감시가 한 호가 올리기" title="한 호가 올리기(키보드 ↑)"><svg aria-hidden="true" width="9" height="6" viewBox="0 0 9 6"><path d="M4.5 0.5L8.5 5.5H0.5Z" fill="currentColor"></path></svg></button><button type="button" id="trigDown" class="step-btn" aria-label="감시가 한 호가 내리기" title="한 호가 내리기(키보드 ↓)"><svg aria-hidden="true" width="9" height="6" viewBox="0 0 9 6"><path d="M4.5 5.5L8.5 0.5H0.5Z" fill="currentColor"></path></svg></button></span>
+            <span>원</span><span id="stopPriceNote" class="small muted"></span>
+          </div>
+          <div class="row indent mode-row">
+            <label class="row"><input type="radio" name="stopMode" value="pct" aria-label="손절 %로">현재가</label><span class="ge">≧</span>
+            <select id="stopBasis" class="inp basis" aria-label="손절 % 기준"><option value="avg">매입단가</option><option value="reg">등록 시 현재가</option></select>
+            <input id="stopPct" class="inp num pct" inputmode="decimal" autocomplete="off" aria-label="손절 %" value="+3.0">
+            <span class="stepper"><button type="button" id="slPctUp" class="step-btn" aria-label="손절 % 0.5%p 올리기" title="0.5%p 올리기(키보드 ↑)"><svg aria-hidden="true" width="9" height="6" viewBox="0 0 9 6"><path d="M4.5 0.5L8.5 5.5H0.5Z" fill="currentColor"></path></svg></button><button type="button" id="slPctDown" class="step-btn" aria-label="손절 % 0.5%p 내리기" title="0.5%p 내리기(키보드 ↓)"><svg aria-hidden="true" width="9" height="6" viewBox="0 0 9 6"><path d="M4.5 5.5L8.5 0.5H0.5Z" fill="currentColor"></path></svg></button></span>
+            <span>%</span><span id="stopCalc" class="small accent"></span>
+          </div>
         </div>
-        <div class="row oneline">
-          <label class="row strong"><input id="fix" type="checkbox" checked>미체결 추격 한도는</label>
-          <span>발동가의</span>
-          <label for="chasePct" class="sr">추격 한도 %</label>
-          <select id="chasePct" class="inp"></select>
-          <span id="chaseNote" class="accent small"></span>
-          <span class="tip"><button type="button" class="i" aria-label="미체결 정정 설명">i</button><span class="tipbox" role="tooltip">켜면 덜 체결된 수량을 정정해 따라 올라갑니다. 체결은 내 주문체결 실시간(00)으로 바로 확인하고 3초마다 조회로 한 번 더 봅니다. 3초마다 남은 수량을 최대 3회 정정합니다. 1회: 그때 매도1호가 + 고른 틱, 2회: 매도1호가 + 고른 틱의 2배, 3회: 추격 한도 가격. 추격 한도는 정정으로 따라 올라갈 최고 주문가로, 발동 순간의 체결가(발동가) × (1 + 고른 %)를 호가단위로 내림하고 상한가보다 높으면 상한가입니다. 처음 주문과 모든 정정가는 이 한도와 상한가를 넘지 않고, 한도에 닿으면 더 올리지 않고 알립니다. 오른쪽 금액(○○원)은 아직 발동 전이라 발동가 대신 위에 넣은 감시가로 미리 계산한 값이며, 발동가가 감시가보다 높게 체결되면(급등) 실제 한도도 그만큼 높아집니다. 끄면 정정하지 않고 미체결을 알리기만 합니다.</span></span>
+
+        <div class="box od">
+          <div class="row"><span class="box-t">주문</span><span class="muted small">손절 · 익절 공통</span></div>
+          <div class="row indent">
+            <span>체결가</span>
+            <label for="ticks" class="sr">틱</label>
+            <select id="ticks" class="inp"></select>
+            <span>지정가 또는</span>
+            <label class="row"><input id="upperLimit" type="checkbox">상한가로</label>
+            <span>대주상환</span>
+            <span class="tip"><button type="button" class="i" aria-label="주문 가격 설명">i</button><span class="tipbox" role="tooltip">+틱을 고르면 발동 체결가에 그 틱 수를 더한 지정가로 주문합니다. 기본 +10틱. 예: 7,300 발동 → 7,400 주문(10원 단위 10틱). NXT 체결로 발동해도 그 가격 기준입니다. 손절 · 목표가 · 트레일링 어느 것으로 발동해도 같은 방식으로 냅니다(트레일링은 봉이 끝난 순간의 현재가 기준). 청산은 업틱룰이 없어 매도호가보다 높게 내도 됩니다. 상한가를 넘으면 상한가로 맞춥니다. 상한가로를 켜면 틱 대신 처음부터 상한가 지정가로 내고 정정하지 않습니다(틱 · 미체결 추격 한도는 꺼짐). 실제 체결은 그때 쌓인 매도호가부터 되므로 체결이 가장 확실합니다.</span></span>
+          </div>
+          <div class="row oneline indent">
+            <label class="row strong"><input id="fix" type="checkbox" checked>미체결 추격 한도는</label>
+            <span>발동가의</span>
+            <label for="chasePct" class="sr">추격 한도 %</label>
+            <select id="chasePct" class="inp"></select>
+            <span id="chaseNote" class="accent small"></span>
+            <span class="tip"><button type="button" class="i" aria-label="미체결 정정 설명">i</button><span class="tipbox" role="tooltip">켜면 덜 체결된 수량을 정정해 따라 올라갑니다. 체결은 내 주문체결 실시간(00)으로 바로 확인하고 3초마다 조회로 한 번 더 봅니다. 3초마다 남은 수량을 최대 3회 정정합니다. 1회: 그때 매도1호가 + 고른 틱, 2회: 매도1호가 + 고른 틱의 2배, 3회: 추격 한도 가격. 추격 한도는 정정으로 따라 올라갈 최고 주문가로, 발동 순간의 체결가(발동가) × (1 + 고른 %)를 호가단위로 내림하고 상한가보다 높으면 상한가입니다. 처음 주문과 모든 정정가는 이 한도와 상한가를 넘지 않고, 한도에 닿으면 더 올리지 않고 알립니다. 오른쪽 금액(○○원)은 아직 발동 전이라 발동가 대신 손절 감시가(손절을 껐으면 목표가, 둘 다 없으면 현재가)로 미리 계산한 값이며, 실제 한도는 발동 순간의 체결가로 다시 계산합니다. 끄면 정정하지 않고 미체결을 알리기만 합니다.</span></span>
+          </div>
+          <div class="od-div"></div>
+          <div class="row qty-row indent">
+            <span style="width: 34px">수량</span>
+            <span class="qgrp"><label class="row"><input type="radio" name="qtyMode" value="pct" checked aria-label="가능수량 대비 %"></label>
+            <select id="qtyPct" class="inp" aria-label="비율"></select>
+            <span id="qtyCalc" class="small accent"></span></span>
+            <span class="qgrp"><label class="row"><input type="radio" name="qtyMode" value="shares">주</label>
+            <input id="qtyShares" class="inp num" inputmode="numeric" aria-label="주 수" style="width: calc(4ch + 18px)" disabled>
+            <span class="stepper"><button type="button" id="sharesUp" class="step-btn" aria-label="주 수 1주 늘리기" title="1주 늘리기(키보드 ↑)" disabled><svg aria-hidden="true" width="9" height="6" viewBox="0 0 9 6"><path d="M4.5 0.5L8.5 5.5H0.5Z" fill="currentColor"></path></svg></button><button type="button" id="sharesDown" class="step-btn" aria-label="주 수 1주 줄이기" title="1주 줄이기(키보드 ↓)" disabled><svg aria-hidden="true" width="9" height="6" viewBox="0 0 9 6"><path d="M4.5 5.5L8.5 0.5H0.5Z" fill="currentColor"></path></svg></button></span>
+            <span class="tip"><button type="button" class="i" aria-label="수량 설명">i</button><span class="tipbox" role="tooltip">고른 대출일 묶음의 가능수량 대비 % 또는 주 수입니다. 같은 대출일 묶음에 감시 건을 여러 개 둘 수 있고, 가능수량은 다른 감시 건(감시중 · 중지)에 이미 할당한 수량을 뺀 남은 수량입니다. 예: 10주 중 60%(6주)를 등록했으면 다음 건의 100%는 4주입니다. 기본값은 100%-1주로 남은 수량에서 1주를 남깁니다(남은 수량이 1주뿐이면 100%). %는 등록할 때 주 수로 정해지고, 발동하면 그 주 수(그때 가능수량까지)를 상환합니다. 주 칸은 오른쪽 위아래 화살표(또는 칸에서 키보드 ↑ ↓)로 1주씩 바꾸고, 남은 수량보다 많이 넣으면 남은 수량으로 바뀝니다. 주문 직전에 잔고를 다시 조회해 가능수량을 확인합니다.</span></span></span>
+          </div>
+          <div id="qtyNote" class="small warn" role="status" hidden></div>
+          <div class="row indent">
+            <label class="row"><input id="allLots" type="checkbox">다른 대출일 묶음도 함께 상환</label>
+            <span class="tip"><button type="button" class="i" aria-label="다른 대출일 묶음 설명">i</button><span class="tipbox" role="tooltip">같은 종목의 다른 대출일 묶음도 발동 때 함께 상환합니다. 대출일별로 따로 주문하고, 만기가 가까운 묶음부터 냅니다. 기본은 꺼짐입니다.</span></span>
+          </div>
+          <div class="row indent">
+            <label class="row"><input id="cancelPending" type="checkbox" checked>동일종목 미체결 상환 취소 후 주문</label>
+            <span class="tip"><button type="button" class="i" aria-label="미체결 취소 설명">i</button><span class="tipbox" role="tooltip">이 종목에 미체결 대주상환 주문이 있으면 가능수량이 0이라 주문이 거부됩니다. 켜 두면 발동할 때 그 주문을 먼저 취소하고 상환 주문을 냅니다.</span></span>
+          </div>
         </div>
       </div>
-
-      <div class="sec">
-        <div class="row qty-row">
-          <span style="width: 34px">수량</span>
-          <span class="qgrp"><label class="row"><input type="radio" name="qtyMode" value="pct" checked aria-label="가능수량 대비 %"></label>
-          <select id="qtyPct" class="inp" aria-label="비율"></select>
-          <span id="qtyCalc" class="small accent"></span></span>
-          <span class="qgrp"><label class="row"><input type="radio" name="qtyMode" value="shares">주</label>
-          <input id="qtyShares" class="inp num" inputmode="numeric" aria-label="주 수" style="width: calc(4ch + 18px)" disabled>
-          <span class="stepper"><button type="button" id="sharesUp" class="step-btn" aria-label="주 수 1주 늘리기" title="1주 늘리기(키보드 ↑)" disabled><svg aria-hidden="true" width="9" height="6" viewBox="0 0 9 6"><path d="M4.5 0.5L8.5 5.5H0.5Z" fill="currentColor"></path></svg></button><button type="button" id="sharesDown" class="step-btn" aria-label="주 수 1주 줄이기" title="1주 줄이기(키보드 ↓)" disabled><svg aria-hidden="true" width="9" height="6" viewBox="0 0 9 6"><path d="M4.5 5.5L8.5 0.5H0.5Z" fill="currentColor"></path></svg></button></span>
-          <span class="tip"><button type="button" class="i" aria-label="수량 설명">i</button><span class="tipbox" role="tooltip">고른 대출일 묶음의 가능수량 대비 % 또는 주 수입니다. 같은 대출일 묶음에 감시 건을 여러 개 둘 수 있고, 가능수량은 다른 감시 건(감시중 · 중지)에 이미 할당한 수량을 뺀 남은 수량입니다. 예: 10주 중 60%(6주)를 등록했으면 다음 건의 100%는 4주입니다. 기본값은 100%-1주로 남은 수량에서 1주를 남깁니다(남은 수량이 1주뿐이면 100%). %는 등록할 때 주 수로 정해지고, 발동하면 그 주 수(그때 가능수량까지)를 상환합니다. 주 칸은 오른쪽 위아래 화살표(또는 칸에서 키보드 ↑ ↓)로 1주씩 바꾸고, 남은 수량보다 많이 넣으면 남은 수량으로 바뀝니다. 주문 직전에 잔고를 다시 조회해 가능수량을 확인합니다.</span></span></span>
-        </div>
-        <div id="qtyNote" class="small warn" role="status" hidden></div>
-        <div class="row">
-          <label class="row"><input id="allLots" type="checkbox">다른 대출일 묶음도 함께 상환</label>
-          <span class="tip"><button type="button" class="i" aria-label="다른 대출일 묶음 설명">i</button><span class="tipbox" role="tooltip">같은 종목의 다른 대출일 묶음도 발동 때 함께 상환합니다. 대출일별로 따로 주문하고, 만기가 가까운 묶음부터 냅니다. 기본은 꺼짐입니다.</span></span>
-        </div>
-        <div class="row">
-          <label class="row"><input id="cancelPending" type="checkbox" checked>동일종목 미체결 상환 취소 후 주문</label>
-          <span class="tip"><button type="button" class="i" aria-label="미체결 취소 설명">i</button><span class="tipbox" role="tooltip">이 종목에 미체결 대주상환 주문이 있으면 가능수량이 0이라 주문이 거부됩니다. 켜 두면 발동할 때 그 주문을 먼저 취소하고 손절 주문을 냅니다.</span></span>
-        </div>
-      </div>
-
       <div class="sec tight">
         <div class="row rel">
           <label for="until" style="width: 64px">유효기간</label>
@@ -168,6 +215,14 @@
         </div>
       </div>
 
+      <div id="stopOffDlg" class="cf-back" hidden>
+        <div class="cf" role="dialog" aria-modal="true" aria-labelledby="stopOffTitle">
+          <h3 id="stopOffTitle">손절이 꺼져 있습니다</h3>
+          <div id="stopOffText"></div>
+          <div class="muted small">그대로 등록할까요?</div>
+          <div class="row buttons"><button type="button" id="stopOffOk" class="btn primary">그대로 등록</button><button type="button" id="stopOffNo" class="btn">손절 켜기</button></div>
+        </div>
+      </div>
       <div class="row buttons">
         <button type="button" id="addBtn" class="btn primary" disabled>조건 추가</button>
         <button type="button" id="editBtn" class="btn" disabled>조건 수정</button>
